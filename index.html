@@ -352,14 +352,22 @@
   .liBottomRow { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 6px; }
   .listItem .liSource { font-size: 12px; color: var(--text-faint); }
   .liLinkCount { font-size: 12px; color: var(--text-faint); white-space: nowrap; }
+  .listGroupHeaderRow { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); }
   .listGroupHeader {
-    width: 100%;
+    flex: 1 1 auto;
+    min-width: 0;
     text-align: left;
     font-size: 14px;
     color: var(--text-dim);
     padding: 10px 4px;
-    border-bottom: 1px solid var(--border);
   }
+  .listGroupRenameBtn { font-size: 12px; color: var(--accent); padding: 8px 6px; white-space: nowrap; }
+  .sourceRenamePanel { padding: 10px 4px 14px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+  .sourceRenameBtnRow { display: flex; gap: 8px; }
+  .sourceRenameBtnRow button { flex: 1; }
+  .draftSimilarPanel { background: var(--bg-elevated); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .draftSimilarNoteCard { background: var(--bg-card); padding: 14px; min-height: 0; gap: 8px; }
+  .draftSimilarActions { display: flex; flex-direction: column; gap: 8px; }
   .tagFilterRow { display: flex; flex-wrap: wrap; gap: 6px; }
   .tagFilterBtn {
     font-size: 12px;
@@ -851,6 +859,12 @@
       <hr>
       <div class="field">
         <h3>4. 言葉</h3>
+        <span class="fieldLabel">朝の投稿文の見出し</span>
+        <p class="fieldNote">Xで投稿するときの、今朝の言葉の前に付く見出しです。</p>
+        <input id="morningQuoteHeadingInput" type="text" placeholder="今日の言葉" autocomplete="off">
+        <button id="btnSaveMorningQuoteHeading" class="secondaryBtn">保存</button>
+      </div>
+      <div class="field">
         <span class="fieldLabel">候補ノートの圧縮しきい値</span>
         <p class="fieldNote">既存ノートがこの件数を超える場合、タグの重なりと文字一致で絞り込んでからAPIに送ります。</p>
         <input id="compressThresholdInput" type="text" inputmode="numeric" placeholder="400" autocomplete="off">
@@ -1017,6 +1031,20 @@
         <div class="cardText" id="draftCardText"></div>
         <div class="cardSource" id="draftCardSource"></div>
       </div>
+      <p class="fieldNote warn" id="draftBatchDupHint" hidden>この下書きは、同じ一括入力内の他の項目と似ています。</p>
+      <div id="draftSimilarPanel" class="draftSimilarPanel" hidden>
+        <p class="fieldNote warn">似た言葉がすでにあります</p>
+        <div class="cardHome draftSimilarNoteCard">
+          <div class="cardText" id="draftSimilarNoteText"></div>
+          <div class="cardSource" id="draftSimilarNoteSource"></div>
+          <div class="fieldNote" id="draftSimilarNoteMyWords"></div>
+        </div>
+        <div class="draftSimilarActions">
+          <button type="button" id="btnDraftSimilarKeepExisting" class="secondaryBtn">こちらを残す（下書きを捨てる）</button>
+          <button type="button" id="btnDraftSimilarKeepBoth" class="secondaryBtn">両方残す</button>
+          <button type="button" id="btnDraftSimilarReplace" class="secondaryBtn">既存を置き換える</button>
+        </div>
+      </div>
       <div class="field" id="draftTagsField" hidden>
         <span class="fieldLabel">タグ<span class="fieldNote inlineNote">（最大3つ）</span></span>
         <div class="tagInputRow">
@@ -1176,7 +1204,7 @@
   // exist here until the draft is turned into a note.
   function normalizeDraft(d) {
     if (!d || !d.id) return null;
-    return {
+    const out = {
       id: String(d.id),
       text: typeof d.text === 'string' ? d.text : '',
       source: typeof d.source === 'string' ? d.source : '',
@@ -1184,6 +1212,8 @@
       createdAt: d.createdAt || nowIso(),
       updatedAt: d.updatedAt || d.createdAt || nowIso(),
     };
+    if (d.batchDup === true) out.batchDup = true;
+    return out;
   }
 
   const RELATIONS = ['similar', 'opposite', 'supplement'];
@@ -2441,6 +2471,8 @@
   const AUTO_LINK_ENABLED_KEY = 'kotoba_autoLinkEnabled';
   const MORNING_ENABLED_KEY = 'kotoba_morningEnabled';
   const COMPRESS_THRESHOLD_KEY = 'kotoba_compressThreshold';
+  const MORNING_QUOTE_HEADING_KEY = 'kotoba_morningQuoteHeading';
+  const DEFAULT_MORNING_QUOTE_HEADING = '今日の言葉';
   const USAGE_STATS_KEY = 'kotoba_usageStats';
   const LAST_AUTO_LINK_ERROR_KEY = 'kotoba_lastAutoLinkError';
   const DEFAULT_AUTOLINK_MODEL = 'claude-haiku-4-5';
@@ -2477,6 +2509,10 @@
   function getCompressThreshold() {
     const v = parseInt(localStorage.getItem(COMPRESS_THRESHOLD_KEY), 10);
     return Number.isFinite(v) && v > 0 ? v : DEFAULT_COMPRESS_THRESHOLD;
+  }
+  function getMorningQuoteHeading() {
+    const v = localStorage.getItem(MORNING_QUOTE_HEADING_KEY);
+    return v && v.trim() ? v : DEFAULT_MORNING_QUOTE_HEADING;
   }
 
   // --- Usage tracking (v3.2): per-feature call counts + token totals, taken
@@ -3114,12 +3150,18 @@
 
   // v3.1: the morning share text, editable for the day it applies to.
   const WALK_SHARE_TEXT_EDIT_KEY = 'kotoba_walkShareTextEdit';
+  // v3.3: leaves an empty paragraph between the day-count line and the quote
+  // block so the cursor has an obvious place to land for the user's own
+  // writing (spec: "空行にして、カーソルが置きやすいようにする") - no
+  // placeholder text is inserted, just the blank lines. When no morning word
+  // was received, only the day-count line and a trailing blank line are kept.
   function computeDefaultShareText(derived, morningEntry) {
-    let text = `【${derived.n}日目 / 10000】`;
+    const dayLine = `【${derived.n}日目 / 10000】`;
     const pick = morningEntry && morningEntry.picks && morningEntry.picks[0];
     const note = pick ? findNote(pick.id) : null;
-    if (note) text += `\n\n今朝の言葉\n「${note.text}」\n— ${note.source || ''}`;
-    return text;
+    if (!note) return `${dayLine}\n\n`;
+    const sourceDisplay = (note.source || '').startsWith('自分') ? '自分の言葉' : (note.source || '');
+    return `${dayLine}\n\n\n\n${getMorningQuoteHeading()}\n「${note.text}」\n— ${sourceDisplay}`;
   }
   function getShareTextEdit(today) {
     try {
@@ -3466,6 +3508,44 @@
     return t.length > max ? t.slice(0, max) + '…' : t;
   }
 
+  // Similarity check for drafts (v3.3): no API call, just character-bigram
+  // (2-gram) overlap via Dice's coefficient — a standard tokenizer-free
+  // approach for short Japanese text. Threshold picked from manual testing
+  // against near-duplicate vs. merely-related sentence pairs: 0.75 catches
+  // reworded/re-punctuated duplicates (0.77-1.0) while staying clear of
+  // coincidental-overlap false positives (~0.6 for sentences that just share
+  // a common phrase). Kept deliberately high per spec ("しきい値は高めにして
+  // 誤検知を減らす") — some genuine near-duplicates with heavier rewording
+  // will be missed; that's the intended precision/recall tradeoff.
+  const DRAFT_SIMILARITY_THRESHOLD = 0.75;
+  function charBigrams(s) {
+    const clean = (s || '').replace(/\s+/g, '');
+    const grams = [];
+    for (let i = 0; i < clean.length - 1; i++) grams.push(clean.slice(i, i + 2));
+    return grams;
+  }
+  function textSimilarity(a, b) {
+    const ga = charBigrams(a), gb = charBigrams(b);
+    if (!ga.length || !gb.length) return ga.length === gb.length ? 1 : 0;
+    const counts = new Map();
+    ga.forEach((g) => counts.set(g, (counts.get(g) || 0) + 1));
+    let common = 0;
+    gb.forEach((g) => {
+      const c = counts.get(g);
+      if (c > 0) { common++; counts.set(g, c - 1); }
+    });
+    return (2 * common) / (ga.length + gb.length);
+  }
+  function findMostSimilarNote(text, excludeNoteId) {
+    let best = null, bestScore = 0;
+    data.notes.forEach((n) => {
+      if (n.id === excludeNoteId) return;
+      const score = textSimilarity(text, n.text);
+      if (score >= DRAFT_SIMILARITY_THRESHOLD && score > bestScore) { best = n; bestScore = score; }
+    });
+    return best ? { note: best, score: bestScore } : null;
+  }
+
   function computeFilteredNotes() {
     const q = listState.search.trim().toLowerCase();
     let results = data.notes.slice();
@@ -3553,6 +3633,54 @@
     sortNotesForFlatList(notes).forEach((n) => listEl.appendChild(renderListItemRow(n)));
   }
 
+  // Tracks which source group currently has its rename panel open (source
+  // label, or null); local UI state only, reset on every list re-render trigger.
+  let sourceRenameOpenFor = null;
+
+  function renameSource(oldSource, newSource) {
+    const iso = nowIso();
+    let count = 0;
+    data.notes.forEach((n) => {
+      if (n.source === oldSource) { n.source = newSource; n.updatedAt = iso; count++; }
+    });
+    if (count > 0) saveData(data);
+    return count;
+  }
+
+  function renderSourceRenamePanel(oldSource, count) {
+    const panel = document.createElement('div');
+    panel.className = 'sourceRenamePanel';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = oldSource;
+    panel.appendChild(input);
+    const btnRow = document.createElement('div');
+    btnRow.className = 'sourceRenameBtnRow';
+    const confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.className = 'secondaryBtn';
+    confirmBtn.textContent = `変更する（${count}件）`;
+    confirmBtn.addEventListener('click', () => {
+      const newName = input.value.trim();
+      if (!newName || newName === oldSource) { sourceRenameOpenFor = null; renderList(); return; }
+      const existingCount = data.notes.filter((n) => n.source === newName).length;
+      const mergeNote = existingCount > 0 ? `\n既存の「${newName}」（${existingCount}件）と統合されます。` : '';
+      if (!confirm(`「${oldSource}」の${count}件を「${newName}」に変更します。${mergeNote}よろしいですか？`)) return;
+      renameSource(oldSource, newName);
+      sourceRenameOpenFor = null;
+      renderList();
+    });
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'secondaryBtn';
+    cancelBtn.textContent = 'キャンセル';
+    cancelBtn.addEventListener('click', () => { sourceRenameOpenFor = null; renderList(); });
+    btnRow.appendChild(confirmBtn);
+    btnRow.appendChild(cancelBtn);
+    panel.appendChild(btnRow);
+    return panel;
+  }
+
   function renderGroupedList(groups, keyPrefix) {
     const listEl = document.getElementById('listItems');
     listEl.innerHTML = '';
@@ -3561,6 +3689,8 @@
     groups.forEach(([label, notes]) => {
       const groupKey = keyPrefix + ':' + label;
       const isCollapsed = collapsed.has(groupKey);
+      const row = document.createElement('div');
+      row.className = 'listGroupHeaderRow';
       const header = document.createElement('button');
       header.type = 'button';
       header.className = 'listGroupHeader';
@@ -3571,7 +3701,24 @@
         setCollapsedGroups(c);
         renderList();
       });
-      listEl.appendChild(header);
+      row.appendChild(header);
+      const isRenamable = keyPrefix === 'source' && label !== '（出典なし）';
+      if (isRenamable) {
+        const renameBtn = document.createElement('button');
+        renameBtn.type = 'button';
+        renameBtn.className = 'listGroupRenameBtn';
+        renameBtn.textContent = '名前を変更';
+        renameBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          sourceRenameOpenFor = sourceRenameOpenFor === label ? null : label;
+          renderList();
+        });
+        row.appendChild(renameBtn);
+      }
+      listEl.appendChild(row);
+      if (isRenamable && sourceRenameOpenFor === label) {
+        listEl.appendChild(renderSourceRenamePanel(label, notes.length));
+      }
       if (!isCollapsed) {
         [...notes].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
           .forEach((n) => listEl.appendChild(renderListItemRow(n)));
@@ -3726,9 +3873,16 @@
         return;
       }
       const iso = nowIso();
-      items.forEach((item) => {
+      // Mark similar items within this same batch (spec: "分解結果の中に似た
+      // もの同士がある場合も...片方に印を付ける"). Compares each item only
+      // against earlier ones in the batch, so the first occurrence of a
+      // similar pair stays unmarked and later ones are flagged.
+      const batchDupFlags = items.map((item, i) => items.slice(0, i).some((prev) => textSimilarity(item.text, prev.text) >= DRAFT_SIMILARITY_THRESHOLD));
+      items.forEach((item, i) => {
         const id = generateDraftId();
-        data.drafts.push({ id, text: item.text, source, tags: item.tags, createdAt: iso, updatedAt: iso });
+        const draft = { id, text: item.text, source, tags: item.tags, createdAt: iso, updatedAt: iso };
+        if (batchDupFlags[i]) draft.batchDup = true;
+        data.drafts.push(draft);
       });
       saveData(data);
       btn.disabled = false;
@@ -3751,10 +3905,15 @@
   let draftQueue = [];
   let draftQueueIndex = 0;
   const draftEditorState = { tags: [] };
+  // Draft ids where the user chose "両方残す" for the similar-note panel;
+  // suppresses re-showing that panel for the rest of this review session.
+  let draftSimilarDismissed = new Set();
+  let draftSimilarMatchNoteId = null;
 
   function openDraftReview() {
     draftQueue = data.drafts.map((d) => d.id);
     draftQueueIndex = 0;
+    draftSimilarDismissed = new Set();
     showScreen('draftreview');
     renderDraftCard();
   }
@@ -3767,7 +3926,12 @@
     document.getElementById('draftMyWordsField').hidden = !has;
     document.getElementById('btnDraftSave').hidden = !has;
     document.getElementById('draftActionsRow').hidden = !has;
-    if (!has) { document.getElementById('draftRemainingCount').textContent = ''; return; }
+    if (!has) {
+      document.getElementById('draftRemainingCount').textContent = '';
+      document.getElementById('draftBatchDupHint').hidden = true;
+      document.getElementById('draftSimilarPanel').hidden = true;
+      return;
+    }
 
     const draft = findDraft(draftQueue[draftQueueIndex]);
     if (!draft) {
@@ -3780,6 +3944,18 @@
     document.getElementById('draftRemainingCount').textContent = `残り ${draftQueue.length} 件`;
     document.getElementById('draftCardText').textContent = draft.text;
     document.getElementById('draftCardSource').textContent = draft.source;
+    document.getElementById('draftBatchDupHint').hidden = !draft.batchDup;
+
+    const similarPanel = document.getElementById('draftSimilarPanel');
+    const similarMatch = draftSimilarDismissed.has(draft.id) ? null : findMostSimilarNote(draft.text);
+    draftSimilarMatchNoteId = similarMatch ? similarMatch.note.id : null;
+    similarPanel.hidden = !similarMatch;
+    if (similarMatch) {
+      document.getElementById('draftSimilarNoteText').textContent = similarMatch.note.text;
+      document.getElementById('draftSimilarNoteSource').textContent = similarMatch.note.source || '';
+      document.getElementById('draftSimilarNoteMyWords').textContent = similarMatch.note.myWords || '';
+    }
+
     draftEditorState.tags = [...draft.tags];
     document.getElementById('draftTagInput').value = '';
     document.getElementById('draftMyWordsInput').value = '';
@@ -3906,6 +4082,41 @@
     const id = draftQueue[draftQueueIndex];
     draftQueue.splice(draftQueueIndex, 1);
     draftQueue.push(id);
+    advanceDraftQueueAfterRemoval();
+  });
+
+  // Similar-note panel (v3.3): "こちらを残す" keeps the existing note and
+  // discards this draft; "両方残す" just dismisses the panel for this draft
+  // (still needs its own myWords to be saved normally); "既存を置き換える"
+  // overwrites the existing note's text/source/tags with the draft's,
+  // keeping that note's id/myWords/links, then discards the draft.
+  document.getElementById('btnDraftSimilarKeepExisting').addEventListener('click', () => {
+    const draft = findDraft(draftQueue[draftQueueIndex]);
+    if (!draft) return;
+    deleteDraft(draft.id);
+    draftQueue.splice(draftQueueIndex, 1);
+    advanceDraftQueueAfterRemoval();
+  });
+
+  document.getElementById('btnDraftSimilarKeepBoth').addEventListener('click', () => {
+    const draft = findDraft(draftQueue[draftQueueIndex]);
+    if (!draft) return;
+    draftSimilarDismissed.add(draft.id);
+    renderDraftCard();
+  });
+
+  document.getElementById('btnDraftSimilarReplace').addEventListener('click', () => {
+    const draft = findDraft(draftQueue[draftQueueIndex]);
+    const note = draftSimilarMatchNoteId ? findNote(draftSimilarMatchNoteId) : null;
+    if (!draft || !note) return;
+    if (!confirm('既存のノートを、この下書きの内容で置き換えます。よろしいですか？')) return;
+    note.text = draft.text;
+    note.source = draft.source;
+    note.tags = [...draft.tags];
+    note.updatedAt = nowIso();
+    deleteDraft(draft.id);
+    triggerAutoLinkForNote(note.id, 'autolink');
+    draftQueue.splice(draftQueueIndex, 1);
     advanceDraftQueueAfterRemoval();
   });
 
@@ -5410,6 +5621,7 @@
     document.getElementById('autoLinkToggle').checked = getAutoLinkEnabled();
     document.getElementById('morningEnabledToggle').checked = getMorningEnabled();
     document.getElementById('compressThresholdInput').value = getCompressThreshold();
+    document.getElementById('morningQuoteHeadingInput').value = getMorningQuoteHeading();
     document.getElementById('statNoteCount').textContent = data.notes.length;
     document.getElementById('statTagCount').textContent = allTags().length;
     document.getElementById('statAutoLinkCount').textContent = countLinksByKind('auto');
@@ -5590,6 +5802,13 @@
     const v = parseInt(document.getElementById('compressThresholdInput').value, 10);
     if (!Number.isFinite(v) || v <= 0) { alert('正しい件数を入力してください'); return; }
     localStorage.setItem(COMPRESS_THRESHOLD_KEY, String(v));
+    alert('保存しました');
+  });
+
+  document.getElementById('btnSaveMorningQuoteHeading').addEventListener('click', () => {
+    const v = document.getElementById('morningQuoteHeadingInput').value.trim();
+    localStorage.setItem(MORNING_QUOTE_HEADING_KEY, v || DEFAULT_MORNING_QUOTE_HEADING);
+    document.getElementById('morningQuoteHeadingInput').value = getMorningQuoteHeading();
     alert('保存しました');
   });
 
