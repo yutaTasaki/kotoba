@@ -473,6 +473,8 @@
   .calCell.walked .calSteps { color: #0d1f17; }
   .calCell.disabled { background: none; color: #444; border-color: #1e1e1e; cursor: default; }
   .calCell.empty { border: none; cursor: default; }
+  .reviewSection { display: flex; flex-direction: column; gap: 12px; }
+  .reviewSection h3 { margin: 0; font-size: 15px; color: var(--text-dim); font-weight: normal; }
   .recordEntry { background: var(--bg-card); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
   .recordEntryTop { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
   .recordEntryDate { font-size: 13px; color: var(--text-dim); }
@@ -590,6 +592,7 @@
       <div class="detailField"><span class="fieldLabel">出典</span><div id="detailSource"></div></div>
       <div class="detailField"><span class="fieldLabel">自分の言葉での一言</span><div id="detailMyWords"></div></div>
       <div class="detailTags" id="detailTags"></div>
+      <p class="fieldNote" id="detailPickStats" hidden></p>
       <div class="detailLinksSection">
         <h3>関連ノート</h3>
         <p class="fieldNote" id="detailLinkingStatus" hidden>関連を探しています…</p>
@@ -654,25 +657,17 @@
     </header>
     <div class="settingsBody">
       <div class="field">
-        <h3>GitHub token</h3>
+        <h3>1. 同期</h3>
         <p class="fieldNote">同期先: yutaTasaki/kotoba-data と yutaTasaki/walk10000-data（いずれもprivate）。両方への Contents: Read and write 権限を持つトークンを1つ入力してください。</p>
         <input id="ghTokenInput" type="text" placeholder="github_pat_..." autocomplete="off" spellcheck="false">
         <button id="btnSaveGhToken" class="secondaryBtn">保存</button>
-      </div>
-      <hr>
-      <div class="field">
+        <div class="statRow"><span>同期状態</span><span id="statSyncState"></span></div>
+        <div class="statRow"><span>最終同期時刻</span><span id="statLastSync"></span></div>
         <button id="btnSyncNow" class="secondaryBtn">今すぐ同期</button>
-        <button id="btnExport" class="secondaryBtn">data.json をエクスポート（ダウンロード）</button>
-        <label class="secondaryBtn fileLabel" for="importFileInput">インポート（読み込み）</label>
-        <input id="importFileInput" type="file" accept="application/json" hidden>
       </div>
       <hr>
       <div class="field">
-        <button id="btnReloadFromRemote" class="dangerBtn">リモートから読み込み直す（ローカルを破棄）</button>
-      </div>
-      <hr>
-      <div class="field">
-        <h3>Claude API（自動関連づけ）</h3>
+        <h3>2. Claude API</h3>
         <p class="fieldNote">console.anthropic.com で発行したAPIキーを入力してください。キーは端末のlocalStorageにのみ保存され、data.jsonには含まれません。</p>
         <input id="claudeApiKeyInput" type="text" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
         <span class="fieldLabel">モデル名</span>
@@ -682,36 +677,151 @@
           <input type="checkbox" id="autoLinkToggle">
           保存時に自動で関連づける
         </label>
+        <label class="checkboxRow">
+          <input type="checkbox" id="morningEnabledToggle">
+          朝、体調から言葉を受け取る
+        </label>
       </div>
       <hr>
       <div class="field">
-        <h3>候補ノートの圧縮しきい値</h3>
+        <h3>3. 散歩</h3>
+        <span class="fieldLabel">開始日の変更</span>
+        <input type="date" id="walkStartDateInput">
+        <button id="btnSaveWalkStartDate" class="secondaryBtn">保存</button>
+      </div>
+      <div class="field">
+        <span class="fieldLabel">初期セットアップ</span>
+        <p class="fieldNote">開始日から連続で、指定した日数分をまとめて記録済みにします。</p>
+        <input type="number" id="walkInitialCountInput" min="0" placeholder="ここまで歩いた回数">
+        <button id="btnWalkInitialSetup" class="secondaryBtn">登録</button>
+      </div>
+      <div class="field">
+        <span class="fieldLabel">最長連続の手動設定</span>
+        <p class="fieldNote">実データから計算した最長連続より大きい場合だけ有効になります（記録が追いつくと自動的に上書きされます）。</p>
+        <input type="number" id="walkBestStreakInput" min="0" placeholder="最長連続（日）">
+        <button id="btnSaveWalkBestStreak" class="secondaryBtn">保存</button>
+      </div>
+      <div class="field">
+        <span class="fieldLabel">歩数・距離の記録（日付指定）</span>
+        <p class="fieldNote">日付を選ぶと、その日にすでに記録した値が表示されます。空欄で保存するとその項目は未記録になります。</p>
+        <input type="date" id="walkStatsDateInput">
+        <input type="number" id="walkStatsStepsInput" min="0" placeholder="歩数（歩）">
+        <input type="number" id="walkStatsDistanceInput" min="0" placeholder="距離（m）">
+        <button id="btnSaveWalkStats2" class="secondaryBtn">保存</button>
+      </div>
+      <div class="field">
+        <span class="fieldLabel">投稿画像のプレビュー</span>
+        <canvas id="walkSettingsPreviewCanvas" width="1080" height="1080" style="width:100%;border-radius:14px;"></canvas>
+      </div>
+      <div class="field">
+        <button id="btnWalkDeleteAll" class="dangerBtn">散歩データを全て削除</button>
+      </div>
+      <hr>
+      <div class="field">
+        <h3>4. 言葉</h3>
+        <span class="fieldLabel">候補ノートの圧縮しきい値</span>
         <p class="fieldNote">既存ノートがこの件数を超える場合、タグの重なりと文字一致で絞り込んでからAPIに送ります。</p>
         <input id="compressThresholdInput" type="text" inputmode="numeric" placeholder="400" autocomplete="off">
         <button id="btnSaveCompressThreshold" class="secondaryBtn">保存</button>
       </div>
-      <hr>
       <div class="field">
-        <h3>全ノートを一括で関連づけ</h3>
+        <span class="fieldLabel">全ノートを一括で関連づけ</span>
         <p class="fieldNote">まだ自動関連づけをしていないノートだけを対象に、古い順に処理します。</p>
         <button id="btnBatchAutoLink" class="secondaryBtn">全ノートを一括で関連づけ</button>
         <div id="batchProgress" class="fieldNote" hidden></div>
         <button id="btnBatchStop" class="dangerBtn" hidden>停止</button>
       </div>
-      <hr>
-      <div class="field statsField">
-        <div class="statRow"><span>ノート総数</span><span id="statNoteCount"></span></div>
-        <div class="statRow"><span>タグ数</span><span id="statTagCount"></span></div>
-        <div class="statRow"><span>自動リンク数</span><span id="statAutoLinkCount"></span></div>
-        <div class="statRow"><span>手動リンク数</span><span id="statManualLinkCount"></span></div>
-        <div class="statRow"><span>API呼び出し回数（この端末）</span><span id="statApiCallCount"></span></div>
-        <div class="statRow"><span>最終エラー</span><span id="statLastAutoLinkError"></span></div>
-        <div class="statRow"><span>最終同期時刻</span><span id="statLastSync"></span></div>
-      </div>
       <div class="field" id="errorNotesSection" hidden>
         <span class="fieldLabel">エラーが出たノート（<span id="errorNoteCount"></span>件）</span>
         <div id="errorNotesList" class="detailLinksList"></div>
       </div>
+      <hr>
+      <div class="field">
+        <h3>5. データ</h3>
+        <button id="btnExport" class="secondaryBtn">言葉のデータをエクスポート（ダウンロード）</button>
+        <button id="btnExportWalk" class="secondaryBtn">散歩のデータをエクスポート（ダウンロード）</button>
+        <label class="secondaryBtn fileLabel" for="importFileInput">言葉のインポート（読み込み）</label>
+        <input id="importFileInput" type="file" accept="application/json" hidden>
+        <label class="secondaryBtn fileLabel" for="importWalkFileInput">散歩のインポート（読み込み）</label>
+        <input id="importWalkFileInput" type="file" accept="application/json" hidden>
+        <button id="btnReloadFromRemote" class="dangerBtn">リモートから読み込み直す（両方・ローカルを破棄）</button>
+      </div>
+      <hr>
+      <div class="field statsField">
+        <h3>6. 統計</h3>
+        <div class="statRow"><span>ノート総数</span><span id="statNoteCount"></span></div>
+        <div class="statRow"><span>タグ数</span><span id="statTagCount"></span></div>
+        <div class="statRow"><span>自動リンク数</span><span id="statAutoLinkCount"></span></div>
+        <div class="statRow"><span>手動リンク数</span><span id="statManualLinkCount"></span></div>
+        <div class="statRow"><span>散歩日数</span><span id="statWalkDays"></span></div>
+        <div class="statRow"><span>連続</span><span id="statWalkStreak"></span></div>
+        <div class="statRow"><span>API呼び出し回数（この端末）</span><span id="statApiCallCount"></span></div>
+        <div class="statRow"><span>最終エラー</span><span id="statLastAutoLinkError"></span></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="screen-records" class="screen" hidden>
+    <header class="topbar">
+      <button class="backBtn" id="backFromRecords">← 戻る</button>
+      <div class="topbar-title">記録</div>
+      <div style="width:40px;"></div>
+    </header>
+    <div class="recordSubTabs tagFilterRow" id="recordSubTabRow">
+      <button type="button" class="tagFilterBtn" data-sub="morning">朝の言葉</button>
+      <button type="button" class="tagFilterBtn" data-sub="consult">相談</button>
+      <button type="button" class="tagFilterBtn" data-sub="walk">散歩</button>
+    </div>
+
+    <div id="recordsMorningView">
+      <div id="recordsMorningList" class="listItems"></div>
+      <div id="recordsMorningEmpty" class="emptyMsg" hidden>まだ記録がありません。</div>
+    </div>
+
+    <div id="recordsConsultView" hidden>
+      <div id="recordsConsultList" class="listItems"></div>
+      <div id="recordsConsultEmpty" class="emptyMsg" hidden>まだ記録がありません。</div>
+    </div>
+
+    <div id="recordsWalkView" hidden>
+      <div class="reviewSection" id="reviewSectionAchieve">
+        <div class="statRow" id="reviewRow7"><span>7日</span><span id="review7"></span></div>
+        <div class="statRow" id="reviewRow30"><span>30日</span><span id="review30"></span></div>
+      </div>
+      <div class="reviewSection" id="reviewSectionStats">
+        <hr><h3>歩数 / 距離</h3>
+        <div class="statRow" id="reviewStatsRow7"><span>7日</span><span id="reviewStats7"></span></div>
+        <div class="statRow" id="reviewStatsRow30"><span>30日</span><span id="reviewStats30"></span></div>
+      </div>
+      <div class="reviewSection" id="reviewSectionMood">
+        <hr><h3>気分（起床 / 散歩後）</h3>
+        <div class="statRow" id="reviewMoodRow7"><span>7日</span><span id="reviewMood7"></span></div>
+        <div class="statRow" id="reviewMoodRow30"><span>30日</span><span id="reviewMood30"></span></div>
+      </div>
+      <div class="reviewSection" id="reviewSectionTime">
+        <hr><h3>記録時刻の平均</h3>
+        <div class="statRow" id="reviewTimeRow7"><span>7日</span><span id="reviewTime7"></span></div>
+        <div class="statRow" id="reviewTimeRow30"><span>30日</span><span id="reviewTime30"></span></div>
+      </div>
+      <p class="emptyMsg" id="reviewEmptyMsg" hidden>7日分の記録が貯まると表示されます</p>
+      <hr>
+      <div class="calNav">
+        <button type="button" id="calPrev" class="secondaryBtn">＜ 前月</button>
+        <div id="calMonthLabel"></div>
+        <button type="button" id="calNext" class="secondaryBtn">翌月 ＞</button>
+      </div>
+      <div class="calGrid" id="calGrid"></div>
+    </div>
+
+    <div id="dayEditorView" class="editorBody" hidden>
+      <h3 id="dayEditorTitle"></h3>
+      <div class="field"><span class="fieldLabel">起床時の気分</span><div class="moodRow" id="editWakeMoodRow"></div></div>
+      <div class="field"><span class="fieldLabel">散歩後の気分</span><div class="moodRow" id="editAfterMoodRow"></div></div>
+      <input type="number" id="editStepsInput" min="0" placeholder="歩数（歩）">
+      <input type="number" id="editDistanceInput" min="0" placeholder="距離（m）">
+      <button id="btnSaveDayEdit" class="secondaryBtn">保存</button>
+      <button id="btnDeleteDayRecord" class="dangerBtn">この日の記録を取り消す</button>
+      <button id="btnCloseDayEdit" class="secondaryBtn">戻る</button>
     </div>
   </section>
 
@@ -719,6 +829,7 @@
     <button id="navHome" class="navBtn">朝</button>
     <button id="navList" class="navBtn">言葉</button>
     <button id="navConsult" class="navBtn">相談</button>
+    <button id="navRecords" class="navBtn">記録</button>
     <button id="navSettings" class="navBtn">設定</button>
   </nav>
 
@@ -1843,6 +1954,7 @@
   const CLAUDE_API_KEY_KEY = 'kotoba_claudeApiKey';
   const CLAUDE_MODEL_KEY = 'kotoba_claudeModel';
   const AUTO_LINK_ENABLED_KEY = 'kotoba_autoLinkEnabled';
+  const MORNING_ENABLED_KEY = 'kotoba_morningEnabled';
   const COMPRESS_THRESHOLD_KEY = 'kotoba_compressThreshold';
   const API_CALL_COUNT_KEY = 'kotoba_apiCallCount';
   const LAST_AUTO_LINK_ERROR_KEY = 'kotoba_lastAutoLinkError';
@@ -1853,6 +1965,10 @@
   function getClaudeModel() { return localStorage.getItem(CLAUDE_MODEL_KEY) || DEFAULT_CLAUDE_MODEL; }
   function getAutoLinkEnabled() {
     const v = localStorage.getItem(AUTO_LINK_ENABLED_KEY);
+    return v === null ? true : v === '1';
+  }
+  function getMorningEnabled() {
+    const v = localStorage.getItem(MORNING_ENABLED_KEY);
     return v === null ? true : v === '1';
   }
   function getCompressThreshold() {
@@ -2363,13 +2479,13 @@
   };
 
   function showScreen(name) {
-    ['home', 'list', 'consult', 'detail', 'editor', 'settings'].forEach((s) => {
+    ['home', 'list', 'consult', 'detail', 'editor', 'settings', 'records'].forEach((s) => {
       document.getElementById('screen-' + s).hidden = s !== name;
     });
     nav.screen = name;
     document.getElementById('globalBottomNav').hidden = (name === 'detail' || name === 'editor');
     document.querySelectorAll('#globalBottomNav .navBtn').forEach((b) => b.classList.remove('selected'));
-    const activeBtn = { home: 'navHome', list: 'navList', consult: 'navConsult', settings: 'navSettings' }[name];
+    const activeBtn = { home: 'navHome', list: 'navList', consult: 'navConsult', records: 'navRecords', settings: 'navSettings' }[name];
     if (activeBtn) document.getElementById(activeBtn).classList.add('selected');
   }
 
@@ -2377,6 +2493,7 @@
     if (nav.screen === 'home') renderHome();
     else if (nav.screen === 'list') renderList();
     else if (nav.screen === 'detail') renderDetail();
+    else if (nav.screen === 'records') renderRecords();
   }
 
   // --- Home ("朝") ----------------------------------------------------------
@@ -2476,7 +2593,7 @@
 
     const morningEntry = todaysMorningJournalEntry();
     const skippedToday = morningSkippedDate === today;
-    const wordsResolved = !!morningEntry || skippedToday || !getClaudeApiKey();
+    const wordsResolved = !!morningEntry || skippedToday || !getClaudeApiKey() || !getMorningEnabled();
 
     document.getElementById('morningWordsStage').hidden = !(hasWakeMood && !wordsResolved);
     document.getElementById('morningCardsStage').hidden = !(hasWakeMood && wordsResolved);
@@ -2862,6 +2979,9 @@
     } else if (nav.detailOrigin === 'consult') {
       showScreen('consult');
       renderConsultTurns();
+    } else if (nav.detailOrigin === 'records') {
+      showScreen('records');
+      renderRecords();
     } else {
       goHome();
     }
@@ -2874,6 +2994,11 @@
     document.getElementById('detailSource').textContent = note.source || '-';
     document.getElementById('detailMyWords').textContent = note.myWords;
     renderTagPills(document.getElementById('detailTags'), note.tags);
+
+    const pickStats = journalPickStatsForNote(note.id);
+    const pickStatsEl = document.getElementById('detailPickStats');
+    pickStatsEl.hidden = pickStats.count === 0;
+    if (pickStats.count > 0) pickStatsEl.textContent = `届いた回数: ${pickStats.count}回（直近 ${dotDate(pickStats.lastDate)}）`;
 
     document.getElementById('detailLinkingStatus').hidden = !autoLinkInFlight.has(note.id);
 
@@ -2949,6 +3074,338 @@
   document.getElementById('btnRelinkNote').addEventListener('click', () => {
     triggerAutoLinkForNote(nav.detailId);
   });
+
+  // --- Records (v3, new tab) -------------------------------------------
+  const recordsState = { subTab: 'morning' };
+  const expandedConsultRecords = new Set(); // session-only "続きを見る" state
+
+  function openRecords() {
+    showScreen('records');
+    renderRecords();
+  }
+
+  function renderRecords() {
+    document.querySelectorAll('#recordSubTabRow button').forEach((b) => {
+      b.classList.toggle('selected', b.dataset.sub === recordsState.subTab);
+    });
+    document.getElementById('recordsMorningView').hidden = recordsState.subTab !== 'morning';
+    document.getElementById('recordsConsultView').hidden = recordsState.subTab !== 'consult';
+    document.getElementById('recordsWalkView').hidden = recordsState.subTab !== 'walk';
+    document.getElementById('dayEditorView').hidden = true;
+
+    if (recordsState.subTab === 'morning') renderRecordsMorning();
+    else if (recordsState.subTab === 'consult') renderRecordsConsult();
+    else renderRecordsWalk();
+  }
+
+  function journalEntriesSorted(kind) {
+    return data.journal.filter((j) => j.kind === kind).sort((a, b) => (a.date < b.date ? 1 : a.date === b.date ? (a.createdAt < b.createdAt ? 1 : -1) : -1));
+  }
+
+  function renderRecordsMorning() {
+    const list = document.getElementById('recordsMorningList');
+    list.innerHTML = '';
+    const entries = journalEntriesSorted('morning');
+    document.getElementById('recordsMorningEmpty').hidden = entries.length > 0;
+    entries.forEach((j) => {
+      const item = document.createElement('div');
+      item.className = 'recordEntry';
+
+      const top = document.createElement('div');
+      top.className = 'recordEntryTop';
+      const dateEl = document.createElement('span');
+      dateEl.className = 'recordEntryDate';
+      dateEl.textContent = dotDate(j.date) + (j.mood != null ? ' ' + MOOD_EMOJI[j.mood] : '');
+      top.appendChild(dateEl);
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'recordEntryDelete';
+      del.textContent = '消す';
+      del.addEventListener('click', () => { deleteJournalEntry(j.id); renderRecordsMorning(); });
+      top.appendChild(del);
+      item.appendChild(top);
+
+      if (j.text) {
+        const t = document.createElement('div');
+        t.textContent = j.text;
+        item.appendChild(t);
+      }
+      j.picks.forEach((pick) => {
+        const note = findNote(pick.id);
+        if (!note) return;
+        const mini = document.createElement('div');
+        mini.className = 'journalCardMini';
+        const mt = document.createElement('div');
+        mt.className = 'lText';
+        mt.textContent = noteSnippet(note.text, 50);
+        mini.appendChild(mt);
+        mini.addEventListener('click', () => openDetail(note.id, 'records'));
+        item.appendChild(mini);
+      });
+      list.appendChild(item);
+    });
+  }
+
+  function renderRecordsConsult() {
+    const list = document.getElementById('recordsConsultList');
+    list.innerHTML = '';
+    const entries = journalEntriesSorted('consult');
+    document.getElementById('recordsConsultEmpty').hidden = entries.length > 0;
+    entries.forEach((j) => {
+      const item = document.createElement('div');
+      item.className = 'recordEntry';
+
+      const top = document.createElement('div');
+      top.className = 'recordEntryTop';
+      const dateEl = document.createElement('span');
+      dateEl.className = 'recordEntryDate';
+      dateEl.textContent = dotDate(j.date);
+      top.appendChild(dateEl);
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'recordEntryDelete';
+      del.textContent = '消す';
+      del.addEventListener('click', () => { deleteJournalEntry(j.id); renderRecordsConsult(); });
+      top.appendChild(del);
+      item.appendChild(top);
+
+      const expanded = expandedConsultRecords.has(j.id);
+      const fullText = j.text + (j.closing ? '\n' + j.closing : '');
+      const isLong = fullText.length > 80;
+
+      const inputEl = document.createElement('div');
+      inputEl.className = 'consultInputEcho';
+      inputEl.textContent = j.text;
+      item.appendChild(inputEl);
+
+      if (expanded || !isLong) {
+        j.picks.forEach((pick) => {
+          const note = findNote(pick.id);
+          if (!note) return;
+          const mini = document.createElement('div');
+          mini.className = 'journalCardMini';
+          mini.textContent = noteSnippet(note.text, 50);
+          mini.addEventListener('click', () => openDetail(note.id, 'records'));
+          item.appendChild(mini);
+        });
+        if (j.closing) {
+          const c = document.createElement('div');
+          c.className = 'consultClosing';
+          c.textContent = j.closing;
+          item.appendChild(c);
+        }
+      }
+      if (isLong) {
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'linkLikeBtn';
+        toggle.textContent = expanded ? '閉じる' : '続きを見る';
+        toggle.addEventListener('click', () => {
+          if (expanded) expandedConsultRecords.delete(j.id); else expandedConsultRecords.add(j.id);
+          renderRecordsConsult();
+        });
+        item.appendChild(toggle);
+      }
+      list.appendChild(item);
+    });
+  }
+
+  // --- walk review + calendar (ported from walk10000's reviewPanel/recordsPanel) ---
+  function setRowVisible(id, visible) { document.getElementById(id).style.display = visible ? 'flex' : 'none'; }
+
+  function refreshWalkReview() {
+    const elapsed = Math.round((parseDateStr(todayStr()) - parseDateStr(walkData.startDate)) / 86400000) + 1;
+    const results = { 7: elapsed >= 7 ? computeWalkRecentStats(7) : null, 30: elapsed >= 30 ? computeWalkRecentStats(30) : null };
+    let anyVisible = false;
+
+    for (const days of [7, 30]) {
+      const r = results[days];
+      const visible = r != null;
+      setRowVisible(`reviewRow${days}`, visible);
+      if (visible) { document.getElementById(`review${days}`).textContent = `${days}日中${r.walked}日`; anyVisible = true; }
+    }
+
+    let statsAny = false;
+    for (const days of [7, 30]) {
+      const r = results[days];
+      const visible = r != null && (r.steps > 0 || r.distanceKm > 0);
+      setRowVisible(`reviewStatsRow${days}`, visible);
+      if (visible) { document.getElementById(`reviewStats${days}`).textContent = `${r.steps} steps / ${r.distanceKm.toFixed(1)} km`; statsAny = true; }
+    }
+    document.getElementById('reviewSectionStats').style.display = statsAny ? 'flex' : 'none';
+    anyVisible = anyVisible || statsAny;
+
+    let moodAny = false;
+    for (const days of [7, 30]) {
+      const r = results[days];
+      const visible = r != null && (r.wakeAvg != null || r.afterAvg != null);
+      setRowVisible(`reviewMoodRow${days}`, visible);
+      if (visible) {
+        document.getElementById(`reviewMood${days}`).textContent = `${r.wakeAvg != null ? r.wakeAvg.toFixed(1) : '-'} / ${r.afterAvg != null ? r.afterAvg.toFixed(1) : '-'}`;
+        moodAny = true;
+      }
+    }
+    document.getElementById('reviewSectionMood').style.display = moodAny ? 'flex' : 'none';
+    anyVisible = anyVisible || moodAny;
+
+    let timeAny = false;
+    for (const days of [7, 30]) {
+      const r = results[days];
+      const visible = r != null && r.timeAvgMinutes != null;
+      setRowVisible(`reviewTimeRow${days}`, visible);
+      if (visible) { document.getElementById(`reviewTime${days}`).textContent = formatMinutesAsTime(r.timeAvgMinutes); timeAny = true; }
+    }
+    document.getElementById('reviewSectionTime').style.display = timeAny ? 'flex' : 'none';
+    anyVisible = anyVisible || timeAny;
+
+    document.getElementById('reviewEmptyMsg').style.display = anyVisible ? 'none' : 'block';
+  }
+
+  const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
+  let calYear, calMonth; // calMonth is 0-indexed
+  let editingDate = null;
+
+  const editWakeMoodButtons = buildMoodRow(document.getElementById('editWakeMoodRow'), (m) => {
+    if (!editingDate) return;
+    setWalkMood(editingDate, 'wakeMood', m);
+    paintMoodRow(editWakeMoodButtons, m);
+    renderWalkCalendar();
+  });
+  const editAfterMoodButtons = buildMoodRow(document.getElementById('editAfterMoodRow'), (m) => {
+    if (!editingDate) return;
+    setWalkMood(editingDate, 'afterMood', m);
+    paintMoodRow(editAfterMoodButtons, m);
+    renderWalkCalendar();
+  });
+
+  function renderWalkCalendar() {
+    const calGrid = document.getElementById('calGrid');
+    calGrid.innerHTML = '';
+    WEEKDAY_LABELS.forEach((w) => {
+      const el = document.createElement('div');
+      el.className = 'calWeekday';
+      el.textContent = w;
+      calGrid.appendChild(el);
+    });
+
+    document.getElementById('calMonthLabel').textContent = `${calYear}.${String(calMonth + 1).padStart(2, '0')}`;
+
+    const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+    const leadBlanks = new Date(calYear, calMonth, 1).getDay();
+    const totalCells = leadBlanks + daysInMonth;
+    const trailBlanks = (7 - (totalCells % 7)) % 7;
+
+    const today = todayStr();
+    const set = new Set(walkData.walkedDates);
+
+    for (let i = 0; i < leadBlanks; i++) {
+      const el = document.createElement('div');
+      el.className = 'calCell empty';
+      calGrid.appendChild(el);
+    }
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr = formatDateStr(new Date(calYear, calMonth, day));
+      const disabled = dateStr < walkData.startDate || dateStr > today;
+      const walked = set.has(dateStr);
+      const stats = walkData.dailyStats[dateStr];
+
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'calCell' + (walked ? ' walked' : '') + (disabled ? ' disabled' : '');
+      const num = document.createElement('div');
+      num.textContent = String(day);
+      el.appendChild(num);
+      if (stats && stats.steps != null) {
+        const s = document.createElement('div');
+        s.className = 'calSteps';
+        s.textContent = stats.steps;
+        el.appendChild(s);
+      }
+      if (disabled) el.disabled = true;
+      else el.addEventListener('click', () => onWalkDayTap(dateStr));
+      calGrid.appendChild(el);
+    }
+    for (let i = 0; i < trailBlanks; i++) {
+      const el = document.createElement('div');
+      el.className = 'calCell empty';
+      calGrid.appendChild(el);
+    }
+
+    const displayedKey = `${calYear}-${String(calMonth + 1).padStart(2, '0')}`;
+    document.getElementById('calNext').disabled = displayedKey >= today.slice(0, 7);
+    document.getElementById('calPrev').disabled = displayedKey <= walkData.startDate.slice(0, 7);
+  }
+
+  function onWalkDayTap(dateStr) {
+    if (walkData.walkedDates.includes(dateStr)) { openDayEditor(dateStr); return; }
+    if (!confirm(`${dotDate(dateStr)} を記録済みにします。よろしいですか？`)) return;
+    walkData.walkedDates.push(dateStr);
+    saveWalkData(walkData);
+    renderWalkCalendar();
+  }
+
+  function openDayEditor(dateStr) {
+    editingDate = dateStr;
+    const stats = walkData.dailyStats[dateStr] || {};
+    document.getElementById('dayEditorTitle').textContent = dotDate(dateStr);
+    document.getElementById('editStepsInput').value = stats.steps != null ? stats.steps : '';
+    document.getElementById('editDistanceInput').value = stats.distanceM != null ? stats.distanceM : '';
+    paintMoodRow(editWakeMoodButtons, stats.wakeMood != null ? stats.wakeMood : null);
+    paintMoodRow(editAfterMoodButtons, stats.afterMood != null ? stats.afterMood : null);
+    document.getElementById('recordsWalkView').hidden = true;
+    document.getElementById('dayEditorView').hidden = false;
+  }
+
+  function closeDayEditor() {
+    editingDate = null;
+    document.getElementById('dayEditorView').hidden = true;
+    document.getElementById('recordsWalkView').hidden = false;
+  }
+
+  function renderRecordsWalk() {
+    refreshWalkReview();
+    if (calYear == null) {
+      const t = new Date();
+      calYear = t.getFullYear();
+      calMonth = t.getMonth();
+    }
+    renderWalkCalendar();
+  }
+
+  document.getElementById('btnSaveDayEdit').addEventListener('click', () => {
+    if (!editingDate) return;
+    const steps = document.getElementById('editStepsInput').value === '' ? null : parseInt(document.getElementById('editStepsInput').value, 10);
+    const distanceM = document.getElementById('editDistanceInput').value === '' ? null : parseFloat(document.getElementById('editDistanceInput').value);
+    setWalkDailyStats(editingDate, steps, distanceM);
+    renderWalkCalendar();
+    alert('保存しました');
+  });
+  document.getElementById('btnDeleteDayRecord').addEventListener('click', async () => {
+    if (!editingDate) return;
+    if (!confirm(`${dotDate(editingDate)} の記録を取り消します。よろしいですか？`)) return;
+    walkData.walkedDates = walkData.walkedDates.filter((d) => d !== editingDate);
+    delete walkData.dailyStats[editingDate];
+    persistWalkLocal(walkData);
+    walkPendingChangeCount++;
+    await walkForcePush();
+    closeDayEditor();
+    renderWalkCalendar();
+  });
+  document.getElementById('btnCloseDayEdit').addEventListener('click', closeDayEditor);
+  document.getElementById('calPrev').addEventListener('click', () => {
+    calMonth--; if (calMonth < 0) { calMonth = 11; calYear--; }
+    renderWalkCalendar();
+  });
+  document.getElementById('calNext').addEventListener('click', () => {
+    calMonth++; if (calMonth > 11) { calMonth = 0; calYear++; }
+    renderWalkCalendar();
+  });
+
+  document.querySelectorAll('#recordSubTabRow button').forEach((b) => {
+    b.addEventListener('click', () => { recordsState.subTab = b.dataset.sub; renderRecords(); });
+  });
+  document.getElementById('navRecords').addEventListener('click', openRecords);
+  document.getElementById('backFromRecords').addEventListener('click', goHome);
 
   // --- Editor -----------------------------------------------------------
   const editorState = { tags: [], links: [] };
@@ -3309,22 +3766,47 @@
     return Math.round(c / 2); // links are bidirectional; divide back down to pair count
   }
 
+  function syncStateLabel(state) {
+    return { synced: '同期済み', error: 'エラー', syncing: '同期中…', off: 'オフ', offline: 'オフライン', unsynced: '未同期' }[state] || state;
+  }
+
+  function loadWalkStatsFormFor(dateStr) {
+    const stats = walkData.dailyStats[dateStr] || {};
+    document.getElementById('walkStatsStepsInput').value = stats.steps != null ? stats.steps : '';
+    document.getElementById('walkStatsDistanceInput').value = stats.distanceM != null ? stats.distanceM : '';
+  }
+
   function openSettings() {
     showScreen('settings');
     document.getElementById('ghTokenInput').value = getGhToken();
     document.getElementById('claudeApiKeyInput').value = getClaudeApiKey();
     document.getElementById('claudeModelInput').value = getClaudeModel();
     document.getElementById('autoLinkToggle').checked = getAutoLinkEnabled();
+    document.getElementById('morningEnabledToggle').checked = getMorningEnabled();
     document.getElementById('compressThresholdInput').value = getCompressThreshold();
     document.getElementById('statNoteCount').textContent = data.notes.length;
     document.getElementById('statTagCount').textContent = allTags().length;
     document.getElementById('statAutoLinkCount').textContent = countLinksByKind('auto');
     document.getElementById('statManualLinkCount').textContent = countLinksByKind('manual');
+    const walkDerived = computeWalkDerived();
+    document.getElementById('statWalkDays').textContent = walkDerived.n;
+    document.getElementById('statWalkStreak').textContent = walkDerived.streak;
     document.getElementById('statApiCallCount').textContent = parseInt(localStorage.getItem(API_CALL_COUNT_KEY), 10) || 0;
     const lastErr = getLastAutoLinkError();
     document.getElementById('statLastAutoLinkError').textContent = lastErr ? `${lastErr.message}（${formatDateTime(lastErr.at)}）` : '-';
+    document.getElementById('statSyncState').textContent = noteSyncState === walkSyncState
+      ? syncStateLabel(noteSyncState)
+      : `言葉: ${syncStateLabel(noteSyncState)} / 散歩: ${syncStateLabel(walkSyncState)}`;
     const lastSync = localStorage.getItem(LAST_SYNC_KEY);
-    document.getElementById('statLastSync').textContent = lastSync ? formatDateTime(lastSync) : '-';
+    const lastWalkSync = localStorage.getItem(WALK_LAST_SYNC_KEY);
+    const latestSync = [lastSync, lastWalkSync].filter(Boolean).sort().pop();
+    document.getElementById('statLastSync').textContent = latestSync ? formatDateTime(latestSync) : '-';
+
+    document.getElementById('walkStartDateInput').value = walkData.startDate;
+    document.getElementById('walkBestStreakInput').value = walkDerived.longest;
+    document.getElementById('walkStatsDateInput').value = todayStr();
+    loadWalkStatsFormFor(todayStr());
+    drawWalkImage(document.getElementById('walkSettingsPreviewCanvas'));
 
     // Self-heal: drop ids for notes that no longer exist (deleted since the
     // error was recorded) before counting/displaying them.
@@ -3363,6 +3845,100 @@
     localStorage.setItem(AUTO_LINK_ENABLED_KEY, e.target.checked ? '1' : '0');
   });
 
+  document.getElementById('morningEnabledToggle').addEventListener('change', (e) => {
+    localStorage.setItem(MORNING_ENABLED_KEY, e.target.checked ? '1' : '0');
+  });
+
+  document.getElementById('btnSaveWalkStartDate').addEventListener('click', () => {
+    const v = document.getElementById('walkStartDateInput').value;
+    if (!v) return;
+    walkData.startDate = v;
+    saveWalkData(walkData);
+    alert('開始日を保存しました');
+  });
+
+  document.getElementById('btnWalkInitialSetup').addEventListener('click', async () => {
+    const count = parseInt(document.getElementById('walkInitialCountInput').value, 10);
+    if (!Number.isFinite(count) || count < 0) { alert('正しい日数を入力してください'); return; }
+    if (walkData.walkedDates.length > 0) {
+      if (!confirm('既存の記録が上書きされます。よろしいですか？')) return;
+    }
+    const dates = [];
+    for (let i = 0; i < count; i++) dates.push(addDays(walkData.startDate, i));
+    walkData.walkedDates = dates;
+    persistWalkLocal(walkData);
+    walkPendingChangeCount++;
+    await walkForcePush();
+    alert('登録しました');
+  });
+
+  document.getElementById('btnSaveWalkBestStreak').addEventListener('click', () => {
+    const v = parseInt(document.getElementById('walkBestStreakInput').value, 10);
+    if (!Number.isFinite(v) || v < 0) { alert('正しい日数を入力してください'); return; }
+    walkData.bestStreakOverride = v;
+    saveWalkData(walkData);
+    document.getElementById('walkBestStreakInput').value = computeWalkDerived().longest;
+    alert('保存しました');
+  });
+
+  document.getElementById('walkStatsDateInput').addEventListener('change', () => {
+    const v = document.getElementById('walkStatsDateInput').value;
+    if (v) loadWalkStatsFormFor(v);
+  });
+
+  document.getElementById('btnSaveWalkStats2').addEventListener('click', () => {
+    const dateStr = document.getElementById('walkStatsDateInput').value;
+    if (!dateStr) { alert('日付を選んでください'); return; }
+    const steps = document.getElementById('walkStatsStepsInput').value === '' ? null : parseInt(document.getElementById('walkStatsStepsInput').value, 10);
+    const distanceM = document.getElementById('walkStatsDistanceInput').value === '' ? null : parseFloat(document.getElementById('walkStatsDistanceInput').value);
+    setWalkDailyStats(dateStr, steps, distanceM);
+    if (dateStr === todayStr() && nav.screen === 'home') renderHome();
+    alert('保存しました');
+  });
+
+  document.getElementById('btnWalkDeleteAll').addEventListener('click', async () => {
+    if (!confirm('散歩データを全て削除します。よろしいですか？')) return;
+    if (!confirm('本当に削除しますか？この操作は取り消せません（GitHub同期がオンの場合、バックアップ側も空になります）。')) return;
+    walkData = walkDefaultData();
+    persistWalkLocal(walkData);
+    walkPendingChangeCount++;
+    await walkForcePush();
+    alert('削除しました');
+  });
+
+  document.getElementById('btnExportWalk').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(walkData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const d = new Date();
+    const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+    a.href = url;
+    a.download = `walk10000_data_${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  });
+
+  document.getElementById('importWalkFileInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = normalizeWalkData(JSON.parse(text));
+      if (!parsed) throw new Error('invalid shape');
+      if (!confirm('現在の散歩データを、読み込んだ内容で上書きします。よろしいですか？')) return;
+      walkData = parsed;
+      persistWalkLocal(walkData);
+      await walkForcePush();
+      openSettings();
+      alert('インポートしました');
+    } catch (err) {
+      alert('JSONの読み込みに失敗しました');
+    }
+  });
+
   document.getElementById('btnSaveCompressThreshold').addEventListener('click', () => {
     const v = parseInt(document.getElementById('compressThresholdInput').value, 10);
     if (!Number.isFinite(v) || v <= 0) { alert('正しい件数を入力してください'); return; }
@@ -3394,8 +3970,10 @@
   document.getElementById('btnReloadFromRemote').addEventListener('click', async () => {
     const token = getGhToken();
     if (!token) { alert('先にGitHub tokenを設定してください'); return; }
-    if (!confirm('ローカルのデータを破棄して、リモートの内容で置き換えます。よろしいですか？この操作は取り消せません。')) return;
+    if (!confirm('ローカルのデータ（言葉・散歩の両方）を破棄して、リモートの内容で置き換えます。よろしいですか？この操作は取り消せません。')) return;
     setSyncStatus('syncing');
+    setWalkSyncStatus('syncing');
+    let failed = false;
     try {
       const remote = await ghGetFile(token);
       data = remote.data || defaultData();
@@ -3404,12 +3982,24 @@
       pendingChangeCount = 0;
       localStorage.setItem(LAST_SYNC_KEY, nowIso());
       setSyncStatus('synced');
-      openSettings();
-      alert('リモートの内容を読み込みました');
     } catch (e) {
       setSyncStatus('error');
-      alert('読み込みに失敗しました');
+      failed = true;
     }
+    try {
+      const remoteWalk = await ghGetWalkFile(token);
+      walkData = remoteWalk.data || walkDefaultData();
+      persistWalkLocal(walkData);
+      backupWalkData(walkData);
+      walkPendingChangeCount = 0;
+      localStorage.setItem(WALK_LAST_SYNC_KEY, nowIso());
+      setWalkSyncStatus('synced');
+    } catch (e) {
+      setWalkSyncStatus('error');
+      failed = true;
+    }
+    openSettings();
+    alert(failed ? '一部の読み込みに失敗しました' : 'リモートの内容を読み込みました');
   });
 
   document.getElementById('btnExport').addEventListener('click', () => {
