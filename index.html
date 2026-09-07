@@ -86,6 +86,17 @@
     white-space: nowrap;
   }
   .topbarBtnGroup { display: flex; gap: 6px; align-items: center; }
+  .draftBanner {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: var(--bg-card);
+    border: 1px solid var(--accent-dim);
+    color: var(--accent);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 14px;
+  }
   .backBtn {
     color: var(--text-dim);
     font-size: 15px;
@@ -483,6 +494,11 @@
   .recordSubTabs { display: flex; gap: 10px; }
   .journalCardMini { background: var(--bg-elevated); border-radius: 10px; padding: 10px 12px; cursor: pointer; }
   .journalCardMini .lText { font-size: 14px; }
+  .drawGroupMain, .drawGroupSub {
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  }
+  .drawGroupMain { font-size: 16px; }
+  .drawGroupSub { font-size: 12px; color: var(--text-dim); margin-top: 4px; padding: 6px 12px; }
 
   /* --- v3.1: 引く / 網 full-screen overlays -------------------------- */
   .drawOverlay {
@@ -498,7 +514,8 @@
     padding-bottom: calc(16px + env(safe-area-inset-bottom));
     overflow-y: auto;
   }
-  .drawTopBar { display: flex; justify-content: flex-end; align-items: center; gap: 18px; flex-shrink: 0; }
+  .drawTopBar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-shrink: 0; flex-wrap: wrap; }
+  .drawModeRow { flex-wrap: wrap; }
   .drawIconBtn { color: var(--text-dim); font-size: 15px; padding: 8px 6px; }
   .drawStage {
     flex: 1;
@@ -649,9 +666,11 @@
       <div class="topbarBtnGroup">
         <button id="btnOpenDraw" class="iconBtn">引く</button>
         <button id="btnOpenGraph" class="iconBtn">網</button>
+        <button id="btnOpenBulk" class="iconBtn">一括</button>
         <button id="btnAddFromList" class="iconBtn">＋</button>
       </div>
     </header>
+    <button type="button" id="draftBanner" class="draftBanner" hidden></button>
     <input id="listSearch" type="search" placeholder="検索（言葉・出典・自分の言葉）" autocomplete="off">
     <div id="listViewModeRow" class="tagFilterRow">
       <button type="button" class="tagFilterBtn" data-mode="all">すべて</button>
@@ -949,6 +968,73 @@
     </div>
   </section>
 
+  <section id="screen-bulk" class="screen" hidden>
+    <header class="topbar">
+      <button class="backBtn" id="backFromBulk">← 戻る</button>
+      <div class="topbar-title">一括入力</div>
+      <div style="width:40px;"></div>
+    </header>
+    <div class="editorBody">
+      <div class="tagFilterRow" id="bulkKindRow">
+        <button type="button" class="tagFilterBtn" data-kind="book">本・名言集</button>
+        <button type="button" class="tagFilterBtn" data-kind="transcript">自分の話（文字起こし）</button>
+      </div>
+      <div class="field autocompleteField" id="bulkSourceField">
+        <span class="fieldLabel">出典<span class="required">必須</span></span>
+        <input id="bulkSourceInput" type="text" placeholder="本のタイトル／名言集の名前" autocomplete="off">
+        <div id="bulkSourceCandidates" class="chipRow candidateChipRow"></div>
+      </div>
+      <div class="field" id="bulkTitleField" hidden>
+        <span class="fieldLabel">動画タイトル（任意）</span>
+        <input id="bulkTitleInput" type="text" placeholder="空なら「自分（動画）」として保存されます" autocomplete="off">
+      </div>
+      <div class="field">
+        <span class="fieldLabel">テキスト<span class="fieldNote inlineNote">（最大20,000字）</span></span>
+        <textarea id="bulkTextInput" rows="14" placeholder="貼り付けてください" autocomplete="off"></textarea>
+        <p class="fieldNote" id="bulkCharCount">0 / 20,000字</p>
+        <p class="fieldNote warn" id="bulkOverLimitHint" hidden>20,000字を超えています。分けて貼り付けてください。</p>
+      </div>
+      <button id="btnBulkDecompose" class="primaryBtn">分解する</button>
+      <p class="fieldNote" id="bulkStatus"></p>
+    </div>
+  </section>
+
+  <section id="screen-draftreview" class="screen" hidden>
+    <header class="topbar">
+      <button class="backBtn" id="backFromDraftReview">← 戻る</button>
+      <div class="topbar-title">下書き</div>
+      <div style="width:40px;"></div>
+    </header>
+    <div class="editorBody">
+      <p class="fieldNote" id="draftRemainingCount"></p>
+      <div id="draftCard" class="cardHome" hidden>
+        <div class="cardText" id="draftCardText"></div>
+        <div class="cardSource" id="draftCardSource"></div>
+      </div>
+      <div class="field" id="draftTagsField" hidden>
+        <span class="fieldLabel">タグ<span class="fieldNote inlineNote">（最大3つ）</span></span>
+        <div class="tagInputRow">
+          <input id="draftTagInput" type="text" placeholder="タグを入力" autocomplete="off">
+          <button type="button" id="btnDraftAddTag" class="secondaryBtn tagAddBtn">追加</button>
+        </div>
+        <p class="fieldNote warn" id="draftTagLimitHint" hidden>タグは3つまでです</p>
+        <div id="draftTagChips" class="chipRow"></div>
+        <div id="draftTagCandidates" class="chipRow candidateChipRow"></div>
+      </div>
+      <label class="field" id="draftMyWordsField" hidden>
+        <span class="fieldLabel">自分の言葉での一言<span class="required">必須</span></span>
+        <textarea id="draftMyWordsInput" rows="3" placeholder="自分の言葉で一言" autocomplete="off"></textarea>
+        <p class="fieldNote warn" id="draftMyWordsHint" hidden>自分の言葉での一言を入力してください（必須）</p>
+      </label>
+      <button id="btnDraftSave" class="primaryBtn" disabled hidden>保存</button>
+      <div class="detailActions" id="draftActionsRow" hidden>
+        <button id="btnDraftLater" class="secondaryBtn">あとで</button>
+        <button id="btnDraftDiscard" class="dangerBtn">捨てる</button>
+      </div>
+      <div id="draftEmpty" class="emptyMsg" hidden>下書きはありません。</div>
+    </div>
+  </section>
+
   <nav class="bottomNav" id="globalBottomNav">
     <button id="navHome" class="navBtn">朝</button>
     <button id="navList" class="navBtn">言葉</button>
@@ -959,9 +1045,15 @@
 
   <div id="screen-draw" class="drawOverlay" hidden>
     <div class="drawTopBar">
-      <button id="btnDrawToGraph" class="drawIconBtn" type="button" hidden>網で見る</button>
-      <button id="btnDrawAgain" class="drawIconBtn" type="button">もう一度</button>
-      <button id="btnDrawClose" class="drawIconBtn" type="button">×</button>
+      <div id="drawModeRow" class="tagFilterRow drawModeRow">
+        <button type="button" class="tagFilterBtn" data-mode="all">すべてから</button>
+        <button type="button" class="tagFilterBtn" data-mode="monthly">今月よく届いた言葉から</button>
+      </div>
+      <div class="topbarBtnGroup">
+        <button id="btnDrawToGraph" class="drawIconBtn" type="button" hidden>網で見る</button>
+        <button id="btnDrawAgain" class="drawIconBtn" type="button">もう一度</button>
+        <button id="btnDrawClose" class="drawIconBtn" type="button">×</button>
+      </div>
     </div>
     <div id="drawStage" class="drawStage">
       <div id="drawTapHint" class="drawTapHint">画面をタップ</div>
@@ -1038,11 +1130,17 @@
   function dotDate(s) { return s.replace(/-/g, '.'); }
 
   function defaultData() {
-    return { version: 2, updatedAt: nowIso(), notes: [], deletedIds: [], journal: [], deletedJournalIds: [] };
+    return {
+      version: 2, updatedAt: nowIso(),
+      notes: [], deletedIds: [],
+      journal: [], deletedJournalIds: [],
+      drafts: [], deletedDraftIds: [],
+    };
   }
 
-  // journal entries: kind 'morning' (今朝の言葉) or 'consult' (相談の記録),
-  // one per API response. Entry-level merge/tombstone, same pattern as notes.
+  // journal entries: kind 'morning' (今朝の言葉), 'consult' (相談の記録), or
+  // 'draw' (引く). One per API response / per 引く landing. Entry-level
+  // merge/tombstone, same pattern as notes.
   function normalizeJournalEntry(j) {
     if (!j || !j.id) return null;
     const kind = j.kind === 'consult' ? 'consult' : j.kind === 'draw' ? 'draw' : 'morning';
@@ -1059,7 +1157,27 @@
       updatedAt: j.updatedAt || j.createdAt || nowIso(),
     };
     if (kind === 'morning') out.mood = Number.isFinite(j.mood) ? j.mood : null;
+    // v3.2: groups a 引く shuffle-and-traversal session for the records tab
+    // (spec: consecutive same-day draws collapse into one card). Optional -
+    // older synced entries without it just render as their own singleton group.
+    if (kind === 'draw' && typeof j.sessionId === 'string' && j.sessionId) out.sessionId = j.sessionId;
     return out;
+  }
+
+  // drafts: bulk-input decomposition results awaiting a "自分の言葉での一言"
+  // before they become real notes. Entry-level merge/tombstone, same pattern
+  // as notes/journal. AI never writes myWords - that field simply doesn't
+  // exist here until the draft is turned into a note.
+  function normalizeDraft(d) {
+    if (!d || !d.id) return null;
+    return {
+      id: String(d.id),
+      text: typeof d.text === 'string' ? d.text : '',
+      source: typeof d.source === 'string' ? d.source : '',
+      tags: Array.isArray(d.tags) ? [...new Set(d.tags.filter(Boolean).map(String))].slice(0, 3) : [],
+      createdAt: d.createdAt || nowIso(),
+      updatedAt: d.updatedAt || d.createdAt || nowIso(),
+    };
   }
 
   const RELATIONS = ['similar', 'opposite', 'supplement'];
@@ -1109,6 +1227,9 @@
     const deletedJournalIds = Array.isArray(parsed.deletedJournalIds)
       ? parsed.deletedJournalIds.filter((d) => d && d.id).map((d) => ({ id: String(d.id), deletedAt: d.deletedAt || nowIso() }))
       : [];
+    const deletedDraftIds = Array.isArray(parsed.deletedDraftIds)
+      ? parsed.deletedDraftIds.filter((d) => d && d.id).map((d) => ({ id: String(d.id), deletedAt: d.deletedAt || nowIso() }))
+      : [];
     return {
       version: 2,
       updatedAt: parsed.updatedAt || nowIso(),
@@ -1116,6 +1237,8 @@
       deletedIds,
       journal: Array.isArray(parsed.journal) ? parsed.journal.filter((j) => j && j.id).map(normalizeJournalEntry).filter(Boolean) : [],
       deletedJournalIds,
+      drafts: Array.isArray(parsed.drafts) ? parsed.drafts.filter((d) => d && d.id).map(normalizeDraft).filter(Boolean) : [],
+      deletedDraftIds,
     };
   }
 
@@ -1302,6 +1425,34 @@
     });
     mergedJournal.forEach((_, id) => mergedJDeleted.delete(id));
 
+    // drafts: same per-entry union + tombstone approach again.
+    const draftsA = new Map((a.drafts || []).map((d) => [d.id, d]));
+    const draftsB = new Map((b.drafts || []).map((d) => [d.id, d]));
+    const dDelA = new Map((a.deletedDraftIds || []).map((d) => [d.id, d.deletedAt]));
+    const dDelB = new Map((b.deletedDraftIds || []).map((d) => [d.id, d.deletedAt]));
+    const allDIds = new Set([...draftsA.keys(), ...draftsB.keys()]);
+    const mergedDrafts = new Map();
+    allDIds.forEach((id) => {
+      const da = draftsA.get(id);
+      const db = draftsB.get(id);
+      let winner;
+      if (da && db) {
+        winner = new Date(da.updatedAt) >= new Date(db.updatedAt) ? da : db;
+      } else {
+        const only = da || db;
+        const tombstoneAt = da ? dDelB.get(id) : dDelA.get(id);
+        winner = (tombstoneAt && new Date(tombstoneAt) >= new Date(only.updatedAt)) ? null : only;
+      }
+      if (winner) mergedDrafts.set(id, { ...winner, tags: [...(winner.tags || [])] });
+    });
+    const mergedDDeleted = new Map();
+    dDelA.forEach((at, id) => mergedDDeleted.set(id, at));
+    dDelB.forEach((at, id) => {
+      const cur = mergedDDeleted.get(id);
+      if (!cur || new Date(at) > new Date(cur)) mergedDDeleted.set(id, at);
+    });
+    mergedDrafts.forEach((_, id) => mergedDDeleted.delete(id));
+
     const merged = {
       version: 2,
       updatedAt: nowIso(),
@@ -1309,6 +1460,8 @@
       deletedIds: [...mergedDeleted.entries()].map(([id, deletedAt]) => ({ id, deletedAt })),
       journal: [...mergedJournal.values()],
       deletedJournalIds: [...mergedJDeleted.entries()].map(([id, deletedAt]) => ({ id, deletedAt })),
+      drafts: [...mergedDrafts.values()],
+      deletedDraftIds: [...mergedDDeleted.entries()].map(([id, deletedAt]) => ({ id, deletedAt })),
     };
     pruneDanglingLinks(merged);
     return merged;
@@ -1428,7 +1581,12 @@
   }
 
   function emptyRemoteData() {
-    return { version: 2, updatedAt: nowIso(), notes: [], deletedIds: [], journal: [], deletedJournalIds: [] };
+    return {
+      version: 2, updatedAt: nowIso(),
+      notes: [], deletedIds: [],
+      journal: [], deletedJournalIds: [],
+      drafts: [], deletedDraftIds: [],
+    };
   }
 
   // Push data (already merged with the latest remote fetch). On a 409 (someone
@@ -2173,6 +2331,51 @@
     return { count, lastDate };
   }
 
+  // v3.2 "今月よく届いた言葉から": notes that showed up in a morning/consult
+  // pick (not 引く itself) within the last 30 days, ranked by how often.
+  function topMonthlyPickedNoteIds(limit) {
+    const cutoff = addDays(todayStr(), -30);
+    const counts = new Map();
+    data.journal.forEach((j) => {
+      if ((j.kind === 'morning' || j.kind === 'consult') && j.date >= cutoff) {
+        j.picks.forEach((p) => counts.set(p.id, (counts.get(p.id) || 0) + 1));
+      }
+    });
+    return [...counts.entries()]
+      .filter(([id]) => findNote(id))
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, limit)
+      .map(([id]) => id);
+  }
+
+  // --- drafts (v3.2): entry-level CRUD, same pattern as journal ------------
+  function findDraft(id) { return data.drafts.find((d) => d.id === id) || null; }
+
+  function generateDraftId() {
+    const d = new Date();
+    const prefix = `d_${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}_`;
+    const existing = new Set(data.drafts.map((x) => x.id));
+    let seq = 1;
+    while (existing.has(prefix + String(seq).padStart(3, '0'))) seq++;
+    return prefix + String(seq).padStart(3, '0');
+  }
+
+  function saveDraft(draft) {
+    draft.updatedAt = nowIso();
+    const idx = data.drafts.findIndex((d) => d.id === draft.id);
+    if (idx === -1) data.drafts.push(draft); else data.drafts[idx] = draft;
+    saveData(data);
+    return draft;
+  }
+
+  function deleteDraft(id) {
+    data.drafts = data.drafts.filter((d) => d.id !== id);
+    if (!Array.isArray(data.deletedDraftIds)) data.deletedDraftIds = [];
+    data.deletedDraftIds = data.deletedDraftIds.filter((d) => d.id !== id);
+    data.deletedDraftIds.push({ id, deletedAt: nowIso() });
+    saveData(data);
+  }
+
   // Shared by the morning flow and the consult screen - same model, same
   // cached system block (see buildChatSystemBlocks); only maxPicks, the
   // input/history, and which usage bucket to bill differ per caller.
@@ -2274,7 +2477,7 @@
   // straight from each response's `usage` object. Only recorded on an
   // actually-successful (billable) call - a failed request isn't charged, so
   // it shouldn't count toward token totals or the cost estimate either.
-  const USAGE_KINDS = ['autolink', 'morning', 'consult', 'searchAgain'];
+  const USAGE_KINDS = ['autolink', 'morning', 'consult', 'searchAgain', 'bulk'];
   function getUsageStats() {
     try {
       const raw = JSON.parse(localStorage.getItem(USAGE_STATS_KEY) || '{}');
@@ -2476,6 +2679,71 @@
       '返答形式（JSONのみ、他の文章は含めない）:\n' +
       '{"picks":[{"id":"...","why":"..."}],"closing":"..."}';
     return [{ type: 'text', text, cache_control: { type: 'ephemeral' } }];
+  }
+
+  // v3.2 bulk-input decomposition. kind: 'book' (名言集・引用) or
+  // 'transcript' (文字起こし) - only the extraction rule differs; both pass
+  // the existing tag list (cached, same reasoning as the notes list above)
+  // and ask for up to 3 tags per item, one new tag allowed if nothing fits.
+  function buildBulkDecomposeSystemBlocks(kind) {
+    const bodyText = kind === 'transcript'
+      ? '話し言葉の中から、本人の考え・気づき・言い切りとして独立して残す価値のある文を抜き出してください。' +
+        '相槌、繰り返し、言い直し、本の引用そのもの（本人の言葉ではない部分）は除いてください。' +
+        '1つ150字以内に整えますが、意味と言い回しは変えないでください。最大15件。'
+      : '独立した言葉・一節・格言として意味が完結する単位に分けてください。1つ200字以内。前後の解説文や見出しは含めないでください。';
+    const text =
+      '以下はこの人が使っている既存タグの一覧である。\n' + JSON.stringify(allTags()) +
+      '\n\nこのあとユーザーメッセージで元のテキストを渡す。' + bodyText +
+      '各項目に既存タグ一覧から最大3つ選んでください。既存で合わなければ新しいタグを1つだけ提案してよいです。' +
+      'JSONのみを返してください。\n\n返答形式（JSON配列のみ、他の文章は含めない）:\n' +
+      '[{"text": "...", "tags": ["..."]}]';
+    return [{ type: 'text', text, cache_control: { type: 'ephemeral' } }];
+  }
+
+  async function callBulkDecomposeApi(rawText, kind, is429Retry, isParseRetry) {
+    const apiKey = getClaudeApiKey();
+    if (!apiKey) { const e = new Error('no-api-key'); e.noKey = true; throw e; }
+    const model = getClaudeChatModel();
+    const system = buildBulkDecomposeSystemBlocks(kind);
+    const promptText = '元のテキスト:\n' + rawText;
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({ model, max_tokens: 8192, system, messages: [{ role: 'user', content: promptText }] }),
+    });
+
+    if (res.status === 429 && !is429Retry) {
+      await sleep(2000);
+      return callBulkDecomposeApi(rawText, kind, true, isParseRetry);
+    }
+    if (!res.ok) {
+      const err = new Error('Claude API failed: ' + res.status);
+      err.status = res.status;
+      throw err;
+    }
+    const json = await res.json();
+    recordApiUsage('bulk', json.usage);
+    const textOut = (json.content || []).map((b) => b.text || '').join('');
+    const parsed = parseJsonArrayLoose(textOut);
+    if (!parsed) {
+      if (!isParseRetry) return callBulkDecomposeApi(rawText, kind, false, true);
+      throw new Error('invalid response shape');
+    }
+    const maxLen = kind === 'transcript' ? 150 : 200;
+    const maxItems = kind === 'transcript' ? 15 : 100; // book has no spec'd cap; generous safety valve
+    return parsed
+      .filter((item) => item && typeof item.text === 'string' && item.text.trim())
+      .slice(0, maxItems)
+      .map((item) => ({
+        text: item.text.trim().slice(0, maxLen),
+        tags: Array.isArray(item.tags) ? item.tags.filter((t) => typeof t === 'string' && t.trim()).slice(0, 3) : [],
+      }));
   }
 
   // Calls the Messages API directly from the browser (per the v2 spec) with
@@ -2810,11 +3078,11 @@
   };
 
   function showScreen(name) {
-    ['home', 'list', 'consult', 'detail', 'editor', 'settings', 'records'].forEach((s) => {
+    ['home', 'list', 'consult', 'detail', 'editor', 'settings', 'records', 'bulk', 'draftreview'].forEach((s) => {
       document.getElementById('screen-' + s).hidden = s !== name;
     });
     nav.screen = name;
-    document.getElementById('globalBottomNav').hidden = (name === 'detail' || name === 'editor');
+    document.getElementById('globalBottomNav').hidden = (name === 'detail' || name === 'editor' || name === 'bulk' || name === 'draftreview');
     document.querySelectorAll('#globalBottomNav .navBtn').forEach((b) => b.classList.remove('selected'));
     const activeBtn = { home: 'navHome', list: 'navList', consult: 'navConsult', records: 'navRecords', settings: 'navSettings' }[name];
     if (activeBtn) document.getElementById(activeBtn).classList.add('selected');
@@ -3176,7 +3444,15 @@
   function openList() {
     showScreen('list');
     document.getElementById('listSearch').value = listState.search;
+    updateDraftBanner();
     renderList();
+  }
+
+  function updateDraftBanner() {
+    const banner = document.getElementById('draftBanner');
+    const n = data.drafts.length;
+    banner.hidden = n === 0;
+    banner.textContent = `下書き ${n} 件`;
   }
 
   function noteSnippet(text, max) {
@@ -3347,6 +3623,281 @@
   });
   document.getElementById('backFromList').addEventListener('click', goHome);
   document.getElementById('btnAddFromList').addEventListener('click', () => openEditor('new', null, 'list'));
+  document.getElementById('draftBanner').addEventListener('click', () => openDraftReview());
+
+  // --- Bulk input (v3.2, "一括") ------------------------------------------
+  const bulkState = { kind: 'book' };
+  const BULK_MAX_CHARS = 20000;
+
+  function openBulk() {
+    bulkState.kind = 'book';
+    document.getElementById('bulkSourceInput').value = '';
+    document.getElementById('bulkTitleInput').value = '';
+    document.getElementById('bulkTextInput').value = '';
+    document.getElementById('bulkStatus').textContent = '';
+    updateBulkCharCount();
+    renderBulkKindRow();
+    renderBulkSourceCandidates();
+    showScreen('bulk');
+  }
+
+  function renderBulkKindRow() {
+    document.querySelectorAll('#bulkKindRow button').forEach((b) => {
+      b.classList.toggle('selected', b.dataset.kind === bulkState.kind);
+    });
+    document.getElementById('bulkSourceField').hidden = bulkState.kind !== 'book';
+    document.getElementById('bulkTitleField').hidden = bulkState.kind !== 'transcript';
+  }
+  document.querySelectorAll('#bulkKindRow button').forEach((b) => {
+    b.addEventListener('click', () => { bulkState.kind = b.dataset.kind; renderBulkKindRow(); });
+  });
+
+  function renderBulkSourceCandidates() {
+    const q = document.getElementById('bulkSourceInput').value.trim().toLowerCase();
+    let candidates = rankByUsage(sourceUsageStats());
+    if (q) candidates = candidates.filter((s) => s.toLowerCase().includes(q));
+    renderCandidateChips(document.getElementById('bulkSourceCandidates'), candidates, (v) => {
+      document.getElementById('bulkSourceInput').value = v;
+      renderBulkSourceCandidates();
+    });
+  }
+  document.getElementById('bulkSourceInput').addEventListener('input', renderBulkSourceCandidates);
+
+  function updateBulkCharCount() {
+    const len = document.getElementById('bulkTextInput').value.length;
+    document.getElementById('bulkCharCount').textContent = `${len.toLocaleString('ja-JP')} / ${BULK_MAX_CHARS.toLocaleString('ja-JP')}字`;
+    document.getElementById('bulkOverLimitHint').hidden = len <= BULK_MAX_CHARS;
+  }
+  document.getElementById('bulkTextInput').addEventListener('input', updateBulkCharCount);
+
+  document.getElementById('btnBulkDecompose').addEventListener('click', async () => {
+    const text = document.getElementById('bulkTextInput').value.trim();
+    const statusEl = document.getElementById('bulkStatus');
+    if (!text) { statusEl.textContent = 'テキストを貼り付けてください。'; return; }
+    if (text.length > BULK_MAX_CHARS) {
+      statusEl.textContent = `${BULK_MAX_CHARS.toLocaleString('ja-JP')}字を超えています。分けて貼り付けてください。`;
+      return;
+    }
+    let source;
+    if (bulkState.kind === 'book') {
+      source = document.getElementById('bulkSourceInput').value.trim();
+      if (!source) { statusEl.textContent = '出典を入力してください。'; return; }
+    } else {
+      const title = document.getElementById('bulkTitleInput').value.trim();
+      source = title ? `自分（動画: ${title}）` : '自分（動画）';
+    }
+    if (!getClaudeApiKey()) { statusEl.textContent = '設定画面でClaude APIキーを入力してください。'; return; }
+    const btn = document.getElementById('btnBulkDecompose');
+    btn.disabled = true;
+    statusEl.textContent = '分解しています…';
+    try {
+      const items = await callBulkDecomposeApi(text, bulkState.kind);
+      if (!items.length) {
+        statusEl.textContent = '分解できる項目が見つかりませんでした。';
+        btn.disabled = false;
+        return;
+      }
+      const iso = nowIso();
+      items.forEach((item) => {
+        const id = generateDraftId();
+        data.drafts.push({ id, text: item.text, source, tags: item.tags, createdAt: iso, updatedAt: iso });
+      });
+      saveData(data);
+      btn.disabled = false;
+      statusEl.textContent = '';
+      openDraftReview();
+    } catch (e) {
+      btn.disabled = false;
+      statusEl.textContent = (e && e.noKey) ? '設定画面でClaude APIキーを入力してください。' : '分解に失敗しました。もう一度お試しください。';
+    }
+  });
+
+  document.getElementById('btnOpenBulk').addEventListener('click', openBulk);
+  document.getElementById('backFromBulk').addEventListener('click', () => openList());
+
+  // --- Draft review (v3.2) --------------------------------------------------
+  // draftQueue is a snapshot of data.drafts' ids taken when the review screen
+  // opens; "あとで" only reorders this local copy (per spec: "順番の最後に
+  //回る"), not data.drafts itself, so leaving and reopening this screen
+  // starts fresh from data.drafts' own order again.
+  let draftQueue = [];
+  let draftQueueIndex = 0;
+  const draftEditorState = { tags: [] };
+
+  function openDraftReview() {
+    draftQueue = data.drafts.map((d) => d.id);
+    draftQueueIndex = 0;
+    showScreen('draftreview');
+    renderDraftCard();
+  }
+
+  function renderDraftCard() {
+    const has = draftQueue.length > 0;
+    document.getElementById('draftEmpty').hidden = has;
+    document.getElementById('draftCard').hidden = !has;
+    document.getElementById('draftTagsField').hidden = !has;
+    document.getElementById('draftMyWordsField').hidden = !has;
+    document.getElementById('btnDraftSave').hidden = !has;
+    document.getElementById('draftActionsRow').hidden = !has;
+    if (!has) { document.getElementById('draftRemainingCount').textContent = ''; return; }
+
+    const draft = findDraft(draftQueue[draftQueueIndex]);
+    if (!draft) {
+      // stale id (e.g. deleted from another device mid-review) - drop and retry
+      draftQueue.splice(draftQueueIndex, 1);
+      if (draftQueueIndex >= draftQueue.length) draftQueueIndex = 0;
+      renderDraftCard();
+      return;
+    }
+    document.getElementById('draftRemainingCount').textContent = `残り ${draftQueue.length} 件`;
+    document.getElementById('draftCardText').textContent = draft.text;
+    document.getElementById('draftCardSource').textContent = draft.source;
+    draftEditorState.tags = [...draft.tags];
+    document.getElementById('draftTagInput').value = '';
+    document.getElementById('draftMyWordsInput').value = '';
+    clearDraftTagLimitMessage();
+    renderDraftTagChips();
+    renderDraftTagCandidates();
+    updateDraftSaveButtonState();
+  }
+
+  function renderDraftTagChips() {
+    const row = document.getElementById('draftTagChips');
+    row.innerHTML = '';
+    draftEditorState.tags.forEach((t) => {
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      const label = document.createElement('span');
+      label.textContent = t;
+      chip.appendChild(label);
+      const rm = document.createElement('button');
+      rm.type = 'button';
+      rm.textContent = '×';
+      rm.addEventListener('click', () => {
+        draftEditorState.tags = draftEditorState.tags.filter((x) => x !== t);
+        if (draftEditorState.tags.length < TAG_MAX) clearDraftTagLimitMessage();
+        renderDraftTagChips();
+        renderDraftTagCandidates();
+      });
+      chip.appendChild(rm);
+      row.appendChild(chip);
+    });
+  }
+
+  function showDraftTagLimitMessage() { document.getElementById('draftTagLimitHint').hidden = false; }
+  function clearDraftTagLimitMessage() { document.getElementById('draftTagLimitHint').hidden = true; }
+
+  function addDraftTagTokens(tokens) {
+    if (!tokens.length) return;
+    if (draftEditorState.tags.length >= TAG_MAX) { showDraftTagLimitMessage(); return; }
+    let hitLimit = false;
+    for (const t of tokens) {
+      if (draftEditorState.tags.length >= TAG_MAX) { hitLimit = true; break; }
+      if (!draftEditorState.tags.includes(t)) draftEditorState.tags.push(t);
+    }
+    if (hitLimit) showDraftTagLimitMessage(); else clearDraftTagLimitMessage();
+    renderDraftTagChips();
+    renderDraftTagCandidates();
+  }
+
+  function commitDraftTagInput() {
+    const input = document.getElementById('draftTagInput');
+    if (!input.value.trim()) return;
+    addDraftTagTokens(splitTagInput(input.value));
+    input.value = '';
+    renderDraftTagCandidates();
+  }
+
+  function renderDraftTagCandidates() {
+    const input = document.getElementById('draftTagInput');
+    const q = input.value.trim().toLowerCase();
+    const excludeSet = new Set(draftEditorState.tags);
+    let candidates = rankByUsage(tagUsageStats()).filter((t) => !excludeSet.has(t));
+    if (q) candidates = candidates.filter((t) => t.toLowerCase().includes(q));
+    renderCandidateChips(document.getElementById('draftTagCandidates'), candidates, (v) => {
+      if (draftEditorState.tags.length >= TAG_MAX) { showDraftTagLimitMessage(); return; }
+      draftEditorState.tags.push(v);
+      clearDraftTagLimitMessage();
+      input.value = '';
+      renderDraftTagChips();
+      renderDraftTagCandidates();
+    });
+  }
+
+  document.getElementById('draftTagInput').addEventListener('input', renderDraftTagCandidates);
+  document.getElementById('draftTagInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); commitDraftTagInput(); }
+  });
+  document.getElementById('btnDraftAddTag').addEventListener('click', () => {
+    commitDraftTagInput();
+    document.getElementById('draftTagInput').focus();
+  });
+
+  function updateDraftSaveButtonState() {
+    const ok = document.getElementById('draftMyWordsInput').value.trim().length > 0;
+    document.getElementById('btnDraftSave').disabled = !ok;
+    document.getElementById('draftMyWordsHint').hidden = ok;
+  }
+  document.getElementById('draftMyWordsInput').addEventListener('input', updateDraftSaveButtonState);
+
+  function advanceDraftQueueAfterRemoval() {
+    if (draftQueueIndex >= draftQueue.length) draftQueueIndex = 0;
+    renderDraftCard();
+  }
+
+  document.getElementById('btnDraftSave').addEventListener('click', () => {
+    const myWords = document.getElementById('draftMyWordsInput').value.trim();
+    if (!myWords) { updateDraftSaveButtonState(); return; }
+    commitDraftTagInput();
+    const draft = findDraft(draftQueue[draftQueueIndex]);
+    if (!draft) return;
+    const iso = nowIso();
+    const id = generateId(data.notes);
+    const note = {
+      id, text: draft.text, source: draft.source, myWords, tags: [...draftEditorState.tags],
+      links: [], rejectedLinks: [], autoLinkedAt: null, createdAt: iso, updatedAt: iso,
+    };
+    data.notes.push(note);
+    deleteDraft(draft.id); // saves once, persisting both the new note and the draft's removal
+    triggerAutoLinkForNote(id, 'autolink');
+    draftQueue.splice(draftQueueIndex, 1);
+    advanceDraftQueueAfterRemoval();
+  });
+
+  document.getElementById('btnDraftDiscard').addEventListener('click', () => {
+    const draft = findDraft(draftQueue[draftQueueIndex]);
+    if (!draft) return;
+    if (!confirm('この下書きを削除します。よろしいですか？')) return;
+    deleteDraft(draft.id);
+    draftQueue.splice(draftQueueIndex, 1);
+    advanceDraftQueueAfterRemoval();
+  });
+
+  document.getElementById('btnDraftLater').addEventListener('click', () => {
+    if (!draftQueue.length) return;
+    const id = draftQueue[draftQueueIndex];
+    draftQueue.splice(draftQueueIndex, 1);
+    draftQueue.push(id);
+    advanceDraftQueueAfterRemoval();
+  });
+
+  // Swipe (either direction) on the card itself is an alternate gesture for
+  // "あとで" (spec: "スワイプまたは「次へ」で進む" - あとで already IS the
+  // "go to next, decide later" action, so swipe just triggers that button).
+  (function setupDraftSwipe() {
+    const el = document.getElementById('draftCard');
+    let startX = null, startY = null;
+    el.addEventListener('pointerdown', (e) => { startX = e.clientX; startY = e.clientY; });
+    el.addEventListener('pointerup', (e) => {
+      if (startX == null) return;
+      const dx = e.clientX - startX, dy = e.clientY - startY;
+      startX = null;
+      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) document.getElementById('btnDraftLater').click();
+    });
+    el.addEventListener('pointerleave', () => { startX = null; });
+  })();
+
+  document.getElementById('backFromDraftReview').addEventListener('click', () => openList());
 
   // --- Detail ---------------------------------------------------------------
   function openDetail(id, originScreen) {
@@ -3523,35 +4074,62 @@
     else renderRecordsWalk();
   }
 
+  // v3.2: consecutive same-day draws (one shuffle-stop + whatever links the
+  // user tapped through afterward) collapse into a single card - grouped by
+  // (date, sessionId). Entries synced in from before sessionId existed each
+  // become their own singleton group (falls back to the entry's own id).
   function renderRecordsDraw() {
     const list = document.getElementById('recordsDrawList');
     list.innerHTML = '';
-    const entries = journalEntriesSorted('draw');
+    const entries = data.journal.filter((j) => j.kind === 'draw');
     document.getElementById('recordsDrawEmpty').hidden = entries.length > 0;
+
+    const groups = new Map();
     entries.forEach((j) => {
-      const note = j.picks[0] && findNote(j.picks[0].id);
+      const key = j.date + '|' + (j.sessionId || j.id);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(j);
+    });
+    const groupList = [...groups.values()].map((g) => {
+      g.sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1)); // chronological within the trail
+      return g;
+    });
+    groupList.sort((a, b) => {
+      const aLatest = a[a.length - 1].createdAt, bLatest = b[b.length - 1].createdAt;
+      return aLatest < bLatest ? 1 : -1; // most recently active group first
+    });
+
+    groupList.forEach((group) => {
       const item = document.createElement('div');
       item.className = 'recordEntry';
+
       const top = document.createElement('div');
       top.className = 'recordEntryTop';
       const dateEl = document.createElement('span');
       dateEl.className = 'recordEntryDate';
-      dateEl.textContent = dotDate(j.date);
+      dateEl.textContent = dotDate(group[0].date);
       top.appendChild(dateEl);
-      const del = document.createElement('button');
-      del.type = 'button';
-      del.className = 'recordEntryDelete';
-      del.textContent = '消す';
-      del.addEventListener('click', () => { deleteJournalEntry(j.id); renderRecordsDraw(); });
-      top.appendChild(del);
       item.appendChild(top);
-      if (note) {
-        const mini = document.createElement('div');
-        mini.className = 'journalCardMini';
-        mini.textContent = noteSnippet(note.text, 60) + (note.source ? ' ・ ' + note.source : '');
-        mini.addEventListener('click', () => openDetail(note.id, 'records'));
-        item.appendChild(mini);
-      }
+
+      group.forEach((j, i) => {
+        const note = j.picks[0] && findNote(j.picks[0].id);
+        const row = document.createElement('div');
+        row.className = i === 0 ? 'journalCardMini drawGroupMain' : 'journalCardMini drawGroupSub';
+        const textEl = document.createElement('span');
+        textEl.textContent = note
+          ? noteSnippet(note.text, i === 0 ? 60 : 36) + (i === 0 && note.source ? ' ・ ' + note.source : '')
+          : '（削除済み）';
+        row.appendChild(textEl);
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'recordEntryDelete';
+        del.textContent = '消す';
+        del.addEventListener('click', (e) => { e.stopPropagation(); deleteJournalEntry(j.id); renderRecordsDraw(); });
+        row.appendChild(del);
+        if (note) row.addEventListener('click', () => openDetail(note.id, 'records'));
+        item.appendChild(row);
+      });
+
       list.appendChild(item);
     });
   }
@@ -3870,7 +4448,23 @@
   // above everything, nav included, for a clean recording). State is kept
   // in a small object rather than nav.* since it never needs back-stack
   // integration - only ever opened from/closed back to the list screen.
-  const drawState = { current: null, shuffling: false, revealTimer: null };
+  const drawState = { current: null, shuffling: false, revealTimer: null, sessionId: null };
+
+  // v3.2 "今月よく届いた言葉から" toggle - remembered per device.
+  const DRAW_MODE_KEY = 'kotoba_drawMode';
+  function getDrawMode() { return localStorage.getItem(DRAW_MODE_KEY) === 'monthly' ? 'monthly' : 'all'; }
+  function setDrawMode(mode) { localStorage.setItem(DRAW_MODE_KEY, mode === 'monthly' ? 'monthly' : 'all'); }
+  function renderDrawModeRow() {
+    const mode = getDrawMode();
+    document.querySelectorAll('#drawModeRow button').forEach((b) => b.classList.toggle('selected', b.dataset.mode === mode));
+  }
+  document.querySelectorAll('#drawModeRow button').forEach((b) => {
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setDrawMode(b.dataset.mode);
+      renderDrawModeRow();
+    });
+  });
 
   function recentDrawExcludedIds() {
     const cutoff = addDays(todayStr(), -30);
@@ -3879,7 +4473,14 @@
     return ids;
   }
 
+  // Returns null only for 'monthly' mode with an empty pool - the caller
+  // treats that as "nothing to draw from" and falls back to 'all'.
   function pickDrawTargetNote() {
+    if (getDrawMode() === 'monthly') {
+      const pool = topMonthlyPickedNoteIds(10).map(findNote).filter(Boolean);
+      if (!pool.length) return null;
+      return pool[Math.floor(Math.random() * pool.length)];
+    }
     const excluded = recentDrawExcludedIds();
     let pool = data.notes.filter((n) => !excluded.has(n.id));
     if (!pool.length) pool = data.notes;
@@ -3888,7 +4489,10 @@
 
   function recordDrawPick(note) {
     const iso = nowIso();
-    saveJournalEntry({ id: generateJournalId(), date: todayStr(), kind: 'draw', text: '', picks: [{ id: note.id }], closing: '', createdAt: iso, updatedAt: iso });
+    saveJournalEntry({
+      id: generateJournalId(), date: todayStr(), kind: 'draw', text: '', picks: [{ id: note.id }], closing: '',
+      createdAt: iso, updatedAt: iso, sessionId: drawState.sessionId,
+    });
   }
 
   function clearDrawTimers() {
@@ -3899,12 +4503,15 @@
     clearDrawTimers();
     drawState.current = null;
     drawState.shuffling = false;
+    drawState.sessionId = null;
     document.getElementById('drawTapHint').hidden = data.notes.length === 0;
+    document.getElementById('drawModeRow').hidden = data.notes.length === 0;
     document.getElementById('drawShuffleText').hidden = true;
     document.getElementById('drawResult').hidden = true;
     document.getElementById('drawLinks').innerHTML = '';
     document.getElementById('drawEmpty').hidden = data.notes.length > 0;
     document.getElementById('btnDrawToGraph').hidden = true;
+    renderDrawModeRow();
   }
 
   function openDraw(centerNoteId) {
@@ -3913,6 +4520,7 @@
     resetDrawStage();
     if (centerNoteId && findNote(centerNoteId)) {
       document.getElementById('drawTapHint').hidden = true;
+      document.getElementById('drawModeRow').hidden = true;
       showDrawnNote(findNote(centerNoteId), { pop: true, record: false });
     }
   }
@@ -3925,13 +4533,29 @@
 
   function startDrawShuffle() {
     if (!data.notes.length || drawState.shuffling || drawState.current) return;
+    const finalNote = pickDrawTargetNote();
+    if (!finalNote) {
+      // 'monthly' mode with nothing picked in the last 30 days yet.
+      setDrawMode('all');
+      renderDrawModeRow();
+      const shuffleEl = document.getElementById('drawShuffleText');
+      document.getElementById('drawTapHint').hidden = true;
+      shuffleEl.hidden = false;
+      shuffleEl.textContent = 'まだ今月の言葉がありません';
+      setTimeout(() => {
+        shuffleEl.hidden = true;
+        document.getElementById('drawTapHint').hidden = false;
+      }, 1600);
+      return;
+    }
     drawState.shuffling = true;
+    drawState.sessionId = 'ds_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     document.getElementById('drawTapHint').hidden = true;
+    document.getElementById('drawModeRow').hidden = true;
     document.getElementById('drawResult').hidden = true;
     document.getElementById('drawLinks').innerHTML = '';
     const shuffleEl = document.getElementById('drawShuffleText');
     shuffleEl.hidden = false;
-    const finalNote = pickDrawTargetNote();
     const total = 2000;
     const start = performance.now();
     function tick() {
@@ -4253,8 +4877,21 @@
     const canvas = graphState.canvas;
     const sel = d3.select(canvas);
 
+    function rawPointerXY(event) {
+      // d3.pointer() only reads clientX/clientY, which live on Touch objects,
+      // not on TouchEvent itself — so it returns [null, null] for real touch
+      // input. Unwrap to the underlying DOM event (mirroring d3's own
+      // sourceEvent chain) and pull coordinates from the first touch when present.
+      let e = event;
+      while (e && e.sourceEvent) e = e.sourceEvent;
+      const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
+      const clientX = t ? t.clientX : e.clientX;
+      const clientY = t ? t.clientY : e.clientY;
+      const rect = canvas.getBoundingClientRect();
+      return [clientX - rect.left - canvas.clientLeft, clientY - rect.top - canvas.clientTop];
+    }
     function toGraphCoords(event) {
-      const [x, y] = d3.pointer(event, canvas);
+      const [x, y] = rawPointerXY(event);
       return { x: (x - graphState.transform.x) / graphState.transform.k, y: (y - graphState.transform.y) / graphState.transform.k };
     }
 
@@ -4276,8 +4913,21 @@
         event.subject.fy = null;
       });
 
+    // v3.2 fix: on mobile, dragging a node used to also pan the whole view,
+    // since d3.zoom and d3.drag were both listening to the same touch. Split
+    // them by gesture target: a touch/click starting ON a node is drag's job
+    // (zoom.filter rejects it so zoom never engages); a touch on empty space
+    // is a pan; wheel and any 2+-finger touch (pinch) are always zoom's,
+    // regardless of what's under the first finger.
     const zoom = d3.zoom()
       .scaleExtent([0.3, 8])
+      .filter((event) => {
+        if (event.type === 'wheel') return true;
+        if (event.touches && event.touches.length > 1) return true;
+        if (event.type === 'dblclick') return false;
+        const { x, y } = toGraphCoords(event);
+        return !graphNodeAt(x, y);
+      })
       .on('zoom', (event) => { graphState.transform = event.transform; drawGraph(); });
 
     sel.call(drag);
