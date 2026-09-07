@@ -779,8 +779,10 @@
         <h3>2. Claude API</h3>
         <p class="fieldNote">console.anthropic.com で発行したAPIキーを入力してください。キーは端末のlocalStorageにのみ保存され、data.jsonには含まれません。</p>
         <input id="claudeApiKeyInput" type="text" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
-        <span class="fieldLabel">モデル名</span>
-        <input id="claudeModelInput" type="text" placeholder="claude-sonnet-5" autocomplete="off" spellcheck="false">
+        <span class="fieldLabel">自動関連づけのモデル</span>
+        <input id="claudeModelAutoLinkInput" type="text" placeholder="claude-haiku-4-5" autocomplete="off" spellcheck="false">
+        <span class="fieldLabel">朝の言葉・相談のモデル</span>
+        <input id="claudeModelChatInput" type="text" placeholder="claude-sonnet-5" autocomplete="off" spellcheck="false">
         <button id="btnSaveClaudeSettings" class="secondaryBtn">保存</button>
         <label class="checkboxRow">
           <input type="checkbox" id="autoLinkToggle">
@@ -864,8 +866,15 @@
         <div class="statRow"><span>手動リンク数</span><span id="statManualLinkCount"></span></div>
         <div class="statRow"><span>散歩日数</span><span id="statWalkDays"></span></div>
         <div class="statRow"><span>連続</span><span id="statWalkStreak"></span></div>
-        <div class="statRow"><span>API呼び出し回数（この端末）</span><span id="statApiCallCount"></span></div>
         <div class="statRow"><span>最終エラー</span><span id="statLastAutoLinkError"></span></div>
+      </div>
+      <div class="field statsField">
+        <span class="fieldLabel">API使用量（この端末・usageより集計）</span>
+        <div class="statRow"><span>自動関連づけ</span><span id="statUsageAutolink"></span></div>
+        <div class="statRow"><span>朝</span><span id="statUsageMorning"></span></div>
+        <div class="statRow"><span>相談</span><span id="statUsageConsult"></span></div>
+        <div class="statRow"><span>探し直し</span><span id="statUsageSearchAgain"></span></div>
+        <div class="statRow"><span>概算費用合計</span><span id="statUsageTotalCost"></span></div>
       </div>
     </div>
   </section>
@@ -2164,31 +2173,19 @@
     return { count, lastDate };
   }
 
-  // --- Morning API call (v3): same picks/closing shape as consult, capped at
-  // 2 results per the morning spec. Kept as its own copy (not a shared helper
-  // with callConsultApi) so the already-tested v2.1 consult path is untouched.
-  async function callMorningApi(input, moodLevel, is429Retry, isParseRetry) {
+  // Shared by the morning flow and the consult screen - same model, same
+  // cached system block (see buildChatSystemBlocks); only maxPicks, the
+  // input/history, and which usage bucket to bill differ per caller.
+  async function callChatApi(input, history, maxPicks, usageKind, is429Retry, isParseRetry) {
     const apiKey = getClaudeApiKey();
     if (!apiKey) { const e = new Error('no-api-key'); e.noKey = true; throw e; }
-    const model = getClaudeModel();
-    const effectiveInput = input && input.trim() ? input.trim() : `今朝の体調は5段階でレベル${moodLevel}。それに合う言葉を選ぶ。`;
-    const candidates = compressCandidates({ text: effectiveInput, myWords: effectiveInput, tags: [] }, data.notes, getCompressThreshold());
-    const compact = candidates.map((n) => ({
-      id: n.id,
-      text: (n.text || '').slice(0, 120),
-      source: n.source || '',
-      myWords: (n.myWords || '').slice(0, 80),
-      tags: n.tags,
-    }));
+    const model = getClaudeChatModel();
+    const system = buildChatSystemBlocks();
+    const historyText = history && history.length ? '直近のやり取り:\n' + JSON.stringify(history) + '\n\n' : '';
     const promptText =
-      '以下はこの人が本や名言集から集めた言葉と、本人の解釈である。\n' + JSON.stringify(compact) +
-      '\n\n今朝の状態:\n' + effectiveInput +
-      '\n\n入力された状態に対して、最も応える言葉を最大2件選び、それぞれになぜ近いかを30字程度で書いてください。' +
-      '最後に、選んだ言葉同士の関係やそこから見える一つの見方を3行以内で書いてください。' +
-      '一般論、慰め、アドバイス、ノートにない引用は書かないでください。本人の解釈（myWords）を重視してください。' +
-      '該当がなければ空にしてください。why・closing には引用符や改行を使わないでください。\n\n' +
-      '返答形式（JSONのみ、他の文章は含めない）:\n' +
-      '{"picks":[{"id":"...","why":"..."}],"closing":"..."}';
+      historyText +
+      '今の状態:\n' + input +
+      '\n\n最大' + maxPicks + '件まで選んでください。';
 
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -2198,30 +2195,30 @@
         'anthropic-version': '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true',
       },
-      body: JSON.stringify({ model, max_tokens: 2048, messages: [{ role: 'user', content: promptText }] }),
+      body: JSON.stringify({ model, max_tokens: 2048, system, messages: [{ role: 'user', content: promptText }] }),
     });
 
     if (res.status === 429 && !is429Retry) {
       await sleep(2000);
-      return callMorningApi(input, moodLevel, true, isParseRetry);
+      return callChatApi(input, history, maxPicks, usageKind, true, isParseRetry);
     }
-    incrementApiCallCount();
     if (!res.ok) {
       const err = new Error('Claude API failed: ' + res.status);
       err.status = res.status;
       throw err;
     }
     const json = await res.json();
+    recordApiUsage(usageKind, json.usage);
     const textOut = (json.content || []).map((b) => b.text || '').join('');
     const parsed = parseConsultResponseLoose(textOut);
     if (!parsed) {
-      if (!isParseRetry) return callMorningApi(input, moodLevel, false, true);
+      if (!isParseRetry) return callChatApi(input, history, maxPicks, usageKind, false, true);
       throw new Error('invalid response shape');
     }
     const validIds = new Set(data.notes.map((n) => n.id));
     const picks = (Array.isArray(parsed.picks) ? parsed.picks : [])
       .filter((p) => p && validIds.has(p.id))
-      .slice(0, 2)
+      .slice(0, maxPicks)
       .map((p) => ({ id: p.id, why: typeof p.why === 'string' ? p.why.slice(0, 100) : '' }));
     const closing = typeof parsed.closing === 'string' ? parsed.closing.slice(0, 300) : '';
     return { picks, closing };
@@ -2229,17 +2226,37 @@
 
   // --- Claude API auto-linking ---------------------------------------------
   const CLAUDE_API_KEY_KEY = 'kotoba_claudeApiKey';
-  const CLAUDE_MODEL_KEY = 'kotoba_claudeModel';
+  const CLAUDE_MODEL_KEY = 'kotoba_claudeModel'; // v3.x legacy single-model key, read once for migration only
+  const CLAUDE_MODEL_AUTOLINK_KEY = 'kotoba_claudeModelAutoLink';
+  const CLAUDE_MODEL_CHAT_KEY = 'kotoba_claudeModelChat';
   const AUTO_LINK_ENABLED_KEY = 'kotoba_autoLinkEnabled';
   const MORNING_ENABLED_KEY = 'kotoba_morningEnabled';
   const COMPRESS_THRESHOLD_KEY = 'kotoba_compressThreshold';
-  const API_CALL_COUNT_KEY = 'kotoba_apiCallCount';
+  const USAGE_STATS_KEY = 'kotoba_usageStats';
   const LAST_AUTO_LINK_ERROR_KEY = 'kotoba_lastAutoLinkError';
-  const DEFAULT_CLAUDE_MODEL = 'claude-sonnet-5';
+  const DEFAULT_AUTOLINK_MODEL = 'claude-haiku-4-5';
+  const DEFAULT_CHAT_MODEL = 'claude-sonnet-5';
   const DEFAULT_COMPRESS_THRESHOLD = 400;
 
   function getClaudeApiKey() { return localStorage.getItem(CLAUDE_API_KEY_KEY) || ''; }
-  function getClaudeModel() { return localStorage.getItem(CLAUDE_MODEL_KEY) || DEFAULT_CLAUDE_MODEL; }
+
+  // v3.x had one shared model field; split into per-feature fields here.
+  // If a device already had a custom (non-default) value saved under the old
+  // single key and never touched the new fields, seed both from it once so
+  // that choice isn't silently dropped - a fresh device just gets the new
+  // per-feature defaults (Haiku 4.5 for auto-link, Sonnet 5 for chat).
+  function migrateLegacyClaudeModel() {
+    const legacy = localStorage.getItem(CLAUDE_MODEL_KEY);
+    if (!legacy) return;
+    if (localStorage.getItem(CLAUDE_MODEL_AUTOLINK_KEY) === null) localStorage.setItem(CLAUDE_MODEL_AUTOLINK_KEY, legacy);
+    if (localStorage.getItem(CLAUDE_MODEL_CHAT_KEY) === null) localStorage.setItem(CLAUDE_MODEL_CHAT_KEY, legacy);
+    localStorage.removeItem(CLAUDE_MODEL_KEY);
+  }
+  migrateLegacyClaudeModel();
+
+  function getClaudeAutoLinkModel() { return localStorage.getItem(CLAUDE_MODEL_AUTOLINK_KEY) || DEFAULT_AUTOLINK_MODEL; }
+  function getClaudeChatModel() { return localStorage.getItem(CLAUDE_MODEL_CHAT_KEY) || DEFAULT_CHAT_MODEL; }
+
   function getAutoLinkEnabled() {
     const v = localStorage.getItem(AUTO_LINK_ENABLED_KEY);
     return v === null ? true : v === '1';
@@ -2252,10 +2269,56 @@
     const v = parseInt(localStorage.getItem(COMPRESS_THRESHOLD_KEY), 10);
     return Number.isFinite(v) && v > 0 ? v : DEFAULT_COMPRESS_THRESHOLD;
   }
-  function incrementApiCallCount() {
-    const n = parseInt(localStorage.getItem(API_CALL_COUNT_KEY), 10) || 0;
-    localStorage.setItem(API_CALL_COUNT_KEY, String(n + 1));
+
+  // --- Usage tracking (v3.2): per-feature call counts + token totals, taken
+  // straight from each response's `usage` object. Only recorded on an
+  // actually-successful (billable) call - a failed request isn't charged, so
+  // it shouldn't count toward token totals or the cost estimate either.
+  const USAGE_KINDS = ['autolink', 'morning', 'consult', 'searchAgain'];
+  function getUsageStats() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(USAGE_STATS_KEY) || '{}');
+      return raw && typeof raw === 'object' ? raw : {};
+    } catch (e) { return {}; }
   }
+  function recordApiUsage(kind, usage) {
+    if (!usage) return;
+    const stats = getUsageStats();
+    const cur = stats[kind] || { calls: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0 };
+    cur.calls += 1;
+    cur.input += usage.input_tokens || 0;
+    cur.output += usage.output_tokens || 0;
+    cur.cacheWrite += usage.cache_creation_input_tokens || 0;
+    cur.cacheRead += usage.cache_read_input_tokens || 0;
+    stats[kind] = cur;
+    localStorage.setItem(USAGE_STATS_KEY, JSON.stringify(stats));
+  }
+
+  // Base per-MTok $ pricing (input/output) for the models this app's model
+  // fields realistically get set to. Cache write/read are derived from the
+  // input rate (1.25x / 0.1x) per Anthropic's published cache pricing.
+  const MODEL_PRICING = {
+    'claude-haiku-4-5': { input: 1, output: 5 },
+    'claude-sonnet-5': { input: 2, output: 10 },
+    'claude-opus-5': { input: 5, output: 25 },
+    'claude-fable-5-1': { input: 10, output: 50 },
+  };
+  function pricingFor(model) { return MODEL_PRICING[model] || MODEL_PRICING['claude-sonnet-5']; }
+
+  // Approximate only: uses the CURRENTLY configured model's price for a
+  // kind's whole accumulated history, even though some of those tokens may
+  // have been billed under a different model if the setting was changed
+  // since. Anthropic doesn't return a per-call cost, and tracking exact
+  // historical per-call pricing is overkill for a personal cost estimate.
+  function estimateCostUsd(stat, model) {
+    if (!stat) return 0;
+    const p = pricingFor(model);
+    return (stat.input / 1e6) * p.input
+      + (stat.output / 1e6) * p.output
+      + (stat.cacheWrite / 1e6) * p.input * 1.25
+      + (stat.cacheRead / 1e6) * p.input * 0.1;
+  }
+
   function recordAutoLinkError(message) {
     localStorage.setItem(LAST_AUTO_LINK_ERROR_KEY, JSON.stringify({ message: String(message), at: nowIso() }));
   }
@@ -2352,33 +2415,84 @@
     return [...candidates].sort((a, b) => score(b) - score(a)).slice(0, threshold);
   }
 
+  // v3.2: text/myWords trimmed further (was 120/80) purely to shrink the
+  // list that goes into the cached system block - every byte in there is
+  // what gets re-billed (at 1.25x) on the first call after any note change.
+  function buildCompactNote(n) {
+    return {
+      id: n.id,
+      text: (n.text || '').slice(0, 80),
+      source: n.source || '',
+      myWords: (n.myWords || '').slice(0, 50),
+      tags: n.tags,
+    };
+  }
+
+  // The full note list in stable (insertion) order, unfiltered by any
+  // per-call exclusion - identical across calls whenever the note set itself
+  // hasn't changed, which is exactly what makes it safe to cache. Only above
+  // the compression threshold does this fall back to compressCandidates'
+  // relevance ranking (seeded with an empty note, since there's no single
+  // per-call target to rank against once this is shared across calls) -
+  // that path necessarily varies less predictably and won't cache as well,
+  // but it only matters once a device has more notes than the threshold.
+  function stableCompactNotesList() {
+    const threshold = getCompressThreshold();
+    const list = data.notes.length > threshold
+      ? compressCandidates({ text: '', myWords: '', tags: [] }, data.notes, threshold)
+      : data.notes;
+    return list.map(buildCompactNote);
+  }
+
+  // Both cached blocks combine the (per-feature) static instructions with
+  // the notes list into one ephemeral cache_control breakpoint, so a second
+  // call with the same note set re-hits the same cache entry at 0.1x price
+  // instead of re-billing the full list at 1x every time.
+  function buildAutoLinkSystemBlocks() {
+    const text =
+      '以下はこの人が集めたノート（言葉・出典・自分の解釈・タグ）の一覧である。\n' + JSON.stringify(stableCompactNotesList()) +
+      '\n\nこのあとユーザーメッセージで対象ノートと、除外すべきid（対象自身・既にリンク済み・却下済み）を提示する。' +
+      '除外id以外の一覧の中から、対象ノートと同じ考えを別の言い方で述べている（similar）／反対の立場を取っている（opposite）／' +
+      '前提や具体例として補い合う（supplement）ノートを最大5件、関連の強い順に選び、JSONのみで返してください。' +
+      '表面的な単語の一致ではなく、考え方・態度・問いの共通性で判断してください。myWords（本人の解釈）を重視してください。' +
+      '該当がなければ空配列を返してください。reason には引用符や改行を使わないでください。\n\n' +
+      '返答形式（JSON配列のみ、他の文章は含めない）:\n' +
+      '[{"id": "...", "relation": "similar", "reason": "..."}]';
+    return [{ type: 'text', text, cache_control: { type: 'ephemeral' } }];
+  }
+
+  // Shared by the morning flow and the consult screen (same model, same
+  // instructions - only the requested pick count and the per-call input/
+  // history differ) so both hit the same cache entry rather than each
+  // maintaining its own.
+  function buildChatSystemBlocks() {
+    const text =
+      '以下はこの人が本や名言集から集めた言葉と、本人の解釈である。\n' + JSON.stringify(stableCompactNotesList()) +
+      '\n\nこのあとユーザーメッセージで、今の状態（および直近のやり取りがあればそれ）と、' +
+      '最大何件選ぶかを提示する。入力された状態に対して、指定された件数まで最も応える言葉を選び、' +
+      'それぞれになぜ近いかを30字程度で書いてください。最後に、選んだ言葉同士の関係やそこから見える一つの見方を3行以内で書いてください。' +
+      '一般論、慰め、アドバイス、ノートにない引用は書かないでください。本人の解釈（myWords）を重視してください。' +
+      '該当がなければ空にしてください。why・closing には引用符や改行を使わないでください。\n\n' +
+      '返答形式（JSONのみ、他の文章は含めない）:\n' +
+      '{"picks":[{"id":"...","why":"..."}],"closing":"..."}';
+    return [{ type: 'text', text, cache_control: { type: 'ephemeral' } }];
+  }
+
   // Calls the Messages API directly from the browser (per the v2 spec) with
   // the required anthropic-dangerous-direct-browser-access header. Retries
   // once on a 429 after a short wait, and separately once on a JSON parse
   // failure (a fresh response is often well-formed even when one wasn't) -
   // only after both the loose-array recovery and that single re-call fail
   // does this actually throw.
-  async function callClaudeApi(note, candidateNotes, is429Retry, isParseRetry) {
+  async function callClaudeApi(note, excludeIds, usageKind, is429Retry, isParseRetry) {
     const apiKey = getClaudeApiKey();
     if (!apiKey) { const e = new Error('no-api-key'); e.noKey = true; throw e; }
-    const model = getClaudeModel();
-    const compact = candidateNotes.map((n) => ({
-      id: n.id,
-      text: (n.text || '').slice(0, 120),
-      source: n.source || '',
-      myWords: (n.myWords || '').slice(0, 80),
-      tags: n.tags,
-    }));
+    const model = getClaudeAutoLinkModel();
+    const system = buildAutoLinkSystemBlocks();
     const promptText =
       '対象ノート:\n' +
       JSON.stringify({ text: note.text, source: note.source, myWords: note.myWords, tags: note.tags }) +
-      '\n\n既存ノート一覧:\n' + JSON.stringify(compact) +
-      '\n\n対象ノートと、同じ考えを別の言い方で述べている（similar）／反対の立場を取っている（opposite）／' +
-      '前提や具体例として補い合う（supplement）ノートを最大5件、関連の強い順に選び、JSONのみで返してください。' +
-      '表面的な単語の一致ではなく、考え方・態度・問いの共通性で判断してください。myWords（本人の解釈）を重視してください。' +
-      '該当がなければ空配列を返してください。reason には引用符や改行を使わないでください。\n\n' +
-      '返答形式（JSON配列のみ、他の文章は含めない）:\n' +
-      '[{"id": "...", "relation": "similar", "reason": "..."}]';
+      '\n\n除外するid（対象自身・既にリンク済み・却下済み。これらは選ばないこと）:\n' + JSON.stringify(excludeIds);
 
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -2391,25 +2505,26 @@
       body: JSON.stringify({
         model,
         max_tokens: 2048,
+        system,
         messages: [{ role: 'user', content: promptText }],
       }),
     });
 
     if (res.status === 429 && !is429Retry) {
       await sleep(2000);
-      return callClaudeApi(note, candidateNotes, true, isParseRetry);
+      return callClaudeApi(note, excludeIds, usageKind, true, isParseRetry);
     }
-    incrementApiCallCount();
     if (!res.ok) {
       const err = new Error('Claude API failed: ' + res.status);
       err.status = res.status;
       throw err;
     }
     const json = await res.json();
+    recordApiUsage(usageKind, json.usage);
     const textOut = (json.content || []).map((b) => b.text || '').join('');
     const parsed = parseJsonArrayLoose(textOut);
     if (!parsed) {
-      if (!isParseRetry) return callClaudeApi(note, candidateNotes, false, true);
+      if (!isParseRetry) return callClaudeApi(note, excludeIds, usageKind, false, true);
       throw new Error('invalid response shape');
     }
     return parsed;
@@ -2426,11 +2541,11 @@
     if (!getClaudeApiKey()) return { skipped: true };
     const linkedIds = new Set(note.links.map((l) => l.id));
     const rejectedIds = new Set(note.rejectedLinks || []);
-    let candidates = data.notes.filter((n) => n.id !== note.id && !linkedIds.has(n.id) && !rejectedIds.has(n.id));
-    candidates = compressCandidates(note, candidates, getCompressThreshold());
+    const excludeIds = [note.id, ...linkedIds, ...rejectedIds];
+    const excludeSet = new Set(excludeIds);
     try {
-      const results = await callClaudeApi(note, candidates);
-      const validIds = new Set(candidates.map((n) => n.id));
+      const results = await callClaudeApi(note, excludeIds, opts.usageKind || 'autolink');
+      const validIds = new Set(data.notes.filter((n) => !excludeSet.has(n.id)).map((n) => n.id));
       let added = 0;
       results.slice(0, 5).forEach((r) => {
         if (!r || !validIds.has(r.id)) return;
@@ -2458,12 +2573,12 @@
   // shows the small in-flight indicator, then persists+syncs only if a link
   // was actually added (so an unconfigured/disabled auto-link never touches
   // sync state).
-  async function triggerAutoLinkForNote(noteId) {
+  async function triggerAutoLinkForNote(noteId, usageKind) {
     const note = findNote(noteId);
     if (!note) return;
     autoLinkInFlight.add(noteId);
     refreshAutoLinkIndicators();
-    const result = await autoLinkNote(note, { markLinkedAt: false });
+    const result = await autoLinkNote(note, { markLinkedAt: false, usageKind: usageKind || 'autolink' });
     autoLinkInFlight.delete(noteId);
     if (result && result.ok && result.added > 0) saveData(data);
     refreshCurrentScreen();
@@ -2545,67 +2660,6 @@
     showScreen('consult');
     document.getElementById('consultInput').value = '';
     renderConsultTurns();
-  }
-
-  async function callConsultApi(input, history, is429Retry, isParseRetry) {
-    const apiKey = getClaudeApiKey();
-    if (!apiKey) { const e = new Error('no-api-key'); e.noKey = true; throw e; }
-    const model = getClaudeModel();
-    const candidates = compressCandidates({ text: input, myWords: input, tags: [] }, data.notes, getCompressThreshold());
-    const compact = candidates.map((n) => ({
-      id: n.id,
-      text: (n.text || '').slice(0, 120),
-      source: n.source || '',
-      myWords: (n.myWords || '').slice(0, 80),
-      tags: n.tags,
-    }));
-    const historyText = history && history.length ? '\n\n直近のやり取り:\n' + JSON.stringify(history) : '';
-    const promptText =
-      '以下はこの人が本や名言集から集めた言葉と、本人の解釈である。\n' + JSON.stringify(compact) +
-      historyText +
-      '\n\n入力された状態:\n' + input +
-      '\n\n入力された状態に対して、最も応える言葉を最大3件選び、それぞれになぜ近いかを30字程度で書いてください。' +
-      '最後に、選んだ言葉同士の関係やそこから見える一つの見方を3行以内で書いてください。' +
-      '一般論、慰め、アドバイス、ノートにない引用は書かないでください。本人の解釈（myWords）を重視してください。' +
-      '該当がなければ空にしてください。why・closing には引用符や改行を使わないでください。\n\n' +
-      '返答形式（JSONのみ、他の文章は含めない）:\n' +
-      '{"picks":[{"id":"...","why":"..."}],"closing":"..."}';
-
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify({ model, max_tokens: 2048, messages: [{ role: 'user', content: promptText }] }),
-    });
-
-    if (res.status === 429 && !is429Retry) {
-      await sleep(2000);
-      return callConsultApi(input, history, true, isParseRetry);
-    }
-    incrementApiCallCount();
-    if (!res.ok) {
-      const err = new Error('Claude API failed: ' + res.status);
-      err.status = res.status;
-      throw err;
-    }
-    const json = await res.json();
-    const textOut = (json.content || []).map((b) => b.text || '').join('');
-    const parsed = parseConsultResponseLoose(textOut);
-    if (!parsed) {
-      if (!isParseRetry) return callConsultApi(input, history, false, true);
-      throw new Error('invalid response shape');
-    }
-    const validIds = new Set(data.notes.map((n) => n.id));
-    const picks = (Array.isArray(parsed.picks) ? parsed.picks : [])
-      .filter((p) => p && validIds.has(p.id))
-      .slice(0, 3)
-      .map((p) => ({ id: p.id, why: typeof p.why === 'string' ? p.why.slice(0, 100) : '' }));
-    const closing = typeof parsed.closing === 'string' ? parsed.closing.slice(0, 300) : '';
-    return { picks, closing };
   }
 
   function openEditorFromConsult(inputText) {
@@ -2727,7 +2781,7 @@
     consultTurns.push(turn);
     renderConsultTurns();
     try {
-      const result = await callConsultApi(input, historyForThisCall);
+      const result = await callChatApi(input, historyForThisCall, 3, 'consult');
       turn.status = 'done';
       turn.picks = result.picks;
       turn.closing = result.closing;
@@ -3002,7 +3056,8 @@
     loading.textContent = '言葉を探しています…';
     container.appendChild(loading);
     try {
-      const result = await callMorningApi(input, moodLevel);
+      const effectiveInput = input && input.trim() ? input.trim() : `今朝の体調は5段階でレベル${moodLevel}。それに合う言葉を選ぶ。`;
+      const result = await callChatApi(effectiveInput, [], 2, 'morning');
       const iso = nowIso();
       const entry = { id: generateJournalId(), date: today, kind: 'morning', mood: moodLevel, text: input, picks: result.picks, closing: result.closing, createdAt: iso, updatedAt: iso };
       saveJournalEntry(entry);
@@ -3410,7 +3465,7 @@
     backFromDetail();
   });
   document.getElementById('btnRelinkNote').addEventListener('click', () => {
-    triggerAutoLinkForNote(nav.detailId);
+    triggerAutoLinkForNote(nav.detailId, 'searchAgain');
   });
 
   // Note image share: images only per spec (no text passed alongside), so
@@ -4652,6 +4707,16 @@
     return { synced: '同期済み', error: 'エラー', syncing: '同期中…', off: 'オフ', offline: 'オフライン', unsynced: '未同期' }[state] || state;
   }
 
+  function formatTokenCount(n) {
+    return n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
+  }
+  function formatUsageRow(stat, model) {
+    if (!stat || !stat.calls) return '-';
+    const totalInput = stat.input + stat.cacheWrite + stat.cacheRead;
+    const cost = estimateCostUsd(stat, model);
+    return `${stat.calls}回・入力${formatTokenCount(totalInput)}/出力${formatTokenCount(stat.output)}・約$${cost.toFixed(3)}`;
+  }
+
   function loadWalkStatsFormFor(dateStr) {
     const stats = walkData.dailyStats[dateStr] || {};
     document.getElementById('walkStatsStepsInput').value = stats.steps != null ? stats.steps : '';
@@ -4662,7 +4727,8 @@
     showScreen('settings');
     document.getElementById('ghTokenInput').value = getGhToken();
     document.getElementById('claudeApiKeyInput').value = getClaudeApiKey();
-    document.getElementById('claudeModelInput').value = getClaudeModel();
+    document.getElementById('claudeModelAutoLinkInput').value = getClaudeAutoLinkModel();
+    document.getElementById('claudeModelChatInput').value = getClaudeChatModel();
     document.getElementById('autoLinkToggle').checked = getAutoLinkEnabled();
     document.getElementById('morningEnabledToggle').checked = getMorningEnabled();
     document.getElementById('compressThresholdInput').value = getCompressThreshold();
@@ -4673,9 +4739,22 @@
     const walkDerived = computeWalkDerived();
     document.getElementById('statWalkDays').textContent = walkDerived.n;
     document.getElementById('statWalkStreak').textContent = walkDerived.streak;
-    document.getElementById('statApiCallCount').textContent = parseInt(localStorage.getItem(API_CALL_COUNT_KEY), 10) || 0;
     const lastErr = getLastAutoLinkError();
     document.getElementById('statLastAutoLinkError').textContent = lastErr ? `${lastErr.message}（${formatDateTime(lastErr.at)}）` : '-';
+
+    const usage = getUsageStats();
+    const autoLinkModel = getClaudeAutoLinkModel();
+    const chatModel = getClaudeChatModel();
+    document.getElementById('statUsageAutolink').textContent = formatUsageRow(usage.autolink, autoLinkModel);
+    document.getElementById('statUsageMorning').textContent = formatUsageRow(usage.morning, chatModel);
+    document.getElementById('statUsageConsult').textContent = formatUsageRow(usage.consult, chatModel);
+    document.getElementById('statUsageSearchAgain').textContent = formatUsageRow(usage.searchAgain, autoLinkModel);
+    const totalCost = estimateCostUsd(usage.autolink, autoLinkModel)
+      + estimateCostUsd(usage.morning, chatModel)
+      + estimateCostUsd(usage.consult, chatModel)
+      + estimateCostUsd(usage.searchAgain, autoLinkModel);
+    const totalCalls = USAGE_KINDS.reduce((sum, k) => sum + ((usage[k] && usage[k].calls) || 0), 0);
+    document.getElementById('statUsageTotalCost').textContent = totalCalls ? `約$${totalCost.toFixed(3)}` : '-';
     document.getElementById('statSyncState').textContent = noteSyncState === walkSyncState
       ? syncStateLabel(noteSyncState)
       : `言葉: ${syncStateLabel(noteSyncState)} / 散歩: ${syncStateLabel(walkSyncState)}`;
@@ -4723,9 +4802,11 @@
 
   document.getElementById('btnSaveClaudeSettings').addEventListener('click', () => {
     const key = document.getElementById('claudeApiKeyInput').value.trim();
-    const model = document.getElementById('claudeModelInput').value.trim();
+    const autoLinkModel = document.getElementById('claudeModelAutoLinkInput').value.trim();
+    const chatModel = document.getElementById('claudeModelChatInput').value.trim();
     if (key) localStorage.setItem(CLAUDE_API_KEY_KEY, key); else localStorage.removeItem(CLAUDE_API_KEY_KEY);
-    localStorage.setItem(CLAUDE_MODEL_KEY, model || DEFAULT_CLAUDE_MODEL);
+    localStorage.setItem(CLAUDE_MODEL_AUTOLINK_KEY, autoLinkModel || DEFAULT_AUTOLINK_MODEL);
+    localStorage.setItem(CLAUDE_MODEL_CHAT_KEY, chatModel || DEFAULT_CHAT_MODEL);
     alert('保存しました');
   });
 
