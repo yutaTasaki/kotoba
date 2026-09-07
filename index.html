@@ -9,6 +9,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#121212">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #121212;
@@ -165,6 +168,11 @@
   .bottomNav {
     display: flex;
     gap: 10px;
+    position: sticky;
+    bottom: 0;
+    background: var(--bg);
+    padding: 10px 0 calc(10px + env(safe-area-inset-bottom));
+    margin-top: 4px;
   }
   .navBtn {
     flex: 1;
@@ -173,6 +181,7 @@
     padding: 14px;
     color: var(--text-dim);
   }
+  .navBtn.selected { color: var(--accent); border-color: var(--accent-dim); }
   input[type="text"], input[type="search"], input[type="password"], input[type="date"], textarea {
     font-family: inherit;
     font-size: 16px;
@@ -403,6 +412,74 @@
     padding: 4px;
   }
   [hidden] { display: none !important; }
+
+  /* --- v3: morning flow / walk --------------------------------------- */
+  .dayCount { text-align: center; font-size: 13px; color: var(--text-dim); }
+  .moodRow { display: flex; gap: 6px; }
+  .moodBtn {
+    flex: 1 1 0;
+    min-width: 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 2px;
+    font-size: 30px;
+    line-height: 1;
+    opacity: 0.4;
+  }
+  .moodBtn.selected { opacity: 1; border-color: var(--accent); }
+  .morningStage { display: flex; flex-direction: column; gap: 14px; }
+  .morningInputRow { display: flex; flex-direction: column; gap: 10px; }
+  .linkLikeBtn {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 14px;
+    text-decoration: underline;
+    padding: 4px;
+    align-self: center;
+  }
+  #walkPreviewCanvas {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    height: auto;
+    display: block;
+    border-radius: 20px;
+  }
+  #walkShareStatus { text-align: center; font-size: 12px; color: var(--text-faint); min-height: 1em; }
+  #walkShareStatus.error { color: var(--danger); }
+  .todaySummary { background: var(--bg-card); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 10px; }
+  .calNav { display: flex; align-items: center; gap: 8px; }
+  .calNav button { width: auto; padding: 10px 14px; font-size: 15px; }
+  #calMonthLabel { flex: 1; text-align: center; font-size: 16px; }
+  .calGrid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .calWeekday { text-align: center; font-size: 11px; color: var(--text-faint); padding: 2px 0; }
+  .calCell {
+    aspect-ratio: 1 / 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: none;
+    color: var(--text);
+    font-size: 13px;
+    padding: 2px;
+  }
+  .calCell .calSteps { font-size: 8px; color: var(--text-faint); line-height: 1; }
+  .calCell.walked { background: var(--accent); color: #121212; border-color: var(--accent); }
+  .calCell.walked .calSteps { color: #0d1f17; }
+  .calCell.disabled { background: none; color: #444; border-color: #1e1e1e; cursor: default; }
+  .calCell.empty { border: none; cursor: default; }
+  .recordEntry { background: var(--bg-card); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .recordEntryTop { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .recordEntryDate { font-size: 13px; color: var(--text-dim); }
+  .recordEntryDelete { color: var(--text-faint); font-size: 13px; }
+  .recordSubTabs { display: flex; gap: 10px; }
+  .journalCardMini { background: var(--bg-elevated); border-radius: 10px; padding: 10px 12px; cursor: pointer; }
+  .journalCardMini .lText { font-size: 14px; }
 </style>
 </head>
 <body>
@@ -411,27 +488,57 @@
 
   <section id="screen-home" class="screen">
     <header class="topbar">
-      <div class="topbar-title" style="text-align:left;">kotoba</div>
+      <div class="topbar-title" style="text-align:left;">朝</div>
       <button id="btnAddFromHome" class="iconBtn">＋ 追加</button>
     </header>
-    <div id="homeCard" class="cardHome" hidden>
-      <div class="cardText" id="homeText"></div>
-      <div class="cardSource" id="homeSource"></div>
-      <div class="cardMyWords" id="homeMyWords"></div>
-      <div class="cardTags" id="homeTags"></div>
-    </div>
+    <div class="dayCount" id="dayCountLabel"></div>
     <div id="homeEmpty" class="emptyMsg" hidden>まだノートがありません。「＋ 追加」から最初の1枚を書いてみましょう。</div>
-    <div id="homeLinksSection" class="field" hidden>
-      <h3>つながり</h3>
-      <p class="fieldNote" id="homeLinkingStatus" hidden>関連を探しています…</p>
-      <div id="homeLinksList" class="detailLinksList"></div>
+
+    <div class="field">
+      <span class="fieldLabel">今朝の体調</span>
+      <div class="moodRow" id="wakeMoodRow"></div>
     </div>
-    <button id="btnNextCard" class="primaryBtn">次の1枚</button>
-    <nav class="bottomNav">
-      <button id="navList" class="navBtn">一覧</button>
-      <button id="navConsult" class="navBtn">相談</button>
-      <button id="navSettings" class="navBtn">設定</button>
-    </nav>
+
+    <div id="morningWordsStage" class="morningStage" hidden>
+      <div class="morningInputRow">
+        <textarea id="morningInput" rows="2" placeholder="今朝はどんな感じ？（任意）" autocomplete="off"></textarea>
+        <button id="btnMorningAsk" class="primaryBtn">言葉を受け取る</button>
+        <button id="btnMorningSkip" type="button" class="linkLikeBtn">今日はいい</button>
+      </div>
+    </div>
+
+    <div id="morningCardsStage" class="morningStage" hidden>
+      <div id="morningCards" class="consultTurns"></div>
+    </div>
+
+    <div id="walkStage" class="morningStage" hidden>
+      <button id="btnWalkToday" class="primaryBtn">今日歩いた</button>
+    </div>
+
+    <div id="afterWalkStage" class="morningStage" hidden>
+      <div class="field">
+        <span class="fieldLabel">散歩後の体調</span>
+        <div class="moodRow" id="afterMoodRow"></div>
+      </div>
+      <div class="field">
+        <span class="fieldLabel">歩数・距離（任意）</span>
+        <input type="number" id="walkStepsInput" min="0" placeholder="歩数（歩）">
+        <input type="number" id="walkDistanceInput" min="0" placeholder="距離（m）">
+        <button id="btnSaveWalkStats" class="secondaryBtn">保存</button>
+      </div>
+      <canvas id="walkPreviewCanvas" width="1080" height="1080"></canvas>
+      <button id="btnWalkShare" class="primaryBtn">Xで投稿</button>
+      <div id="walkShareStatus"></div>
+    </div>
+
+    <div id="todaySummaryStage" class="todaySummary" hidden>
+      <div class="statRow"><span>今朝</span><span id="summaryWakeMood"></span></div>
+      <div class="statRow"><span>散歩後</span><span id="summaryAfterMood"></span></div>
+      <div class="detailField"><span class="fieldLabel">今朝の言葉</span><div id="summaryMorningText"></div></div>
+      <div class="statRow"><span>日数</span><span id="summaryDayCount"></span></div>
+    </div>
+
+    <button id="btnWalkYesterday" type="button" class="linkLikeBtn" hidden>昨日の分を記録</button>
   </section>
 
   <section id="screen-list" class="screen" hidden>
@@ -548,7 +655,7 @@
     <div class="settingsBody">
       <div class="field">
         <h3>GitHub token</h3>
-        <p class="fieldNote">同期先: yutaTasaki/kotoba-data（private）。手順はkotoba-dataリポジトリのREADMEを参照。</p>
+        <p class="fieldNote">同期先: yutaTasaki/kotoba-data と yutaTasaki/walk10000-data（いずれもprivate）。両方への Contents: Read and write 権限を持つトークンを1つ入力してください。</p>
         <input id="ghTokenInput" type="text" placeholder="github_pat_..." autocomplete="off" spellcheck="false">
         <button id="btnSaveGhToken" class="secondaryBtn">保存</button>
       </div>
@@ -608,6 +715,13 @@
     </div>
   </section>
 
+  <nav class="bottomNav" id="globalBottomNav">
+    <button id="navHome" class="navBtn">朝</button>
+    <button id="navList" class="navBtn">言葉</button>
+    <button id="navConsult" class="navBtn">相談</button>
+    <button id="navSettings" class="navBtn">設定</button>
+  </nav>
+
 </div>
 <script>
 (() => {
@@ -644,8 +758,42 @@
 
   function nowIso() { return new Date().toISOString(); }
 
+  // Shared local-calendar-date helpers (used by both walk data and journal
+  // entries, which both key off device-local YYYY-MM-DD, same as walk10000).
+  function parseDateStr(s) { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); }
+  function formatDateStr(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+  function todayStr() { return formatDateStr(new Date()); }
+  function addDays(s, n) { const d = parseDateStr(s); d.setDate(d.getDate() + n); return formatDateStr(d); }
+  function dotDate(s) { return s.replace(/-/g, '.'); }
+
   function defaultData() {
-    return { version: 2, updatedAt: nowIso(), notes: [], deletedIds: [] };
+    return { version: 2, updatedAt: nowIso(), notes: [], deletedIds: [], journal: [], deletedJournalIds: [] };
+  }
+
+  // journal entries: kind 'morning' (今朝の言葉) or 'consult' (相談の記録),
+  // one per API response. Entry-level merge/tombstone, same pattern as notes.
+  function normalizeJournalEntry(j) {
+    if (!j || !j.id) return null;
+    const kind = j.kind === 'consult' ? 'consult' : 'morning';
+    const out = {
+      id: String(j.id),
+      date: j.date || todayStr(),
+      kind,
+      text: typeof j.text === 'string' ? j.text : '',
+      picks: Array.isArray(j.picks)
+        ? j.picks.filter((p) => p && p.id).map((p) => ({ id: String(p.id), why: typeof p.why === 'string' ? p.why : '' }))
+        : [],
+      closing: typeof j.closing === 'string' ? j.closing : '',
+      createdAt: j.createdAt || nowIso(),
+      updatedAt: j.updatedAt || j.createdAt || nowIso(),
+    };
+    if (kind === 'morning') out.mood = Number.isFinite(j.mood) ? j.mood : null;
+    return out;
   }
 
   const RELATIONS = ['similar', 'opposite', 'supplement'];
@@ -692,11 +840,16 @@
     const deletedIds = Array.isArray(parsed.deletedIds)
       ? parsed.deletedIds.filter((d) => d && d.id).map((d) => ({ id: String(d.id), deletedAt: d.deletedAt || nowIso() }))
       : [];
+    const deletedJournalIds = Array.isArray(parsed.deletedJournalIds)
+      ? parsed.deletedJournalIds.filter((d) => d && d.id).map((d) => ({ id: String(d.id), deletedAt: d.deletedAt || nowIso() }))
+      : [];
     return {
       version: 2,
       updatedAt: parsed.updatedAt || nowIso(),
       notes: parsed.notes.filter((n) => n && n.id).map(normalizeNote),
       deletedIds,
+      journal: Array.isArray(parsed.journal) ? parsed.journal.filter((j) => j && j.id).map(normalizeJournalEntry).filter(Boolean) : [],
+      deletedJournalIds,
     };
   }
 
@@ -855,11 +1008,41 @@
     });
     mergedNotes.forEach((_, id) => mergedDeleted.delete(id));
 
+    // journal: same per-entry union + tombstone approach as notes above.
+    const journalA = new Map((a.journal || []).map((j) => [j.id, j]));
+    const journalB = new Map((b.journal || []).map((j) => [j.id, j]));
+    const jDelA = new Map((a.deletedJournalIds || []).map((d) => [d.id, d.deletedAt]));
+    const jDelB = new Map((b.deletedJournalIds || []).map((d) => [d.id, d.deletedAt]));
+    const allJIds = new Set([...journalA.keys(), ...journalB.keys()]);
+    const mergedJournal = new Map();
+    allJIds.forEach((id) => {
+      const ja = journalA.get(id);
+      const jb = journalB.get(id);
+      let winner;
+      if (ja && jb) {
+        winner = new Date(ja.updatedAt) >= new Date(jb.updatedAt) ? ja : jb;
+      } else {
+        const only = ja || jb;
+        const tombstoneAt = ja ? jDelB.get(id) : jDelA.get(id);
+        winner = (tombstoneAt && new Date(tombstoneAt) >= new Date(only.updatedAt)) ? null : only;
+      }
+      if (winner) mergedJournal.set(id, { ...winner, picks: (winner.picks || []).map((p) => ({ ...p })) });
+    });
+    const mergedJDeleted = new Map();
+    jDelA.forEach((at, id) => mergedJDeleted.set(id, at));
+    jDelB.forEach((at, id) => {
+      const cur = mergedJDeleted.get(id);
+      if (!cur || new Date(at) > new Date(cur)) mergedJDeleted.set(id, at);
+    });
+    mergedJournal.forEach((_, id) => mergedJDeleted.delete(id));
+
     const merged = {
       version: 2,
       updatedAt: nowIso(),
       notes: [...mergedNotes.values()],
       deletedIds: [...mergedDeleted.entries()].map(([id, deletedAt]) => ({ id, deletedAt })),
+      journal: [...mergedJournal.values()],
+      deletedJournalIds: [...mergedJDeleted.entries()].map(([id, deletedAt]) => ({ id, deletedAt })),
     };
     pruneDanglingLinks(merged);
     return merged;
@@ -901,27 +1084,50 @@
     return res.json();
   }
 
+  // v3: one token drives two independent repo syncs (kotoba-data for notes+
+  // journal, walk10000-data for walk data). The bar shows one combined status
+  // - worst-state-wins (syncing > error > offline > unsynced > synced) - so
+  // the user never has to read two separate indicators.
   const syncBarEl = document.getElementById('syncBar');
-  function setSyncStatus(state) {
+  let noteSyncState = getGhToken() ? 'unsynced' : 'off';
+  let walkSyncState = getGhToken() ? 'unsynced' : 'off';
+
+  function combinedPendingCount() { return pendingChangeCount + (typeof walkPendingChangeCount === 'number' ? walkPendingChangeCount : 0); }
+
+  function renderSyncBar() {
+    const states = [noteSyncState, walkSyncState];
+    let state;
+    if (states.includes('syncing')) state = 'syncing';
+    else if (states.includes('error')) state = 'error';
+    else if (states.includes('offline')) state = 'offline';
+    else if (states.every((s) => s === 'off')) state = 'off';
+    else if (states.includes('unsynced')) state = 'unsynced';
+    else state = 'synced';
+
+    const pending = combinedPendingCount();
     let text;
     if (state === 'synced') {
-      const t = localStorage.getItem(LAST_SYNC_KEY);
-      text = t ? `同期済み ${formatDateTime(t)}` : '同期済み';
+      const t1 = localStorage.getItem(LAST_SYNC_KEY);
+      const t2 = localStorage.getItem(WALK_LAST_SYNC_KEY);
+      const latest = [t1, t2].filter(Boolean).sort().pop();
+      text = latest ? `同期済み ${formatDateTime(latest)}` : '同期済み';
     } else if (state === 'error') {
-      text = pendingChangeCount > 0 ? `同期エラー（未反映 ${pendingChangeCount}件）` : '同期エラー（次回保存時に再試行します）';
+      text = pending > 0 ? `同期エラー（未反映 ${pending}件）` : '同期エラー（次回保存時に再試行します）';
     } else if (state === 'syncing') {
       text = '同期中…';
     } else if (state === 'off') {
       text = '';
     } else if (state === 'offline') {
-      text = 'オフライン' + (pendingChangeCount > 0 ? `（未反映 ${pendingChangeCount}件）` : '');
+      text = 'オフライン' + (pending > 0 ? `（未反映 ${pending}件）` : '');
     } else {
-      text = pendingChangeCount > 1 ? `未同期（${pendingChangeCount}件）` : '未同期';
+      text = pending > 1 ? `未同期（${pending}件）` : '未同期';
     }
-    syncBarEl.className = state + ((pendingChangeCount >= 2 && state !== 'synced' && state !== 'syncing') ? ' prominent' : '');
+    syncBarEl.className = state + ((pending >= 2 && state !== 'synced' && state !== 'syncing') ? ' prominent' : '');
     syncBarEl.textContent = text;
   }
-  setSyncStatus(getGhToken() ? 'unsynced' : 'off');
+
+  function setSyncStatus(state) { noteSyncState = state; renderSyncBar(); }
+  function setWalkSyncStatus(state) { walkSyncState = state; renderSyncBar(); }
 
   let syncDebounceTimer = null;
   function scheduleSync() {
@@ -932,7 +1138,7 @@
   }
 
   function emptyRemoteData() {
-    return { version: 2, updatedAt: nowIso(), notes: [], deletedIds: [] };
+    return { version: 2, updatedAt: nowIso(), notes: [], deletedIds: [], journal: [], deletedJournalIds: [] };
   }
 
   // Push data (already merged with the latest remote fetch). On a 409 (someone
@@ -1019,6 +1225,618 @@
     if (isNaN(d)) return '-';
     const p = (n) => String(n).padStart(2, '0');
     return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+
+  // --- Walk data (v3: ported from walk10000, same shape/repo) --------------
+  // Structure is byte-for-byte what walk10000 itself reads/writes
+  // ({startDate, walkedDates, dailyStats, bestStreakOverride?}) so the old
+  // app keeps working untouched against the same walk10000-data repo.
+  const WALK_STORAGE_KEY = 'kotoba_walkData';
+  const WALK_BACKUP_KEY = 'kotoba_walkData_backup';
+  const WALK_LAST_SYNC_KEY = 'kotoba_walkLastSyncAt';
+  // Device-local only ("Xで投稿" completion for today) - deliberately NOT
+  // part of walkData/dailyStats, since that object's shape must not change.
+  const WALK_POSTED_DATE_KEY = 'kotoba_walkPostedDate';
+  const GITHUB_REPO_WALK = 'walk10000-data';
+
+  function walkDefaultData() { return { startDate: todayStr(), walkedDates: [], dailyStats: {} }; }
+
+  function normalizeWalkData(parsed) {
+    if (!parsed || typeof parsed !== 'object' || !parsed.startDate || !Array.isArray(parsed.walkedDates)) return null;
+    if (!parsed.dailyStats || typeof parsed.dailyStats !== 'object') parsed.dailyStats = {};
+    return parsed;
+  }
+
+  function loadWalkData() {
+    try {
+      const raw = localStorage.getItem(WALK_STORAGE_KEY);
+      if (raw) {
+        const parsed = normalizeWalkData(JSON.parse(raw));
+        if (parsed) return parsed;
+      }
+    } catch (e) {}
+    try {
+      const rawBackup = localStorage.getItem(WALK_BACKUP_KEY);
+      if (rawBackup) {
+        const parsedBackup = normalizeWalkData(JSON.parse(rawBackup));
+        if (parsedBackup) { persistWalkLocal(parsedBackup); return parsedBackup; }
+      }
+    } catch (e) {}
+    return walkDefaultData();
+  }
+
+  function persistWalkLocal(d) { localStorage.setItem(WALK_STORAGE_KEY, JSON.stringify(d)); }
+  function backupWalkData(d) { try { localStorage.setItem(WALK_BACKUP_KEY, JSON.stringify(d)); } catch (e) {} }
+
+  let walkData = loadWalkData();
+  let walkPendingChangeCount = 0;
+
+  function saveWalkData(d) {
+    persistWalkLocal(d);
+    walkPendingChangeCount++;
+    scheduleWalkSync();
+  }
+
+  async function ghGetWalkFile(token) {
+    const res = await fetch(
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO_WALK}/contents/${GITHUB_PATH}`,
+      { headers: ghHeaders(token), cache: 'no-store' }
+    );
+    if (res.status === 404) return { data: null, sha: null };
+    if (!res.ok) throw new Error('GitHub GET failed: ' + res.status);
+    const json = await res.json();
+    const parsed = normalizeWalkData(JSON.parse(base64ToUtf8(json.content)));
+    return { data: parsed, sha: json.sha };
+  }
+
+  async function ghPutWalkFile(token, newData, sha) {
+    const body = {
+      message: `walk10000: ${newData.walkedDates.length} days`,
+      content: utf8ToBase64(JSON.stringify(newData, null, 2)),
+    };
+    if (sha) body.sha = sha;
+    const res = await fetch(
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO_WALK}/contents/${GITHUB_PATH}`,
+      { method: 'PUT', headers: ghHeaders(token), body: JSON.stringify(body) }
+    );
+    if (!res.ok) { const err = new Error('GitHub PUT failed: ' + res.status); err.status = res.status; throw err; }
+    return res.json();
+  }
+
+  let walkSyncDebounceTimer = null;
+  function scheduleWalkSync() {
+    if (!getGhToken()) return;
+    if (walkSyncDebounceTimer) clearTimeout(walkSyncDebounceTimer);
+    setWalkSyncStatus('unsynced');
+    walkSyncDebounceTimer = setTimeout(walkSyncNow, 800);
+  }
+
+  let walkSyncInFlight = false;
+  // Same "pull if remote has strictly more walked days, else push" rule
+  // walk10000 itself uses - keeping the exact same rule (rather than a
+  // per-day merge) means the two apps can be pointed at the same repo during
+  // the transition period without disagreeing about what "ahead" means.
+  async function walkSyncNow() {
+    const token = getGhToken();
+    if (!token) { setWalkSyncStatus('off'); return; }
+    if (nav.screen === 'editor') return;
+    if (walkSyncInFlight) return;
+    if (!navigator.onLine) { setWalkSyncStatus('offline'); return; }
+    walkSyncInFlight = true;
+    setWalkSyncStatus('syncing');
+    try {
+      const remote = await ghGetWalkFile(token);
+      if (remote.data && remote.data.walkedDates.length > walkData.walkedDates.length) {
+        walkData = remote.data;
+        persistWalkLocal(walkData);
+        backupWalkData(walkData);
+        refreshCurrentScreen();
+      } else {
+        await ghPutWalkFile(token, walkData, remote.sha);
+        backupWalkData(walkData);
+      }
+      localStorage.setItem(WALK_LAST_SYNC_KEY, nowIso());
+      walkPendingChangeCount = 0;
+      setWalkSyncStatus('synced');
+    } catch (e) {
+      setWalkSyncStatus('error');
+    } finally {
+      walkSyncInFlight = false;
+    }
+  }
+
+  // For explicit user-confirmed overwrites (import, delete-all): push
+  // regardless of the day-count check, same rationale as hardPushCurrentData.
+  async function walkForcePush() {
+    const token = getGhToken();
+    if (!token) return;
+    if (walkSyncDebounceTimer) clearTimeout(walkSyncDebounceTimer);
+    setWalkSyncStatus('syncing');
+    try {
+      const remote = await ghGetWalkFile(token);
+      await ghPutWalkFile(token, walkData, remote.sha);
+      backupWalkData(walkData);
+      localStorage.setItem(WALK_LAST_SYNC_KEY, nowIso());
+      walkPendingChangeCount = 0;
+      setWalkSyncStatus('synced');
+    } catch (e) {
+      setWalkSyncStatus('error');
+    }
+  }
+
+  async function syncAllNow() {
+    await Promise.all([syncNow(), walkSyncNow()]);
+  }
+
+  // --- Walk derived values / canvas / share (ported verbatim from walk10000,
+  // operating on walkData instead of walk10000's own top-level `data`) ------
+  const MOOD_EMOJI = { 1: '🤢', 2: '😩', 3: '😐', 4: '🙂', 5: '😆' };
+
+  function computeWalkDerived() {
+    const n = walkData.walkedDates.length;
+    const cardNumber = n === 0 ? 1 : Math.floor((n - 1) / 100) + 1;
+    const filledInCard = n - (cardNumber - 1) * 100;
+
+    const set = new Set(walkData.walkedDates);
+    const sorted = [...walkData.walkedDates].sort();
+    let longest = 0, current = 0, prev = null;
+    for (const d of sorted) {
+      if (prev && (parseDateStr(d) - parseDateStr(prev)) / 86400000 === 1) current += 1;
+      else current = 1;
+      longest = Math.max(longest, current);
+      prev = d;
+    }
+    longest = Math.max(longest, walkData.bestStreakOverride || 0);
+
+    const today = todayStr();
+    const yesterday = addDays(today, -1);
+    let streak = 0, anchor = null;
+    if (set.has(today)) anchor = today;
+    else if (set.has(yesterday)) anchor = yesterday;
+    if (anchor) {
+      streak = 1;
+      let cursor = addDays(anchor, -1);
+      while (set.has(cursor)) { streak++; cursor = addDays(cursor, -1); }
+    }
+    return { n, cardNumber, filledInCard, streak, longest, today, yesterday, todayWalked: set.has(today) };
+  }
+
+  function computeWalkRecentStats(days) {
+    const set = new Set(walkData.walkedDates);
+    const today = todayStr();
+    let walked = 0, steps = 0, distanceM = 0;
+    let wakeSum = 0, wakeCount = 0, afterSum = 0, afterCount = 0;
+    let timeSum = 0, timeCount = 0;
+    for (let i = 0; i < days; i++) {
+      const d = addDays(today, -i);
+      if (set.has(d)) walked++;
+      const stats = walkData.dailyStats[d];
+      if (stats) {
+        if (stats.steps != null) steps += stats.steps;
+        if (stats.distanceM != null) distanceM += stats.distanceM;
+        if (stats.wakeMood != null) { wakeSum += stats.wakeMood; wakeCount++; }
+        if (stats.afterMood != null) { afterSum += stats.afterMood; afterCount++; }
+        if (stats.recordedAt) {
+          const t = new Date(stats.recordedAt);
+          timeSum += t.getHours() * 60 + t.getMinutes();
+          timeCount++;
+        }
+      }
+    }
+    return {
+      walked, steps, distanceKm: distanceM / 1000,
+      wakeAvg: wakeCount ? wakeSum / wakeCount : null,
+      afterAvg: afterCount ? afterSum / afterCount : null,
+      timeAvgMinutes: timeCount ? Math.round(timeSum / timeCount) : null,
+    };
+  }
+
+  function formatMinutesAsTime(minutes) {
+    const h = Math.floor(minutes / 60) % 24;
+    const m = minutes % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }
+
+  function roundRectPath(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function drawLargeGrid(ctx, x, y, filled, cell, gap, fillColor, unfilledColor) {
+    for (let i = 0; i < 100; i++) {
+      const row = Math.floor(i / 10), col = i % 10;
+      const cx = x + col * (cell + gap);
+      const cy = y + row * (cell + gap);
+      if (i < filled) {
+        ctx.fillStyle = fillColor;
+        ctx.fillRect(cx, cy, cell, cell);
+      } else {
+        ctx.strokeStyle = unfilledColor;
+        ctx.lineWidth = 3;
+        ctx.strokeRect(cx + 1.5, cy + 1.5, cell - 3, cell - 3);
+      }
+    }
+    return { width: cell * 10 + gap * 9, height: cell * 10 + gap * 9 };
+  }
+
+  function drawSmallGrid(ctx, x, y, currentIndex0, cell, gap, fillColor, futureColor) {
+    let currentCellRect = null;
+    for (let i = 0; i < 100; i++) {
+      const row = Math.floor(i / 10), col = i % 10;
+      const cx = x + col * (cell + gap);
+      const cy = y + row * (cell + gap);
+      if (i < currentIndex0) {
+        ctx.fillStyle = fillColor;
+        ctx.fillRect(cx, cy, cell, cell);
+      } else if (i === currentIndex0) {
+        ctx.fillStyle = fillColor;
+        ctx.fillRect(cx, cy, cell, cell);
+        ctx.strokeStyle = fillColor;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(cx - 2, cy - 2, cell + 4, cell + 4);
+        currentCellRect = { x: cx, y: cy, w: cell, h: cell };
+      } else {
+        ctx.fillStyle = futureColor;
+        ctx.fillRect(cx, cy, cell, cell);
+      }
+    }
+    return { width: cell * 10 + gap * 9, height: cell * 10 + gap * 9, currentCellRect, cellSize: cell };
+  }
+
+  function getWalkMilestone(n, cardNumber) {
+    if (n <= 0) return null;
+    if (n === 1 || n === 10000 || n % 1000 === 0) return { type: 'special' };
+    if (n % 100 === 0) return { type: 'normal', cardNumber };
+    return null;
+  }
+
+  function drawWalkImage(canvas) {
+    const WALK_BRIGHT = '#39FF14', WALK_DARK = '#1E7A0F', WALK_UNFILLED_BORDER = '#145A0A', WALK_FUTURE = '#0B2A05';
+    const ctx = canvas.getContext('2d');
+    const W = 1080, H = 1080, MARGIN = 60;
+    const derived = computeWalkDerived();
+    const milestone = getWalkMilestone(derived.n, derived.cardNumber);
+    const isNormalMilestone = milestone && milestone.type === 'normal';
+    const isSpecial = milestone && milestone.type === 'special';
+    const GOLD = '#FFD700';
+
+    const digitColor = (isNormalMilestone || isSpecial) ? GOLD : WALK_BRIGHT;
+    const largeFillColor = (isNormalMilestone || isSpecial) ? GOLD : WALK_BRIGHT;
+    const smallFillColor = isSpecial ? GOLD : WALK_BRIGHT;
+    const borderColor = isSpecial ? GOLD : WALK_BRIGHT;
+
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#000';
+    roundRectPath(ctx, 0, 0, W, H, 20);
+    ctx.fill();
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = borderColor;
+    roundRectPath(ctx, 3, 3, W - 6, H - 6, 17);
+    ctx.stroke();
+
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+
+    const headerFontSize = 26;
+    ctx.font = `${headerFontSize}px 'DotGothic16'`;
+    ctx.fillStyle = WALK_BRIGHT;
+    ctx.textAlign = 'right';
+    ctx.fillText(`${dotDate(walkData.startDate)} → ${dotDate(derived.today)}`, W - MARGIN, MARGIN);
+    ctx.textAlign = 'left';
+    if (isNormalMilestone) ctx.fillText(`CARD ${milestone.cardNumber} COMPLETE`, MARGIN, MARGIN);
+
+    const gridY = MARGIN + 30 + 20;
+    const largeGridLeft = W - MARGIN - 588;
+    const large = drawLargeGrid(ctx, largeGridLeft, gridY, derived.filledInCard, 48, 12, largeFillColor, WALK_UNFILLED_BORDER);
+
+    const smallGridX = MARGIN;
+    const smallGridY = gridY + Math.round(large.height * 0.25);
+    const small = drawSmallGrid(ctx, smallGridX, smallGridY, derived.cardNumber - 1, 28, 8, smallFillColor, WALK_FUTURE);
+
+    if (small.currentCellRect) {
+      ctx.strokeStyle = WALK_DARK;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(small.currentCellRect.x + small.currentCellRect.w, small.currentCellRect.y);
+      ctx.lineTo(largeGridLeft, gridY);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(small.currentCellRect.x + small.currentCellRect.w, small.currentCellRect.y + small.currentCellRect.h);
+      ctx.lineTo(largeGridLeft, gridY + large.height);
+      ctx.stroke();
+    }
+
+    const calloutLineLen = 24;
+    const calloutGap = 10;
+    ctx.font = "40px 'DotGothic16'";
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = WALK_BRIGHT;
+
+    const smallLineX = smallGridX + small.cellSize / 2;
+    const smallLineTop = smallGridY + small.height;
+    ctx.strokeStyle = WALK_BRIGHT;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(smallLineX, smallLineTop);
+    ctx.lineTo(smallLineX, smallLineTop + calloutLineLen);
+    ctx.stroke();
+    const smallLabelTop = smallLineTop + calloutLineLen + calloutGap;
+    ctx.fillText('100 DAYS', MARGIN, smallLabelTop);
+
+    const largeLineX = largeGridLeft + 48 / 2;
+    const largeLineTop = gridY + large.height;
+    ctx.strokeStyle = WALK_BRIGHT;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(largeLineX, largeLineTop);
+    ctx.lineTo(largeLineX, largeLineTop + calloutLineLen);
+    ctx.stroke();
+    const largeLabelTop = largeLineTop + calloutLineLen + calloutGap;
+    ctx.fillText('1 DAY', largeGridLeft, largeLabelTop);
+
+    const countdownTop = smallLabelTop + 46 + 30;
+    const countdownDigitSize = 200;
+    const countdownWordSize = 60;
+    const countdownBaseline = countdownTop + 195;
+    ctx.textBaseline = 'alphabetic';
+    ctx.textAlign = 'left';
+    ctx.font = `${countdownDigitSize}px 'DotGothic16'`;
+    ctx.fillStyle = digitColor;
+    ctx.fillText(String(derived.n), MARGIN, countdownBaseline);
+
+    ctx.textBaseline = 'top';
+    ctx.font = `${countdownWordSize}px 'DotGothic16'`;
+    ctx.fillStyle = WALK_BRIGHT;
+    ctx.fillText('DAYS / 10000', MARGIN, countdownTop + 212 + 12);
+
+    const todayStats = walkData.dailyStats[derived.today] || {};
+    const todaySteps = todayStats.steps != null ? todayStats.steps : 0;
+    const todayDistanceM = todayStats.distanceM != null ? todayStats.distanceM : 0;
+    const todayFontSize = 60;
+    const todayGap = 10;
+    const todayBlockTop = largeLabelTop + 46 - 5;
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'right';
+    ctx.font = `${todayFontSize}px 'DotGothic16'`;
+    ctx.fillStyle = WALK_BRIGHT;
+    ctx.fillText(`${todaySteps} steps`, W - MARGIN, todayBlockTop);
+    ctx.fillText(`${todayDistanceM} m`, W - MARGIN, todayBlockTop + todayFontSize + todayGap);
+    ctx.textAlign = 'left';
+
+    if (todayStats.wakeMood != null && todayStats.afterMood != null) {
+      const emojiSize = 96, labelSize = 30, arrowSize = 52, colGap = 18, labelGap = 8;
+      const emoji1 = MOOD_EMOJI[todayStats.wakeMood];
+      const emoji2 = MOOD_EMOJI[todayStats.afterMood];
+
+      ctx.font = `${emojiSize}px 'Apple Color Emoji'`;
+      const emojiW1 = ctx.measureText(emoji1).width;
+      const emojiW2 = ctx.measureText(emoji2).width;
+      ctx.font = `${labelSize}px 'DotGothic16'`;
+      const labelW1 = ctx.measureText('BEFORE').width;
+      const labelW2 = ctx.measureText('AFTER').width;
+      ctx.font = `${arrowSize}px 'DotGothic16'`;
+      const arrowW = ctx.measureText('→').width;
+
+      const col1W = Math.max(emojiW1, labelW1);
+      const col2W = Math.max(emojiW2, labelW2);
+      const blockWidth = col1W + colGap + arrowW + colGap + col2W;
+      const col1Left = W - MARGIN - blockWidth;
+      const col2Left = col1Left + col1W + colGap + arrowW + colGap;
+
+      const labelTop = todayBlockTop + (todayFontSize + todayGap) * 2 + 14;
+      const emojiMidY = labelTop + labelSize + labelGap + emojiSize / 2;
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.font = `${labelSize}px 'DotGothic16'`;
+      ctx.fillStyle = WALK_BRIGHT;
+      ctx.fillText('BEFORE', col1Left + col1W / 2, labelTop);
+      ctx.fillText('AFTER', col2Left + col2W / 2, labelTop);
+
+      ctx.textBaseline = 'middle';
+      ctx.font = `${emojiSize}px 'Apple Color Emoji'`;
+      ctx.fillText(emoji1, col1Left + col1W / 2, emojiMidY);
+      ctx.fillText(emoji2, col2Left + col2W / 2, emojiMidY);
+
+      ctx.font = `${arrowSize}px 'DotGothic16'`;
+      ctx.fillStyle = WALK_BRIGHT;
+      ctx.fillText('→', col1Left + col1W + colGap + arrowW / 2, emojiMidY);
+
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+    }
+
+    return derived;
+  }
+
+  function buildMoodRow(rowEl, onSelect) {
+    const buttons = [];
+    for (let m = 1; m <= 5; m++) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'moodBtn';
+      btn.textContent = MOOD_EMOJI[m];
+      btn.addEventListener('click', () => onSelect(m));
+      rowEl.appendChild(btn);
+      buttons.push(btn);
+    }
+    return buttons;
+  }
+
+  function paintMoodRow(buttons, selected) {
+    buttons.forEach((btn, i) => { btn.classList.toggle('selected', i + 1 === selected); });
+  }
+
+  function setWalkMood(dateStr, field, level) {
+    const entry = Object.assign({}, walkData.dailyStats[dateStr]);
+    entry[field] = level;
+    walkData.dailyStats[dateStr] = entry;
+    saveWalkData(walkData);
+  }
+
+  function setWalkDailyStats(dateStr, steps, distanceM) {
+    const entry = Object.assign({}, walkData.dailyStats[dateStr]);
+    if (steps !== '' && steps != null && !Number.isNaN(steps)) entry.steps = steps; else delete entry.steps;
+    if (distanceM !== '' && distanceM != null && !Number.isNaN(distanceM)) entry.distanceM = distanceM; else delete entry.distanceM;
+    if (Object.keys(entry).length === 0) delete walkData.dailyStats[dateStr];
+    else walkData.dailyStats[dateStr] = entry;
+    saveWalkData(walkData);
+  }
+
+  function recordWalkDate(dateStr) {
+    if (!walkData.walkedDates.includes(dateStr)) {
+      walkData.walkedDates.push(dateStr);
+      const entry = Object.assign({}, walkData.dailyStats[dateStr]);
+      entry.recordedAt = new Date().toISOString();
+      walkData.dailyStats[dateStr] = entry;
+      saveWalkData(walkData);
+    }
+  }
+
+  function dataUrlToFile(dataUrl, filename) {
+    const [header, base64] = dataUrl.split(',');
+    const mime = (header.match(/data:(.*);base64/) || [, 'image/png'])[1];
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new File([bytes], filename, { type: mime });
+  }
+
+  function downloadFile(file) {
+    const url = URL.createObjectURL(file);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = file.name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
+
+  function getWalkPostedDate() { return localStorage.getItem(WALK_POSTED_DATE_KEY) || ''; }
+  function markWalkPostedToday() { localStorage.setItem(WALK_POSTED_DATE_KEY, todayStr()); }
+
+  // --- journal (v3): entry-level CRUD, lives inside kotoba-data's data.json -
+  function findJournalEntry(id) { return data.journal.find((j) => j.id === id) || null; }
+
+  function generateJournalId() {
+    const d = new Date();
+    const prefix = `j_${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}_`;
+    const existing = new Set(data.journal.map((j) => j.id));
+    let seq = 1;
+    while (existing.has(prefix + String(seq).padStart(3, '0'))) seq++;
+    return prefix + String(seq).padStart(3, '0');
+  }
+
+  function todaysMorningJournalEntry() {
+    const today = todayStr();
+    return data.journal.find((j) => j.kind === 'morning' && j.date === today) || null;
+  }
+
+  function todaysConsultJournalEntries() {
+    const today = todayStr();
+    return data.journal.filter((j) => j.kind === 'consult' && j.date === today).sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+  }
+
+  // Upserts by id (used both for a brand-new entry and for the same-day mood
+  // overwrite case), stamps updatedAt, and goes through the normal
+  // saveData()/scheduleSync() path so it merges/syncs exactly like a note.
+  function saveJournalEntry(entry) {
+    entry.updatedAt = nowIso();
+    const idx = data.journal.findIndex((j) => j.id === entry.id);
+    if (idx === -1) data.journal.push(entry); else data.journal[idx] = entry;
+    saveData(data);
+    return entry;
+  }
+
+  function deleteJournalEntry(id) {
+    data.journal = data.journal.filter((j) => j.id !== id);
+    if (!Array.isArray(data.deletedJournalIds)) data.deletedJournalIds = [];
+    data.deletedJournalIds = data.deletedJournalIds.filter((d) => d.id !== id);
+    data.deletedJournalIds.push({ id, deletedAt: nowIso() });
+    saveData(data);
+  }
+
+  // How many times a note has appeared in any journal entry's picks, and the
+  // most recent date - used by the detail screen's "届いた回数" line.
+  function journalPickStatsForNote(noteId) {
+    let count = 0, lastDate = '';
+    data.journal.forEach((j) => {
+      if (j.picks.some((p) => p.id === noteId)) {
+        count++;
+        if (j.date > lastDate) lastDate = j.date;
+      }
+    });
+    return { count, lastDate };
+  }
+
+  // --- Morning API call (v3): same picks/closing shape as consult, capped at
+  // 2 results per the morning spec. Kept as its own copy (not a shared helper
+  // with callConsultApi) so the already-tested v2.1 consult path is untouched.
+  async function callMorningApi(input, moodLevel, is429Retry, isParseRetry) {
+    const apiKey = getClaudeApiKey();
+    if (!apiKey) { const e = new Error('no-api-key'); e.noKey = true; throw e; }
+    const model = getClaudeModel();
+    const effectiveInput = input && input.trim() ? input.trim() : `今朝の体調は5段階でレベル${moodLevel}。それに合う言葉を選ぶ。`;
+    const candidates = compressCandidates({ text: effectiveInput, myWords: effectiveInput, tags: [] }, data.notes, getCompressThreshold());
+    const compact = candidates.map((n) => ({
+      id: n.id,
+      text: (n.text || '').slice(0, 120),
+      source: n.source || '',
+      myWords: (n.myWords || '').slice(0, 80),
+      tags: n.tags,
+    }));
+    const promptText =
+      '以下はこの人が本や名言集から集めた言葉と、本人の解釈である。\n' + JSON.stringify(compact) +
+      '\n\n今朝の状態:\n' + effectiveInput +
+      '\n\n入力された状態に対して、最も応える言葉を最大2件選び、それぞれになぜ近いかを30字程度で書いてください。' +
+      '最後に、選んだ言葉同士の関係やそこから見える一つの見方を3行以内で書いてください。' +
+      '一般論、慰め、アドバイス、ノートにない引用は書かないでください。本人の解釈（myWords）を重視してください。' +
+      '該当がなければ空にしてください。why・closing には引用符や改行を使わないでください。\n\n' +
+      '返答形式（JSONのみ、他の文章は含めない）:\n' +
+      '{"picks":[{"id":"...","why":"..."}],"closing":"..."}';
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({ model, max_tokens: 2048, messages: [{ role: 'user', content: promptText }] }),
+    });
+
+    if (res.status === 429 && !is429Retry) {
+      await sleep(2000);
+      return callMorningApi(input, moodLevel, true, isParseRetry);
+    }
+    incrementApiCallCount();
+    if (!res.ok) {
+      const err = new Error('Claude API failed: ' + res.status);
+      err.status = res.status;
+      throw err;
+    }
+    const json = await res.json();
+    const textOut = (json.content || []).map((b) => b.text || '').join('');
+    const parsed = parseConsultResponseLoose(textOut);
+    if (!parsed) {
+      if (!isParseRetry) return callMorningApi(input, moodLevel, false, true);
+      throw new Error('invalid response shape');
+    }
+    const validIds = new Set(data.notes.map((n) => n.id));
+    const picks = (Array.isArray(parsed.picks) ? parsed.picks : [])
+      .filter((p) => p && validIds.has(p.id))
+      .slice(0, 2)
+      .map((p) => ({ id: p.id, why: typeof p.why === 'string' ? p.why.slice(0, 100) : '' }));
+    const closing = typeof parsed.closing === 'string' ? parsed.closing.slice(0, 300) : '';
+    return { picks, closing };
   }
 
   // --- Claude API auto-linking ---------------------------------------------
@@ -1318,8 +2136,15 @@
   let consultTurns = [];
   let consultBusy = false;
 
+  // v3: a fresh tap of "相談" still starts a clean typing state, but now
+  // repopulates from today's already-saved journal entries instead of an
+  // empty array (spec: "画面を開いたとき、今日の相談があれば下に表示される").
+  // A detour to a card's detail/editor and back (fresh=false) keeps whatever
+  // was already in consultTurns, in-flight loading turns included.
   function resetConsult() {
-    consultTurns = [];
+    consultTurns = todaysConsultJournalEntries().map((j) => ({
+      input: j.text, status: 'done', picks: j.picks, closing: j.closing, journalId: j.id,
+    }));
   }
 
   function openConsult(fresh) {
@@ -1404,10 +2229,25 @@
       const wrap = document.createElement('div');
       wrap.className = 'consultTurn';
 
+      const topRow = document.createElement('div');
+      topRow.className = 'detailLinkRow';
       const inputEl = document.createElement('div');
       inputEl.className = 'consultInputEcho';
       inputEl.textContent = turn.input;
-      wrap.appendChild(inputEl);
+      topRow.appendChild(inputEl);
+      if (turn.journalId) {
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'linkRemoveBtn';
+        del.textContent = '消す';
+        del.addEventListener('click', () => {
+          deleteJournalEntry(turn.journalId);
+          consultTurns = consultTurns.filter((t) => t !== turn);
+          renderConsultTurns();
+        });
+        topRow.appendChild(del);
+      }
+      wrap.appendChild(topRow);
 
       if (turn.status === 'loading') {
         const s = document.createElement('p');
@@ -1498,6 +2338,10 @@
       turn.status = 'done';
       turn.picks = result.picks;
       turn.closing = result.closing;
+      const iso = nowIso();
+      const entry = { id: generateJournalId(), date: todayStr(), kind: 'consult', text: input, picks: result.picks, closing: result.closing, createdAt: iso, updatedAt: iso };
+      saveJournalEntry(entry);
+      turn.journalId = entry.id;
     } catch (e) {
       turn.status = e && e.noKey ? 'no-key' : 'error';
     }
@@ -1523,6 +2367,10 @@
       document.getElementById('screen-' + s).hidden = s !== name;
     });
     nav.screen = name;
+    document.getElementById('globalBottomNav').hidden = (name === 'detail' || name === 'editor');
+    document.querySelectorAll('#globalBottomNav .navBtn').forEach((b) => b.classList.remove('selected'));
+    const activeBtn = { home: 'navHome', list: 'navList', consult: 'navConsult', settings: 'navSettings' }[name];
+    if (activeBtn) document.getElementById(activeBtn).classList.add('selected');
   }
 
   function refreshCurrentScreen() {
@@ -1531,7 +2379,17 @@
     else if (nav.screen === 'detail') renderDetail();
   }
 
-  // --- Home -------------------------------------------------------------
+  // --- Home ("朝") ----------------------------------------------------------
+  let morningSkippedDate = null;
+  let morningRandomNoteId = null, morningRandomNoteDate = null;
+  let walkSharePngBlob = null;
+
+  function regenerateWalkShareBlob(canvas, btn) {
+    walkSharePngBlob = null;
+    if (btn) btn.disabled = true;
+    canvas.toBlob((blob) => { walkSharePngBlob = blob; if (btn) btn.disabled = false; }, 'image/png');
+  }
+
   function pickRandomNoteId(excludeId) {
     const pool = data.notes.filter((n) => n.id !== excludeId);
     const source = pool.length ? pool : data.notes;
@@ -1539,51 +2397,113 @@
     return source[Math.floor(Math.random() * source.length)].id;
   }
 
-  function renderHome() {
-    if (!nav.homeNoteId || !findNote(nav.homeNoteId)) {
-      nav.homeNoteId = pickRandomNoteId(null);
+  function getMorningRandomNote() {
+    const today = todayStr();
+    if (morningRandomNoteDate !== today || !morningRandomNoteId || !findNote(morningRandomNoteId)) {
+      morningRandomNoteId = pickRandomNoteId(null);
+      morningRandomNoteDate = today;
     }
-    const note = nav.homeNoteId ? findNote(nav.homeNoteId) : null;
-    document.getElementById('homeCard').hidden = !note;
-    document.getElementById('homeEmpty').hidden = !!note;
-    document.getElementById('btnNextCard').hidden = !note;
-    if (note) {
-      document.getElementById('homeText').textContent = note.text;
-      document.getElementById('homeSource').textContent = note.source;
-      document.getElementById('homeSource').hidden = !note.source;
-      document.getElementById('homeMyWords').textContent = note.myWords;
-      renderTagPills(document.getElementById('homeTags'), note.tags);
-    }
-    renderHomeLinks(note);
+    return morningRandomNoteId ? findNote(morningRandomNoteId) : null;
   }
 
-  function renderHomeLinks(note) {
-    const section = document.getElementById('homeLinksSection');
-    const list = document.getElementById('homeLinksList');
-    const status = document.getElementById('homeLinkingStatus');
-    list.innerHTML = '';
-    const linked = note
-      ? note.links.map((l) => ({ link: l, target: findNote(l.id) })).filter((x) => x.target).slice(0, 5)
-      : [];
-    status.hidden = !(note && autoLinkInFlight.has(note.id));
-    section.hidden = linked.length === 0 && status.hidden;
-    linked.forEach(({ link, target }) => {
-      const row = document.createElement('div');
-      row.className = 'detailLinkItem';
-      const inner = document.createElement('div');
-      inner.className = 'detailLinkRow';
-      const t = document.createElement('div');
-      t.className = 'lText';
-      t.textContent = noteSnippet(target.text, 40) + (target.source ? ' ・ ' + target.source : '');
-      const label = document.createElement('span');
-      label.className = 'relLabel ' + relationLabelClass(link);
-      label.textContent = relationLabelText(link);
-      inner.appendChild(t);
-      inner.appendChild(label);
-      row.appendChild(inner);
-      row.addEventListener('click', () => openDetail(target.id, 'home'));
-      list.appendChild(row);
+  function renderPickCard(container, note, why) {
+    const card = document.createElement('div');
+    card.className = 'consultCard';
+    const t = document.createElement('div');
+    t.className = 'cardText';
+    t.textContent = note.text;
+    card.appendChild(t);
+    if (note.source) {
+      const s = document.createElement('div');
+      s.className = 'cardSource';
+      s.textContent = note.source;
+      card.appendChild(s);
+    }
+    const mw = document.createElement('div');
+    mw.className = 'cardMyWords';
+    mw.textContent = note.myWords;
+    card.appendChild(mw);
+    if (why) {
+      const w = document.createElement('div');
+      w.className = 'consultWhy';
+      w.textContent = why;
+      card.appendChild(w);
+    }
+    card.addEventListener('click', () => openDetail(note.id, 'home'));
+    container.appendChild(card);
+  }
+
+  function renderMorningCards(morningEntry) {
+    const container = document.getElementById('morningCards');
+    container.innerHTML = '';
+    let picks = [], closing = '';
+    if (morningEntry) {
+      picks = morningEntry.picks;
+      closing = morningEntry.closing;
+    } else {
+      const randomNote = getMorningRandomNote();
+      if (randomNote) picks = [{ id: randomNote.id, why: '' }];
+    }
+    if (!picks.length) {
+      const s = document.createElement('p');
+      s.className = 'emptyMsg';
+      s.textContent = '今朝に合う言葉は見つかりませんでした';
+      container.appendChild(s);
+      return;
+    }
+    picks.forEach((pick) => {
+      const note = findNote(pick.id);
+      if (note) renderPickCard(container, note, pick.why);
     });
+    if (closing) {
+      const c = document.createElement('div');
+      c.className = 'consultClosing';
+      c.textContent = closing;
+      container.appendChild(c);
+    }
+  }
+
+  function renderHome() {
+    document.getElementById('homeEmpty').hidden = data.notes.length > 0;
+
+    const derived = computeWalkDerived();
+    document.getElementById('dayCountLabel').textContent = `${derived.n}日目 / 10000`;
+
+    const today = derived.today;
+    const todayStats = walkData.dailyStats[today] || {};
+    const hasWakeMood = todayStats.wakeMood != null;
+    paintMoodRow(wakeMoodButtons, hasWakeMood ? todayStats.wakeMood : null);
+
+    const morningEntry = todaysMorningJournalEntry();
+    const skippedToday = morningSkippedDate === today;
+    const wordsResolved = !!morningEntry || skippedToday || !getClaudeApiKey();
+
+    document.getElementById('morningWordsStage').hidden = !(hasWakeMood && !wordsResolved);
+    document.getElementById('morningCardsStage').hidden = !(hasWakeMood && wordsResolved);
+    if (hasWakeMood && wordsResolved) renderMorningCards(morningEntry);
+
+    const posted = getWalkPostedDate() === today;
+    document.getElementById('walkStage').hidden = !(hasWakeMood && wordsResolved && !derived.todayWalked);
+    document.getElementById('afterWalkStage').hidden = !(hasWakeMood && wordsResolved && derived.todayWalked && !posted);
+    document.getElementById('todaySummaryStage').hidden = !(hasWakeMood && wordsResolved && derived.todayWalked && posted);
+
+    if (hasWakeMood && wordsResolved && derived.todayWalked && !posted) {
+      paintMoodRow(afterMoodButtons, todayStats.afterMood != null ? todayStats.afterMood : null);
+      document.getElementById('walkStepsInput').value = todayStats.steps != null ? todayStats.steps : '';
+      document.getElementById('walkDistanceInput').value = todayStats.distanceM != null ? todayStats.distanceM : '';
+      const canvas = document.getElementById('walkPreviewCanvas');
+      drawWalkImage(canvas);
+      regenerateWalkShareBlob(canvas, document.getElementById('btnWalkShare'));
+    }
+
+    if (hasWakeMood && wordsResolved && derived.todayWalked && posted) {
+      document.getElementById('summaryWakeMood').textContent = todayStats.wakeMood != null ? MOOD_EMOJI[todayStats.wakeMood] : '-';
+      document.getElementById('summaryAfterMood').textContent = todayStats.afterMood != null ? MOOD_EMOJI[todayStats.afterMood] : '-';
+      document.getElementById('summaryMorningText').textContent = morningEntry ? (morningEntry.closing || morningEntry.text || '（スキップ）') : '（スキップ）';
+      document.getElementById('summaryDayCount').textContent = `${derived.n}日目`;
+    }
+
+    document.getElementById('btnWalkYesterday').hidden = new Set(walkData.walkedDates).has(derived.yesterday);
   }
 
   function relationLabelText(link) {
@@ -1615,16 +2535,112 @@
     renderHome();
   }
 
-  document.getElementById('btnNextCard').addEventListener('click', () => {
-    nav.homeNoteId = pickRandomNoteId(nav.homeNoteId);
-    renderHome();
-  });
-  document.getElementById('homeCard').addEventListener('click', () => {
-    if (nav.homeNoteId) openDetail(nav.homeNoteId, 'home');
-  });
   document.getElementById('btnAddFromHome').addEventListener('click', () => openEditor('new', null, 'home'));
+  document.getElementById('navHome').addEventListener('click', goHome);
   document.getElementById('navList').addEventListener('click', () => openList());
   document.getElementById('navSettings').addEventListener('click', () => openSettings());
+
+  const wakeMoodButtons = buildMoodRow(document.getElementById('wakeMoodRow'), (m) => {
+    const today = todayStr();
+    setWalkMood(today, 'wakeMood', m);
+    const entry = todaysMorningJournalEntry();
+    if (entry) { entry.mood = m; saveJournalEntry(entry); }
+    renderHome();
+  });
+  const afterMoodButtons = buildMoodRow(document.getElementById('afterMoodRow'), (m) => {
+    setWalkMood(todayStr(), 'afterMood', m);
+    renderHome();
+  });
+
+  document.getElementById('btnMorningAsk').addEventListener('click', async () => {
+    const btn = document.getElementById('btnMorningAsk');
+    const skipBtn = document.getElementById('btnMorningSkip');
+    const inputEl = document.getElementById('morningInput');
+    const input = inputEl.value.trim();
+    const today = todayStr();
+    const moodLevel = (walkData.dailyStats[today] || {}).wakeMood;
+    btn.disabled = true;
+    skipBtn.disabled = true;
+    document.getElementById('morningWordsStage').hidden = true;
+    document.getElementById('morningCardsStage').hidden = false;
+    const container = document.getElementById('morningCards');
+    container.innerHTML = '';
+    const loading = document.createElement('p');
+    loading.className = 'fieldNote';
+    loading.textContent = '言葉を探しています…';
+    container.appendChild(loading);
+    try {
+      const result = await callMorningApi(input, moodLevel);
+      const iso = nowIso();
+      const entry = { id: generateJournalId(), date: today, kind: 'morning', mood: moodLevel, text: input, picks: result.picks, closing: result.closing, createdAt: iso, updatedAt: iso };
+      saveJournalEntry(entry);
+    } catch (e) {
+      // network/parse failure (or no key, though that path is normally
+      // short-circuited before this button is ever shown): fall back to the
+      // same "skip today" state rather than leaving the user stuck.
+      morningSkippedDate = today;
+    }
+    btn.disabled = false;
+    skipBtn.disabled = false;
+    inputEl.value = '';
+    renderHome();
+  });
+
+  document.getElementById('btnMorningSkip').addEventListener('click', () => {
+    morningSkippedDate = todayStr();
+    document.getElementById('morningInput').value = '';
+    renderHome();
+  });
+
+  document.getElementById('btnWalkToday').addEventListener('click', () => {
+    recordWalkDate(todayStr());
+    renderHome();
+  });
+  document.getElementById('btnWalkYesterday').addEventListener('click', () => {
+    recordWalkDate(addDays(todayStr(), -1));
+    renderHome();
+  });
+
+  document.getElementById('btnSaveWalkStats').addEventListener('click', () => {
+    const stepsRaw = document.getElementById('walkStepsInput').value;
+    const distRaw = document.getElementById('walkDistanceInput').value;
+    const steps = stepsRaw === '' ? null : parseInt(stepsRaw, 10);
+    const distanceM = distRaw === '' ? null : parseFloat(distRaw);
+    setWalkDailyStats(todayStr(), steps, distanceM);
+    renderHome();
+    alert('保存しました');
+  });
+
+  document.getElementById('btnWalkShare').addEventListener('click', async () => {
+    const canvas = document.getElementById('walkPreviewCanvas');
+    const derived = computeWalkDerived();
+    const filename = `walk10000_day${derived.n}.png`;
+    const shareText = `【${derived.n}日目 / 10000】\n`;
+    const file = walkSharePngBlob
+      ? new File([walkSharePngBlob], filename, { type: 'image/png' })
+      : dataUrlToFile(canvas.toDataURL('image/png'), filename);
+    const statusEl = document.getElementById('walkShareStatus');
+    const setStatus = (msg, isError) => { statusEl.textContent = msg || ''; statusEl.classList.toggle('error', !!isError); };
+
+    const canShareFiles = !!(navigator.canShare && navigator.canShare({ files: [file] }));
+    if (canShareFiles) {
+      try {
+        await navigator.share({ files: [file], text: shareText });
+        setStatus('');
+        markWalkPostedToday();
+        renderHome();
+        return;
+      } catch (e) {
+        if (e && e.name === 'AbortError') { setStatus(''); return; }
+        setStatus(`共有に失敗しました（${e && e.message ? e.message : e}）。画像をダウンロードします。`, true);
+      }
+    } else {
+      setStatus('この端末は画像の共有に対応していないため、ダウンロードしました。');
+    }
+    downloadFile(file);
+    markWalkPostedToday();
+    renderHome();
+  });
 
   // --- List ---------------------------------------------------------------
   // search/tags/view/sort/no-links-only all live here so they survive
@@ -2362,16 +3378,17 @@
     if (v) {
       localStorage.setItem(GH_TOKEN_KEY, v);
       alert('保存しました');
-      syncNow().then(() => openSettings());
+      syncAllNow().then(() => openSettings());
     } else {
       localStorage.removeItem(GH_TOKEN_KEY);
       setSyncStatus('off');
+      setWalkSyncStatus('off');
       alert('保存しました');
     }
   });
 
   document.getElementById('btnSyncNow').addEventListener('click', () => {
-    syncNow().then(() => openSettings());
+    syncAllNow().then(() => openSettings());
   });
 
   document.getElementById('btnReloadFromRemote').addEventListener('click', async () => {
@@ -2430,12 +3447,17 @@
 
   // --- boot ---------------------------------------------------------------
   goHome();
-  syncNow();
+  syncAllNow();
+  if (document.fonts && document.fonts.ready) {
+    // walk canvas uses DotGothic16; re-render once it's actually loaded so
+    // the very first paint isn't done in a fallback font.
+    document.fonts.ready.then(() => { if (nav.screen === 'home') renderHome(); });
+  }
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') syncNow();
+    if (document.visibilityState === 'visible') syncAllNow();
   });
-  window.addEventListener('online', () => syncNow());
-  window.addEventListener('offline', () => setSyncStatus('offline'));
+  window.addEventListener('online', () => syncAllNow());
+  window.addEventListener('offline', () => { setSyncStatus('offline'); setWalkSyncStatus('offline'); });
 })();
 </script>
 </body>
