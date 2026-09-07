@@ -456,6 +456,17 @@
   }
   .moodBtn.selected { opacity: 1; border-color: var(--accent); }
   .morningStage { display: flex; flex-direction: column; gap: 14px; }
+  .homeStepsContainer { display: flex; flex-direction: column; gap: 16px; }
+  .homeStepCollapsed {
+    text-align: left;
+    width: 100%;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    color: var(--text-dim);
+    font-size: 15px;
+    background: var(--bg-card);
+  }
   .morningInputRow { display: flex; flex-direction: column; gap: 10px; }
   .linkLikeBtn {
     background: none;
@@ -632,51 +643,59 @@
   <section id="screen-home" class="screen">
     <header class="topbar">
       <div class="topbar-title" style="text-align:left;">朝</div>
-      <button id="btnAddFromHome" class="iconBtn">＋ 追加</button>
     </header>
     <div class="dayCount" id="dayCountLabel"></div>
-    <div id="homeEmpty" class="emptyMsg" hidden>まだノートがありません。「＋ 追加」から最初の1枚を書いてみましょう。</div>
+    <div id="homeEmpty" class="emptyMsg" hidden>まだノートがありません。「言葉」画面の「＋」から最初の1枚を書いてみましょう。</div>
     <div id="walkUnavailableMsg" class="emptyMsg" hidden>散歩データを読み込めていません。設定 → 同期を確認してください。</div>
 
-    <div class="field" id="wakeMoodField">
-      <span class="fieldLabel">今朝の体調</span>
-      <div class="moodRow" id="wakeMoodRow"></div>
-    </div>
+    <canvas id="walkPreviewCanvas" width="1080" height="1080" hidden></canvas>
 
-    <div id="morningWordsStage" class="morningStage" hidden>
-      <div class="morningInputRow">
-        <textarea id="morningInput" rows="2" placeholder="今朝はどんな感じ？（任意）" autocomplete="off"></textarea>
-        <button id="btnMorningAsk" class="primaryBtn">言葉を受け取る</button>
-        <button id="btnMorningSkip" type="button" class="linkLikeBtn">今日はいい</button>
+    <div id="homeStepsContainer" class="homeStepsContainer">
+      <button type="button" id="wakeMoodCollapsedRow" class="homeStepCollapsed" hidden></button>
+      <div class="field" id="wakeMoodField" hidden>
+        <span class="fieldLabel">今朝の体調</span>
+        <div class="moodRow" id="wakeMoodRow"></div>
       </div>
-    </div>
 
-    <div id="morningCardsStage" class="morningStage" hidden>
-      <div id="morningCards" class="consultTurns"></div>
-    </div>
+      <button type="button" id="morningWordsCollapsedRow" class="homeStepCollapsed" hidden></button>
+      <div id="morningWordsStage" class="morningStage" hidden>
+        <div class="morningInputRow">
+          <textarea id="morningInput" rows="2" placeholder="今朝はどんな感じ？（任意）" autocomplete="off"></textarea>
+          <button id="btnMorningAsk" class="primaryBtn">言葉を受け取る</button>
+          <button id="btnMorningSkip" type="button" class="linkLikeBtn">今日はいい</button>
+        </div>
+      </div>
+      <div id="morningCardsStage" class="morningStage" hidden>
+        <div id="morningCards" class="consultTurns"></div>
+      </div>
 
-    <div id="walkStage" class="morningStage" hidden>
-      <button id="btnWalkToday" class="primaryBtn">今日歩いた</button>
-    </div>
+      <button type="button" id="walkCollapsedRow" class="homeStepCollapsed" hidden></button>
+      <div id="walkStage" class="morningStage" hidden>
+        <button id="btnWalkToday" class="primaryBtn">今日歩いた</button>
+      </div>
+      <div id="walkStatsStage" class="morningStage" hidden>
+        <div class="field">
+          <span class="fieldLabel">歩数・距離（任意）</span>
+          <input type="number" id="walkStepsInput" min="0" placeholder="歩数（歩）">
+          <input type="number" id="walkDistanceInput" min="0" placeholder="距離（m）">
+          <button id="btnSaveWalkStats" class="secondaryBtn">保存</button>
+        </div>
+      </div>
 
-    <div id="afterWalkStage" class="morningStage" hidden>
-      <canvas id="walkPreviewCanvas" width="1080" height="1080"></canvas>
-      <div class="field">
+      <button type="button" id="afterMoodCollapsedRow" class="homeStepCollapsed" hidden></button>
+      <div class="field" id="afterMoodStage" hidden>
         <span class="fieldLabel">散歩後の体調</span>
         <div class="moodRow" id="afterMoodRow"></div>
       </div>
-      <div class="field">
-        <span class="fieldLabel">歩数・距離（任意）</span>
-        <input type="number" id="walkStepsInput" min="0" placeholder="歩数（歩）">
-        <input type="number" id="walkDistanceInput" min="0" placeholder="距離（m）">
-        <button id="btnSaveWalkStats" class="secondaryBtn">保存</button>
+
+      <div id="walkShareStage" class="morningStage" hidden>
+        <div class="field">
+          <span class="fieldLabel">投稿文</span>
+          <textarea id="walkShareTextInput" rows="4" autocomplete="off"></textarea>
+        </div>
+        <button id="btnWalkShare" class="primaryBtn">Xで投稿</button>
+        <div id="walkShareStatus"></div>
       </div>
-      <div class="field">
-        <span class="fieldLabel">投稿文</span>
-        <textarea id="walkShareTextInput" rows="4" autocomplete="off"></textarea>
-      </div>
-      <button id="btnWalkShare" class="primaryBtn">Xで投稿</button>
-      <div id="walkShareStatus"></div>
     </div>
 
     <button id="btnWalkYesterday" type="button" class="linkLikeBtn" hidden>昨日の分を記録</button>
@@ -2130,12 +2149,16 @@
     saveWalkData(walkData);
   }
 
+  // v3.5: stamps statsSavedAt so the home tab's step flow can tell "steps/
+  // distance were explicitly confirmed (even left blank)" apart from "not
+  // reached yet" - both leave steps/distanceM absent, so presence of those
+  // keys alone can't distinguish the two states.
   function setWalkDailyStats(dateStr, steps, distanceM) {
     const entry = Object.assign({}, walkData.dailyStats[dateStr]);
     if (steps !== '' && steps != null && !Number.isNaN(steps)) entry.steps = steps; else delete entry.steps;
     if (distanceM !== '' && distanceM != null && !Number.isNaN(distanceM)) entry.distanceM = distanceM; else delete entry.distanceM;
-    if (Object.keys(entry).length === 0) delete walkData.dailyStats[dateStr];
-    else walkData.dailyStats[dateStr] = entry;
+    entry.statsSavedAt = new Date().toISOString();
+    walkData.dailyStats[dateStr] = entry;
     saveWalkData(walkData);
   }
 
@@ -2952,6 +2975,7 @@
         del.className = 'linkRemoveBtn';
         del.textContent = '消す';
         del.addEventListener('click', () => {
+          if (!confirm(`${dotDate(todayStr())}の相談を消しますか？`)) return;
           deleteJournalEntry(turn.journalId);
           consultTurns = consultTurns.filter((t) => t !== turn);
           renderConsultTurns();
@@ -3206,25 +3230,98 @@
     }
   }
 
+  // v3.5: home tab as a linear sequence of collapsible step cards. Steps
+  // that are "done" collapse to a one-line summary; the one step still in
+  // progress stays open. A done step's row is always a tap target that
+  // reveals its full content again underneath (homeExpandOverrides), so any
+  // earlier answer can be redone without resetting anything after it.
+  //
+  // 散歩 (steps/distance) is a special case: it only becomes reachable once
+  // 散歩後の体調 has been answered, so while that's still true but nothing's
+  // been saved yet, its open form appears BELOW 散歩後の体調's already-
+  // collapsed row (encounter order) rather than in front of it. Once saved,
+  // both settle into their canonical order (体調・言葉・散歩・散歩後) for
+  // the rest of the day - this is why 散歩's collapsed row only ever shows
+  // up paired with a "done" 散歩後 row, never on its own.
+  const homeExpandOverrides = new Set();
+  let homeExpandOverridesDate = null;
+
+  function toggleHomeExpand(key) {
+    if (homeExpandOverrides.has(key)) homeExpandOverrides.delete(key); else homeExpandOverrides.add(key);
+    renderHome();
+  }
+  document.getElementById('wakeMoodCollapsedRow').addEventListener('click', () => toggleHomeExpand('wake'));
+  document.getElementById('morningWordsCollapsedRow').addEventListener('click', () => toggleHomeExpand('words'));
+  document.getElementById('walkCollapsedRow').addEventListener('click', () => toggleHomeExpand('walk'));
+  document.getElementById('afterMoodCollapsedRow').addEventListener('click', () => toggleHomeExpand('aftermood'));
+
+  // Returns the DOM ids to show/append for a "done" step: its collapsed
+  // summary row always, plus its full open content too when the user has
+  // tapped that row open (homeExpandOverrides).
+  function homeStepRowIds(key, label, openId, collapsedId) {
+    const collapsedEl = document.getElementById(collapsedId);
+    collapsedEl.textContent = label;
+    collapsedEl.hidden = false;
+    const ids = [collapsedId];
+    if (homeExpandOverrides.has(key)) { document.getElementById(openId).hidden = false; ids.push(openId); }
+    return ids;
+  }
+
+  function getDisplayedMorningFirstNote(morningEntry) {
+    if (morningEntry && morningEntry.picks.length) {
+      const note = findNote(morningEntry.picks[0].id);
+      if (note) return note;
+    }
+    return getMorningRandomNote();
+  }
+
+  function morningWordsCollapsedLabel(morningEntry) {
+    const note = getDisplayedMorningFirstNote(morningEntry);
+    if (!note) return '今朝の言葉';
+    const snippet = note.text.slice(0, 20);
+    return `今朝の言葉 ${snippet}${note.text.length > 20 ? '…' : ''}`;
+  }
+
+  function walkCollapsedLabel(stats) {
+    const parts = [];
+    if (stats.steps != null) parts.push(`${stats.steps}歩`);
+    if (stats.distanceM != null) parts.push(`${Math.round(stats.distanceM)}m`);
+    return parts.length ? `歩いた ${parts.join(' / ')}` : '歩いた';
+  }
+
+  const HOME_STEP_IDS = [
+    'wakeMoodCollapsedRow', 'wakeMoodField',
+    'morningWordsCollapsedRow', 'morningWordsStage', 'morningCardsStage',
+    'walkCollapsedRow', 'walkStage', 'walkStatsStage',
+    'afterMoodCollapsedRow', 'afterMoodStage',
+    'walkShareStage',
+  ];
+
   function renderHome() {
     document.getElementById('homeEmpty').hidden = data.notes.length > 0;
 
     const unavailable = isWalkDataUnavailable();
     document.getElementById('walkUnavailableMsg').hidden = !unavailable;
-    document.getElementById('wakeMoodField').hidden = unavailable;
+    const canvas = document.getElementById('walkPreviewCanvas');
+    HOME_STEP_IDS.forEach((id) => { document.getElementById(id).hidden = true; });
+
     if (unavailable) {
       document.getElementById('dayCountLabel').textContent = '';
-      ['morningWordsStage', 'morningCardsStage', 'walkStage', 'afterWalkStage'].forEach((id) => {
-        document.getElementById(id).hidden = true;
-      });
+      canvas.hidden = true;
       document.getElementById('btnWalkYesterday').hidden = true;
       return;
     }
 
     const derived = computeWalkDerived();
     document.getElementById('dayCountLabel').textContent = `${derived.n}日目 / 10000`;
-
     const today = derived.today;
+
+    // homeExpandOverrides is UI-only convenience for "redo an earlier step
+    // today" - stale entries from a previous day are meaningless once the
+    // date has moved on, and keeping them would defeat the "new day starts
+    // fresh at stage 1" behavior.
+    if (homeExpandOverridesDate !== today) { homeExpandOverrides.clear(); homeExpandOverridesDate = today; }
+
     const todayStats = walkData.dailyStats[today] || {};
     const hasWakeMood = todayStats.wakeMood != null;
     paintMoodRow(wakeMoodButtons, hasWakeMood ? todayStats.wakeMood : null);
@@ -3233,37 +3330,65 @@
     const skippedToday = morningSkippedDate === today;
     const wordsResolved = !!morningEntry || skippedToday || !getClaudeApiKey() || !getMorningEnabled();
 
-    document.getElementById('morningWordsStage').hidden = !(hasWakeMood && !wordsResolved);
-    document.getElementById('morningCardsStage').hidden = !(hasWakeMood && wordsResolved);
-    if (hasWakeMood && wordsResolved) renderMorningCards(morningEntry);
+    const todayWalked = derived.todayWalked;
+    const hasAfterMood = todayStats.afterMood != null;
+    paintMoodRow(afterMoodButtons, hasAfterMood ? todayStats.afterMood : null);
+    const statsSaved = todayStats.statsSavedAt != null;
 
-    // Once today's walk is recorded, the post-walk section (image, mood,
-    // steps/distance, share) stays up for the rest of the day - same as
-    // walk10000's own single persistent screen, no separate "posted" state.
-    document.getElementById('walkStage').hidden = !(hasWakeMood && wordsResolved && !derived.todayWalked);
-    document.getElementById('afterWalkStage').hidden = !(hasWakeMood && wordsResolved && derived.todayWalked);
+    canvas.hidden = !todayWalked;
+    if (todayWalked) { drawWalkImage(canvas); regenerateWalkShareBlob(canvas, document.getElementById('btnWalkShare')); }
+    document.getElementById('btnWalkYesterday').hidden = new Set(walkData.walkedDates).has(derived.yesterday);
 
-    if (hasWakeMood && wordsResolved && derived.todayWalked) {
-      paintMoodRow(afterMoodButtons, todayStats.afterMood != null ? todayStats.afterMood : null);
-      document.getElementById('walkStepsInput').value = todayStats.steps != null ? todayStats.steps : '';
-      document.getElementById('walkDistanceInput').value = todayStats.distanceM != null ? todayStats.distanceM : '';
-      const canvas = document.getElementById('walkPreviewCanvas');
-      drawWalkImage(canvas);
-      regenerateWalkShareBlob(canvas, document.getElementById('btnWalkShare'));
+    const order = [];
+    if (!hasWakeMood) {
+      order.push('wakeMoodField');
+    } else {
+      order.push(...homeStepRowIds('wake', `今朝の体調 ${MOOD_EMOJI[todayStats.wakeMood]}`, 'wakeMoodField', 'wakeMoodCollapsedRow'));
 
-      // Only ever set .value once per date - saveShareTextEdit() below keeps
-      // localStorage in sync as the user types, but re-running renderHome()
-      // (which happens often: mood taps, saves, focus/visibility syncs) must
-      // never stomp on text they're actively editing.
-      const shareTextInput = document.getElementById('walkShareTextInput');
-      if (shareTextInput.dataset.loadedDate !== today) {
-        const edit = getShareTextEdit(today);
-        shareTextInput.value = edit != null ? edit : computeDefaultShareText(derived, morningEntry);
-        shareTextInput.dataset.loadedDate = today;
+      if (!wordsResolved) {
+        order.push('morningWordsStage');
+      } else {
+        renderMorningCards(morningEntry);
+
+        if (!todayWalked) {
+          // "散歩前は言葉を眺めて歩き出す場面" - stays expanded, not collapsible yet
+          order.push('morningCardsStage', 'walkStage');
+        } else {
+          order.push(...homeStepRowIds('words', morningWordsCollapsedLabel(morningEntry), 'morningCardsStage', 'morningWordsCollapsedRow'));
+
+          if (!hasAfterMood) {
+            order.push('afterMoodStage');
+          } else if (!statsSaved) {
+            document.getElementById('walkStepsInput').value = todayStats.steps != null ? todayStats.steps : '';
+            document.getElementById('walkDistanceInput').value = todayStats.distanceM != null ? todayStats.distanceM : '';
+            order.push(...homeStepRowIds('aftermood', `散歩後 ${MOOD_EMOJI[todayStats.afterMood]}`, 'afterMoodStage', 'afterMoodCollapsedRow'));
+            order.push('walkStatsStage');
+          } else {
+            order.push(...homeStepRowIds('walk', walkCollapsedLabel(todayStats), 'walkStatsStage', 'walkCollapsedRow'));
+            order.push(...homeStepRowIds('aftermood', `散歩後 ${MOOD_EMOJI[todayStats.afterMood]}`, 'afterMoodStage', 'afterMoodCollapsedRow'));
+            order.push('walkShareStage');
+
+            // Only ever set .value once per date - saveShareTextEdit() below
+            // keeps localStorage in sync as the user types, but re-running
+            // renderHome() (which happens often: mood taps, saves, focus/
+            // visibility syncs) must never stomp on text they're editing.
+            const shareTextInput = document.getElementById('walkShareTextInput');
+            if (shareTextInput.dataset.loadedDate !== today) {
+              const edit = getShareTextEdit(today);
+              shareTextInput.value = edit != null ? edit : computeDefaultShareText(derived, morningEntry);
+              shareTextInput.dataset.loadedDate = today;
+            }
+          }
+        }
       }
     }
 
-    document.getElementById('btnWalkYesterday').hidden = new Set(walkData.walkedDates).has(derived.yesterday);
+    const stepsContainer = document.getElementById('homeStepsContainer');
+    order.forEach((id) => {
+      const el = document.getElementById(id);
+      el.hidden = false;
+      stepsContainer.appendChild(el);
+    });
   }
 
   function relationLabelText(link) {
@@ -3295,7 +3420,6 @@
     renderHome();
   }
 
-  document.getElementById('btnAddFromHome').addEventListener('click', () => openEditor('new', null, 'home'));
   document.getElementById('navHome').addEventListener('click', goHome);
   document.getElementById('navList').addEventListener('click', () => openList());
   document.getElementById('navSettings').addEventListener('click', () => openSettings());
@@ -4051,6 +4175,7 @@
   document.getElementById('btnDraftSimilarKeepExisting').addEventListener('click', () => {
     const draft = findDraft(draftQueue[draftQueueIndex]);
     if (!draft) return;
+    if (!confirm('この下書きを削除します。よろしいですか？')) return;
     deleteDraft(draft.id);
     draftQueue.splice(draftQueueIndex, 1);
     advanceDraftQueueAfterRemoval();
@@ -4207,7 +4332,7 @@
   document.getElementById('btnDeleteNote').addEventListener('click', () => {
     const note = findNote(nav.detailId);
     if (!note) return;
-    if (!confirm('このノートを削除します。よろしいですか？この操作は取り消せません。')) return;
+    if (!confirm('このノートを削除しますか？関連ノートのリンクも解除されます。この操作は取り消せません。')) return;
     deleteNoteById(note.id);
     saveData(data);
     backFromDetail();
@@ -4380,7 +4505,11 @@
     del.type = 'button';
     del.className = 'recordEntryDelete';
     del.textContent = '消す';
-    del.addEventListener('click', () => { deleteJournalEntry(j.id); refreshAfterDayRecordChange(); });
+    del.addEventListener('click', () => {
+      if (!confirm(`${dotDate(j.date)}の朝の記録を消しますか？`)) return;
+      deleteJournalEntry(j.id);
+      refreshAfterDayRecordChange();
+    });
     top.appendChild(del);
     item.appendChild(top);
 
@@ -4417,7 +4546,11 @@
     del.type = 'button';
     del.className = 'recordEntryDelete';
     del.textContent = '消す';
-    del.addEventListener('click', () => { deleteJournalEntry(j.id); refreshAfterDayRecordChange(); });
+    del.addEventListener('click', () => {
+      if (!confirm(`${dotDate(j.date)}の相談の記録を消しますか？`)) return;
+      deleteJournalEntry(j.id);
+      refreshAfterDayRecordChange();
+    });
     top.appendChild(del);
     item.appendChild(top);
 
@@ -4497,7 +4630,13 @@
         del.type = 'button';
         del.className = 'recordEntryDelete';
         del.textContent = '消す';
-        del.addEventListener('click', (e) => { e.stopPropagation(); deleteJournalEntry(j.id); refreshAfterDayRecordChange(); });
+        del.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const label = note ? `「${noteSnippet(note.text, 20)}」` : 'この項目';
+          if (!confirm(`${dotDate(j.date)}の「引く」の記録（${label}）を消しますか？`)) return;
+          deleteJournalEntry(j.id);
+          refreshAfterDayRecordChange();
+        });
         row.appendChild(del);
         if (note) row.addEventListener('click', () => openDetail(note.id, 'records'));
         item.appendChild(row);
@@ -5848,6 +5987,7 @@
     const token = getGhToken();
     if (!token) { alert('先にGitHub tokenを設定してください'); return; }
     if (!confirm('ローカルのデータ（言葉・散歩の両方）を破棄して、リモートの内容で置き換えます。よろしいですか？この操作は取り消せません。')) return;
+    if (!confirm('本当によろしいですか？ローカルにしかない変更があれば失われます。')) return;
     setSyncStatus('syncing');
     setWalkSyncStatus('syncing');
     let failed = false;
