@@ -44,8 +44,9 @@
     padding: 4px 8px;
     min-height: 1.4em;
   }
-  #syncBar.error, #syncBar.unsynced { color: var(--danger); }
+  #syncBar.error, #syncBar.unsynced, #syncBar.offline { color: var(--danger); }
   #syncBar.syncing { color: var(--text-dim); }
+  #syncBar.prominent { font-weight: 700; }
   #app {
     max-width: 560px;
     margin: 0 auto;
@@ -200,7 +201,7 @@
   }
   .fieldNote.warn { color: var(--danger); }
   .autocompleteField { position: relative; }
-  .suggestList, .linkResultsList {
+  .linkResultsList {
     list-style: none;
     margin: 0;
     padding: 4px;
@@ -210,14 +211,13 @@
     max-height: 180px;
     overflow-y: auto;
   }
-  .suggestList { position: absolute; left: 0; right: 0; top: 100%; z-index: 5; }
-  .suggestList li, .linkResultItem {
+  .linkResultItem {
     padding: 10px 8px;
     font-size: 15px;
     border-radius: 6px;
     cursor: pointer;
   }
-  .suggestList li:active, .linkResultItem:active { background: var(--bg-card); }
+  .linkResultItem:active { background: var(--bg-card); }
   .linkResultItem { border-bottom: 1px solid var(--border); }
   .linkResultItem:last-child { border-bottom: none; }
   .linkResultText { color: var(--text); }
@@ -309,6 +309,18 @@
     color: var(--accent);
     background: rgba(143, 179, 155, 0.12);
   }
+  .candidateChipRow { margin-top: -2px; }
+  .candidateChip {
+    font-family: inherit;
+    font-size: 13px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 12px;
+    color: var(--text-dim);
+    background: var(--bg-elevated);
+    cursor: pointer;
+  }
+  .candidateChip:active { background: var(--bg-card); }
   .statRow {
     display: flex;
     justify-content: space-between;
@@ -391,7 +403,7 @@
       <div class="field autocompleteField">
         <span class="fieldLabel">出典</span>
         <input id="editSource" type="text" placeholder="本のタイトル／人名。自分の考えなら「自分」" autocomplete="off">
-        <ul id="sourceSuggest" class="suggestList" hidden></ul>
+        <div id="sourceCandidates" class="chipRow candidateChipRow"></div>
       </div>
       <label class="field">
         <span class="fieldLabel">自分の言葉での一言<span class="required">必須</span></span>
@@ -401,11 +413,12 @@
       <div class="field autocompleteField">
         <span class="fieldLabel">タグ</span>
         <input id="editTagInput" type="text" placeholder="タグを入力してEnter" autocomplete="off">
-        <ul id="tagSuggest" class="suggestList" hidden></ul>
         <div id="editTagChips" class="chipRow"></div>
+        <div id="tagCandidates" class="chipRow candidateChipRow"></div>
       </div>
       <div class="field">
         <span class="fieldLabel">関連ノート</span>
+        <p class="fieldNote">似た考えのノートを紐づけると、詳細画面でお互いを行き来できます</p>
         <input id="editLinkSearch" type="text" placeholder="検索して追加" autocomplete="off">
         <div id="linkSearchResults" class="linkResultsList" hidden></div>
         <div id="editLinkChips" class="chipRow"></div>
@@ -435,6 +448,10 @@
         <input id="importFileInput" type="file" accept="application/json" hidden>
       </div>
       <hr>
+      <div class="field">
+        <button id="btnReloadFromRemote" class="dangerBtn">リモートから読み込み直す（ローカルを破棄）</button>
+      </div>
+      <hr>
       <div class="field statsField">
         <div class="statRow"><span>ノート総数</span><span id="statNoteCount"></span></div>
         <div class="statRow"><span>タグ数</span><span id="statTagCount"></span></div>
@@ -447,6 +464,7 @@
 <script>
 (() => {
   const STORAGE_KEY = 'kotoba_data';
+  const BACKUP_KEY = 'kotoba_data_backup';
   const GH_TOKEN_KEY = 'kotoba_ghToken';
   const LAST_SYNC_KEY = 'kotoba_lastSyncAt';
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
@@ -479,7 +497,7 @@
   function nowIso() { return new Date().toISOString(); }
 
   function defaultData() {
-    return { version: 1, updatedAt: nowIso(), notes: [] };
+    return { version: 1, updatedAt: nowIso(), notes: [], deletedIds: [] };
   }
 
   function normalizeNote(n) {
@@ -497,31 +515,55 @@
 
   function normalizeData(parsed) {
     if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.notes)) return null;
+    const deletedIds = Array.isArray(parsed.deletedIds)
+      ? parsed.deletedIds.filter((d) => d && d.id).map((d) => ({ id: String(d.id), deletedAt: d.deletedAt || nowIso() }))
+      : [];
     return {
       version: parsed.version || 1,
       updatedAt: parsed.updatedAt || nowIso(),
       notes: parsed.notes.filter((n) => n && n.id).map(normalizeNote),
+      deletedIds,
     };
   }
 
+  // Primary key holds the live copy; the backup key is only overwritten right
+  // after a confirmed-successful sync, so a corrupt primary can be recovered
+  // from a known-good, previously-synced snapshot instead of losing data.
   function loadData() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return defaultData();
-      const parsed = normalizeData(JSON.parse(raw));
-      return parsed || defaultData();
-    } catch (e) {
-      return defaultData();
-    }
+      if (raw) {
+        const parsed = normalizeData(JSON.parse(raw));
+        if (parsed) return parsed;
+      }
+    } catch (e) {}
+    try {
+      const rawBackup = localStorage.getItem(BACKUP_KEY);
+      if (rawBackup) {
+        const parsedBackup = normalizeData(JSON.parse(rawBackup));
+        if (parsedBackup) {
+          persistLocal(parsedBackup);
+          return parsedBackup;
+        }
+      }
+    } catch (e) {}
+    return defaultData();
   }
 
   function persistLocal(d) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(d));
   }
 
+  function backupData(d) {
+    try { localStorage.setItem(BACKUP_KEY, JSON.stringify(d)); } catch (e) {}
+  }
+
+  let pendingChangeCount = 0;
+
   function saveData(d) {
     d.updatedAt = nowIso();
     persistLocal(d);
+    pendingChangeCount++;
     scheduleSync();
   }
 
@@ -544,12 +586,6 @@
     return [...set].sort((a, b) => a.localeCompare(b, 'ja'));
   }
 
-  function allSources() {
-    const set = new Set();
-    data.notes.forEach((n) => { if (n.source) set.add(n.source); });
-    return [...set].sort((a, b) => a.localeCompare(b, 'ja'));
-  }
-
   // Links are bidirectional: reconcile the reverse side whenever a note's
   // own links[] changes, so A<->B always agree without the user managing B.
   function applyLinksDiff(noteId, oldLinks, newLinks) {
@@ -568,6 +604,61 @@
   function deleteNoteById(id) {
     data.notes.forEach((n) => { n.links = n.links.filter((lid) => lid !== id); });
     data.notes = data.notes.filter((n) => n.id !== id);
+    if (!Array.isArray(data.deletedIds)) data.deletedIds = [];
+    data.deletedIds = data.deletedIds.filter((d) => d.id !== id);
+    data.deletedIds.push({ id, deletedAt: nowIso() });
+  }
+
+  function pruneDanglingLinks(d) {
+    const ids = new Set(d.notes.map((n) => n.id));
+    d.notes.forEach((n) => { n.links = n.links.filter((id) => ids.has(id)); });
+  }
+
+  // Per-note merge (not whole-blob updatedAt comparison): union local and
+  // remote notes by id, keeping whichever side edited it more recently.
+  // An id present on only one side is kept UNLESS the other side recorded an
+  // explicit tombstone for it that is at least as new as that note's
+  // updatedAt - "missing" alone never means "deleted" (it might just be a
+  // note the other device hasn't synced yet).
+  function mergeData(a, b) {
+    const notesA = new Map(a.notes.map((n) => [n.id, n]));
+    const notesB = new Map(b.notes.map((n) => [n.id, n]));
+    const delA = new Map((a.deletedIds || []).map((d) => [d.id, d.deletedAt]));
+    const delB = new Map((b.deletedIds || []).map((d) => [d.id, d.deletedAt]));
+
+    const allIds = new Set([...notesA.keys(), ...notesB.keys()]);
+    const mergedNotes = new Map();
+
+    allIds.forEach((id) => {
+      const na = notesA.get(id);
+      const nb = notesB.get(id);
+      let winner;
+      if (na && nb) {
+        winner = new Date(na.updatedAt) >= new Date(nb.updatedAt) ? na : nb;
+      } else {
+        const only = na || nb;
+        const tombstoneAt = na ? delB.get(id) : delA.get(id);
+        winner = (tombstoneAt && new Date(tombstoneAt) >= new Date(only.updatedAt)) ? null : only;
+      }
+      if (winner) mergedNotes.set(id, { ...winner, tags: [...winner.tags], links: [...winner.links] });
+    });
+
+    const mergedDeleted = new Map();
+    delA.forEach((at, id) => mergedDeleted.set(id, at));
+    delB.forEach((at, id) => {
+      const cur = mergedDeleted.get(id);
+      if (!cur || new Date(at) > new Date(cur)) mergedDeleted.set(id, at);
+    });
+    mergedNotes.forEach((_, id) => mergedDeleted.delete(id));
+
+    const merged = {
+      version: 1,
+      updatedAt: nowIso(),
+      notes: [...mergedNotes.values()],
+      deletedIds: [...mergedDeleted.entries()].map(([id, deletedAt]) => ({ id, deletedAt })),
+    };
+    pruneDanglingLinks(merged);
+    return merged;
   }
 
   // --- GitHub sync (same mechanism as walk10000 -> walk10000-data) ---------
@@ -598,20 +689,33 @@
       `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_PATH}`,
       { method: 'PUT', headers: ghHeaders(token), body: JSON.stringify(body) }
     );
-    if (!res.ok) throw new Error('GitHub PUT failed: ' + res.status);
+    if (!res.ok) {
+      const err = new Error('GitHub PUT failed: ' + res.status);
+      err.status = res.status;
+      throw err;
+    }
     return res.json();
   }
 
   const syncBarEl = document.getElementById('syncBar');
   function setSyncStatus(state) {
-    syncBarEl.className = state;
+    let text;
     if (state === 'synced') {
       const t = localStorage.getItem(LAST_SYNC_KEY);
-      syncBarEl.textContent = t ? `同期済み ${formatDateTime(t)}` : '同期済み';
-    } else if (state === 'error') syncBarEl.textContent = '同期エラー（次回保存時に再試行します）';
-    else if (state === 'syncing') syncBarEl.textContent = '同期中…';
-    else if (state === 'off') syncBarEl.textContent = '';
-    else syncBarEl.textContent = '未同期';
+      text = t ? `同期済み ${formatDateTime(t)}` : '同期済み';
+    } else if (state === 'error') {
+      text = pendingChangeCount > 0 ? `同期エラー（未反映 ${pendingChangeCount}件）` : '同期エラー（次回保存時に再試行します）';
+    } else if (state === 'syncing') {
+      text = '同期中…';
+    } else if (state === 'off') {
+      text = '';
+    } else if (state === 'offline') {
+      text = 'オフライン' + (pendingChangeCount > 0 ? `（未反映 ${pendingChangeCount}件）` : '');
+    } else {
+      text = pendingChangeCount > 1 ? `未同期（${pendingChangeCount}件）` : '未同期';
+    }
+    syncBarEl.className = state + ((pendingChangeCount >= 2 && state !== 'synced' && state !== 'syncing') ? ' prominent' : '');
+    syncBarEl.textContent = text;
   }
   setSyncStatus(getGhToken() ? 'unsynced' : 'off');
 
@@ -623,38 +727,83 @@
     syncDebounceTimer = setTimeout(syncNow, 800);
   }
 
-  // Pull-if-remote-newer, else push local. Reused for startup, every save,
-  // and the manual "今すぐ同期" button, exactly like walk10000's syncNow().
-  async function syncNow() {
-    const token = getGhToken();
-    if (!token) return;
-    if (nav.screen === 'editor') return; // never clobber an in-progress edit
-    setSyncStatus('syncing');
+  function emptyRemoteData() {
+    return { version: 1, updatedAt: nowIso(), notes: [], deletedIds: [] };
+  }
+
+  // Push data (already merged with the latest remote fetch). On a 409 (someone
+  // else wrote in between), refetch + remerge + retry exactly once, then give
+  // up and let the caller's catch report the error.
+  async function pushWithConflictRetry(token, knownSha) {
     try {
-      const remote = await ghGetFile(token);
-      if (remote.data && new Date(remote.data.updatedAt) > new Date(data.updatedAt)) {
-        data = remote.data;
-        persistLocal(data);
-        refreshCurrentScreen();
-      } else {
-        await ghPutFile(token, data, remote.sha);
-      }
-      localStorage.setItem(LAST_SYNC_KEY, nowIso());
-      setSyncStatus('synced');
+      await ghPutFile(token, data, knownSha);
     } catch (e) {
-      setSyncStatus('error');
+      if (e.status === 409) {
+        const remote2 = await ghGetFile(token);
+        data = mergeData(data, remote2.data || emptyRemoteData());
+        persistLocal(data);
+        backupData(data);
+        refreshCurrentScreen();
+        await ghPutFile(token, data, remote2.sha);
+      } else {
+        throw e;
+      }
     }
   }
 
-  async function forcePush() {
+  let syncInFlight = false;
+
+  // Always fetches remote and merges it in (per-note, see mergeData) - called
+  // on startup, on every visibility-change back to foreground, after every
+  // save, and by the manual "今すぐ同期" button. Safety valve: if this
+  // device's local notes were empty before merging and remote had any, this
+  // cycle only pulls - it never pushes - so a fresh/wiped device can never
+  // stomp a populated remote.
+  async function syncNow() {
+    const token = getGhToken();
+    if (!token) { setSyncStatus('off'); return; }
+    if (nav.screen === 'editor') return; // never clobber an in-progress edit
+    if (syncInFlight) return;
+    if (!navigator.onLine) { setSyncStatus('offline'); return; }
+    syncInFlight = true;
+    setSyncStatus('syncing');
+    try {
+      const localHadNoNotes = data.notes.length === 0;
+      const remote = await ghGetFile(token); // throws on failure -> no push is attempted below
+      data = mergeData(data, remote.data || emptyRemoteData());
+      persistLocal(data);
+      backupData(data);
+      refreshCurrentScreen();
+
+      const skipPush = localHadNoNotes && remote.data && remote.data.notes.length > 0;
+      if (!skipPush) {
+        await pushWithConflictRetry(token, remote.sha);
+        backupData(data);
+      }
+      localStorage.setItem(LAST_SYNC_KEY, nowIso());
+      pendingChangeCount = 0;
+      setSyncStatus('synced');
+    } catch (e) {
+      setSyncStatus('error');
+    } finally {
+      syncInFlight = false;
+    }
+  }
+
+  // Unconditional overwrite for explicit user actions (import, delete-all
+  // equivalents) that have already been confirmed - bypasses merge on
+  // purpose, but still retries once on a sha conflict.
+  async function hardPushCurrentData() {
     const token = getGhToken();
     if (!token) return;
     if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
     setSyncStatus('syncing');
     try {
       const remote = await ghGetFile(token);
-      await ghPutFile(token, data, remote.sha);
+      await pushWithConflictRetry(token, remote.sha);
+      backupData(data);
       localStorage.setItem(LAST_SYNC_KEY, nowIso());
+      pendingChangeCount = 0;
       setSyncStatus('synced');
     } catch (e) {
       setSyncStatus('error');
@@ -913,11 +1062,11 @@
     }
     editTagInputEl.value = '';
     editLinkSearchEl.value = '';
-    hideSuggest(sourceSuggestEl);
-    hideSuggest(tagSuggestEl);
     hideLinkResults();
     renderTagChips();
     renderLinkChips();
+    renderSourceCandidates();
+    renderTagCandidates();
     updateSaveButtonState();
     showScreen('editor');
   }
@@ -981,31 +1130,65 @@
     }
   });
 
-  // tag/source autocomplete + chips
-  const sourceSuggestEl = document.getElementById('sourceSuggest');
-  const tagSuggestEl = document.getElementById('tagSuggest');
-
-  function hideSuggest(el) { el.hidden = true; el.innerHTML = ''; }
-
-  function showSuggestList(el, items, onPick) {
-    el.innerHTML = '';
-    if (!items.length) { hideSuggest(el); return; }
-    items.slice(0, 8).forEach((item) => {
-      const li = document.createElement('li');
-      li.textContent = item;
-      li.addEventListener('mousedown', (e) => { e.preventDefault(); onPick(item); });
-      el.appendChild(li);
+  // tag/source candidates: always-visible chips of previously-used values,
+  // ranked by usage count (ties broken by most-recently-used), narrowed by
+  // whatever's currently typed. Tapping one selects it; free typed text is
+  // still accepted as-is (source) or via Enter (tag).
+  function sourceUsageStats() {
+    const stats = new Map();
+    data.notes.forEach((n) => {
+      if (!n.source) return;
+      const s = stats.get(n.source) || { count: 0, lastUsed: '' };
+      s.count++;
+      if (n.updatedAt > s.lastUsed) s.lastUsed = n.updatedAt;
+      stats.set(n.source, s);
     });
-    el.hidden = false;
+    if (!stats.has('自分')) stats.set('自分', { count: 0, lastUsed: '' });
+    return stats;
   }
 
-  editSourceEl.addEventListener('input', () => {
+  function tagUsageStats() {
+    const stats = new Map();
+    data.notes.forEach((n) => {
+      n.tags.forEach((t) => {
+        const s = stats.get(t) || { count: 0, lastUsed: '' };
+        s.count++;
+        if (n.updatedAt > s.lastUsed) s.lastUsed = n.updatedAt;
+        stats.set(t, s);
+      });
+    });
+    return stats;
+  }
+
+  function rankByUsage(stats) {
+    return [...stats.entries()]
+      .sort((a, b) => b[1].count - a[1].count || (a[1].lastUsed < b[1].lastUsed ? 1 : -1))
+      .map(([key]) => key);
+  }
+
+  function renderCandidateChips(container, candidates, onPick) {
+    container.innerHTML = '';
+    candidates.slice(0, 24).forEach((value) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'candidateChip';
+      btn.textContent = value;
+      btn.addEventListener('click', () => onPick(value));
+      container.appendChild(btn);
+    });
+  }
+
+  const sourceCandidatesEl = document.getElementById('sourceCandidates');
+  function renderSourceCandidates() {
     const q = editSourceEl.value.trim().toLowerCase();
-    if (!q) { hideSuggest(sourceSuggestEl); return; }
-    const matches = allSources().filter((s) => s.toLowerCase().startsWith(q) && s.toLowerCase() !== q);
-    showSuggestList(sourceSuggestEl, matches, (v) => { editSourceEl.value = v; hideSuggest(sourceSuggestEl); });
-  });
-  editSourceEl.addEventListener('blur', () => setTimeout(() => hideSuggest(sourceSuggestEl), 150));
+    let candidates = rankByUsage(sourceUsageStats());
+    if (q) candidates = candidates.filter((s) => s.toLowerCase().includes(q));
+    renderCandidateChips(sourceCandidatesEl, candidates, (v) => {
+      editSourceEl.value = v;
+      renderSourceCandidates();
+    });
+  }
+  editSourceEl.addEventListener('input', renderSourceCandidates);
 
   function renderTagChips() {
     const row = document.getElementById('editTagChips');
@@ -1022,6 +1205,7 @@
       rm.addEventListener('click', () => {
         editorState.tags = editorState.tags.filter((x) => x !== t);
         renderTagChips();
+        renderTagCandidates();
       });
       chip.appendChild(rm);
       row.appendChild(chip);
@@ -1033,28 +1217,31 @@
     if (!t || editorState.tags.includes(t)) return;
     editorState.tags.push(t);
     renderTagChips();
+    renderTagCandidates();
   }
 
-  editTagInputEl.addEventListener('input', () => {
+  const tagCandidatesEl = document.getElementById('tagCandidates');
+  function renderTagCandidates() {
     const q = editTagInputEl.value.trim().toLowerCase();
-    if (!q) { hideSuggest(tagSuggestEl); return; }
-    const matches = allTags().filter((t) => t.toLowerCase().startsWith(q) && !editorState.tags.includes(t));
-    showSuggestList(tagSuggestEl, matches, (v) => {
+    const excludeSet = new Set(editorState.tags);
+    let candidates = rankByUsage(tagUsageStats()).filter((t) => !excludeSet.has(t));
+    if (q) candidates = candidates.filter((t) => t.toLowerCase().includes(q));
+    renderCandidateChips(tagCandidatesEl, candidates, (v) => {
       addTag(v);
       editTagInputEl.value = '';
-      hideSuggest(tagSuggestEl);
+      renderTagCandidates();
       editTagInputEl.focus();
     });
-  });
+  }
+  editTagInputEl.addEventListener('input', renderTagCandidates);
   editTagInputEl.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       addTag(editTagInputEl.value);
       editTagInputEl.value = '';
-      hideSuggest(tagSuggestEl);
+      renderTagCandidates();
     }
   });
-  editTagInputEl.addEventListener('blur', () => setTimeout(() => hideSuggest(tagSuggestEl), 150));
 
   // related-note picker
   const linkResultsEl = document.getElementById('linkSearchResults');
@@ -1147,6 +1334,27 @@
     syncNow().then(() => openSettings());
   });
 
+  document.getElementById('btnReloadFromRemote').addEventListener('click', async () => {
+    const token = getGhToken();
+    if (!token) { alert('先にGitHub tokenを設定してください'); return; }
+    if (!confirm('ローカルのデータを破棄して、リモートの内容で置き換えます。よろしいですか？この操作は取り消せません。')) return;
+    setSyncStatus('syncing');
+    try {
+      const remote = await ghGetFile(token);
+      data = remote.data || defaultData();
+      persistLocal(data);
+      backupData(data);
+      pendingChangeCount = 0;
+      localStorage.setItem(LAST_SYNC_KEY, nowIso());
+      setSyncStatus('synced');
+      openSettings();
+      alert('リモートの内容を読み込みました');
+    } catch (e) {
+      setSyncStatus('error');
+      alert('読み込みに失敗しました');
+    }
+  });
+
   document.getElementById('btnExport').addEventListener('click', () => {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -1172,7 +1380,7 @@
       if (!confirm('現在のデータを、読み込んだ内容で上書きします。よろしいですか？')) return;
       data = parsed;
       persistLocal(data);
-      await forcePush();
+      await hardPushCurrentData();
       openSettings();
       alert('インポートしました');
     } catch (err) {
@@ -1186,6 +1394,8 @@
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') syncNow();
   });
+  window.addEventListener('online', () => syncNow());
+  window.addEventListener('offline', () => setSyncStatus('offline'));
 })();
 </script>
 </body>
