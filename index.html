@@ -54,7 +54,7 @@
   #app {
     max-width: 560px;
     margin: 0 auto;
-    padding: 0 16px 32px;
+    padding: 0 16px calc(96px + env(safe-area-inset-bottom));
   }
   .screen { display: flex; flex-direction: column; gap: 16px; }
   .topbar {
@@ -183,11 +183,15 @@
   .bottomNav {
     display: flex;
     gap: 10px;
-    position: sticky;
+    position: fixed;
+    left: 0;
+    right: 0;
     bottom: 0;
+    max-width: 560px;
+    margin: 0 auto;
     background: var(--bg);
-    padding: 10px 0 calc(10px + env(safe-area-inset-bottom));
-    margin-top: 4px;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    z-index: 500;
   }
   .navBtn {
     flex: 1;
@@ -490,18 +494,27 @@
     font-size: 13px;
     padding: 2px;
   }
-  .calCell .calSteps { font-size: 8px; color: var(--text-faint); line-height: 1; }
-  .calCell.walked { background: var(--accent); color: #121212; border-color: var(--accent); }
-  .calCell.walked .calSteps { color: #0d1f17; }
+  .calDayNum { font-size: 13px; }
+  .calMoodMark { font-size: 11px; line-height: 1; height: 13px; }
+  .calDotRow { display: flex; gap: 3px; height: 6px; align-items: center; }
+  .calDot { width: 5px; height: 5px; border-radius: 50%; }
+  .calDot.dotWalk { background: var(--accent); }
+  .calDot.dotConsult { background: #86a9c9; }
+  .calDot.dotDraw { background: #a98fd0; }
+  .calCell.today { border-color: var(--accent-dim); }
+  .calCell.selected { background: var(--bg-elevated); border-color: var(--accent); }
   .calCell.disabled { background: none; color: #444; border-color: #1e1e1e; cursor: default; }
   .calCell.empty { border: none; cursor: default; }
   .reviewSection { display: flex; flex-direction: column; gap: 12px; }
+  #recordsCalendarView { display: flex; flex-direction: column; gap: 16px; }
+  #dayDetailView { display: flex; flex-direction: column; gap: 16px; padding-top: 8px; }
+  #dayDetailBody { display: flex; flex-direction: column; gap: 12px; }
+  .dayDrawGroups { display: flex; flex-direction: column; gap: 12px; }
   .reviewSection h3 { margin: 0; font-size: 15px; color: var(--text-dim); font-weight: normal; }
   .recordEntry { background: var(--bg-card); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
   .recordEntryTop { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
   .recordEntryDate { font-size: 13px; color: var(--text-dim); }
   .recordEntryDelete { color: var(--text-faint); font-size: 13px; }
-  .recordSubTabs { display: flex; gap: 10px; }
   .journalCardMini { background: var(--bg-elevated); border-radius: 10px; padding: 10px 12px; cursor: pointer; }
   .journalCardMini .lText { font-size: 14px; }
   .drawGroupMain, .drawGroupSub {
@@ -920,56 +933,33 @@
       <div class="topbar-title">記録</div>
       <div style="width:40px;"></div>
     </header>
-    <div class="recordSubTabs tagFilterRow" id="recordSubTabRow">
-      <button type="button" class="tagFilterBtn" data-sub="morning">朝の言葉</button>
-      <button type="button" class="tagFilterBtn" data-sub="consult">相談</button>
-      <button type="button" class="tagFilterBtn" data-sub="draw">引く</button>
-      <button type="button" class="tagFilterBtn" data-sub="walk">散歩</button>
-    </div>
 
-    <div id="recordsMorningView">
-      <div id="recordsMorningList" class="listItems"></div>
-      <div id="recordsMorningEmpty" class="emptyMsg" hidden>まだ記録がありません。</div>
-    </div>
-
-    <div id="recordsDrawView" hidden>
-      <div id="recordsDrawList" class="listItems"></div>
-      <div id="recordsDrawEmpty" class="emptyMsg" hidden>まだ記録がありません。</div>
-    </div>
-
-    <div id="recordsConsultView" hidden>
-      <div id="recordsConsultList" class="listItems"></div>
-      <div id="recordsConsultEmpty" class="emptyMsg" hidden>まだ記録がありません。</div>
-    </div>
-
-    <div id="recordsWalkView" hidden>
-      <div class="reviewSection" id="reviewSectionAchieve">
-        <div class="statRow" id="reviewRow7"><span>7日</span><span id="review7"></span></div>
-        <div class="statRow" id="reviewRow30"><span>30日</span><span id="review30"></span></div>
-      </div>
-      <div class="reviewSection" id="reviewSectionStats">
-        <hr><h3>歩数 / 距離</h3>
-        <div class="statRow" id="reviewStatsRow7"><span>7日</span><span id="reviewStats7"></span></div>
-        <div class="statRow" id="reviewStatsRow30"><span>30日</span><span id="reviewStats30"></span></div>
-      </div>
-      <div class="reviewSection" id="reviewSectionMood">
-        <hr><h3>気分（起床 / 散歩後）</h3>
-        <div class="statRow" id="reviewMoodRow7"><span>7日</span><span id="reviewMood7"></span></div>
-        <div class="statRow" id="reviewMoodRow30"><span>30日</span><span id="reviewMood30"></span></div>
-      </div>
-      <div class="reviewSection" id="reviewSectionTime">
-        <hr><h3>記録時刻の平均</h3>
-        <div class="statRow" id="reviewTimeRow7"><span>7日</span><span id="reviewTime7"></span></div>
-        <div class="statRow" id="reviewTimeRow30"><span>30日</span><span id="reviewTime30"></span></div>
-      </div>
-      <p class="emptyMsg" id="reviewEmptyMsg" hidden>7日分の記録が貯まると表示されます</p>
-      <hr>
+    <div id="recordsCalendarView">
       <div class="calNav">
         <button type="button" id="calPrev" class="secondaryBtn">＜ 前月</button>
         <div id="calMonthLabel"></div>
         <button type="button" id="calNext" class="secondaryBtn">翌月 ＞</button>
       </div>
       <div class="calGrid" id="calGrid"></div>
+
+      <div id="dayDetailView" hidden>
+        <h3 id="dayDetailTitle"></h3>
+        <div id="dayDetailBody"></div>
+        <div id="dayDetailEmpty" class="emptyMsg" hidden>記録なし</div>
+      </div>
+
+      <hr>
+      <div class="reviewSection" id="monthSummarySection">
+        <h3>この月のまとめ</h3>
+        <div class="statRow"><span>散歩日数</span><span id="summaryWalkDays"></span></div>
+        <div class="statRow"><span>朝の言葉を受け取った日数</span><span id="summaryMorningDays"></span></div>
+        <div class="statRow"><span>相談した回数</span><span id="summaryConsultCount"></span></div>
+        <div class="field">
+          <span class="fieldLabel">その月に最も多く届いた言葉</span>
+          <div id="summaryTopNotes" class="listItems"></div>
+          <p class="emptyMsg" id="summaryTopNotesEmpty" hidden>まだありません。</p>
+        </div>
+      </div>
     </div>
 
     <div id="dayEditorView" class="editorBody" hidden>
@@ -1895,42 +1885,6 @@
       while (set.has(cursor)) { streak++; cursor = addDays(cursor, -1); }
     }
     return { n, cardNumber, filledInCard, streak, longest, today, yesterday, todayWalked: set.has(today) };
-  }
-
-  function computeWalkRecentStats(days) {
-    const set = new Set(walkData.walkedDates);
-    const today = todayStr();
-    let walked = 0, steps = 0, distanceM = 0;
-    let wakeSum = 0, wakeCount = 0, afterSum = 0, afterCount = 0;
-    let timeSum = 0, timeCount = 0;
-    for (let i = 0; i < days; i++) {
-      const d = addDays(today, -i);
-      if (set.has(d)) walked++;
-      const stats = walkData.dailyStats[d];
-      if (stats) {
-        if (stats.steps != null) steps += stats.steps;
-        if (stats.distanceM != null) distanceM += stats.distanceM;
-        if (stats.wakeMood != null) { wakeSum += stats.wakeMood; wakeCount++; }
-        if (stats.afterMood != null) { afterSum += stats.afterMood; afterCount++; }
-        if (stats.recordedAt) {
-          const t = new Date(stats.recordedAt);
-          timeSum += t.getHours() * 60 + t.getMinutes();
-          timeCount++;
-        }
-      }
-    }
-    return {
-      walked, steps, distanceKm: distanceM / 1000,
-      wakeAvg: wakeCount ? wakeSum / wakeCount : null,
-      afterAvg: afterCount ? afterSum / afterCount : null,
-      timeAvgMinutes: timeCount ? Math.round(timeSum / timeCount) : null,
-    };
-  }
-
-  function formatMinutesAsTime(minutes) {
-    const h = Math.floor(minutes / 60) % 24;
-    const m = minutes % 60;
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
   }
 
   function roundRectPath(ctx, x, y, w, h, r) {
@@ -3124,7 +3078,11 @@
       document.getElementById('screen-' + s).hidden = s !== name;
     });
     nav.screen = name;
-    document.getElementById('globalBottomNav').hidden = (name === 'detail' || name === 'editor' || name === 'bulk' || name === 'draftreview');
+    // Fixed at the bottom of every screen now (v3.4); the draw/graph
+    // fullscreen overlays don't go through showScreen() at all - they cover
+    // the nav visually via their own z-index (1000 > this nav's 500), same
+    // mechanism that already hid it before this nav became position:fixed.
+    document.getElementById('globalBottomNav').hidden = false;
     document.querySelectorAll('#globalBottomNav .navBtn').forEach((b) => b.classList.remove('selected'));
     const activeBtn = { home: 'navHome', list: 'navList', consult: 'navConsult', records: 'navRecords', settings: 'navSettings' }[name];
     if (activeBtn) document.getElementById(activeBtn).classList.add('selected');
@@ -4288,272 +4246,42 @@
     downloadFile(file);
   });
 
-  // --- Records (v3, new tab) -------------------------------------------
-  const recordsState = { subTab: 'morning' };
+  // --- Records (v3.4: single calendar, day-detail below) --------------------
   const expandedConsultRecords = new Set(); // session-only "続きを見る" state
+  const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
+  let calYear, calMonth; // calMonth is 0-indexed
+  let editingDate = null;
+  let recordsSelectedDate = null;
 
   function openRecords() {
     showScreen('records');
+    if (calYear == null) {
+      const t = new Date();
+      calYear = t.getFullYear();
+      calMonth = t.getMonth();
+    }
     renderRecords();
   }
 
   function renderRecords() {
-    document.querySelectorAll('#recordSubTabRow button').forEach((b) => {
-      b.classList.toggle('selected', b.dataset.sub === recordsState.subTab);
-    });
-    document.getElementById('recordsMorningView').hidden = recordsState.subTab !== 'morning';
-    document.getElementById('recordsConsultView').hidden = recordsState.subTab !== 'consult';
-    document.getElementById('recordsDrawView').hidden = recordsState.subTab !== 'draw';
-    document.getElementById('recordsWalkView').hidden = recordsState.subTab !== 'walk';
+    document.getElementById('recordsCalendarView').hidden = false;
     document.getElementById('dayEditorView').hidden = true;
-
-    if (recordsState.subTab === 'morning') renderRecordsMorning();
-    else if (recordsState.subTab === 'consult') renderRecordsConsult();
-    else if (recordsState.subTab === 'draw') renderRecordsDraw();
-    else renderRecordsWalk();
+    renderRecordsCalendar();
+    renderDayDetail();
+    renderMonthSummary();
   }
 
-  // v3.2: consecutive same-day draws (one shuffle-stop + whatever links the
-  // user tapped through afterward) collapse into a single card - grouped by
-  // (date, sessionId). Entries synced in from before sessionId existed each
-  // become their own singleton group (falls back to the entry's own id).
-  function renderRecordsDraw() {
-    const list = document.getElementById('recordsDrawList');
-    list.innerHTML = '';
-    const entries = data.journal.filter((j) => j.kind === 'draw');
-    document.getElementById('recordsDrawEmpty').hidden = entries.length > 0;
-
-    const groups = new Map();
-    entries.forEach((j) => {
-      const key = j.date + '|' + (j.sessionId || j.id);
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(j);
-    });
-    const groupList = [...groups.values()].map((g) => {
-      g.sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1)); // chronological within the trail
-      return g;
-    });
-    groupList.sort((a, b) => {
-      const aLatest = a[a.length - 1].createdAt, bLatest = b[b.length - 1].createdAt;
-      return aLatest < bLatest ? 1 : -1; // most recently active group first
-    });
-
-    groupList.forEach((group) => {
-      const item = document.createElement('div');
-      item.className = 'recordEntry';
-
-      const top = document.createElement('div');
-      top.className = 'recordEntryTop';
-      const dateEl = document.createElement('span');
-      dateEl.className = 'recordEntryDate';
-      dateEl.textContent = dotDate(group[0].date);
-      top.appendChild(dateEl);
-      item.appendChild(top);
-
-      group.forEach((j, i) => {
-        const note = j.picks[0] && findNote(j.picks[0].id);
-        const row = document.createElement('div');
-        row.className = i === 0 ? 'journalCardMini drawGroupMain' : 'journalCardMini drawGroupSub';
-        const textEl = document.createElement('span');
-        textEl.textContent = note
-          ? noteSnippet(note.text, i === 0 ? 60 : 36) + (i === 0 && note.source ? ' ・ ' + note.source : '')
-          : '（削除済み）';
-        row.appendChild(textEl);
-        const del = document.createElement('button');
-        del.type = 'button';
-        del.className = 'recordEntryDelete';
-        del.textContent = '消す';
-        del.addEventListener('click', (e) => { e.stopPropagation(); deleteJournalEntry(j.id); renderRecordsDraw(); });
-        row.appendChild(del);
-        if (note) row.addEventListener('click', () => openDetail(note.id, 'records'));
-        item.appendChild(row);
-      });
-
-      list.appendChild(item);
-    });
+  // Earliest month with any record at all (journal entries or walked days) -
+  // "前月" stops there instead of at the walk10000 start date, since a
+  // calendar-first records view should be bounded by actual activity.
+  function earliestRecordMonthKey() {
+    let min = null;
+    data.journal.forEach((j) => { if (!min || j.date < min) min = j.date; });
+    walkData.walkedDates.forEach((d) => { if (!min || d < min) min = d; });
+    return min ? min.slice(0, 7) : todayStr().slice(0, 7);
   }
 
-  function journalEntriesSorted(kind) {
-    return data.journal.filter((j) => j.kind === kind).sort((a, b) => (a.date < b.date ? 1 : a.date === b.date ? (a.createdAt < b.createdAt ? 1 : -1) : -1));
-  }
-
-  function renderRecordsMorning() {
-    const list = document.getElementById('recordsMorningList');
-    list.innerHTML = '';
-    const entries = journalEntriesSorted('morning');
-    document.getElementById('recordsMorningEmpty').hidden = entries.length > 0;
-    entries.forEach((j) => {
-      const item = document.createElement('div');
-      item.className = 'recordEntry';
-
-      const top = document.createElement('div');
-      top.className = 'recordEntryTop';
-      const dateEl = document.createElement('span');
-      dateEl.className = 'recordEntryDate';
-      dateEl.textContent = dotDate(j.date) + (j.mood != null ? ' ' + MOOD_EMOJI[j.mood] : '');
-      top.appendChild(dateEl);
-      const del = document.createElement('button');
-      del.type = 'button';
-      del.className = 'recordEntryDelete';
-      del.textContent = '消す';
-      del.addEventListener('click', () => { deleteJournalEntry(j.id); renderRecordsMorning(); });
-      top.appendChild(del);
-      item.appendChild(top);
-
-      if (j.text) {
-        const t = document.createElement('div');
-        t.textContent = j.text;
-        item.appendChild(t);
-      }
-      j.picks.forEach((pick) => {
-        const note = findNote(pick.id);
-        if (!note) return;
-        const mini = document.createElement('div');
-        mini.className = 'journalCardMini';
-        const mt = document.createElement('div');
-        mt.className = 'lText';
-        mt.textContent = noteSnippet(note.text, 50);
-        mini.appendChild(mt);
-        mini.addEventListener('click', () => openDetail(note.id, 'records'));
-        item.appendChild(mini);
-      });
-      list.appendChild(item);
-    });
-  }
-
-  function renderRecordsConsult() {
-    const list = document.getElementById('recordsConsultList');
-    list.innerHTML = '';
-    const entries = journalEntriesSorted('consult');
-    document.getElementById('recordsConsultEmpty').hidden = entries.length > 0;
-    entries.forEach((j) => {
-      const item = document.createElement('div');
-      item.className = 'recordEntry';
-
-      const top = document.createElement('div');
-      top.className = 'recordEntryTop';
-      const dateEl = document.createElement('span');
-      dateEl.className = 'recordEntryDate';
-      dateEl.textContent = dotDate(j.date);
-      top.appendChild(dateEl);
-      const del = document.createElement('button');
-      del.type = 'button';
-      del.className = 'recordEntryDelete';
-      del.textContent = '消す';
-      del.addEventListener('click', () => { deleteJournalEntry(j.id); renderRecordsConsult(); });
-      top.appendChild(del);
-      item.appendChild(top);
-
-      const expanded = expandedConsultRecords.has(j.id);
-      const fullText = j.text + (j.closing ? '\n' + j.closing : '');
-      const isLong = fullText.length > 80;
-
-      const inputEl = document.createElement('div');
-      inputEl.className = 'consultInputEcho';
-      inputEl.textContent = j.text;
-      item.appendChild(inputEl);
-
-      if (expanded || !isLong) {
-        j.picks.forEach((pick) => {
-          const note = findNote(pick.id);
-          if (!note) return;
-          const mini = document.createElement('div');
-          mini.className = 'journalCardMini';
-          mini.textContent = noteSnippet(note.text, 50);
-          mini.addEventListener('click', () => openDetail(note.id, 'records'));
-          item.appendChild(mini);
-        });
-        if (j.closing) {
-          const c = document.createElement('div');
-          c.className = 'consultClosing';
-          c.textContent = j.closing;
-          item.appendChild(c);
-        }
-      }
-      if (isLong) {
-        const toggle = document.createElement('button');
-        toggle.type = 'button';
-        toggle.className = 'linkLikeBtn';
-        toggle.textContent = expanded ? '閉じる' : '続きを見る';
-        toggle.addEventListener('click', () => {
-          if (expanded) expandedConsultRecords.delete(j.id); else expandedConsultRecords.add(j.id);
-          renderRecordsConsult();
-        });
-        item.appendChild(toggle);
-      }
-      list.appendChild(item);
-    });
-  }
-
-  // --- walk review + calendar (ported from walk10000's reviewPanel/recordsPanel) ---
-  function setRowVisible(id, visible) { document.getElementById(id).style.display = visible ? 'flex' : 'none'; }
-
-  function refreshWalkReview() {
-    const elapsed = Math.round((parseDateStr(todayStr()) - parseDateStr(walkData.startDate)) / 86400000) + 1;
-    const results = { 7: elapsed >= 7 ? computeWalkRecentStats(7) : null, 30: elapsed >= 30 ? computeWalkRecentStats(30) : null };
-    let anyVisible = false;
-
-    for (const days of [7, 30]) {
-      const r = results[days];
-      const visible = r != null;
-      setRowVisible(`reviewRow${days}`, visible);
-      if (visible) { document.getElementById(`review${days}`).textContent = `${days}日中${r.walked}日`; anyVisible = true; }
-    }
-
-    let statsAny = false;
-    for (const days of [7, 30]) {
-      const r = results[days];
-      const visible = r != null && (r.steps > 0 || r.distanceKm > 0);
-      setRowVisible(`reviewStatsRow${days}`, visible);
-      if (visible) { document.getElementById(`reviewStats${days}`).textContent = `${r.steps} steps / ${r.distanceKm.toFixed(1)} km`; statsAny = true; }
-    }
-    document.getElementById('reviewSectionStats').style.display = statsAny ? 'flex' : 'none';
-    anyVisible = anyVisible || statsAny;
-
-    let moodAny = false;
-    for (const days of [7, 30]) {
-      const r = results[days];
-      const visible = r != null && (r.wakeAvg != null || r.afterAvg != null);
-      setRowVisible(`reviewMoodRow${days}`, visible);
-      if (visible) {
-        document.getElementById(`reviewMood${days}`).textContent = `${r.wakeAvg != null ? r.wakeAvg.toFixed(1) : '-'} / ${r.afterAvg != null ? r.afterAvg.toFixed(1) : '-'}`;
-        moodAny = true;
-      }
-    }
-    document.getElementById('reviewSectionMood').style.display = moodAny ? 'flex' : 'none';
-    anyVisible = anyVisible || moodAny;
-
-    let timeAny = false;
-    for (const days of [7, 30]) {
-      const r = results[days];
-      const visible = r != null && r.timeAvgMinutes != null;
-      setRowVisible(`reviewTimeRow${days}`, visible);
-      if (visible) { document.getElementById(`reviewTime${days}`).textContent = formatMinutesAsTime(r.timeAvgMinutes); timeAny = true; }
-    }
-    document.getElementById('reviewSectionTime').style.display = timeAny ? 'flex' : 'none';
-    anyVisible = anyVisible || timeAny;
-
-    document.getElementById('reviewEmptyMsg').style.display = anyVisible ? 'none' : 'block';
-  }
-
-  const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
-  let calYear, calMonth; // calMonth is 0-indexed
-  let editingDate = null;
-
-  const editWakeMoodButtons = buildMoodRow(document.getElementById('editWakeMoodRow'), (m) => {
-    if (!editingDate) return;
-    setWalkMood(editingDate, 'wakeMood', m);
-    paintMoodRow(editWakeMoodButtons, m);
-    renderWalkCalendar();
-  });
-  const editAfterMoodButtons = buildMoodRow(document.getElementById('editAfterMoodRow'), (m) => {
-    if (!editingDate) return;
-    setWalkMood(editingDate, 'afterMood', m);
-    paintMoodRow(editAfterMoodButtons, m);
-    renderWalkCalendar();
-  });
-
-  function renderWalkCalendar() {
+  function renderRecordsCalendar() {
     const calGrid = document.getElementById('calGrid');
     calGrid.innerHTML = '';
     WEEKDAY_LABELS.forEach((w) => {
@@ -4571,7 +4299,7 @@
     const trailBlanks = (7 - (totalCells % 7)) % 7;
 
     const today = todayStr();
-    const set = new Set(walkData.walkedDates);
+    const walkedSet = new Set(walkData.walkedDates);
 
     for (let i = 0; i < leadBlanks; i++) {
       const el = document.createElement('div');
@@ -4580,24 +4308,46 @@
     }
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = formatDateStr(new Date(calYear, calMonth, day));
-      const disabled = dateStr < walkData.startDate || dateStr > today;
-      const walked = set.has(dateStr);
-      const stats = walkData.dailyStats[dateStr];
+      const disabled = dateStr > today;
+      const morning = data.journal.find((j) => j.kind === 'morning' && j.date === dateStr);
+      const hasConsult = data.journal.some((j) => j.kind === 'consult' && j.date === dateStr);
+      const hasDraw = data.journal.some((j) => j.kind === 'draw' && j.date === dateStr);
+      const walked = walkedSet.has(dateStr);
 
       const el = document.createElement('button');
       el.type = 'button';
-      el.className = 'calCell' + (walked ? ' walked' : '') + (disabled ? ' disabled' : '');
+      let cls = 'calCell';
+      if (dateStr === today) cls += ' today';
+      if (dateStr === recordsSelectedDate) cls += ' selected';
+      if (disabled) cls += ' disabled';
+      el.className = cls;
+
       const num = document.createElement('div');
+      num.className = 'calDayNum';
       num.textContent = String(day);
       el.appendChild(num);
-      if (stats && stats.steps != null) {
-        const s = document.createElement('div');
-        s.className = 'calSteps';
-        s.textContent = stats.steps;
-        el.appendChild(s);
+
+      const mood = document.createElement('div');
+      mood.className = 'calMoodMark';
+      mood.textContent = morning && morning.mood != null ? MOOD_EMOJI[morning.mood] : '';
+      el.appendChild(mood);
+
+      const dots = document.createElement('div');
+      dots.className = 'calDotRow';
+      if (walked) { const d = document.createElement('span'); d.className = 'calDot dotWalk'; dots.appendChild(d); }
+      if (hasConsult) { const d = document.createElement('span'); d.className = 'calDot dotConsult'; dots.appendChild(d); }
+      if (hasDraw) { const d = document.createElement('span'); d.className = 'calDot dotDraw'; dots.appendChild(d); }
+      el.appendChild(dots);
+
+      if (disabled) {
+        el.disabled = true;
+      } else {
+        el.addEventListener('click', () => {
+          recordsSelectedDate = recordsSelectedDate === dateStr ? null : dateStr;
+          renderRecordsCalendar();
+          renderDayDetail();
+        });
       }
-      if (disabled) el.disabled = true;
-      else el.addEventListener('click', () => onWalkDayTap(dateStr));
       calGrid.appendChild(el);
     }
     for (let i = 0; i < trailBlanks; i++) {
@@ -4608,16 +4358,289 @@
 
     const displayedKey = `${calYear}-${String(calMonth + 1).padStart(2, '0')}`;
     document.getElementById('calNext').disabled = displayedKey >= today.slice(0, 7);
-    document.getElementById('calPrev').disabled = displayedKey <= walkData.startDate.slice(0, 7);
+    document.getElementById('calPrev').disabled = displayedKey <= earliestRecordMonthKey();
   }
 
-  function onWalkDayTap(dateStr) {
-    if (walkData.walkedDates.includes(dateStr)) { openDayEditor(dateStr); return; }
-    if (!confirm(`${dotDate(dateStr)} を記録済みにします。よろしいですか？`)) return;
-    walkData.walkedDates.push(dateStr);
-    saveWalkData(walkData);
-    renderWalkCalendar();
+  function refreshAfterDayRecordChange() {
+    renderRecordsCalendar();
+    renderDayDetail();
+    renderMonthSummary();
   }
+
+  function renderDayMorningCard(j) {
+    const item = document.createElement('div');
+    item.className = 'recordEntry';
+    const top = document.createElement('div');
+    top.className = 'recordEntryTop';
+    const label = document.createElement('span');
+    label.className = 'recordEntryDate';
+    label.textContent = '朝' + (j.mood != null ? ' ' + MOOD_EMOJI[j.mood] : '');
+    top.appendChild(label);
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'recordEntryDelete';
+    del.textContent = '消す';
+    del.addEventListener('click', () => { deleteJournalEntry(j.id); refreshAfterDayRecordChange(); });
+    top.appendChild(del);
+    item.appendChild(top);
+
+    if (j.text) {
+      const t = document.createElement('div');
+      t.textContent = j.text;
+      item.appendChild(t);
+    }
+    j.picks.forEach((pick) => {
+      const note = findNote(pick.id);
+      if (!note) return;
+      const mini = document.createElement('div');
+      mini.className = 'journalCardMini';
+      const mt = document.createElement('div');
+      mt.className = 'lText';
+      mt.textContent = noteSnippet(note.text, 50);
+      mini.appendChild(mt);
+      mini.addEventListener('click', () => openDetail(note.id, 'records'));
+      item.appendChild(mini);
+    });
+    return item;
+  }
+
+  function renderDayConsultCard(j) {
+    const item = document.createElement('div');
+    item.className = 'recordEntry';
+    const top = document.createElement('div');
+    top.className = 'recordEntryTop';
+    const label = document.createElement('span');
+    label.className = 'recordEntryDate';
+    label.textContent = '相談';
+    top.appendChild(label);
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'recordEntryDelete';
+    del.textContent = '消す';
+    del.addEventListener('click', () => { deleteJournalEntry(j.id); refreshAfterDayRecordChange(); });
+    top.appendChild(del);
+    item.appendChild(top);
+
+    const expanded = expandedConsultRecords.has(j.id);
+    const fullText = j.text + (j.closing ? '\n' + j.closing : '');
+    const isLong = fullText.length > 80;
+
+    const inputEl = document.createElement('div');
+    inputEl.className = 'consultInputEcho';
+    inputEl.textContent = j.text;
+    item.appendChild(inputEl);
+
+    if (expanded || !isLong) {
+      j.picks.forEach((pick) => {
+        const note = findNote(pick.id);
+        if (!note) return;
+        const mini = document.createElement('div');
+        mini.className = 'journalCardMini';
+        mini.textContent = noteSnippet(note.text, 50);
+        mini.addEventListener('click', () => openDetail(note.id, 'records'));
+        item.appendChild(mini);
+      });
+      if (j.closing) {
+        const c = document.createElement('div');
+        c.className = 'consultClosing';
+        c.textContent = j.closing;
+        item.appendChild(c);
+      }
+    }
+    if (isLong) {
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'linkLikeBtn';
+      toggle.textContent = expanded ? '閉じる' : '続きを見る';
+      toggle.addEventListener('click', () => {
+        if (expanded) expandedConsultRecords.delete(j.id); else expandedConsultRecords.add(j.id);
+        renderDayDetail();
+      });
+      item.appendChild(toggle);
+    }
+    return item;
+  }
+
+  // Same-day draws (one shuffle-stop + whatever links were tapped through
+  // afterward) collapse into one card per (sessionId, or the entry's own id
+  // as a fallback for entries synced in from before sessionId existed).
+  function renderDayDrawCard(entries) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'dayDrawGroups';
+    const groups = new Map();
+    entries.forEach((j) => {
+      const key = j.sessionId || j.id;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(j);
+    });
+    [...groups.values()].forEach((group) => {
+      group.sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+      const item = document.createElement('div');
+      item.className = 'recordEntry';
+      const top = document.createElement('div');
+      top.className = 'recordEntryTop';
+      const label = document.createElement('span');
+      label.className = 'recordEntryDate';
+      label.textContent = '引く';
+      top.appendChild(label);
+      item.appendChild(top);
+      group.forEach((j, i) => {
+        const note = j.picks[0] && findNote(j.picks[0].id);
+        const row = document.createElement('div');
+        row.className = i === 0 ? 'journalCardMini drawGroupMain' : 'journalCardMini drawGroupSub';
+        const textEl = document.createElement('span');
+        textEl.textContent = note
+          ? noteSnippet(note.text, i === 0 ? 60 : 36) + (i === 0 && note.source ? ' ・ ' + note.source : '')
+          : '（削除済み）';
+        row.appendChild(textEl);
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'recordEntryDelete';
+        del.textContent = '消す';
+        del.addEventListener('click', (e) => { e.stopPropagation(); deleteJournalEntry(j.id); refreshAfterDayRecordChange(); });
+        row.appendChild(del);
+        if (note) row.addEventListener('click', () => openDetail(note.id, 'records'));
+        item.appendChild(row);
+      });
+      wrapper.appendChild(item);
+    });
+    return wrapper;
+  }
+
+  // Read-only summary of that day's walk10000 record; "編集" reuses the
+  // existing steps/distance/mood editor rather than duplicating its fields
+  // here. Regenerating the actual posted poster image isn't attempted - it's
+  // drawn cumulatively as of "today" (computeWalkDerived/drawWalkImage have
+  // no notion of a past day's grid state), so a small badge stands in for it.
+  function renderDayWalkCard(dateStr) {
+    const stats = walkData.dailyStats[dateStr] || {};
+    const item = document.createElement('div');
+    item.className = 'recordEntry';
+    const top = document.createElement('div');
+    top.className = 'recordEntryTop';
+    const label = document.createElement('span');
+    label.className = 'recordEntryDate';
+    label.textContent = '散歩';
+    top.appendChild(label);
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'recordEntryDelete';
+    del.textContent = '消す';
+    del.addEventListener('click', async () => {
+      if (!confirm(`${dotDate(dateStr)} の散歩の記録を取り消します。よろしいですか？`)) return;
+      await deleteWalkDayRecord(dateStr);
+      refreshAfterDayRecordChange();
+    });
+    top.appendChild(del);
+    item.appendChild(top);
+
+    const lines = [];
+    if (stats.afterMood != null) lines.push('散歩後の気分 ' + MOOD_EMOJI[stats.afterMood]);
+    if (stats.steps != null) lines.push(stats.steps + ' 歩');
+    if (stats.distanceM != null) lines.push((stats.distanceM / 1000).toFixed(1) + ' km');
+    const info = document.createElement('div');
+    info.textContent = lines.length ? lines.join(' ・ ') : '（詳細の記録なし）';
+    item.appendChild(info);
+
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'linkLikeBtn';
+    editBtn.textContent = '編集';
+    editBtn.addEventListener('click', () => openDayEditor(dateStr));
+    item.appendChild(editBtn);
+
+    return item;
+  }
+
+  function renderDayDetail() {
+    const view = document.getElementById('dayDetailView');
+    if (!recordsSelectedDate) { view.hidden = true; return; }
+    view.hidden = false;
+    const dateStr = recordsSelectedDate;
+    document.getElementById('dayDetailTitle').textContent = dotDate(dateStr);
+    const body = document.getElementById('dayDetailBody');
+    body.innerHTML = '';
+    let any = false;
+
+    const morning = data.journal.find((j) => j.kind === 'morning' && j.date === dateStr);
+    if (morning) { any = true; body.appendChild(renderDayMorningCard(morning)); }
+
+    if (walkData.walkedDates.includes(dateStr)) { any = true; body.appendChild(renderDayWalkCard(dateStr)); }
+
+    data.journal
+      .filter((j) => j.kind === 'consult' && j.date === dateStr)
+      .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
+      .forEach((j) => { any = true; body.appendChild(renderDayConsultCard(j)); });
+
+    const drawEntries = data.journal.filter((j) => j.kind === 'draw' && j.date === dateStr);
+    if (drawEntries.length) { any = true; body.appendChild(renderDayDrawCard(drawEntries)); }
+
+    document.getElementById('dayDetailEmpty').hidden = any;
+  }
+
+  function renderMonthSummary() {
+    const prefix = `${calYear}-${String(calMonth + 1).padStart(2, '0')}`;
+    const inMonth = (d) => typeof d === 'string' && d.startsWith(prefix);
+
+    document.getElementById('summaryWalkDays').textContent = `${walkData.walkedDates.filter(inMonth).length}日`;
+
+    const morningDates = new Set(data.journal.filter((j) => j.kind === 'morning' && inMonth(j.date)).map((j) => j.date));
+    document.getElementById('summaryMorningDays').textContent = `${morningDates.size}日`;
+
+    const consultCount = data.journal.filter((j) => j.kind === 'consult' && inMonth(j.date)).length;
+    document.getElementById('summaryConsultCount').textContent = `${consultCount}回`;
+
+    // "届いた言葉" mirrors topMonthlyPickedNoteIds's own scope: morning +
+    // consult picks only - 引く is something the user pulls themselves, not
+    // something delivered to them, so it's excluded here too.
+    const counts = new Map();
+    data.journal.forEach((j) => {
+      if ((j.kind === 'morning' || j.kind === 'consult') && inMonth(j.date)) {
+        j.picks.forEach((p) => counts.set(p.id, (counts.get(p.id) || 0) + 1));
+      }
+    });
+    const top = [...counts.entries()].filter(([id]) => findNote(id)).sort((a, b) => b[1] - a[1]).slice(0, 3);
+    const topEl = document.getElementById('summaryTopNotes');
+    topEl.innerHTML = '';
+    document.getElementById('summaryTopNotesEmpty').hidden = top.length > 0;
+    top.forEach(([id, count]) => {
+      const note = findNote(id);
+      const row = document.createElement('div');
+      row.className = 'listItem';
+      const textEl = document.createElement('div');
+      textEl.className = 'liText';
+      textEl.textContent = noteSnippet(note.text, 60);
+      row.appendChild(textEl);
+      const bottomRow = document.createElement('div');
+      bottomRow.className = 'liBottomRow';
+      const srcEl = document.createElement('span');
+      srcEl.className = 'liSource';
+      srcEl.textContent = (note.source || '') + ` ・ ${count}回`;
+      bottomRow.appendChild(srcEl);
+      row.appendChild(bottomRow);
+      row.addEventListener('click', () => openDetail(id, 'records'));
+      topEl.appendChild(row);
+    });
+  }
+
+  async function deleteWalkDayRecord(dateStr) {
+    walkData.walkedDates = walkData.walkedDates.filter((d) => d !== dateStr);
+    delete walkData.dailyStats[dateStr];
+    persistWalkLocal(walkData);
+    walkPendingChangeCount++;
+    await walkForcePush();
+  }
+
+  const editWakeMoodButtons = buildMoodRow(document.getElementById('editWakeMoodRow'), (m) => {
+    if (!editingDate) return;
+    setWalkMood(editingDate, 'wakeMood', m);
+    paintMoodRow(editWakeMoodButtons, m);
+  });
+  const editAfterMoodButtons = buildMoodRow(document.getElementById('editAfterMoodRow'), (m) => {
+    if (!editingDate) return;
+    setWalkMood(editingDate, 'afterMood', m);
+    paintMoodRow(editAfterMoodButtons, m);
+  });
 
   function openDayEditor(dateStr) {
     editingDate = dateStr;
@@ -4627,24 +4650,15 @@
     document.getElementById('editDistanceInput').value = stats.distanceM != null ? stats.distanceM : '';
     paintMoodRow(editWakeMoodButtons, stats.wakeMood != null ? stats.wakeMood : null);
     paintMoodRow(editAfterMoodButtons, stats.afterMood != null ? stats.afterMood : null);
-    document.getElementById('recordsWalkView').hidden = true;
+    document.getElementById('recordsCalendarView').hidden = true;
     document.getElementById('dayEditorView').hidden = false;
   }
 
   function closeDayEditor() {
     editingDate = null;
     document.getElementById('dayEditorView').hidden = true;
-    document.getElementById('recordsWalkView').hidden = false;
-  }
-
-  function renderRecordsWalk() {
-    refreshWalkReview();
-    if (calYear == null) {
-      const t = new Date();
-      calYear = t.getFullYear();
-      calMonth = t.getMonth();
-    }
-    renderWalkCalendar();
+    document.getElementById('recordsCalendarView').hidden = false;
+    refreshAfterDayRecordChange();
   }
 
   document.getElementById('btnSaveDayEdit').addEventListener('click', () => {
@@ -4652,33 +4666,30 @@
     const steps = document.getElementById('editStepsInput').value === '' ? null : parseInt(document.getElementById('editStepsInput').value, 10);
     const distanceM = document.getElementById('editDistanceInput').value === '' ? null : parseFloat(document.getElementById('editDistanceInput').value);
     setWalkDailyStats(editingDate, steps, distanceM);
-    renderWalkCalendar();
     alert('保存しました');
   });
   document.getElementById('btnDeleteDayRecord').addEventListener('click', async () => {
     if (!editingDate) return;
     if (!confirm(`${dotDate(editingDate)} の記録を取り消します。よろしいですか？`)) return;
-    walkData.walkedDates = walkData.walkedDates.filter((d) => d !== editingDate);
-    delete walkData.dailyStats[editingDate];
-    persistWalkLocal(walkData);
-    walkPendingChangeCount++;
-    await walkForcePush();
+    await deleteWalkDayRecord(editingDate);
     closeDayEditor();
-    renderWalkCalendar();
   });
   document.getElementById('btnCloseDayEdit').addEventListener('click', closeDayEditor);
   document.getElementById('calPrev').addEventListener('click', () => {
     calMonth--; if (calMonth < 0) { calMonth = 11; calYear--; }
-    renderWalkCalendar();
+    recordsSelectedDate = null;
+    renderRecordsCalendar();
+    renderDayDetail();
+    renderMonthSummary();
   });
   document.getElementById('calNext').addEventListener('click', () => {
     calMonth++; if (calMonth > 11) { calMonth = 0; calYear++; }
-    renderWalkCalendar();
+    recordsSelectedDate = null;
+    renderRecordsCalendar();
+    renderDayDetail();
+    renderMonthSummary();
   });
 
-  document.querySelectorAll('#recordSubTabRow button').forEach((b) => {
-    b.addEventListener('click', () => { recordsState.subTab = b.dataset.sub; renderRecords(); });
-  });
   document.getElementById('navRecords').addEventListener('click', openRecords);
   document.getElementById('backFromRecords').addEventListener('click', goHome);
 
