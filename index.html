@@ -325,7 +325,17 @@
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
   }
-  .listItem .liSource { font-size: 12px; color: var(--text-faint); margin-top: 6px; }
+  .liBottomRow { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 6px; }
+  .listItem .liSource { font-size: 12px; color: var(--text-faint); }
+  .liLinkCount { font-size: 12px; color: var(--text-faint); white-space: nowrap; }
+  .listGroupHeader {
+    width: 100%;
+    text-align: left;
+    font-size: 14px;
+    color: var(--text-dim);
+    padding: 10px 4px;
+    border-bottom: 1px solid var(--border);
+  }
   .tagFilterRow { display: flex; flex-wrap: wrap; gap: 6px; }
   .tagFilterBtn {
     font-size: 12px;
@@ -358,6 +368,40 @@
     color: var(--text-dim);
   }
   .statRow span:last-child { color: var(--text); }
+  .consultTurns { display: flex; flex-direction: column; gap: 22px; }
+  .consultTurn { display: flex; flex-direction: column; gap: 10px; }
+  .consultInputEcho {
+    align-self: flex-end;
+    max-width: 85%;
+    background: var(--bg-elevated);
+    border-radius: 12px;
+    padding: 10px 14px;
+    font-size: 15px;
+    white-space: pre-wrap;
+  }
+  .consultCard {
+    background: var(--bg-card);
+    border-radius: 14px;
+    padding: 18px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .consultCard .cardText { font-size: 17px; line-height: 1.8; }
+  .consultWhy {
+    font-size: 13px;
+    color: var(--accent);
+    border-top: 1px solid var(--border);
+    padding-top: 8px;
+  }
+  .consultClosing {
+    font-size: 15px;
+    color: var(--text-dim);
+    line-height: 1.8;
+    white-space: pre-wrap;
+    padding: 4px;
+  }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -385,6 +429,7 @@
     <button id="btnNextCard" class="primaryBtn">次の1枚</button>
     <nav class="bottomNav">
       <button id="navList" class="navBtn">一覧</button>
+      <button id="navConsult" class="navBtn">相談</button>
       <button id="navSettings" class="navBtn">設定</button>
     </nav>
   </section>
@@ -396,9 +441,35 @@
       <button id="btnAddFromList" class="iconBtn">＋</button>
     </header>
     <input id="listSearch" type="search" placeholder="検索（言葉・出典・自分の言葉）" autocomplete="off">
+    <div id="listViewModeRow" class="tagFilterRow">
+      <button type="button" class="tagFilterBtn" data-mode="all">すべて</button>
+      <button type="button" class="tagFilterBtn" data-mode="source">出典別</button>
+      <button type="button" class="tagFilterBtn" data-mode="tag">タグ別</button>
+    </div>
+    <div id="listSortRow" class="tagFilterRow">
+      <button type="button" class="tagFilterBtn" data-sort="new">新しい順</button>
+      <button type="button" class="tagFilterBtn" data-sort="links">つながりが多い順</button>
+    </div>
     <div id="listTagFilter" class="tagFilterRow"></div>
+    <label class="checkboxRow">
+      <input type="checkbox" id="noLinksFilter">
+      関連なし
+    </label>
     <div id="listItems" class="listItems"></div>
     <div id="listEmpty" class="emptyMsg" hidden>該当するノートがありません。</div>
+  </section>
+
+  <section id="screen-consult" class="screen" hidden>
+    <header class="topbar">
+      <button class="backBtn" id="backFromConsult">← 戻る</button>
+      <div class="topbar-title">相談</div>
+      <div style="width:40px;"></div>
+    </header>
+    <div class="field">
+      <textarea id="consultInput" rows="3" placeholder="今の状態や考えていることを書いてください" autocomplete="off"></textarea>
+      <button id="btnConsultAsk" class="primaryBtn">聞く</button>
+    </div>
+    <div id="consultTurns" class="consultTurns"></div>
   </section>
 
   <section id="screen-detail" class="screen" hidden>
@@ -529,6 +600,10 @@
         <div class="statRow"><span>API呼び出し回数（この端末）</span><span id="statApiCallCount"></span></div>
         <div class="statRow"><span>最終エラー</span><span id="statLastAutoLinkError"></span></div>
         <div class="statRow"><span>最終同期時刻</span><span id="statLastSync"></span></div>
+      </div>
+      <div class="field" id="errorNotesSection" hidden>
+        <span class="fieldLabel">エラーが出たノート（<span id="errorNoteCount"></span>件）</span>
+        <div id="errorNotesList" class="detailLinksList"></div>
       </div>
     </div>
   </section>
@@ -981,7 +1056,69 @@
     } catch (e) { return null; }
   }
 
+  // Device-local set of note ids whose most recent auto-link attempt failed,
+  // so settings can show "エラーが出たノート" with links to them. Cleared
+  // per-note the next time that note's auto-link succeeds.
+  const AUTO_LINK_ERROR_NOTES_KEY = 'kotoba_autoLinkErrorNoteIds';
+  function getErrorNoteIds() {
+    try { return JSON.parse(localStorage.getItem(AUTO_LINK_ERROR_NOTES_KEY) || '[]'); } catch (e) { return []; }
+  }
+  function addErrorNoteId(id) {
+    const ids = new Set(getErrorNoteIds());
+    ids.add(id);
+    localStorage.setItem(AUTO_LINK_ERROR_NOTES_KEY, JSON.stringify([...ids]));
+  }
+  function clearErrorNoteId(id) {
+    const ids = new Set(getErrorNoteIds());
+    ids.delete(id);
+    localStorage.setItem(AUTO_LINK_ERROR_NOTES_KEY, JSON.stringify([...ids]));
+  }
+
   function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+
+  // Best-effort recovery for a JSON array that got truncated or trailed by
+  // stray text: slice from the first "[" to the last complete "}" and close
+  // the array, so at least the complete items still parse even if the tail
+  // was cut off mid-object.
+  function parseJsonArrayLoose(text) {
+    const cleaned = text.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+    try {
+      const p = JSON.parse(cleaned);
+      if (Array.isArray(p)) return p;
+    } catch (e) {}
+    const start = cleaned.indexOf('[');
+    const lastBrace = cleaned.lastIndexOf('}');
+    if (start === -1 || lastBrace === -1 || lastBrace < start) return null;
+    try {
+      const p = JSON.parse(cleaned.slice(start, lastBrace + 1) + ']');
+      return Array.isArray(p) ? p : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Same idea for the consult screen's {"picks":[...],"closing":"..."} shape:
+  // try a clean parse first, then fall back to recovering just the picks
+  // array if the object as a whole didn't parse (e.g. "closing" got cut off).
+  function parseConsultResponseLoose(text) {
+    const cleaned = text.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+    try {
+      const p = JSON.parse(cleaned);
+      if (p && typeof p === 'object' && Array.isArray(p.picks)) return p;
+    } catch (e) {}
+    const picksIdx = cleaned.indexOf('"picks"');
+    if (picksIdx === -1) return null;
+    const arrStart = cleaned.indexOf('[', picksIdx);
+    if (arrStart === -1) return null;
+    const lastBrace = cleaned.lastIndexOf('}');
+    if (lastBrace === -1 || lastBrace < arrStart) return null;
+    try {
+      const picks = JSON.parse(cleaned.slice(arrStart, lastBrace + 1) + ']');
+      return Array.isArray(picks) ? { picks, closing: '' } : null;
+    } catch (e) {
+      return null;
+    }
+  }
 
   // Notes in flight get their id added here so the UI can show a small
   // "関連を探しています…" indicator on whatever screen is showing them.
@@ -1006,9 +1143,11 @@
 
   // Calls the Messages API directly from the browser (per the v2 spec) with
   // the required anthropic-dangerous-direct-browser-access header. Retries
-  // once on a 429 after a short wait; any other non-2xx or parse failure
-  // propagates so the caller can record it as the "last error" and move on.
-  async function callClaudeApi(note, candidateNotes, isRetry) {
+  // once on a 429 after a short wait, and separately once on a JSON parse
+  // failure (a fresh response is often well-formed even when one wasn't) -
+  // only after both the loose-array recovery and that single re-call fail
+  // does this actually throw.
+  async function callClaudeApi(note, candidateNotes, is429Retry, isParseRetry) {
     const apiKey = getClaudeApiKey();
     if (!apiKey) { const e = new Error('no-api-key'); e.noKey = true; throw e; }
     const model = getClaudeModel();
@@ -1026,7 +1165,7 @@
       '\n\n対象ノートと、同じ考えを別の言い方で述べている（similar）／反対の立場を取っている（opposite）／' +
       '前提や具体例として補い合う（supplement）ノートを最大5件、関連の強い順に選び、JSONのみで返してください。' +
       '表面的な単語の一致ではなく、考え方・態度・問いの共通性で判断してください。myWords（本人の解釈）を重視してください。' +
-      '該当がなければ空配列を返してください。\n\n' +
+      '該当がなければ空配列を返してください。reason には引用符や改行を使わないでください。\n\n' +
       '返答形式（JSON配列のみ、他の文章は含めない）:\n' +
       '[{"id": "...", "relation": "similar", "reason": "..."}]';
 
@@ -1040,14 +1179,14 @@
       },
       body: JSON.stringify({
         model,
-        max_tokens: 1024,
+        max_tokens: 2048,
         messages: [{ role: 'user', content: promptText }],
       }),
     });
 
-    if (res.status === 429 && !isRetry) {
+    if (res.status === 429 && !is429Retry) {
       await sleep(2000);
-      return callClaudeApi(note, candidateNotes, true);
+      return callClaudeApi(note, candidateNotes, true, isParseRetry);
     }
     incrementApiCallCount();
     if (!res.ok) {
@@ -1057,9 +1196,11 @@
     }
     const json = await res.json();
     const textOut = (json.content || []).map((b) => b.text || '').join('');
-    const cleaned = textOut.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
-    const parsed = JSON.parse(cleaned);
-    if (!Array.isArray(parsed)) throw new Error('invalid response shape');
+    const parsed = parseJsonArrayLoose(textOut);
+    if (!parsed) {
+      if (!isParseRetry) return callClaudeApi(note, candidateNotes, false, true);
+      throw new Error('invalid response shape');
+    }
     return parsed;
   }
 
@@ -1089,10 +1230,15 @@
       });
       if (opts.markLinkedAt) note.autoLinkedAt = nowIso();
       clearAutoLinkError();
+      clearErrorNoteId(note.id);
       return { ok: true, added };
     } catch (e) {
-      if (!e || !e.noKey) recordAutoLinkError(e && e.message ? e.message : String(e));
-      if (opts.markLinkedAt) note.autoLinkedAt = nowIso();
+      // Failed notes deliberately do NOT get autoLinkedAt set, so a batch
+      // run's "still pending" pool keeps including them for a retry next time.
+      if (!e || !e.noKey) {
+        recordAutoLinkError(e && e.message ? e.message : String(e));
+        addErrorNoteId(note.id);
+      }
       return { ok: false, error: e };
     }
   }
@@ -1162,6 +1308,204 @@
     refreshCurrentScreen();
   }
 
+  // --- Consult screen (v2.1) -------------------------------------------------
+  // Deliberately kept out of `data` and localStorage entirely - the whole
+  // conversation lives in this one array and is gone on reload, exactly per
+  // spec ("会話は保存しない"). Turns survive a brief detour into a card's
+  // detail view (and back) since that's the same page session, but a fresh
+  // "相談" tap from the bottom nav always starts clean.
+  const CONSULT_HISTORY_TURNS = 2;
+  let consultTurns = [];
+  let consultBusy = false;
+
+  function resetConsult() {
+    consultTurns = [];
+  }
+
+  function openConsult(fresh) {
+    if (fresh) resetConsult();
+    showScreen('consult');
+    document.getElementById('consultInput').value = '';
+    renderConsultTurns();
+  }
+
+  async function callConsultApi(input, history, is429Retry, isParseRetry) {
+    const apiKey = getClaudeApiKey();
+    if (!apiKey) { const e = new Error('no-api-key'); e.noKey = true; throw e; }
+    const model = getClaudeModel();
+    const candidates = compressCandidates({ text: input, myWords: input, tags: [] }, data.notes, getCompressThreshold());
+    const compact = candidates.map((n) => ({
+      id: n.id,
+      text: (n.text || '').slice(0, 120),
+      source: n.source || '',
+      myWords: (n.myWords || '').slice(0, 80),
+      tags: n.tags,
+    }));
+    const historyText = history && history.length ? '\n\n直近のやり取り:\n' + JSON.stringify(history) : '';
+    const promptText =
+      '以下はこの人が本や名言集から集めた言葉と、本人の解釈である。\n' + JSON.stringify(compact) +
+      historyText +
+      '\n\n入力された状態:\n' + input +
+      '\n\n入力された状態に対して、最も応える言葉を最大3件選び、それぞれになぜ近いかを30字程度で書いてください。' +
+      '最後に、選んだ言葉同士の関係やそこから見える一つの見方を3行以内で書いてください。' +
+      '一般論、慰め、アドバイス、ノートにない引用は書かないでください。本人の解釈（myWords）を重視してください。' +
+      '該当がなければ空にしてください。why・closing には引用符や改行を使わないでください。\n\n' +
+      '返答形式（JSONのみ、他の文章は含めない）:\n' +
+      '{"picks":[{"id":"...","why":"..."}],"closing":"..."}';
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({ model, max_tokens: 2048, messages: [{ role: 'user', content: promptText }] }),
+    });
+
+    if (res.status === 429 && !is429Retry) {
+      await sleep(2000);
+      return callConsultApi(input, history, true, isParseRetry);
+    }
+    incrementApiCallCount();
+    if (!res.ok) {
+      const err = new Error('Claude API failed: ' + res.status);
+      err.status = res.status;
+      throw err;
+    }
+    const json = await res.json();
+    const textOut = (json.content || []).map((b) => b.text || '').join('');
+    const parsed = parseConsultResponseLoose(textOut);
+    if (!parsed) {
+      if (!isParseRetry) return callConsultApi(input, history, false, true);
+      throw new Error('invalid response shape');
+    }
+    const validIds = new Set(data.notes.map((n) => n.id));
+    const picks = (Array.isArray(parsed.picks) ? parsed.picks : [])
+      .filter((p) => p && validIds.has(p.id))
+      .slice(0, 3)
+      .map((p) => ({ id: p.id, why: typeof p.why === 'string' ? p.why.slice(0, 100) : '' }));
+    const closing = typeof parsed.closing === 'string' ? parsed.closing.slice(0, 300) : '';
+    return { picks, closing };
+  }
+
+  function openEditorFromConsult(inputText) {
+    openEditor('new', null, 'consult');
+    editTextEl.value = inputText;
+    editSourceEl.value = '自分';
+    renderSourceCandidates();
+  }
+
+  function renderConsultTurns() {
+    const container = document.getElementById('consultTurns');
+    container.innerHTML = '';
+    consultTurns.forEach((turn) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'consultTurn';
+
+      const inputEl = document.createElement('div');
+      inputEl.className = 'consultInputEcho';
+      inputEl.textContent = turn.input;
+      wrap.appendChild(inputEl);
+
+      if (turn.status === 'loading') {
+        const s = document.createElement('p');
+        s.className = 'fieldNote';
+        s.textContent = '言葉を探しています…';
+        wrap.appendChild(s);
+      } else if (turn.status === 'no-key') {
+        const s = document.createElement('p');
+        s.className = 'fieldNote warn';
+        s.textContent = '設定画面でClaude APIキーを入力してください。';
+        wrap.appendChild(s);
+      } else if (turn.status === 'error') {
+        const s = document.createElement('p');
+        s.className = 'fieldNote warn';
+        s.textContent = '言葉を探せませんでした。もう一度お試しください。';
+        wrap.appendChild(s);
+      } else if (turn.status === 'done' && turn.picks.length === 0) {
+        const s = document.createElement('p');
+        s.className = 'emptyMsg';
+        s.textContent = 'まだ、これに応える言葉はノートにありません';
+        wrap.appendChild(s);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'secondaryBtn';
+        btn.textContent = 'この気持ちをノートに書く';
+        btn.addEventListener('click', () => openEditorFromConsult(turn.input));
+        wrap.appendChild(btn);
+      } else if (turn.status === 'done') {
+        turn.picks.forEach((pick) => {
+          const note = findNote(pick.id);
+          if (!note) return;
+          const card = document.createElement('div');
+          card.className = 'consultCard';
+          const t = document.createElement('div');
+          t.className = 'cardText';
+          t.textContent = note.text;
+          card.appendChild(t);
+          if (note.source) {
+            const s = document.createElement('div');
+            s.className = 'cardSource';
+            s.textContent = note.source;
+            card.appendChild(s);
+          }
+          const mw = document.createElement('div');
+          mw.className = 'cardMyWords';
+          mw.textContent = note.myWords;
+          card.appendChild(mw);
+          if (pick.why) {
+            const why = document.createElement('div');
+            why.className = 'consultWhy';
+            why.textContent = pick.why;
+            card.appendChild(why);
+          }
+          card.addEventListener('click', () => openDetail(note.id, 'consult'));
+          wrap.appendChild(card);
+        });
+        if (turn.closing) {
+          const closing = document.createElement('div');
+          closing.className = 'consultClosing';
+          closing.textContent = turn.closing;
+          wrap.appendChild(closing);
+        }
+      }
+      container.appendChild(wrap);
+    });
+  }
+
+  document.getElementById('navConsult').addEventListener('click', () => openConsult(true));
+  document.getElementById('backFromConsult').addEventListener('click', goHome);
+  document.getElementById('btnConsultAsk').addEventListener('click', async () => {
+    const btn = document.getElementById('btnConsultAsk');
+    const inputEl = document.getElementById('consultInput');
+    const input = inputEl.value.trim();
+    if (!input || consultBusy) return;
+    const historyForThisCall = consultTurns
+      .filter((t) => t.status === 'done')
+      .slice(-CONSULT_HISTORY_TURNS)
+      .map((t) => ({ input: t.input, picks: t.picks.map((p) => p.id) }));
+
+    consultBusy = true;
+    btn.disabled = true;
+    inputEl.value = '';
+    const turn = { input, status: 'loading', picks: [], closing: '' };
+    consultTurns.push(turn);
+    renderConsultTurns();
+    try {
+      const result = await callConsultApi(input, historyForThisCall);
+      turn.status = 'done';
+      turn.picks = result.picks;
+      turn.closing = result.closing;
+    } catch (e) {
+      turn.status = e && e.noKey ? 'no-key' : 'error';
+    }
+    consultBusy = false;
+    btn.disabled = false;
+    renderConsultTurns();
+  });
+
   // --- navigation state -----------------------------------------------------
   const nav = {
     screen: 'home',
@@ -1175,7 +1519,7 @@
   };
 
   function showScreen(name) {
-    ['home', 'list', 'detail', 'editor', 'settings'].forEach((s) => {
+    ['home', 'list', 'consult', 'detail', 'editor', 'settings'].forEach((s) => {
       document.getElementById('screen-' + s).hidden = s !== name;
     });
     nav.screen = name;
@@ -1283,7 +1627,25 @@
   document.getElementById('navSettings').addEventListener('click', () => openSettings());
 
   // --- List ---------------------------------------------------------------
-  const listState = { search: '', tags: new Set() };
+  // search/tags/view/sort/no-links-only all live here so they survive
+  // leaving and returning to the list screen within the same session (per
+  // v2.1 spec); only the collapsed-group state is explicitly called out for
+  // localStorage persistence, so that's the one piece that outlives a reload.
+  const listState = {
+    search: '',
+    tags: new Set(),
+    noLinksOnly: false,
+    viewMode: 'all', // 'all' | 'source' | 'tag'
+    sortMode: 'new', // 'new' | 'links' (meaningful only in 'all' mode)
+  };
+
+  const LIST_COLLAPSED_KEY = 'kotoba_listCollapsedGroups';
+  function getCollapsedGroups() {
+    try { return new Set(JSON.parse(localStorage.getItem(LIST_COLLAPSED_KEY) || '[]')); } catch (e) { return new Set(); }
+  }
+  function setCollapsedGroups(set) {
+    localStorage.setItem(LIST_COLLAPSED_KEY, JSON.stringify([...set]));
+  }
 
   function openList() {
     showScreen('list');
@@ -1294,6 +1656,119 @@
   function noteSnippet(text, max) {
     const t = text.replace(/\s+/g, ' ').trim();
     return t.length > max ? t.slice(0, max) + '…' : t;
+  }
+
+  function computeFilteredNotes() {
+    const q = listState.search.trim().toLowerCase();
+    let results = data.notes.slice();
+    if (q) {
+      results = results.filter((n) =>
+        n.text.toLowerCase().includes(q) || n.source.toLowerCase().includes(q) || n.myWords.toLowerCase().includes(q)
+      );
+    }
+    if (listState.tags.size) {
+      results = results.filter((n) => [...listState.tags].every((t) => n.tags.includes(t)));
+    }
+    if (listState.noLinksOnly) {
+      results = results.filter((n) => n.links.length === 0);
+    }
+    return results;
+  }
+
+  function sortNotesForFlatList(notes) {
+    const arr = [...notes];
+    if (listState.sortMode === 'links') {
+      arr.sort((a, b) => b.links.length - a.links.length || (a.createdAt < b.createdAt ? 1 : -1));
+    } else {
+      arr.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    }
+    return arr;
+  }
+
+  function groupNotesBySource(notes) {
+    const map = new Map();
+    notes.forEach((n) => {
+      const key = n.source || '（出典なし）';
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(n);
+    });
+    return [...map.entries()].sort((a, b) => b[1].length - a[1].length);
+  }
+
+  function groupNotesByTag(notes) {
+    const map = new Map();
+    notes.forEach((n) => {
+      if (!n.tags.length) {
+        const key = '（タグなし）';
+        if (!map.has(key)) map.set(key, []);
+        map.get(key).push(n);
+        return;
+      }
+      n.tags.forEach((t) => {
+        if (!map.has(t)) map.set(t, []);
+        map.get(t).push(n);
+      });
+    });
+    return [...map.entries()].sort((a, b) => b[1].length - a[1].length);
+  }
+
+  function renderListItemRow(n) {
+    const el = document.createElement('div');
+    el.className = 'listItem';
+    const textEl = document.createElement('div');
+    textEl.className = 'liText';
+    textEl.textContent = noteSnippet(n.text, 80);
+    el.appendChild(textEl);
+
+    const bottomRow = document.createElement('div');
+    bottomRow.className = 'liBottomRow';
+    const srcEl = document.createElement('span');
+    srcEl.className = 'liSource';
+    srcEl.textContent = n.source || '';
+    bottomRow.appendChild(srcEl);
+    if (n.links.length > 0) {
+      const linkCountEl = document.createElement('span');
+      linkCountEl.className = 'liLinkCount';
+      linkCountEl.textContent = `⇄ ${n.links.length}`;
+      bottomRow.appendChild(linkCountEl);
+    }
+    el.appendChild(bottomRow);
+
+    el.addEventListener('click', () => openDetail(n.id, 'list'));
+    return el;
+  }
+
+  function renderFlatList(notes) {
+    const listEl = document.getElementById('listItems');
+    listEl.innerHTML = '';
+    document.getElementById('listEmpty').hidden = notes.length > 0;
+    sortNotesForFlatList(notes).forEach((n) => listEl.appendChild(renderListItemRow(n)));
+  }
+
+  function renderGroupedList(groups, keyPrefix) {
+    const listEl = document.getElementById('listItems');
+    listEl.innerHTML = '';
+    document.getElementById('listEmpty').hidden = groups.length > 0;
+    const collapsed = getCollapsedGroups();
+    groups.forEach(([label, notes]) => {
+      const groupKey = keyPrefix + ':' + label;
+      const isCollapsed = collapsed.has(groupKey);
+      const header = document.createElement('button');
+      header.type = 'button';
+      header.className = 'listGroupHeader';
+      header.textContent = `${isCollapsed ? '▶' : '▼'} ${label}（${notes.length}）`;
+      header.addEventListener('click', () => {
+        const c = getCollapsedGroups();
+        if (c.has(groupKey)) c.delete(groupKey); else c.add(groupKey);
+        setCollapsedGroups(c);
+        renderList();
+      });
+      listEl.appendChild(header);
+      if (!isCollapsed) {
+        [...notes].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+          .forEach((n) => listEl.appendChild(renderListItemRow(n)));
+      }
+    });
   }
 
   function renderList() {
@@ -1311,40 +1786,37 @@
       tagRow.appendChild(btn);
     });
 
-    const q = listState.search.trim().toLowerCase();
-    let results = [...data.notes].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-    if (q) {
-      results = results.filter((n) =>
-        n.text.toLowerCase().includes(q) || n.source.toLowerCase().includes(q) || n.myWords.toLowerCase().includes(q)
-      );
-    }
-    if (listState.tags.size) {
-      results = results.filter((n) => [...listState.tags].every((t) => n.tags.includes(t)));
-    }
-
-    const listEl = document.getElementById('listItems');
-    listEl.innerHTML = '';
-    document.getElementById('listEmpty').hidden = results.length > 0;
-    results.forEach((n) => {
-      const el = document.createElement('div');
-      el.className = 'listItem';
-      const textEl = document.createElement('div');
-      textEl.className = 'liText';
-      textEl.textContent = noteSnippet(n.text, 80);
-      el.appendChild(textEl);
-      if (n.source) {
-        const srcEl = document.createElement('div');
-        srcEl.className = 'liSource';
-        srcEl.textContent = n.source;
-        el.appendChild(srcEl);
-      }
-      el.addEventListener('click', () => openDetail(n.id, 'list'));
-      listEl.appendChild(el);
+    document.querySelectorAll('#listViewModeRow button').forEach((b) => {
+      b.classList.toggle('selected', b.dataset.mode === listState.viewMode);
     });
+    document.getElementById('listSortRow').hidden = listState.viewMode !== 'all';
+    document.querySelectorAll('#listSortRow button').forEach((b) => {
+      b.classList.toggle('selected', b.dataset.sort === listState.sortMode);
+    });
+    document.getElementById('noLinksFilter').checked = listState.noLinksOnly;
+
+    const filtered = computeFilteredNotes();
+    if (listState.viewMode === 'source') {
+      renderGroupedList(groupNotesBySource(filtered), 'source');
+    } else if (listState.viewMode === 'tag') {
+      renderGroupedList(groupNotesByTag(filtered), 'tag');
+    } else {
+      renderFlatList(filtered);
+    }
   }
 
   document.getElementById('listSearch').addEventListener('input', (e) => {
     listState.search = e.target.value;
+    renderList();
+  });
+  document.querySelectorAll('#listViewModeRow button').forEach((b) => {
+    b.addEventListener('click', () => { listState.viewMode = b.dataset.mode; renderList(); });
+  });
+  document.querySelectorAll('#listSortRow button').forEach((b) => {
+    b.addEventListener('click', () => { listState.sortMode = b.dataset.sort; renderList(); });
+  });
+  document.getElementById('noLinksFilter').addEventListener('change', (e) => {
+    listState.noLinksOnly = e.target.checked;
     renderList();
   });
   document.getElementById('backFromList').addEventListener('click', goHome);
@@ -1371,6 +1843,9 @@
       renderDetail();
     } else if (nav.detailOrigin === 'list') {
       openList();
+    } else if (nav.detailOrigin === 'consult') {
+      showScreen('consult');
+      renderConsultTurns();
     } else {
       goHome();
     }
@@ -1507,6 +1982,9 @@
       renderDetail();
     } else if (nav.editorReturnScreen === 'list') {
       openList();
+    } else if (nav.editorReturnScreen === 'consult') {
+      showScreen('consult');
+      renderConsultTurns();
     } else {
       goHome();
     }
@@ -1557,7 +2035,8 @@
     if (shouldAutoLink) triggerAutoLinkForNote(savedId);
 
     if (nav.editorMode === 'new') {
-      openDetail(savedId, nav.editorReturnScreen === 'list' ? 'list' : 'home');
+      const origin = nav.editorReturnScreen === 'list' ? 'list' : nav.editorReturnScreen === 'consult' ? 'consult' : 'home';
+      openDetail(savedId, origin);
     } else {
       nav.detailId = savedId;
       showScreen('detail');
@@ -1830,6 +2309,26 @@
     document.getElementById('statLastAutoLinkError').textContent = lastErr ? `${lastErr.message}（${formatDateTime(lastErr.at)}）` : '-';
     const lastSync = localStorage.getItem(LAST_SYNC_KEY);
     document.getElementById('statLastSync').textContent = lastSync ? formatDateTime(lastSync) : '-';
+
+    // Self-heal: drop ids for notes that no longer exist (deleted since the
+    // error was recorded) before counting/displaying them.
+    const errorIds = getErrorNoteIds().filter((id) => findNote(id));
+    if (errorIds.length !== getErrorNoteIds().length) {
+      localStorage.setItem(AUTO_LINK_ERROR_NOTES_KEY, JSON.stringify(errorIds));
+    }
+    document.getElementById('errorNotesSection').hidden = errorIds.length === 0;
+    document.getElementById('errorNoteCount').textContent = errorIds.length;
+    const errorListEl = document.getElementById('errorNotesList');
+    errorListEl.innerHTML = '';
+    errorIds.forEach((id) => {
+      const n = findNote(id);
+      if (!n) return;
+      const row = document.createElement('div');
+      row.className = 'detailLinkItem';
+      row.textContent = noteSnippet(n.text || n.myWords, 50);
+      row.addEventListener('click', () => openDetail(id, 'home'));
+      errorListEl.appendChild(row);
+    });
     if (!batchState.running) document.getElementById('batchProgress').hidden = true;
     document.getElementById('btnBatchStop').hidden = !batchState.running;
   }
