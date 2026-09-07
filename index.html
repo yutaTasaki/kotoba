@@ -282,6 +282,32 @@
   }
   .detailLinkItem .lText { font-size: 15px; }
   .detailLinkItem .lSource { font-size: 12px; color: var(--text-faint); margin-top: 4px; }
+  .detailLinkItem .lReason { font-size: 12px; color: var(--text-faint); margin-top: 4px; font-style: italic; }
+  .detailLinkRow { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+  .detailLinkRight { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+  .relLabel {
+    font-size: 11px;
+    padding: 2px 9px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .relSimilar { color: var(--accent); border: 1px solid var(--accent-dim); }
+  .relOpposite { color: #d1837a; border: 1px solid #7a4a45; }
+  .relSupplement { color: #86a9c9; border: 1px solid #45607a; }
+  .relManual { color: var(--text-faint); border: 1px solid var(--border); }
+  .linkRemoveBtn {
+    color: var(--text-faint);
+    font-size: 16px;
+    line-height: 1;
+    padding: 2px 6px;
+  }
+  .checkboxRow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
   .detailActions { display: flex; gap: 10px; margin-top: 8px; }
   hr { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
   .listItems { display: flex; flex-direction: column; gap: 10px; }
@@ -351,6 +377,11 @@
       <div class="cardTags" id="homeTags"></div>
     </div>
     <div id="homeEmpty" class="emptyMsg" hidden>まだノートがありません。「＋ 追加」から最初の1枚を書いてみましょう。</div>
+    <div id="homeLinksSection" class="field" hidden>
+      <h3>つながり</h3>
+      <p class="fieldNote" id="homeLinkingStatus" hidden>関連を探しています…</p>
+      <div id="homeLinksList" class="detailLinksList"></div>
+    </div>
     <button id="btnNextCard" class="primaryBtn">次の1枚</button>
     <nav class="bottomNav">
       <button id="navList" class="navBtn">一覧</button>
@@ -383,8 +414,10 @@
       <div class="detailTags" id="detailTags"></div>
       <div class="detailLinksSection">
         <h3>関連ノート</h3>
+        <p class="fieldNote" id="detailLinkingStatus" hidden>関連を探しています…</p>
         <div id="detailLinks" class="detailLinksList"></div>
         <div id="detailLinksEmpty" class="emptyMsg" hidden>関連ノートはありません。</div>
+        <button id="btnRelinkNote" class="secondaryBtn">関連を探し直す</button>
       </div>
       <div class="detailActions">
         <button id="btnEditNote" class="secondaryBtn">編集</button>
@@ -426,7 +459,7 @@
       </div>
       <div class="field">
         <span class="fieldLabel">関連ノート</span>
-        <p class="fieldNote">似た考えのノートを紐づけると、詳細画面でお互いを行き来できます</p>
+        <p class="fieldNote">保存すると自動で関連ノートを探します。自分で結びたいものはここで追加</p>
         <input id="editLinkSearch" type="text" placeholder="検索して追加" autocomplete="off">
         <div id="linkSearchResults" class="linkResultsList" hidden></div>
         <div id="editLinkChips" class="chipRow"></div>
@@ -460,9 +493,41 @@
         <button id="btnReloadFromRemote" class="dangerBtn">リモートから読み込み直す（ローカルを破棄）</button>
       </div>
       <hr>
+      <div class="field">
+        <h3>Claude API（自動関連づけ）</h3>
+        <p class="fieldNote">console.anthropic.com で発行したAPIキーを入力してください。キーは端末のlocalStorageにのみ保存され、data.jsonには含まれません。</p>
+        <input id="claudeApiKeyInput" type="text" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
+        <span class="fieldLabel">モデル名</span>
+        <input id="claudeModelInput" type="text" placeholder="claude-sonnet-5" autocomplete="off" spellcheck="false">
+        <button id="btnSaveClaudeSettings" class="secondaryBtn">保存</button>
+        <label class="checkboxRow">
+          <input type="checkbox" id="autoLinkToggle">
+          保存時に自動で関連づける
+        </label>
+      </div>
+      <hr>
+      <div class="field">
+        <h3>候補ノートの圧縮しきい値</h3>
+        <p class="fieldNote">既存ノートがこの件数を超える場合、タグの重なりと文字一致で絞り込んでからAPIに送ります。</p>
+        <input id="compressThresholdInput" type="text" inputmode="numeric" placeholder="400" autocomplete="off">
+        <button id="btnSaveCompressThreshold" class="secondaryBtn">保存</button>
+      </div>
+      <hr>
+      <div class="field">
+        <h3>全ノートを一括で関連づけ</h3>
+        <p class="fieldNote">まだ自動関連づけをしていないノートだけを対象に、古い順に処理します。</p>
+        <button id="btnBatchAutoLink" class="secondaryBtn">全ノートを一括で関連づけ</button>
+        <div id="batchProgress" class="fieldNote" hidden></div>
+        <button id="btnBatchStop" class="dangerBtn" hidden>停止</button>
+      </div>
+      <hr>
       <div class="field statsField">
         <div class="statRow"><span>ノート総数</span><span id="statNoteCount"></span></div>
         <div class="statRow"><span>タグ数</span><span id="statTagCount"></span></div>
+        <div class="statRow"><span>自動リンク数</span><span id="statAutoLinkCount"></span></div>
+        <div class="statRow"><span>手動リンク数</span><span id="statManualLinkCount"></span></div>
+        <div class="statRow"><span>API呼び出し回数（この端末）</span><span id="statApiCallCount"></span></div>
+        <div class="statRow"><span>最終エラー</span><span id="statLastAutoLinkError"></span></div>
         <div class="statRow"><span>最終同期時刻</span><span id="statLastSync"></span></div>
       </div>
     </div>
@@ -505,17 +570,43 @@
   function nowIso() { return new Date().toISOString(); }
 
   function defaultData() {
-    return { version: 1, updatedAt: nowIso(), notes: [], deletedIds: [] };
+    return { version: 2, updatedAt: nowIso(), notes: [], deletedIds: [] };
+  }
+
+  const RELATIONS = ['similar', 'opposite', 'supplement'];
+
+  // v1 links were plain id strings; v2 links are {id, kind, relation?, reason?,
+  // createdAt}. A bare string is treated as a pre-existing manual link so old
+  // data.json files (and old-format entries synced in from another device)
+  // keep working without the user having to do anything.
+  function normalizeLink(l) {
+    if (typeof l === 'string') {
+      return l ? { id: l, kind: 'manual', createdAt: nowIso() } : null;
+    }
+    if (!l || !l.id) return null;
+    const out = { id: String(l.id), kind: l.kind === 'auto' ? 'auto' : 'manual', createdAt: l.createdAt || nowIso() };
+    if (out.kind === 'auto') {
+      out.relation = RELATIONS.includes(l.relation) ? l.relation : 'similar';
+      out.reason = typeof l.reason === 'string' ? l.reason : '';
+    }
+    return out;
   }
 
   function normalizeNote(n) {
+    const linksById = new Map();
+    (Array.isArray(n.links) ? n.links : []).forEach((raw) => {
+      const norm = normalizeLink(raw);
+      if (norm && !linksById.has(norm.id)) linksById.set(norm.id, norm);
+    });
     return {
       id: String(n.id),
       text: n.text || '',
       source: n.source || '',
       myWords: n.myWords || '',
       tags: Array.isArray(n.tags) ? n.tags.filter(Boolean) : [],
-      links: Array.isArray(n.links) ? [...new Set(n.links.filter(Boolean))] : [],
+      links: [...linksById.values()],
+      rejectedLinks: Array.isArray(n.rejectedLinks) ? [...new Set(n.rejectedLinks.filter(Boolean).map(String))] : [],
+      autoLinkedAt: n.autoLinkedAt || null,
       createdAt: n.createdAt || nowIso(),
       updatedAt: n.updatedAt || n.createdAt || nowIso(),
     };
@@ -527,7 +618,7 @@
       ? parsed.deletedIds.filter((d) => d && d.id).map((d) => ({ id: String(d.id), deletedAt: d.deletedAt || nowIso() }))
       : [];
     return {
-      version: parsed.version || 1,
+      version: 2,
       updatedAt: parsed.updatedAt || nowIso(),
       notes: parsed.notes.filter((n) => n && n.id).map(normalizeNote),
       deletedIds,
@@ -596,21 +687,44 @@
 
   // Links are bidirectional: reconcile the reverse side whenever a note's
   // own links[] changes, so A<->B always agree without the user managing B.
-  function applyLinksDiff(noteId, oldLinks, newLinks) {
-    const removed = oldLinks.filter((id) => !newLinks.includes(id));
-    const added = newLinks.filter((id) => !oldLinks.includes(id));
-    removed.forEach((otherId) => {
-      const other = findNote(otherId);
-      if (other) other.links = other.links.filter((id) => id !== noteId);
-    });
-    added.forEach((otherId) => {
-      const other = findNote(otherId);
-      if (other && !other.links.includes(noteId)) other.links.push(noteId);
-    });
+  // meta.reason is intentionally shared verbatim on both sides (the spec
+  // calls this out explicitly - a link's reason describes the pair, not one
+  // side's private view of it).
+  function addLinkBidirectional(idA, idB, meta) {
+    const a = findNote(idA);
+    const b = findNote(idB);
+    if (!a || !b) return;
+    const iso = nowIso();
+    const makeEntry = (targetId) => {
+      const entry = { id: targetId, kind: meta.kind, createdAt: iso };
+      if (meta.kind === 'auto') {
+        entry.relation = meta.relation;
+        entry.reason = meta.reason || '';
+      }
+      return entry;
+    };
+    if (!a.links.some((l) => l.id === idB)) a.links.push(makeEntry(idB));
+    if (!b.links.some((l) => l.id === idA)) b.links.push(makeEntry(idA));
+  }
+
+  function removeLinkBidirectional(idA, idB) {
+    const a = findNote(idA);
+    const b = findNote(idB);
+    if (a) a.links = a.links.filter((l) => l.id !== idB);
+    if (b) b.links = b.links.filter((l) => l.id !== idA);
+  }
+
+  // Reconciles only the manual-kind links against the editor's picker state;
+  // auto links (managed separately, from detail) are left untouched.
+  function applyManualLinksDiff(noteId, oldIds, newIds) {
+    const removed = oldIds.filter((id) => !newIds.includes(id));
+    const added = newIds.filter((id) => !oldIds.includes(id));
+    removed.forEach((otherId) => removeLinkBidirectional(noteId, otherId));
+    added.forEach((otherId) => addLinkBidirectional(noteId, otherId, { kind: 'manual' }));
   }
 
   function deleteNoteById(id) {
-    data.notes.forEach((n) => { n.links = n.links.filter((lid) => lid !== id); });
+    data.notes.forEach((n) => { n.links = n.links.filter((l) => l.id !== id); });
     data.notes = data.notes.filter((n) => n.id !== id);
     if (!Array.isArray(data.deletedIds)) data.deletedIds = [];
     data.deletedIds = data.deletedIds.filter((d) => d.id !== id);
@@ -619,7 +733,7 @@
 
   function pruneDanglingLinks(d) {
     const ids = new Set(d.notes.map((n) => n.id));
-    d.notes.forEach((n) => { n.links = n.links.filter((id) => ids.has(id)); });
+    d.notes.forEach((n) => { n.links = n.links.filter((l) => ids.has(l.id)); });
   }
 
   // Per-note merge (not whole-blob updatedAt comparison): union local and
@@ -648,7 +762,14 @@
         const tombstoneAt = na ? delB.get(id) : delA.get(id);
         winner = (tombstoneAt && new Date(tombstoneAt) >= new Date(only.updatedAt)) ? null : only;
       }
-      if (winner) mergedNotes.set(id, { ...winner, tags: [...winner.tags], links: [...winner.links] });
+      if (winner) {
+        mergedNotes.set(id, {
+          ...winner,
+          tags: [...winner.tags],
+          links: winner.links.map((l) => ({ ...l })),
+          rejectedLinks: [...(winner.rejectedLinks || [])],
+        });
+      }
     });
 
     const mergedDeleted = new Map();
@@ -660,7 +781,7 @@
     mergedNotes.forEach((_, id) => mergedDeleted.delete(id));
 
     const merged = {
-      version: 1,
+      version: 2,
       updatedAt: nowIso(),
       notes: [...mergedNotes.values()],
       deletedIds: [...mergedDeleted.entries()].map(([id, deletedAt]) => ({ id, deletedAt })),
@@ -736,7 +857,7 @@
   }
 
   function emptyRemoteData() {
-    return { version: 1, updatedAt: nowIso(), notes: [], deletedIds: [] };
+    return { version: 2, updatedAt: nowIso(), notes: [], deletedIds: [] };
   }
 
   // Push data (already merged with the latest remote fetch). On a 409 (someone
@@ -825,6 +946,222 @@
     return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
   }
 
+  // --- Claude API auto-linking ---------------------------------------------
+  const CLAUDE_API_KEY_KEY = 'kotoba_claudeApiKey';
+  const CLAUDE_MODEL_KEY = 'kotoba_claudeModel';
+  const AUTO_LINK_ENABLED_KEY = 'kotoba_autoLinkEnabled';
+  const COMPRESS_THRESHOLD_KEY = 'kotoba_compressThreshold';
+  const API_CALL_COUNT_KEY = 'kotoba_apiCallCount';
+  const LAST_AUTO_LINK_ERROR_KEY = 'kotoba_lastAutoLinkError';
+  const DEFAULT_CLAUDE_MODEL = 'claude-sonnet-5';
+  const DEFAULT_COMPRESS_THRESHOLD = 400;
+
+  function getClaudeApiKey() { return localStorage.getItem(CLAUDE_API_KEY_KEY) || ''; }
+  function getClaudeModel() { return localStorage.getItem(CLAUDE_MODEL_KEY) || DEFAULT_CLAUDE_MODEL; }
+  function getAutoLinkEnabled() {
+    const v = localStorage.getItem(AUTO_LINK_ENABLED_KEY);
+    return v === null ? true : v === '1';
+  }
+  function getCompressThreshold() {
+    const v = parseInt(localStorage.getItem(COMPRESS_THRESHOLD_KEY), 10);
+    return Number.isFinite(v) && v > 0 ? v : DEFAULT_COMPRESS_THRESHOLD;
+  }
+  function incrementApiCallCount() {
+    const n = parseInt(localStorage.getItem(API_CALL_COUNT_KEY), 10) || 0;
+    localStorage.setItem(API_CALL_COUNT_KEY, String(n + 1));
+  }
+  function recordAutoLinkError(message) {
+    localStorage.setItem(LAST_AUTO_LINK_ERROR_KEY, JSON.stringify({ message: String(message), at: nowIso() }));
+  }
+  function clearAutoLinkError() { localStorage.removeItem(LAST_AUTO_LINK_ERROR_KEY); }
+  function getLastAutoLinkError() {
+    try {
+      const raw = localStorage.getItem(LAST_AUTO_LINK_ERROR_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+
+  function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+
+  // Notes in flight get their id added here so the UI can show a small
+  // "関連を探しています…" indicator on whatever screen is showing them.
+  const autoLinkInFlight = new Set();
+
+  // Cheap pre-filter for large note collections: tag overlap counts far more
+  // than substring word overlap, since shared tags are a much stronger
+  // relevance signal than incidental shared vocabulary.
+  function compressCandidates(note, candidates, threshold) {
+    if (candidates.length <= threshold) return candidates;
+    const noteTags = new Set(note.tags);
+    const noteWords = new Set(((note.text || '') + (note.myWords || '')).toLowerCase().match(/[\p{L}\p{N}]+/gu) || []);
+    function score(n) {
+      let s = 0;
+      n.tags.forEach((t) => { if (noteTags.has(t)) s += 3; });
+      const nWords = ((n.text || '') + (n.myWords || '')).toLowerCase();
+      noteWords.forEach((w) => { if (w.length >= 2 && nWords.includes(w)) s += 1; });
+      return s;
+    }
+    return [...candidates].sort((a, b) => score(b) - score(a)).slice(0, threshold);
+  }
+
+  // Calls the Messages API directly from the browser (per the v2 spec) with
+  // the required anthropic-dangerous-direct-browser-access header. Retries
+  // once on a 429 after a short wait; any other non-2xx or parse failure
+  // propagates so the caller can record it as the "last error" and move on.
+  async function callClaudeApi(note, candidateNotes, isRetry) {
+    const apiKey = getClaudeApiKey();
+    if (!apiKey) { const e = new Error('no-api-key'); e.noKey = true; throw e; }
+    const model = getClaudeModel();
+    const compact = candidateNotes.map((n) => ({
+      id: n.id,
+      text: (n.text || '').slice(0, 120),
+      source: n.source || '',
+      myWords: (n.myWords || '').slice(0, 80),
+      tags: n.tags,
+    }));
+    const promptText =
+      '対象ノート:\n' +
+      JSON.stringify({ text: note.text, source: note.source, myWords: note.myWords, tags: note.tags }) +
+      '\n\n既存ノート一覧:\n' + JSON.stringify(compact) +
+      '\n\n対象ノートと、同じ考えを別の言い方で述べている（similar）／反対の立場を取っている（opposite）／' +
+      '前提や具体例として補い合う（supplement）ノートを最大5件、関連の強い順に選び、JSONのみで返してください。' +
+      '表面的な単語の一致ではなく、考え方・態度・問いの共通性で判断してください。myWords（本人の解釈）を重視してください。' +
+      '該当がなければ空配列を返してください。\n\n' +
+      '返答形式（JSON配列のみ、他の文章は含めない）:\n' +
+      '[{"id": "...", "relation": "similar", "reason": "..."}]';
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 1024,
+        messages: [{ role: 'user', content: promptText }],
+      }),
+    });
+
+    if (res.status === 429 && !isRetry) {
+      await sleep(2000);
+      return callClaudeApi(note, candidateNotes, true);
+    }
+    incrementApiCallCount();
+    if (!res.ok) {
+      const err = new Error('Claude API failed: ' + res.status);
+      err.status = res.status;
+      throw err;
+    }
+    const json = await res.json();
+    const textOut = (json.content || []).map((b) => b.text || '').join('');
+    const cleaned = textOut.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+    const parsed = JSON.parse(cleaned);
+    if (!Array.isArray(parsed)) throw new Error('invalid response shape');
+    return parsed;
+  }
+
+  // Runs the auto-link flow for one note: builds the candidate pool (self,
+  // already-linked, and rejected ids excluded), calls the API, and adds
+  // whatever comes back as bidirectional auto links. Silent on any failure
+  // per spec - the caller never needs to handle a thrown error, only the
+  // returned result.
+  async function autoLinkNote(note, opts) {
+    opts = opts || {};
+    if (!getAutoLinkEnabled()) return { skipped: true };
+    if (!getClaudeApiKey()) return { skipped: true };
+    const linkedIds = new Set(note.links.map((l) => l.id));
+    const rejectedIds = new Set(note.rejectedLinks || []);
+    let candidates = data.notes.filter((n) => n.id !== note.id && !linkedIds.has(n.id) && !rejectedIds.has(n.id));
+    candidates = compressCandidates(note, candidates, getCompressThreshold());
+    try {
+      const results = await callClaudeApi(note, candidates);
+      const validIds = new Set(candidates.map((n) => n.id));
+      let added = 0;
+      results.slice(0, 5).forEach((r) => {
+        if (!r || !validIds.has(r.id)) return;
+        const relation = RELATIONS.includes(r.relation) ? r.relation : 'similar';
+        const reason = typeof r.reason === 'string' ? r.reason.slice(0, 200) : '';
+        addLinkBidirectional(note.id, r.id, { kind: 'auto', relation, reason });
+        added++;
+      });
+      if (opts.markLinkedAt) note.autoLinkedAt = nowIso();
+      clearAutoLinkError();
+      return { ok: true, added };
+    } catch (e) {
+      if (!e || !e.noKey) recordAutoLinkError(e && e.message ? e.message : String(e));
+      if (opts.markLinkedAt) note.autoLinkedAt = nowIso();
+      return { ok: false, error: e };
+    }
+  }
+
+  // Fire-and-forget from the save handler and the "関連を探し直す" button:
+  // shows the small in-flight indicator, then persists+syncs only if a link
+  // was actually added (so an unconfigured/disabled auto-link never touches
+  // sync state).
+  async function triggerAutoLinkForNote(noteId) {
+    const note = findNote(noteId);
+    if (!note) return;
+    autoLinkInFlight.add(noteId);
+    refreshAutoLinkIndicators();
+    const result = await autoLinkNote(note, { markLinkedAt: false });
+    autoLinkInFlight.delete(noteId);
+    if (result && result.ok && result.added > 0) saveData(data);
+    refreshCurrentScreen();
+    refreshAutoLinkIndicators();
+  }
+
+  // Home and detail both show a per-note "探しています" line independent of
+  // which screen refreshCurrentScreen() would normally redraw.
+  function refreshAutoLinkIndicators() {
+    if (nav.screen === 'home') renderHome();
+    else if (nav.screen === 'detail') renderDetail();
+  }
+
+  // --- Batch relink (settings) ---------------------------------------------
+  const batchState = { running: false, stop: false };
+
+  function updateBatchProgressUI(processed, total, done) {
+    const el = document.getElementById('batchProgress');
+    const stopBtn = document.getElementById('btnBatchStop');
+    el.hidden = false;
+    el.textContent = done ? `完了（${processed} / ${total}）` : `${processed} / ${total}`;
+    stopBtn.hidden = !!done;
+  }
+
+  async function runBatchAutoLink() {
+    if (batchState.running) return;
+    if (!getClaudeApiKey()) { alert('先にAPIキーを設定してください'); return; }
+    const pending = data.notes.filter((n) => !n.autoLinkedAt).sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+    if (!pending.length) { alert('未処理のノートはありません（全ノートが処理済みです）'); return; }
+    if (!confirm(`未処理のノート ${pending.length} 件に自動関連づけを実行します（API呼び出し概算 ${pending.length} 回）。よろしいですか？`)) return;
+
+    batchState.running = true;
+    batchState.stop = false;
+    let processed = 0;
+    updateBatchProgressUI(processed, pending.length);
+    for (const note of pending) {
+      if (batchState.stop) break;
+      await autoLinkNote(note, { markLinkedAt: true });
+      processed++;
+      updateBatchProgressUI(processed, pending.length);
+      if (processed % 10 === 0) {
+        data.updatedAt = nowIso();
+        persistLocal(data);
+        await syncNow();
+      }
+      if (!batchState.stop && processed < pending.length) await sleep(500);
+    }
+    data.updatedAt = nowIso();
+    persistLocal(data);
+    await syncNow();
+    batchState.running = false;
+    updateBatchProgressUI(processed, pending.length, true);
+    refreshCurrentScreen();
+  }
+
   // --- navigation state -----------------------------------------------------
   const nav = {
     screen: 'home',
@@ -873,6 +1210,50 @@
       document.getElementById('homeMyWords').textContent = note.myWords;
       renderTagPills(document.getElementById('homeTags'), note.tags);
     }
+    renderHomeLinks(note);
+  }
+
+  function renderHomeLinks(note) {
+    const section = document.getElementById('homeLinksSection');
+    const list = document.getElementById('homeLinksList');
+    const status = document.getElementById('homeLinkingStatus');
+    list.innerHTML = '';
+    const linked = note
+      ? note.links.map((l) => ({ link: l, target: findNote(l.id) })).filter((x) => x.target).slice(0, 5)
+      : [];
+    status.hidden = !(note && autoLinkInFlight.has(note.id));
+    section.hidden = linked.length === 0 && status.hidden;
+    linked.forEach(({ link, target }) => {
+      const row = document.createElement('div');
+      row.className = 'detailLinkItem';
+      const inner = document.createElement('div');
+      inner.className = 'detailLinkRow';
+      const t = document.createElement('div');
+      t.className = 'lText';
+      t.textContent = noteSnippet(target.text, 40) + (target.source ? ' ・ ' + target.source : '');
+      const label = document.createElement('span');
+      label.className = 'relLabel ' + relationLabelClass(link);
+      label.textContent = relationLabelText(link);
+      inner.appendChild(t);
+      inner.appendChild(label);
+      row.appendChild(inner);
+      row.addEventListener('click', () => openDetail(target.id, 'home'));
+      list.appendChild(row);
+    });
+  }
+
+  function relationLabelText(link) {
+    if (link.kind !== 'auto') return '手動';
+    if (link.relation === 'opposite') return '対立';
+    if (link.relation === 'supplement') return '補足';
+    return '似ている';
+  }
+
+  function relationLabelClass(link) {
+    if (link.kind !== 'auto') return 'relManual';
+    if (link.relation === 'opposite') return 'relOpposite';
+    if (link.relation === 'supplement') return 'relSupplement';
+    return 'relSimilar';
   }
 
   function renderTagPills(container, tags) {
@@ -1003,24 +1384,61 @@
     document.getElementById('detailMyWords').textContent = note.myWords;
     renderTagPills(document.getElementById('detailTags'), note.tags);
 
+    document.getElementById('detailLinkingStatus').hidden = !autoLinkInFlight.has(note.id);
+
     const linksEl = document.getElementById('detailLinks');
     linksEl.innerHTML = '';
-    const linked = note.links.map(findNote).filter(Boolean);
+    const linked = note.links.map((l) => ({ link: l, target: findNote(l.id) })).filter((x) => x.target);
     document.getElementById('detailLinksEmpty').hidden = linked.length > 0;
-    linked.forEach((ln) => {
+    linked.forEach(({ link, target }) => {
       const el = document.createElement('div');
       el.className = 'detailLinkItem';
+      const row = document.createElement('div');
+      row.className = 'detailLinkRow';
+
+      const left = document.createElement('div');
       const t = document.createElement('div');
       t.className = 'lText';
-      t.textContent = noteSnippet(ln.text, 60);
-      el.appendChild(t);
-      if (ln.source) {
+      t.textContent = noteSnippet(target.text, 60);
+      left.appendChild(t);
+      if (target.source) {
         const s = document.createElement('div');
         s.className = 'lSource';
-        s.textContent = ln.source;
-        el.appendChild(s);
+        s.textContent = target.source;
+        left.appendChild(s);
       }
-      el.addEventListener('click', () => openDetailChained(ln.id));
+      if (link.kind === 'auto' && link.reason) {
+        const r = document.createElement('div');
+        r.className = 'lReason';
+        r.textContent = link.reason;
+        left.appendChild(r);
+      }
+      row.appendChild(left);
+
+      const right = document.createElement('div');
+      right.className = 'detailLinkRight';
+      const label = document.createElement('span');
+      label.className = 'relLabel ' + relationLabelClass(link);
+      label.textContent = relationLabelText(link);
+      right.appendChild(label);
+      const rm = document.createElement('button');
+      rm.type = 'button';
+      rm.className = 'linkRemoveBtn';
+      rm.textContent = '×';
+      rm.addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeLinkBidirectional(note.id, target.id);
+        if (link.kind === 'auto' && !note.rejectedLinks.includes(target.id)) {
+          note.rejectedLinks.push(target.id);
+        }
+        saveData(data);
+        renderDetail();
+      });
+      right.appendChild(rm);
+      row.appendChild(right);
+
+      el.appendChild(row);
+      el.addEventListener('click', () => openDetailChained(target.id));
       linksEl.appendChild(el);
     });
   }
@@ -1036,6 +1454,9 @@
     deleteNoteById(note.id);
     saveData(data);
     backFromDetail();
+  });
+  document.getElementById('btnRelinkNote').addEventListener('click', () => {
+    triggerAutoLinkForNote(nav.detailId);
   });
 
   // --- Editor -----------------------------------------------------------
@@ -1060,7 +1481,7 @@
       editSourceEl.value = note.source;
       editMyWordsEl.value = note.myWords;
       editorState.tags = [...note.tags];
-      editorState.links = [...note.links];
+      editorState.links = note.links.filter((l) => l.kind === 'manual').map((l) => l.id);
     } else {
       editTextEl.value = '';
       editSourceEl.value = '';
@@ -1106,30 +1527,34 @@
     commitTagInput(); // capture any tag text left uncommitted in the input
     const text = editTextEl.value.trim();
     const source = editSourceEl.value.trim();
-    const newLinks = [...editorState.links];
+    const newManualLinks = [...editorState.links];
     const iso = nowIso();
 
     let savedId;
+    let shouldAutoLink;
     if (nav.editorMode === 'edit') {
       const note = findNote(nav.editorEditId);
-      const oldLinks = [...note.links];
+      const oldManualLinks = note.links.filter((l) => l.kind === 'manual').map((l) => l.id);
+      const contentChanged = note.text !== text || note.myWords !== myWords;
       note.text = text;
       note.source = source;
       note.myWords = myWords;
       note.tags = [...editorState.tags];
-      note.links = newLinks;
       note.updatedAt = iso;
-      applyLinksDiff(note.id, oldLinks, newLinks);
+      applyManualLinksDiff(note.id, oldManualLinks, newManualLinks);
       savedId = note.id;
+      shouldAutoLink = contentChanged;
     } else {
       const id = generateId(data.notes);
-      const note = { id, text, source, myWords, tags: [...editorState.tags], links: [...newLinks], createdAt: iso, updatedAt: iso };
+      const note = { id, text, source, myWords, tags: [...editorState.tags], links: [], rejectedLinks: [], autoLinkedAt: null, createdAt: iso, updatedAt: iso };
       data.notes.push(note);
-      applyLinksDiff(id, [], newLinks);
+      applyManualLinksDiff(id, [], newManualLinks);
       savedId = id;
+      shouldAutoLink = true;
     }
 
     saveData(data);
+    if (shouldAutoLink) triggerAutoLinkForNote(savedId);
 
     if (nav.editorMode === 'new') {
       openDetail(savedId, nav.editorReturnScreen === 'list' ? 'list' : 'home');
@@ -1383,16 +1808,55 @@
   editLinkSearchEl.addEventListener('blur', () => setTimeout(hideLinkResults, 150));
 
   // --- Settings ---------------------------------------------------------
+  function countLinksByKind(kind) {
+    let c = 0;
+    data.notes.forEach((n) => n.links.forEach((l) => { if (l.kind === kind) c++; }));
+    return Math.round(c / 2); // links are bidirectional; divide back down to pair count
+  }
+
   function openSettings() {
     showScreen('settings');
     document.getElementById('ghTokenInput').value = getGhToken();
+    document.getElementById('claudeApiKeyInput').value = getClaudeApiKey();
+    document.getElementById('claudeModelInput').value = getClaudeModel();
+    document.getElementById('autoLinkToggle').checked = getAutoLinkEnabled();
+    document.getElementById('compressThresholdInput').value = getCompressThreshold();
     document.getElementById('statNoteCount').textContent = data.notes.length;
     document.getElementById('statTagCount').textContent = allTags().length;
+    document.getElementById('statAutoLinkCount').textContent = countLinksByKind('auto');
+    document.getElementById('statManualLinkCount').textContent = countLinksByKind('manual');
+    document.getElementById('statApiCallCount').textContent = parseInt(localStorage.getItem(API_CALL_COUNT_KEY), 10) || 0;
+    const lastErr = getLastAutoLinkError();
+    document.getElementById('statLastAutoLinkError').textContent = lastErr ? `${lastErr.message}（${formatDateTime(lastErr.at)}）` : '-';
     const lastSync = localStorage.getItem(LAST_SYNC_KEY);
     document.getElementById('statLastSync').textContent = lastSync ? formatDateTime(lastSync) : '-';
+    if (!batchState.running) document.getElementById('batchProgress').hidden = true;
+    document.getElementById('btnBatchStop').hidden = !batchState.running;
   }
 
   document.getElementById('backFromSettings').addEventListener('click', goHome);
+
+  document.getElementById('btnSaveClaudeSettings').addEventListener('click', () => {
+    const key = document.getElementById('claudeApiKeyInput').value.trim();
+    const model = document.getElementById('claudeModelInput').value.trim();
+    if (key) localStorage.setItem(CLAUDE_API_KEY_KEY, key); else localStorage.removeItem(CLAUDE_API_KEY_KEY);
+    localStorage.setItem(CLAUDE_MODEL_KEY, model || DEFAULT_CLAUDE_MODEL);
+    alert('保存しました');
+  });
+
+  document.getElementById('autoLinkToggle').addEventListener('change', (e) => {
+    localStorage.setItem(AUTO_LINK_ENABLED_KEY, e.target.checked ? '1' : '0');
+  });
+
+  document.getElementById('btnSaveCompressThreshold').addEventListener('click', () => {
+    const v = parseInt(document.getElementById('compressThresholdInput').value, 10);
+    if (!Number.isFinite(v) || v <= 0) { alert('正しい件数を入力してください'); return; }
+    localStorage.setItem(COMPRESS_THRESHOLD_KEY, String(v));
+    alert('保存しました');
+  });
+
+  document.getElementById('btnBatchAutoLink').addEventListener('click', runBatchAutoLink);
+  document.getElementById('btnBatchStop').addEventListener('click', () => { batchState.stop = true; });
 
   document.getElementById('btnSaveGhToken').addEventListener('click', () => {
     const v = document.getElementById('ghTokenInput').value.trim();
