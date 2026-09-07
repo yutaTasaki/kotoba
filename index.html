@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>kotoba — 言葉と考えのノート</title>
-<link rel="manifest" href="manifest.json">
+<link rel="manifest" href="manifest.json?v=2">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -200,7 +200,11 @@
     color: var(--text-faint);
   }
   .fieldNote.warn { color: var(--danger); }
+  .fieldNote.inlineNote { display: inline; margin-left: 6px; font-size: 11px; }
   .autocompleteField { position: relative; }
+  .tagInputRow { display: flex; gap: 8px; align-items: stretch; }
+  .tagInputRow input { flex: 1; min-width: 0; }
+  .tagAddBtn { width: auto; padding: 12px 16px; white-space: nowrap; }
   .linkResultsList {
     list-style: none;
     margin: 0;
@@ -360,7 +364,7 @@
       <div class="topbar-title">一覧</div>
       <button id="btnAddFromList" class="iconBtn">＋</button>
     </header>
-    <input id="listSearch" type="search" placeholder="検索（言葉・出典・自分の言葉）">
+    <input id="listSearch" type="search" placeholder="検索（言葉・出典・自分の言葉）" autocomplete="off">
     <div id="listTagFilter" class="tagFilterRow"></div>
     <div id="listItems" class="listItems"></div>
     <div id="listEmpty" class="emptyMsg" hidden>該当するノートがありません。</div>
@@ -398,7 +402,7 @@
     <div class="editorBody">
       <label class="field">
         <span class="fieldLabel">言葉</span>
-        <textarea id="editText" rows="4" placeholder="引用文、または自分の考え"></textarea>
+        <textarea id="editText" rows="4" placeholder="引用文、または自分の考え" autocomplete="off"></textarea>
       </label>
       <div class="field autocompleteField">
         <span class="fieldLabel">出典</span>
@@ -407,12 +411,16 @@
       </div>
       <label class="field">
         <span class="fieldLabel">自分の言葉での一言<span class="required">必須</span></span>
-        <textarea id="editMyWords" rows="3" placeholder="自分の言葉で一言"></textarea>
+        <textarea id="editMyWords" rows="3" placeholder="自分の言葉で一言" autocomplete="off"></textarea>
         <p class="fieldNote warn" id="myWordsHint" hidden>自分の言葉での一言を入力してください（必須）</p>
       </label>
       <div class="field autocompleteField">
-        <span class="fieldLabel">タグ</span>
-        <input id="editTagInput" type="text" placeholder="タグを入力してEnter" autocomplete="off">
+        <span class="fieldLabel">タグ<span class="fieldNote inlineNote">（最大3つ・読点/カンマ/スペースで複数入力可）</span></span>
+        <div class="tagInputRow">
+          <input id="editTagInput" type="text" placeholder="タグを入力（例: 無常、執着）" autocomplete="off">
+          <button type="button" id="btnAddTag" class="secondaryBtn tagAddBtn">追加</button>
+        </div>
+        <p class="fieldNote warn" id="tagLimitHint" hidden>タグは3つまでです</p>
         <div id="editTagChips" class="chipRow"></div>
         <div id="tagCandidates" class="chipRow candidateChipRow"></div>
       </div>
@@ -437,7 +445,7 @@
       <div class="field">
         <h3>GitHub token</h3>
         <p class="fieldNote">同期先: yutaTasaki/kotoba-data（private）。手順はkotoba-dataリポジトリのREADMEを参照。</p>
-        <input id="ghTokenInput" type="password" placeholder="github_pat_...">
+        <input id="ghTokenInput" type="text" placeholder="github_pat_..." autocomplete="off" spellcheck="false">
         <button id="btnSaveGhToken" class="secondaryBtn">保存</button>
       </div>
       <hr>
@@ -1062,6 +1070,7 @@
     }
     editTagInputEl.value = '';
     editLinkSearchEl.value = '';
+    clearTagLimitMessage();
     hideLinkResults();
     renderTagChips();
     renderLinkChips();
@@ -1094,6 +1103,7 @@
   btnSaveNote.addEventListener('click', () => {
     const myWords = editMyWordsEl.value.trim();
     if (!myWords) { updateSaveButtonState(); return; }
+    commitTagInput(); // capture any tag text left uncommitted in the input
     const text = editTextEl.value.trim();
     const source = editSourceEl.value.trim();
     const newLinks = [...editorState.links];
@@ -1190,6 +1200,18 @@
   }
   editSourceEl.addEventListener('input', renderSourceCandidates);
 
+  const TAG_MAX = 3;
+  const tagLimitHintEl = document.getElementById('tagLimitHint');
+  function showTagLimitMessage() { tagLimitHintEl.hidden = false; }
+  function clearTagLimitMessage() { tagLimitHintEl.hidden = true; }
+
+  // Accepts 、 (touten), half/full-width commas, and any whitespace (which in
+  // JS regex \s already includes the full-width ideographic space) as
+  // separators, so "無常 執着 死" and "無常、執着" both yield 3 tags.
+  function splitTagInput(raw) {
+    return raw.split(/[、,，\s]+/u).map((s) => s.trim()).filter(Boolean);
+  }
+
   function renderTagChips() {
     const row = document.getElementById('editTagChips');
     row.innerHTML = '';
@@ -1204,6 +1226,7 @@
       rm.textContent = '×';
       rm.addEventListener('click', () => {
         editorState.tags = editorState.tags.filter((x) => x !== t);
+        if (editorState.tags.length < TAG_MAX) clearTagLimitMessage();
         renderTagChips();
         renderTagCandidates();
       });
@@ -1212,11 +1235,31 @@
     });
   }
 
-  function addTag(raw) {
-    const t = raw.trim();
-    if (!t || editorState.tags.includes(t)) return;
-    editorState.tags.push(t);
+  // Adds as many of the given (already-split) tag tokens as fit under
+  // TAG_MAX, in order, skipping duplicates silently; surfaces the shared
+  // "タグは3つまでです" message whenever the cap is what stopped a token
+  // from being added (never for a plain duplicate).
+  function addTagTokens(tokens) {
+    if (!tokens.length) return;
+    if (editorState.tags.length >= TAG_MAX) { showTagLimitMessage(); return; }
+    let hitLimit = false;
+    for (const t of tokens) {
+      if (editorState.tags.length >= TAG_MAX) { hitLimit = true; break; }
+      if (!editorState.tags.includes(t)) editorState.tags.push(t);
+    }
+    if (hitLimit) showTagLimitMessage(); else clearTagLimitMessage();
     renderTagChips();
+    renderTagCandidates();
+  }
+
+  // Commits whatever's currently typed (possibly several tags at once) into
+  // editorState.tags and clears the field. Used by Enter, the 追加 button,
+  // and automatically at save time so unconfirmed text is never lost.
+  function commitTagInput() {
+    const raw = editTagInputEl.value;
+    if (!raw.trim()) return;
+    addTagTokens(splitTagInput(raw));
+    editTagInputEl.value = '';
     renderTagCandidates();
   }
 
@@ -1227,20 +1270,54 @@
     let candidates = rankByUsage(tagUsageStats()).filter((t) => !excludeSet.has(t));
     if (q) candidates = candidates.filter((t) => t.toLowerCase().includes(q));
     renderCandidateChips(tagCandidatesEl, candidates, (v) => {
-      addTag(v);
+      if (editorState.tags.length >= TAG_MAX) { showTagLimitMessage(); return; }
+      editorState.tags.push(v);
+      clearTagLimitMessage();
       editTagInputEl.value = '';
+      renderTagChips();
       renderTagCandidates();
       editTagInputEl.focus();
     });
   }
-  editTagInputEl.addEventListener('input', renderTagCandidates);
+
+  // Live delimiter commit: typing 、/,/，/whitespace confirms whatever comes
+  // before it as a tag immediately, not just on Enter/save. Guarded by IME
+  // composition state so selecting a kanji conversion candidate with the
+  // space bar doesn't get mistaken for "confirm tag" mid-composition.
+  let tagInputComposing = false;
+  function liveCommitFromInput() {
+    const val = editTagInputEl.value;
+    if (!/[、,，\s]/u.test(val)) return;
+    const endsWithDelimiter = /[、,，\s]$/u.test(val);
+    const parts = splitTagInput(val);
+    if (endsWithDelimiter) {
+      addTagTokens(parts);
+      editTagInputEl.value = '';
+    } else if (parts.length > 1) {
+      const trailing = parts.pop();
+      addTagTokens(parts);
+      editTagInputEl.value = trailing;
+    }
+  }
+  editTagInputEl.addEventListener('compositionstart', () => { tagInputComposing = true; });
+  editTagInputEl.addEventListener('compositionend', () => {
+    tagInputComposing = false;
+    liveCommitFromInput();
+    renderTagCandidates();
+  });
+  editTagInputEl.addEventListener('input', () => {
+    if (!tagInputComposing) liveCommitFromInput();
+    renderTagCandidates();
+  });
   editTagInputEl.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      addTag(editTagInputEl.value);
-      editTagInputEl.value = '';
-      renderTagCandidates();
+      commitTagInput();
     }
+  });
+  document.getElementById('btnAddTag').addEventListener('click', () => {
+    commitTagInput();
+    editTagInputEl.focus();
   });
 
   // related-note picker
