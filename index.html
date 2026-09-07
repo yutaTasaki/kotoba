@@ -113,6 +113,7 @@
     font-weight: 600;
   }
   .primaryBtn:disabled { opacity: 0.4; cursor: default; }
+  .usageConsoleLink { text-align: center; text-decoration: none; box-sizing: border-box; }
   .secondaryBtn {
     border: 1px solid var(--accent-dim);
     color: var(--accent);
@@ -644,6 +645,7 @@
     <header class="topbar">
       <div class="topbar-title" style="text-align:left;">朝</div>
     </header>
+    <p class="fieldNote warn" id="usageThresholdBanner" hidden></p>
     <div class="dayCount" id="dayCountLabel"></div>
     <div id="homeEmpty" class="emptyMsg" hidden>まだノートがありません。「言葉」画面の「＋」から最初の1枚を書いてみましょう。</div>
     <div id="walkUnavailableMsg" class="emptyMsg" hidden>散歩データを読み込めていません。設定 → 同期を確認してください。</div>
@@ -814,6 +816,19 @@
         <div id="linkSearchResults" class="linkResultsList" hidden></div>
         <div id="editLinkChips" class="chipRow"></div>
       </div>
+      <div id="editSimilarPanel" class="draftSimilarPanel" hidden>
+        <p class="fieldNote warn">似た言葉がすでにあります</p>
+        <div class="cardHome draftSimilarNoteCard">
+          <div class="cardText" id="editSimilarNoteText"></div>
+          <div class="cardSource" id="editSimilarNoteSource"></div>
+          <div class="fieldNote" id="editSimilarNoteMyWords"></div>
+        </div>
+        <div class="draftSimilarActions">
+          <button type="button" id="btnEditSimilarSaveAnyway" class="secondaryBtn">保存する</button>
+          <button type="button" id="btnEditSimilarCancel" class="secondaryBtn">やめる</button>
+          <button type="button" id="btnEditSimilarOpenExisting" class="secondaryBtn">既存を開く</button>
+        </div>
+      </div>
       <button id="btnSaveNote" class="primaryBtn" disabled>保存</button>
     </div>
   </section>
@@ -844,6 +859,12 @@
         <input id="claudeModelAutoLinkInput" type="text" placeholder="claude-haiku-4-5" autocomplete="off" spellcheck="false">
         <span class="fieldLabel">朝の言葉・相談のモデル</span>
         <input id="claudeModelChatInput" type="text" placeholder="claude-sonnet-5" autocomplete="off" spellcheck="false">
+        <span class="fieldLabel">月の上限（USD）</span>
+        <p class="fieldNote">今月の概算費用がこの割合（50% / 80% / 100%）に達すると朝タブに知らせます。100%を超えると自動関連づけと朝の言葉を自動で止めます（相談は確認のうえ続行できます）。</p>
+        <input id="usageBudgetInput" type="text" inputmode="decimal" placeholder="2.00" autocomplete="off">
+        <span class="fieldLabel">この端末の名前</span>
+        <p class="fieldNote">使用量の内訳で、この端末を区別するための表示名です（例: PC、iPhone）。</p>
+        <input id="deviceLabelInput" type="text" placeholder="この端末" autocomplete="off">
         <button id="btnSaveClaudeSettings" class="secondaryBtn">保存</button>
         <label class="checkboxRow">
           <input type="checkbox" id="autoLinkToggle">
@@ -913,6 +934,14 @@
         <span class="fieldLabel">エラーが出たノート（<span id="errorNoteCount"></span>件）</span>
         <div id="errorNotesList" class="detailLinksList"></div>
       </div>
+      <div class="field">
+        <span class="fieldLabel">重複を探す</span>
+        <p class="fieldNote">全ノートを比較し、似ている組を一覧にします（API は使いません）。</p>
+        <button id="btnFindDuplicates" class="secondaryBtn">重複を探す</button>
+        <div id="duplicateProgress" class="fieldNote" hidden></div>
+        <div id="duplicateResults"></div>
+        <p class="emptyMsg" id="duplicateEmptyMsg" hidden>似ている組は見つかりませんでした。</p>
+      </div>
       <hr>
       <div class="field">
         <h3>5. データ</h3>
@@ -936,12 +965,20 @@
         <div class="statRow"><span>最終エラー</span><span id="statLastAutoLinkError"></span></div>
       </div>
       <div class="field statsField">
-        <span class="fieldLabel">API使用量（この端末・usageより集計）</span>
-        <div class="statRow"><span>自動関連づけ</span><span id="statUsageAutolink"></span></div>
-        <div class="statRow"><span>朝</span><span id="statUsageMorning"></span></div>
-        <div class="statRow"><span>相談</span><span id="statUsageConsult"></span></div>
-        <div class="statRow"><span>探し直し</span><span id="statUsageSearchAgain"></span></div>
-        <div class="statRow"><span>概算費用合計</span><span id="statUsageTotalCost"></span></div>
+        <span class="fieldLabel">API使用量・今月（機能別）</span>
+        <div class="statRow"><span>自動関連づけ</span><span id="statUsageMonthAutolink"></span></div>
+        <div class="statRow"><span>朝</span><span id="statUsageMonthMorning"></span></div>
+        <div class="statRow"><span>相談</span><span id="statUsageMonthConsult"></span></div>
+        <div class="statRow"><span>探し直し</span><span id="statUsageMonthSearchAgain"></span></div>
+        <div class="statRow"><span>一括入力</span><span id="statUsageMonthBulk"></span></div>
+        <div class="statRow"><span>今月・合計</span><span id="statUsageMonthTotal"></span></div>
+        <div id="statUsagePerDevice"></div>
+      </div>
+      <div class="field statsField">
+        <div class="statRow"><span>先月・合計</span><span id="statUsagePrevMonthTotal"></span></div>
+        <div class="statRow"><span>累計・合計</span><span id="statUsageAllTimeTotal"></span></div>
+        <p class="fieldNote">アプリ内の金額はすべて概算です。月に一度は Anthropic コンソールの実際の請求と見比べてください。</p>
+        <a href="https://platform.claude.com" target="_blank" rel="noopener" class="secondaryBtn usageConsoleLink">Anthropic コンソールで実際の使用量を見る</a>
       </div>
     </div>
   </section>
@@ -1178,6 +1215,8 @@
       notes: [], deletedIds: [],
       journal: [], deletedJournalIds: [],
       drafts: [], deletedDraftIds: [],
+      dismissedDuplicatePairs: [],
+      usage: {},
     };
   }
 
@@ -1284,6 +1323,10 @@
       deletedJournalIds,
       drafts: Array.isArray(parsed.drafts) ? parsed.drafts.filter((d) => d && d.id).map(normalizeDraft).filter(Boolean) : [],
       deletedDraftIds,
+      dismissedDuplicatePairs: Array.isArray(parsed.dismissedDuplicatePairs)
+        ? parsed.dismissedDuplicatePairs.filter((p) => p && p.a && p.b).map((p) => ({ a: String(p.a), b: String(p.b), dismissedAt: p.dismissedAt || nowIso() }))
+        : [],
+      usage: (parsed.usage && typeof parsed.usage === 'object') ? parsed.usage : {},
     };
   }
 
@@ -1507,8 +1550,30 @@
       deletedJournalIds: [...mergedJDeleted.entries()].map(([id, deletedAt]) => ({ id, deletedAt })),
       drafts: [...mergedDrafts.values()],
       deletedDraftIds: [...mergedDDeleted.entries()].map(([id, deletedAt]) => ({ id, deletedAt })),
+      dismissedDuplicatePairs: mergeDismissedDuplicatePairs(a.dismissedDuplicatePairs, b.dismissedDuplicatePairs),
+      usage: mergeUsageData(a.usage, b.usage),
     };
     pruneDanglingLinks(merged);
+    return merged;
+  }
+
+  // Append-only "seen" list (no per-entry edits, so a straight union by
+  // unordered pair is enough - never any conflict to resolve).
+  function mergeDismissedDuplicatePairs(localList, remoteList) {
+    const byKey = new Map();
+    const keyOf = (p) => (p.a < p.b ? p.a + '|' + p.b : p.b + '|' + p.a);
+    (remoteList || []).forEach((p) => byKey.set(keyOf(p), p));
+    (localList || []).forEach((p) => byKey.set(keyOf(p), p));
+    return [...byKey.values()];
+  }
+
+  // Per-device subtree: every device only ever writes its own, so remote is
+  // authoritative for every OTHER device's data, and only this device's own
+  // subtree needs the local (possibly not-yet-pushed) copy laid on top.
+  function mergeUsageData(localUsage, remoteUsage) {
+    const merged = { ...(remoteUsage || {}) };
+    const myId = getDeviceId();
+    if (localUsage && localUsage[myId]) merged[myId] = localUsage[myId];
     return merged;
   }
 
@@ -1631,6 +1696,8 @@
       notes: [], deletedIds: [],
       journal: [], deletedJournalIds: [],
       drafts: [], deletedDraftIds: [],
+      dismissedDuplicatePairs: [],
+      usage: {},
     };
   }
 
@@ -2450,8 +2517,11 @@
   const COMPRESS_THRESHOLD_KEY = 'kotoba_compressThreshold';
   const MORNING_QUOTE_HEADING_KEY = 'kotoba_morningQuoteHeading';
   const DEFAULT_MORNING_QUOTE_HEADING = '今日の言葉';
-  const USAGE_STATS_KEY = 'kotoba_usageStats';
   const LAST_AUTO_LINK_ERROR_KEY = 'kotoba_lastAutoLinkError';
+  const USAGE_BUDGET_KEY = 'kotoba_usageBudgetUsd';
+  const DEFAULT_USAGE_BUDGET_USD = 2.00;
+  const DEVICE_ID_KEY = 'kotoba_deviceId';
+  const DEVICE_LABEL_KEY = 'kotoba_deviceLabel';
   const DEFAULT_AUTOLINK_MODEL = 'claude-haiku-4-5';
   const DEFAULT_CHAT_MODEL = 'claude-sonnet-5';
   const DEFAULT_COMPRESS_THRESHOLD = 400;
@@ -2492,28 +2562,124 @@
     return v && v.trim() ? v : DEFAULT_MORNING_QUOTE_HEADING;
   }
 
-  // --- Usage tracking (v3.2): per-feature call counts + token totals, taken
-  // straight from each response's `usage` object. Only recorded on an
-  // actually-successful (billable) call - a failed request isn't charged, so
-  // it shouldn't count toward token totals or the cost estimate either.
+  // --- Usage tracking (v3.2, moved into data.json + per-device/per-month in
+  // v3.6): per-feature call counts + token totals, taken straight from each
+  // response's `usage` object. Only recorded on an actually-successful
+  // (billable) call - a failed request isn't charged, so it shouldn't count
+  // toward token totals or the cost estimate either.
+  //
+  // Stored as data.usage[deviceId] = { label, months: { 'YYYY-MM': { kind:
+  // {calls,input,output,cacheWrite,cacheRead} } } } - each device only ever
+  // writes its own subtree (see mergeUsageData), so PC and iPhone combine
+  // under sync while still keeping a per-device breakdown.
   const USAGE_KINDS = ['autolink', 'morning', 'consult', 'searchAgain', 'bulk'];
-  function getUsageStats() {
-    try {
-      const raw = JSON.parse(localStorage.getItem(USAGE_STATS_KEY) || '{}');
-      return raw && typeof raw === 'object' ? raw : {};
-    } catch (e) { return {}; }
+
+  function getDeviceId() {
+    let id = localStorage.getItem(DEVICE_ID_KEY);
+    if (!id) {
+      id = 'dev_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+      localStorage.setItem(DEVICE_ID_KEY, id);
+    }
+    return id;
   }
+  function getDeviceLabel() {
+    const v = localStorage.getItem(DEVICE_LABEL_KEY);
+    if (v && v.trim()) return v.trim();
+    return /iPhone|iPad|iPod/.test(navigator.userAgent) ? 'iPhone' : 'この端末';
+  }
+  function setDeviceLabel(label) { localStorage.setItem(DEVICE_LABEL_KEY, label); }
+
+  function currentMonthKey() { return todayStr().slice(0, 7); }
+  function shiftMonthKey(key, delta) {
+    const [y, m] = key.split('-').map(Number);
+    const d = new Date(y, m - 1 + delta, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }
+  function previousMonthKey() { return shiftMonthKey(currentMonthKey(), -1); }
+
+  function getUsageBudget() {
+    const v = parseFloat(localStorage.getItem(USAGE_BUDGET_KEY));
+    return Number.isFinite(v) && v > 0 ? v : DEFAULT_USAGE_BUDGET_USD;
+  }
+
   function recordApiUsage(kind, usage) {
     if (!usage) return;
-    const stats = getUsageStats();
-    const cur = stats[kind] || { calls: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0 };
+    const deviceId = getDeviceId();
+    const month = currentMonthKey();
+    if (!data.usage) data.usage = {};
+    if (!data.usage[deviceId]) data.usage[deviceId] = { label: getDeviceLabel(), months: {} };
+    data.usage[deviceId].label = getDeviceLabel();
+    if (!data.usage[deviceId].months) data.usage[deviceId].months = {};
+    const monthBucket = data.usage[deviceId].months[month] || {};
+    const cur = monthBucket[kind] || { calls: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0 };
     cur.calls += 1;
     cur.input += usage.input_tokens || 0;
     cur.output += usage.output_tokens || 0;
     cur.cacheWrite += usage.cache_creation_input_tokens || 0;
     cur.cacheRead += usage.cache_read_input_tokens || 0;
-    stats[kind] = cur;
-    localStorage.setItem(USAGE_STATS_KEY, JSON.stringify(stats));
+    monthBucket[kind] = cur;
+    data.usage[deviceId].months[month] = monthBucket;
+    saveData(data);
+  }
+
+  function emptyKindStat() { return { calls: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0 }; }
+  function addKindStat(target, src) {
+    target.calls += src.calls || 0;
+    target.input += src.input || 0;
+    target.output += src.output || 0;
+    target.cacheWrite += src.cacheWrite || 0;
+    target.cacheRead += src.cacheRead || 0;
+  }
+  // monthKey null/omitted -> all-time (every month, every device, summed).
+  function sumUsageAcrossDevices(monthKey) {
+    const result = {};
+    USAGE_KINDS.forEach((k) => { result[k] = emptyKindStat(); });
+    Object.values(data.usage || {}).forEach((device) => {
+      Object.entries(device.months || {}).forEach(([mKey, kinds]) => {
+        if (monthKey && mKey !== monthKey) return;
+        Object.entries(kinds).forEach(([kind, stat]) => {
+          if (!result[kind]) result[kind] = emptyKindStat();
+          addKindStat(result[kind], stat);
+        });
+      });
+    });
+    return result;
+  }
+  function sumUsagePerDevice(monthKey) {
+    return Object.entries(data.usage || {}).map(([deviceId, device]) => {
+      const kindStats = {};
+      USAGE_KINDS.forEach((k) => { kindStats[k] = emptyKindStat(); });
+      let anyMonth = false;
+      Object.entries(device.months || {}).forEach(([mKey, kinds]) => {
+        if (monthKey && mKey !== monthKey) return;
+        anyMonth = true;
+        Object.entries(kinds).forEach(([kind, stat]) => {
+          if (!kindStats[kind]) kindStats[kind] = emptyKindStat();
+          addKindStat(kindStats[kind], stat);
+        });
+      });
+      return { deviceId, label: device.label || deviceId, cost: totalCostForKindStats(kindStats), hasData: anyMonth };
+    }).filter((d) => d.hasData);
+  }
+  function modelForUsageKind(kind) {
+    return (kind === 'autolink' || kind === 'searchAgain') ? getClaudeAutoLinkModel() : getClaudeChatModel();
+  }
+  function totalCostForKindStats(kindStats) {
+    return USAGE_KINDS.reduce((sum, k) => sum + estimateCostUsd(kindStats[k], modelForUsageKind(k)), 0);
+  }
+  function isUsageOverBudget() {
+    return totalCostForKindStats(sumUsageAcrossDevices(currentMonthKey())) >= getUsageBudget();
+  }
+  // Returns the home-tab banner text for the highest threshold tier (50/80/
+  // 100%) the current month's total has crossed, or null under 50%.
+  function usageThresholdMessage() {
+    const budget = getUsageBudget();
+    if (budget <= 0) return null;
+    const cost = totalCostForKindStats(sumUsageAcrossDevices(currentMonthKey()));
+    const pct = cost / budget;
+    const tier = pct >= 1 ? 100 : pct >= 0.8 ? 80 : pct >= 0.5 ? 50 : null;
+    if (!tier) return null;
+    return `今月の API 使用が $${cost.toFixed(2)}（上限の${tier}%）`;
   }
 
   // Base per-MTok $ pricing (input/output) for the models this app's model
@@ -2826,6 +2992,7 @@
     opts = opts || {};
     if (!getAutoLinkEnabled()) return { skipped: true };
     if (!getClaudeApiKey()) return { skipped: true };
+    if (isUsageOverBudget()) return { skipped: true };
     const linkedIds = new Set(note.links.map((l) => l.id));
     const rejectedIds = new Set(note.rejectedLinks || []);
     const excludeIds = [note.id, ...linkedIds, ...rejectedIds];
@@ -3057,6 +3224,7 @@
     const inputEl = document.getElementById('consultInput');
     const input = inputEl.value.trim();
     if (!input || consultBusy) return;
+    if (isUsageOverBudget() && !confirm('上限を超えています。続けますか？')) return;
     const historyForThisCall = consultTurns
       .filter((t) => t.status === 'done')
       .slice(-CONSULT_HISTORY_TURNS)
@@ -3300,6 +3468,11 @@
   function renderHome() {
     document.getElementById('homeEmpty').hidden = data.notes.length > 0;
 
+    const usageBanner = document.getElementById('usageThresholdBanner');
+    const usageMsg = getClaudeApiKey() ? usageThresholdMessage() : null;
+    usageBanner.hidden = !usageMsg;
+    if (usageMsg) usageBanner.textContent = usageMsg;
+
     const unavailable = isWalkDataUnavailable();
     document.getElementById('walkUnavailableMsg').hidden = !unavailable;
     const canvas = document.getElementById('walkPreviewCanvas');
@@ -3328,7 +3501,7 @@
 
     const morningEntry = todaysMorningJournalEntry();
     const skippedToday = morningSkippedDate === today;
-    const wordsResolved = !!morningEntry || skippedToday || !getClaudeApiKey() || !getMorningEnabled();
+    const wordsResolved = !!morningEntry || skippedToday || !getClaudeApiKey() || !getMorningEnabled() || isUsageOverBudget();
 
     const todayWalked = derived.todayWalked;
     const hasAfterMood = todayStats.afterMood != null;
@@ -3715,9 +3888,9 @@
     sortNotesForFlatList(notes).forEach((n) => listEl.appendChild(renderListItemRow(n)));
   }
 
-  // Tracks which source group currently has its rename panel open (source
+  // Tracks which group currently has its rename panel open (keyPrefix+':'+
   // label, or null); local UI state only, reset on every list re-render trigger.
-  let sourceRenameOpenFor = null;
+  let groupRenameOpenFor = null;
 
   function renameSource(oldSource, newSource) {
     const iso = nowIso();
@@ -3729,12 +3902,220 @@
     return count;
   }
 
-  function renderSourceRenamePanel(oldSource, count) {
+  // Renaming a tag onto an existing tag name merges (dedup, never exceeds
+  // TAG_MAX since it can only ever reduce a note's tag count, not grow it).
+  function renameTag(oldTag, newTag) {
+    const iso = nowIso();
+    let count = 0;
+    data.notes.forEach((n) => {
+      if (!n.tags.includes(oldTag)) return;
+      const withoutOld = n.tags.filter((t) => t !== oldTag);
+      if (!withoutOld.includes(newTag)) withoutOld.push(newTag);
+      n.tags = withoutOld;
+      n.updatedAt = iso;
+      count++;
+    });
+    if (count > 0) saveData(data);
+    return count;
+  }
+
+  function deleteTagEverywhere(tag) {
+    const iso = nowIso();
+    let count = 0;
+    data.notes.forEach((n) => {
+      if (!n.tags.includes(tag)) return;
+      n.tags = n.tags.filter((t) => t !== tag);
+      n.updatedAt = iso;
+      count++;
+    });
+    if (count > 0) saveData(data);
+    return count;
+  }
+
+  // --- Duplicate/similarity management (v3.6) --------------------------------
+  function dupPairKey(a, b) { return a < b ? a + '|' + b : b + '|' + a; }
+
+  function dismissDuplicatePair(a, b) {
+    if (!Array.isArray(data.dismissedDuplicatePairs)) data.dismissedDuplicatePairs = [];
+    const key = dupPairKey(a, b);
+    if (!data.dismissedDuplicatePairs.some((p) => dupPairKey(p.a, p.b) === key)) {
+      data.dismissedDuplicatePairs.push({ a, b, dismissedAt: nowIso() });
+    }
+    saveData(data);
+  }
+
+  // Keeps the older note (by createdAt), folds the newer one's tags (capped
+  // at TAG_MAX, deduped) and links into it, redirects any other note's link
+  // pointing at the newer one to point at the survivor instead (dropping it
+  // if that would create a duplicate link), then deletes the newer one via
+  // the normal tombstone path.
+  function mergeDuplicateNotes(idA, idB) {
+    const a = findNote(idA), b = findNote(idB);
+    if (!a || !b) return;
+    const keep = a.createdAt <= b.createdAt ? a : b;
+    const drop = keep === a ? b : a;
+    const iso = nowIso();
+
+    keep.tags = [...new Set([...keep.tags, ...drop.tags])].slice(0, TAG_MAX);
+    const linkedIds = new Set(keep.links.map((l) => l.id));
+    drop.links.forEach((l) => {
+      if (l.id !== keep.id && !linkedIds.has(l.id)) {
+        keep.links.push({ ...l });
+        linkedIds.add(l.id);
+      }
+    });
+    keep.updatedAt = iso;
+
+    data.notes.forEach((n) => {
+      if (n.id === keep.id || n.id === drop.id) return;
+      const seen = new Set(n.links.map((l) => l.id));
+      let changed = false;
+      n.links = n.links.map((l) => {
+        if (l.id !== drop.id) return l;
+        changed = true;
+        if (seen.has(keep.id)) return null;
+        seen.add(keep.id);
+        return { ...l, id: keep.id };
+      }).filter(Boolean);
+      if (changed) n.updatedAt = iso;
+    });
+
+    deleteNoteById(drop.id);
+    saveData(data);
+  }
+
+  // Chunked (not a Web Worker - this is a single-file app with no separate
+  // worker script to load, and chunking with a yield between batches is
+  // simpler to keep in one file while still never blocking the UI thread
+  // for more than one batch's worth of comparisons) O(n^2) pairwise scan.
+  let duplicateScanToken = 0;
+  function findDuplicatePairsChunked(onDone) {
+    const myToken = ++duplicateScanToken;
+    const notes = data.notes;
+    const n = notes.length;
+    const dismissedKeys = new Set((data.dismissedDuplicatePairs || []).map((p) => dupPairKey(p.a, p.b)));
+    const pairs = [];
+    let i = 0, j = 1;
+    const CHUNK_SIZE = 400;
+    const progressEl = document.getElementById('duplicateProgress');
+    progressEl.hidden = false;
+
+    function step() {
+      if (myToken !== duplicateScanToken) return; // superseded by a newer scan
+      let count = 0;
+      while (i < n - 1) {
+        while (j < n) {
+          if (count >= CHUNK_SIZE) {
+            progressEl.textContent = `比較中… ${i + 1} / ${n} 件目`;
+            setTimeout(step, 0);
+            return;
+          }
+          const a = notes[i], b = notes[j];
+          count++;
+          if (!dismissedKeys.has(dupPairKey(a.id, b.id))) {
+            const score = textSimilarity(a.text, b.text);
+            if (score >= DRAFT_SIMILARITY_THRESHOLD) pairs.push({ aId: a.id, bId: b.id, score });
+          }
+          j++;
+        }
+        i++; j = i + 1;
+      }
+      progressEl.hidden = true;
+      onDone(pairs);
+    }
+    step();
+  }
+
+  function renderDuplicateResults(pairs) {
+    const container = document.getElementById('duplicateResults');
+    container.innerHTML = '';
+    document.getElementById('duplicateEmptyMsg').hidden = pairs.length > 0;
+    [...pairs].sort((x, y) => y.score - x.score).forEach((pair) => {
+      const a = findNote(pair.aId), b = findNote(pair.bId);
+      if (!a || !b) return;
+      const card = document.createElement('div');
+      card.className = 'recordEntry';
+
+      const top = document.createElement('div');
+      top.className = 'recordEntryTop';
+      const label = document.createElement('span');
+      label.className = 'recordEntryDate';
+      label.textContent = `類似度 ${Math.round(pair.score * 100)}%`;
+      top.appendChild(label);
+      card.appendChild(top);
+
+      [a, b].forEach((note) => {
+        const mini = document.createElement('div');
+        mini.className = 'journalCardMini';
+        const t = document.createElement('div');
+        t.className = 'lText';
+        t.textContent = noteSnippet(note.text, 60);
+        mini.appendChild(t);
+        const s = document.createElement('div');
+        s.className = 'lSource';
+        s.textContent = note.source || '';
+        mini.appendChild(s);
+        mini.addEventListener('click', () => openDetail(note.id, 'settings'));
+        card.appendChild(mini);
+      });
+
+      const btnRow = document.createElement('div');
+      btnRow.className = 'sourceRenameBtnRow';
+      const exactDup = a.text.trim() === b.text.trim() && (a.source || '') === (b.source || '');
+      if (exactDup) {
+        const mergeBtn = document.createElement('button');
+        mergeBtn.type = 'button';
+        mergeBtn.className = 'secondaryBtn';
+        mergeBtn.textContent = '統合';
+        mergeBtn.addEventListener('click', () => {
+          const keep = a.createdAt <= b.createdAt ? a : b;
+          const drop = keep === a ? b : a;
+          if (!confirm(`同じ言葉・出典のノートを統合します。「${noteSnippet(drop.text, 30)}」の方を削除し、タグとリンクは残す方に合流します。よろしいですか？`)) return;
+          mergeDuplicateNotes(a.id, b.id);
+          renderDuplicateResults(pairs.filter((p) => p !== pair));
+        });
+        btnRow.appendChild(mergeBtn);
+      } else {
+        const keepBothBtn = document.createElement('button');
+        keepBothBtn.type = 'button';
+        keepBothBtn.className = 'secondaryBtn';
+        keepBothBtn.textContent = '両方残す';
+        keepBothBtn.addEventListener('click', () => {
+          dismissDuplicatePair(a.id, b.id);
+          renderDuplicateResults(pairs.filter((p) => p !== pair));
+        });
+        const deleteOneBtn = document.createElement('button');
+        deleteOneBtn.type = 'button';
+        deleteOneBtn.className = 'dangerBtn';
+        deleteOneBtn.textContent = '片方を削除';
+        deleteOneBtn.addEventListener('click', () => {
+          const keep = a.createdAt <= b.createdAt ? a : b;
+          const drop = keep === a ? b : a;
+          if (!confirm(`「${noteSnippet(drop.text, 30)}」を削除します（もう一方は残ります）。よろしいですか？`)) return;
+          deleteNoteById(drop.id);
+          saveData(data);
+          renderDuplicateResults(pairs.filter((p) => p !== pair));
+        });
+        btnRow.appendChild(keepBothBtn);
+        btnRow.appendChild(deleteOneBtn);
+      }
+      card.appendChild(btnRow);
+      container.appendChild(card);
+    });
+  }
+
+  document.getElementById('btnFindDuplicates').addEventListener('click', () => {
+    document.getElementById('duplicateResults').innerHTML = '';
+    document.getElementById('duplicateEmptyMsg').hidden = true;
+    findDuplicatePairsChunked(renderDuplicateResults);
+  });
+
+  function renderGroupRenamePanel(keyPrefix, label, count) {
     const panel = document.createElement('div');
     panel.className = 'sourceRenamePanel';
     const input = document.createElement('input');
     input.type = 'text';
-    input.value = oldSource;
+    input.value = label;
     panel.appendChild(input);
     const btnRow = document.createElement('div');
     btnRow.className = 'sourceRenameBtnRow';
@@ -3744,22 +4125,38 @@
     confirmBtn.textContent = `変更する（${count}件）`;
     confirmBtn.addEventListener('click', () => {
       const newName = input.value.trim();
-      if (!newName || newName === oldSource) { sourceRenameOpenFor = null; renderList(); return; }
-      const existingCount = data.notes.filter((n) => n.source === newName).length;
+      if (!newName || newName === label) { groupRenameOpenFor = null; renderList(); return; }
+      const isSource = keyPrefix === 'source';
+      const existingCount = isSource
+        ? data.notes.filter((n) => n.source === newName).length
+        : data.notes.filter((n) => n.tags.includes(newName)).length;
       const mergeNote = existingCount > 0 ? `\n既存の「${newName}」（${existingCount}件）と統合されます。` : '';
-      if (!confirm(`「${oldSource}」の${count}件を「${newName}」に変更します。${mergeNote}よろしいですか？`)) return;
-      renameSource(oldSource, newName);
-      sourceRenameOpenFor = null;
+      if (!confirm(`「${label}」の${count}件を「${newName}」に変更します。${mergeNote}よろしいですか？`)) return;
+      if (isSource) renameSource(label, newName); else renameTag(label, newName);
+      groupRenameOpenFor = null;
       renderList();
     });
     const cancelBtn = document.createElement('button');
     cancelBtn.type = 'button';
     cancelBtn.className = 'secondaryBtn';
     cancelBtn.textContent = 'キャンセル';
-    cancelBtn.addEventListener('click', () => { sourceRenameOpenFor = null; renderList(); });
+    cancelBtn.addEventListener('click', () => { groupRenameOpenFor = null; renderList(); });
     btnRow.appendChild(confirmBtn);
     btnRow.appendChild(cancelBtn);
     panel.appendChild(btnRow);
+    if (keyPrefix === 'tag') {
+      const deleteBtn = document.createElement('button');
+      deleteBtn.type = 'button';
+      deleteBtn.className = 'dangerBtn';
+      deleteBtn.textContent = `このタグを削除（${count}件から外す）`;
+      deleteBtn.addEventListener('click', () => {
+        if (!confirm(`タグ「${label}」を${count}件のノートから外します。ノート自体は削除されません。よろしいですか？`)) return;
+        deleteTagEverywhere(label);
+        groupRenameOpenFor = null;
+        renderList();
+      });
+      panel.appendChild(deleteBtn);
+    }
     return panel;
   }
 
@@ -3784,7 +4181,7 @@
         renderList();
       });
       row.appendChild(header);
-      const isRenamable = keyPrefix === 'source' && label !== '（出典なし）';
+      const isRenamable = (keyPrefix === 'source' && label !== '（出典なし）') || (keyPrefix === 'tag' && label !== '（タグなし）');
       if (isRenamable) {
         const renameBtn = document.createElement('button');
         renameBtn.type = 'button';
@@ -3792,14 +4189,14 @@
         renameBtn.textContent = '名前を変更';
         renameBtn.addEventListener('click', (e) => {
           e.stopPropagation();
-          sourceRenameOpenFor = sourceRenameOpenFor === label ? null : label;
+          groupRenameOpenFor = groupRenameOpenFor === groupKey ? null : groupKey;
           renderList();
         });
         row.appendChild(renameBtn);
       }
       listEl.appendChild(row);
-      if (isRenamable && sourceRenameOpenFor === label) {
-        listEl.appendChild(renderSourceRenamePanel(label, notes.length));
+      if (isRenamable && groupRenameOpenFor === groupKey) {
+        listEl.appendChild(renderGroupRenamePanel(keyPrefix, label, notes.length));
       }
       if (!isCollapsed) {
         [...notes].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
@@ -4248,6 +4645,8 @@
     } else if (nav.detailOrigin === 'records') {
       showScreen('records');
       renderRecords();
+    } else if (nav.detailOrigin === 'settings') {
+      openSettings();
     } else {
       goHome();
     }
@@ -5415,6 +5814,7 @@
     }
     editTagInputEl.value = '';
     editLinkSearchEl.value = '';
+    document.getElementById('editSimilarPanel').hidden = true;
     clearTagLimitMessage();
     hideLinkResults();
     renderTagChips();
@@ -5448,7 +5848,11 @@
 
   document.getElementById('backFromEditor').addEventListener('click', closeEditor);
 
-  btnSaveNote.addEventListener('click', () => {
+  // v3.6: same similarity check as the draft-review flow, run at save time
+  // for the regular add/edit editor too. Editing a note without changing its
+  // text must not flag it as "similar to itself", hence excludeNoteId.
+  function performSaveNote() {
+    document.getElementById('editSimilarPanel').hidden = true;
     const myWords = editMyWordsEl.value.trim();
     if (!myWords) { updateSaveButtonState(); return; }
     commitTagInput(); // capture any tag text left uncommitted in the input
@@ -5491,6 +5895,33 @@
       showScreen('detail');
       renderDetail();
     }
+  }
+
+  let editSimilarMatchNoteId = null;
+  function openEditSimilarPanel(note) {
+    editSimilarMatchNoteId = note.id;
+    document.getElementById('editSimilarNoteText').textContent = note.text;
+    document.getElementById('editSimilarNoteSource').textContent = note.source || '';
+    document.getElementById('editSimilarNoteMyWords').textContent = note.myWords || '';
+    document.getElementById('editSimilarPanel').hidden = false;
+  }
+
+  btnSaveNote.addEventListener('click', () => {
+    if (!editMyWordsEl.value.trim()) { updateSaveButtonState(); return; }
+    const excludeId = nav.editorMode === 'edit' ? nav.editorEditId : null;
+    const match = findMostSimilarNote(editTextEl.value.trim(), excludeId);
+    if (match) { openEditSimilarPanel(match.note); return; }
+    performSaveNote();
+  });
+
+  document.getElementById('btnEditSimilarSaveAnyway').addEventListener('click', performSaveNote);
+  document.getElementById('btnEditSimilarCancel').addEventListener('click', () => {
+    document.getElementById('editSimilarPanel').hidden = true;
+  });
+  document.getElementById('btnEditSimilarOpenExisting').addEventListener('click', () => {
+    document.getElementById('editSimilarPanel').hidden = true;
+    if (!editSimilarMatchNoteId) return;
+    openDetail(editSimilarMatchNoteId, nav.editorReturnScreen === 'list' ? 'list' : 'home');
   });
 
   // tag/source candidates: always-visible chips of previously-used values,
@@ -5768,6 +6199,8 @@
     document.getElementById('claudeApiKeyInput').value = getClaudeApiKey();
     document.getElementById('claudeModelAutoLinkInput').value = getClaudeAutoLinkModel();
     document.getElementById('claudeModelChatInput').value = getClaudeChatModel();
+    document.getElementById('usageBudgetInput').value = getUsageBudget().toFixed(2);
+    document.getElementById('deviceLabelInput').value = getDeviceLabel();
     document.getElementById('autoLinkToggle').checked = getAutoLinkEnabled();
     document.getElementById('morningEnabledToggle').checked = getMorningEnabled();
     document.getElementById('compressThresholdInput').value = getCompressThreshold();
@@ -5782,19 +6215,34 @@
     const lastErr = getLastAutoLinkError();
     document.getElementById('statLastAutoLinkError').textContent = lastErr ? `${lastErr.message}（${formatDateTime(lastErr.at)}）` : '-';
 
-    const usage = getUsageStats();
-    const autoLinkModel = getClaudeAutoLinkModel();
-    const chatModel = getClaudeChatModel();
-    document.getElementById('statUsageAutolink').textContent = formatUsageRow(usage.autolink, autoLinkModel);
-    document.getElementById('statUsageMorning').textContent = formatUsageRow(usage.morning, chatModel);
-    document.getElementById('statUsageConsult').textContent = formatUsageRow(usage.consult, chatModel);
-    document.getElementById('statUsageSearchAgain').textContent = formatUsageRow(usage.searchAgain, autoLinkModel);
-    const totalCost = estimateCostUsd(usage.autolink, autoLinkModel)
-      + estimateCostUsd(usage.morning, chatModel)
-      + estimateCostUsd(usage.consult, chatModel)
-      + estimateCostUsd(usage.searchAgain, autoLinkModel);
-    const totalCalls = USAGE_KINDS.reduce((sum, k) => sum + ((usage[k] && usage[k].calls) || 0), 0);
-    document.getElementById('statUsageTotalCost').textContent = totalCalls ? `約$${totalCost.toFixed(3)}` : '-';
+    const monthUsage = sumUsageAcrossDevices(currentMonthKey());
+    document.getElementById('statUsageMonthAutolink').textContent = formatUsageRow(monthUsage.autolink, modelForUsageKind('autolink'));
+    document.getElementById('statUsageMonthMorning').textContent = formatUsageRow(monthUsage.morning, modelForUsageKind('morning'));
+    document.getElementById('statUsageMonthConsult').textContent = formatUsageRow(monthUsage.consult, modelForUsageKind('consult'));
+    document.getElementById('statUsageMonthSearchAgain').textContent = formatUsageRow(monthUsage.searchAgain, modelForUsageKind('searchAgain'));
+    document.getElementById('statUsageMonthBulk').textContent = formatUsageRow(monthUsage.bulk, modelForUsageKind('bulk'));
+    const monthCost = totalCostForKindStats(monthUsage);
+    const budget = getUsageBudget();
+    document.getElementById('statUsageMonthTotal').textContent = `約$${monthCost.toFixed(3)}（上限 $${budget.toFixed(2)} の${Math.round((monthCost / budget) * 100)}%）`;
+
+    const perDeviceEl = document.getElementById('statUsagePerDevice');
+    perDeviceEl.innerHTML = '';
+    sumUsagePerDevice(currentMonthKey()).forEach((d) => {
+      const row = document.createElement('div');
+      row.className = 'statRow';
+      const label = document.createElement('span');
+      label.textContent = `　${d.label}${d.deviceId === getDeviceId() ? '（この端末）' : ''}`;
+      const val = document.createElement('span');
+      val.textContent = `約$${d.cost.toFixed(3)}`;
+      row.appendChild(label);
+      row.appendChild(val);
+      perDeviceEl.appendChild(row);
+    });
+
+    const prevMonthCost = totalCostForKindStats(sumUsageAcrossDevices(previousMonthKey()));
+    document.getElementById('statUsagePrevMonthTotal').textContent = `約$${prevMonthCost.toFixed(3)}`;
+    const allTimeCost = totalCostForKindStats(sumUsageAcrossDevices(null));
+    document.getElementById('statUsageAllTimeTotal').textContent = `約$${allTimeCost.toFixed(3)}`;
     document.getElementById('statSyncState').textContent = noteSyncState === walkSyncState
       ? syncStateLabel(noteSyncState)
       : `言葉: ${syncStateLabel(noteSyncState)} / 散歩: ${syncStateLabel(walkSyncState)}`;
@@ -5847,6 +6295,11 @@
     if (key) localStorage.setItem(CLAUDE_API_KEY_KEY, key); else localStorage.removeItem(CLAUDE_API_KEY_KEY);
     localStorage.setItem(CLAUDE_MODEL_AUTOLINK_KEY, autoLinkModel || DEFAULT_AUTOLINK_MODEL);
     localStorage.setItem(CLAUDE_MODEL_CHAT_KEY, chatModel || DEFAULT_CHAT_MODEL);
+    const budget = parseFloat(document.getElementById('usageBudgetInput').value);
+    localStorage.setItem(USAGE_BUDGET_KEY, String(Number.isFinite(budget) && budget > 0 ? budget : DEFAULT_USAGE_BUDGET_USD));
+    setDeviceLabel(document.getElementById('deviceLabelInput').value.trim() || getDeviceLabel());
+    document.getElementById('usageBudgetInput').value = getUsageBudget().toFixed(2);
+    document.getElementById('deviceLabelInput').value = getDeviceLabel();
     alert('保存しました');
   });
 
