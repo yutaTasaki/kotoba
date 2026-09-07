@@ -132,6 +132,8 @@
     width: 100%;
   }
   .fileLabel { cursor: pointer; }
+  .bulkTextHeaderRow { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .bulkFilePickBtn { padding: 8px 12px; font-size: 13px; }
   .cardHome {
     background: var(--bg-card);
     border-radius: 18px;
@@ -989,9 +991,13 @@
         <input id="bulkTitleInput" type="text" placeholder="空なら「自分（動画）」として保存されます" autocomplete="off">
       </div>
       <div class="field">
-        <span class="fieldLabel">テキスト<span class="fieldNote inlineNote">（最大20,000字）</span></span>
+        <div class="bulkTextHeaderRow">
+          <span class="fieldLabel">テキスト<span class="fieldNote inlineNote">（最大20,000字）</span></span>
+          <label class="secondaryBtn fileLabel bulkFilePickBtn" for="bulkFileInput">ファイルを選ぶ</label>
+          <input id="bulkFileInput" type="file" accept=".txt,text/plain" hidden>
+        </div>
         <textarea id="bulkTextInput" rows="14" placeholder="貼り付けてください" autocomplete="off"></textarea>
-        <p class="fieldNote" id="bulkCharCount">0 / 20,000字</p>
+        <p class="fieldNote" id="bulkCharCount">タイムスタンプを除いた本文：0 / 20,000字</p>
         <p class="fieldNote warn" id="bulkOverLimitHint" hidden>20,000字を超えています。分けて貼り付けてください。</p>
       </div>
       <button id="btnBulkDecompose" class="primaryBtn">分解する</button>
@@ -3629,6 +3635,20 @@
   const bulkState = { kind: 'book' };
   const BULK_MAX_CHARS = 20000;
 
+  // Strips leading per-line timestamps from transcript tool output
+  // (C:\yofukashi\tools\transcribe.py writes "[H:MM:SS] text", e.g.
+  // "[0:17:13] ..."; also accepts zero-padded hours and bare MM:SS from
+  // other tools), drops now-empty lines, and concatenates the rest with
+  // no separator (no inserted 、 — the decompose prompt judges by context).
+  // Applied to both kinds; a no-op when a line has no leading timestamp.
+  function stripTranscriptTimestamps(raw) {
+    return raw
+      .split(/\r\n|\r|\n/)
+      .map((line) => line.replace(/^\s*\[\s*\d{1,2}:\d{2}(?::\d{2})?\s*\]\s*/, '').trim())
+      .filter((line) => line.length > 0)
+      .join('');
+  }
+
   function openBulk() {
     bulkState.kind = 'book';
     document.getElementById('bulkSourceInput').value = '';
@@ -3664,14 +3684,22 @@
   document.getElementById('bulkSourceInput').addEventListener('input', renderBulkSourceCandidates);
 
   function updateBulkCharCount() {
-    const len = document.getElementById('bulkTextInput').value.length;
-    document.getElementById('bulkCharCount').textContent = `${len.toLocaleString('ja-JP')} / ${BULK_MAX_CHARS.toLocaleString('ja-JP')}字`;
+    const len = stripTranscriptTimestamps(document.getElementById('bulkTextInput').value).length;
+    document.getElementById('bulkCharCount').textContent = `タイムスタンプを除いた本文：${len.toLocaleString('ja-JP')} / ${BULK_MAX_CHARS.toLocaleString('ja-JP')}字`;
     document.getElementById('bulkOverLimitHint').hidden = len <= BULK_MAX_CHARS;
   }
   document.getElementById('bulkTextInput').addEventListener('input', updateBulkCharCount);
 
+  document.getElementById('bulkFileInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    document.getElementById('bulkTextInput').value = await file.text();
+    updateBulkCharCount();
+  });
+
   document.getElementById('btnBulkDecompose').addEventListener('click', async () => {
-    const text = document.getElementById('bulkTextInput').value.trim();
+    const text = stripTranscriptTimestamps(document.getElementById('bulkTextInput').value);
     const statusEl = document.getElementById('bulkStatus');
     if (!text) { statusEl.textContent = 'テキストを貼り付けてください。'; return; }
     if (text.length > BULK_MAX_CHARS) {
