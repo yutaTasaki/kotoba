@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>kotoba — 言葉と考えのノート</title>
-<link rel="manifest" href="manifest.json?v=2">
+<title>一万日 — 言葉と考えのノート</title>
+<link rel="manifest" href="manifest.json?v=3">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -12,6 +12,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
 <style>
   :root {
     --bg: #121212;
@@ -84,6 +85,7 @@
     padding: 6px 4px;
     white-space: nowrap;
   }
+  .topbarBtnGroup { display: flex; gap: 6px; align-items: center; }
   .backBtn {
     color: var(--text-dim);
     font-size: 15px;
@@ -481,6 +483,106 @@
   .recordSubTabs { display: flex; gap: 10px; }
   .journalCardMini { background: var(--bg-elevated); border-radius: 10px; padding: 10px 12px; cursor: pointer; }
   .journalCardMini .lText { font-size: 14px; }
+
+  /* --- v3.1: 引く / 網 full-screen overlays -------------------------- */
+  .drawOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: #000;
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    padding-top: calc(16px + env(safe-area-inset-top));
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    overflow-y: auto;
+  }
+  .drawTopBar { display: flex; justify-content: flex-end; align-items: center; gap: 18px; flex-shrink: 0; }
+  .drawIconBtn { color: var(--text-dim); font-size: 15px; padding: 8px 6px; }
+  .drawStage {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 20px;
+    min-height: 40vh;
+    cursor: pointer;
+  }
+  .drawTapHint { color: var(--text-faint); font-size: 14px; }
+  .drawShuffleText { font-size: 22px; line-height: 1.8; padding: 0 12px; white-space: pre-wrap; }
+  .drawResult {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    align-items: center;
+    transform: scale(1);
+    transition: transform .25s ease;
+    cursor: default;
+  }
+  .drawResult.pop { transform: scale(1.08); }
+  .drawResultText { font-size: 24px; line-height: 1.9; white-space: pre-wrap; padding: 0 10px; }
+  .drawResultSource { font-size: 14px; color: var(--text-dim); }
+  .drawResultMyWords { font-size: 15px; color: var(--accent); line-height: 1.8; white-space: pre-wrap; padding: 0 16px; }
+  .drawLinks { display: flex; flex-direction: column; gap: 10px; flex-shrink: 0; padding-top: 16px; }
+  .drawLinkItem {
+    background: var(--bg-card);
+    border-radius: 12px;
+    padding: 14px;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity .3s ease, transform .3s ease;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+  .drawLinkItem.shown { opacity: 1; transform: translateY(0); }
+
+  .graphFilterBar { display: flex; gap: 8px; flex: 1; flex-wrap: wrap; }
+  .graphFilterSelect {
+    font-family: inherit;
+    font-size: 13px;
+    background: var(--bg-elevated);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 8px;
+  }
+  .graphCanvas { flex: 1; width: 100%; touch-action: none; }
+  .graphLegend {
+    position: absolute;
+    right: 16px;
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--text-dim);
+    background: rgba(24,24,24,0.7);
+    padding: 8px 10px;
+    border-radius: 10px;
+    max-width: 40vw;
+  }
+  .graphLegendRow { display: flex; align-items: center; gap: 6px; }
+  .graphLegendSwatch { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .graphPopup {
+    position: absolute;
+    left: 50%;
+    bottom: calc(24px + env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    background: var(--bg-card);
+    border-radius: 12px;
+    padding: 14px 18px;
+    max-width: 80vw;
+    text-align: center;
+    cursor: pointer;
+  }
+  .graphPopup .lText { font-size: 15px; }
+  .graphPopup .lSource { font-size: 12px; color: var(--text-faint); margin-top: 4px; }
 </style>
 </head>
 <body>
@@ -529,6 +631,10 @@
         <input type="number" id="walkDistanceInput" min="0" placeholder="距離（m）">
         <button id="btnSaveWalkStats" class="secondaryBtn">保存</button>
       </div>
+      <div class="field">
+        <span class="fieldLabel">投稿文</span>
+        <textarea id="walkShareTextInput" rows="4" autocomplete="off"></textarea>
+      </div>
       <button id="btnWalkShare" class="primaryBtn">Xで投稿</button>
       <div id="walkShareStatus"></div>
     </div>
@@ -540,7 +646,11 @@
     <header class="topbar">
       <button class="backBtn" id="backFromList">← 戻る</button>
       <div class="topbar-title">一覧</div>
-      <button id="btnAddFromList" class="iconBtn">＋</button>
+      <div class="topbarBtnGroup">
+        <button id="btnOpenDraw" class="iconBtn">引く</button>
+        <button id="btnOpenGraph" class="iconBtn">網</button>
+        <button id="btnAddFromList" class="iconBtn">＋</button>
+      </div>
     </header>
     <input id="listSearch" type="search" placeholder="検索（言葉・出典・自分の言葉）" autocomplete="off">
     <div id="listViewModeRow" class="tagFilterRow">
@@ -592,6 +702,11 @@
         <div id="detailLinks" class="detailLinksList"></div>
         <div id="detailLinksEmpty" class="emptyMsg" hidden>関連ノートはありません。</div>
         <button id="btnRelinkNote" class="secondaryBtn">関連を探し直す</button>
+      </div>
+      <div class="field">
+        <button id="btnPostNoteImage" class="secondaryBtn">この言葉を投稿</button>
+        <div id="notePostStatus" class="fieldNote"></div>
+        <canvas id="notePostCanvas" width="1080" height="1080" hidden></canvas>
       </div>
       <div class="detailActions">
         <button id="btnEditNote" class="secondaryBtn">編集</button>
@@ -764,12 +879,18 @@
     <div class="recordSubTabs tagFilterRow" id="recordSubTabRow">
       <button type="button" class="tagFilterBtn" data-sub="morning">朝の言葉</button>
       <button type="button" class="tagFilterBtn" data-sub="consult">相談</button>
+      <button type="button" class="tagFilterBtn" data-sub="draw">引く</button>
       <button type="button" class="tagFilterBtn" data-sub="walk">散歩</button>
     </div>
 
     <div id="recordsMorningView">
       <div id="recordsMorningList" class="listItems"></div>
       <div id="recordsMorningEmpty" class="emptyMsg" hidden>まだ記録がありません。</div>
+    </div>
+
+    <div id="recordsDrawView" hidden>
+      <div id="recordsDrawList" class="listItems"></div>
+      <div id="recordsDrawEmpty" class="emptyMsg" hidden>まだ記録がありません。</div>
     </div>
 
     <div id="recordsConsultView" hidden>
@@ -826,6 +947,35 @@
     <button id="navRecords" class="navBtn">記録</button>
     <button id="navSettings" class="navBtn">設定</button>
   </nav>
+
+  <div id="screen-draw" class="drawOverlay" hidden>
+    <div class="drawTopBar">
+      <button id="btnDrawToGraph" class="drawIconBtn" type="button" hidden>網で見る</button>
+      <button id="btnDrawAgain" class="drawIconBtn" type="button">もう一度</button>
+      <button id="btnDrawClose" class="drawIconBtn" type="button">×</button>
+    </div>
+    <div id="drawStage" class="drawStage">
+      <div id="drawTapHint" class="drawTapHint">画面をタップ</div>
+      <div id="drawShuffleText" class="drawShuffleText" hidden></div>
+      <div id="drawResult" class="drawResult" hidden>
+        <div class="drawResultText" id="drawResultText"></div>
+        <div class="drawResultSource" id="drawResultSource"></div>
+        <div class="drawResultMyWords" id="drawResultMyWords"></div>
+      </div>
+      <div id="drawEmpty" class="emptyMsg" hidden>まだノートがありません。</div>
+    </div>
+    <div id="drawLinks" class="drawLinks"></div>
+  </div>
+
+  <div id="screen-graph" class="drawOverlay" hidden>
+    <div class="drawTopBar">
+      <div id="graphFilterBar" class="graphFilterBar"></div>
+      <button id="btnGraphClose" class="drawIconBtn" type="button">×</button>
+    </div>
+    <canvas id="graphCanvas" class="graphCanvas"></canvas>
+    <div id="graphLegend" class="graphLegend"></div>
+    <div id="graphPopup" class="graphPopup" hidden></div>
+  </div>
 
 </div>
 <script>
@@ -886,7 +1036,7 @@
   // one per API response. Entry-level merge/tombstone, same pattern as notes.
   function normalizeJournalEntry(j) {
     if (!j || !j.id) return null;
-    const kind = j.kind === 'consult' ? 'consult' : 'morning';
+    const kind = j.kind === 'consult' ? 'consult' : j.kind === 'draw' ? 'draw' : 'morning';
     const out = {
       id: String(j.id),
       date: j.date || todayStr(),
@@ -1862,6 +2012,104 @@
     setTimeout(() => URL.revokeObjectURL(url), 10000);
   }
 
+  // --- Note post image (v3.1) ------------------------------------------------
+  // Greedy line-wrap for CJK text (no spaces to break on): tracks the most
+  // recent "natural pause" character (、。！？ etc.) and prefers breaking
+  // there over a mid-clause hard break, as long as it isn't too far back.
+  function wrapJapaneseText(ctx, text, maxWidth) {
+    const breakable = new Set(['、', '。', '！', '？', '，', '．', ' ', '　']);
+    const lines = [];
+    let line = '';
+    let lastBreak = -1;
+    for (const ch of String(text)) {
+      if (ch === '\n') { lines.push(line); line = ''; lastBreak = -1; continue; }
+      const test = line + ch;
+      if (line && ctx.measureText(test).width > maxWidth) {
+        if (lastBreak >= 0 && lastBreak >= line.length - 8) {
+          lines.push(line.slice(0, lastBreak + 1));
+          line = line.slice(lastBreak + 1) + ch;
+        } else {
+          lines.push(line);
+          line = ch;
+        }
+        lastBreak = -1;
+      } else {
+        line = test;
+        if (breakable.has(ch)) lastBreak = line.length - 1;
+      }
+    }
+    if (line) lines.push(line);
+    return applyKinsoku(lines);
+  }
+
+  // kinsoku shori: 、。！？ etc. may never start a line - pull a stray
+  // leading one back onto the end of the previous line instead.
+  function applyKinsoku(lines) {
+    const prohibited = new Set(['、', '。', '！', '？', '，', '．']);
+    for (let i = 1; i < lines.length; i++) {
+      while (lines[i] && prohibited.has(lines[i][0])) {
+        lines[i - 1] += lines[i][0];
+        lines[i] = lines[i].slice(1);
+      }
+    }
+    return lines.filter((l) => l.length > 0);
+  }
+
+  const NOTE_POST_FONT = "'Hiragino Sans','Yu Gothic',sans-serif";
+
+  function drawNotePostImage(canvas, note) {
+    const ctx = canvas.getContext('2d');
+    const W = 1080, H = 1080, MARGIN = 90;
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#121212';
+    ctx.fillRect(0, 0, W, H);
+
+    const maxWidth = W - MARGIN * 2;
+    const zoneTop = 140, zoneBottom = 760;
+    const zoneHeight = zoneBottom - zoneTop;
+
+    let size = 28, lines = [];
+    for (size = 64; size >= 28; size -= 2) {
+      ctx.font = `${size}px ${NOTE_POST_FONT}`;
+      lines = wrapJapaneseText(ctx, note.text, maxWidth);
+      const lh = size * 1.7;
+      if (lines.length <= 12 && lines.length * lh <= zoneHeight) break;
+    }
+    if (lines.length > 12) {
+      lines = lines.slice(0, 12);
+      lines[11] = lines[11].slice(0, -1) + '…';
+    }
+
+    const lineHeight = size * 1.7;
+    const blockHeight = lines.length * lineHeight;
+    const blockTop = zoneTop + (zoneHeight - blockHeight) / 2;
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#f2efea';
+    ctx.font = `${size}px ${NOTE_POST_FONT}`;
+    lines.forEach((line, i) => ctx.fillText(line, W / 2, blockTop + lineHeight * i + lineHeight / 2));
+
+    let y = 820;
+    const sourceText = note.source === '自分' ? '（自分の言葉）' : (note.source || '');
+    if (sourceText) {
+      ctx.font = `30px ${NOTE_POST_FONT}`;
+      ctx.fillStyle = '#a39c8e';
+      ctx.fillText(sourceText, W / 2, y);
+      y += 56;
+    }
+    if (note.myWords) {
+      ctx.font = `26px ${NOTE_POST_FONT}`;
+      ctx.fillStyle = '#8fb39b';
+      wrapJapaneseText(ctx, note.myWords, maxWidth).slice(0, 3).forEach((line, i) => ctx.fillText(line, W / 2, y + i * 38));
+    }
+
+    ctx.textAlign = 'right';
+    ctx.font = `24px ${NOTE_POST_FONT}`;
+    ctx.fillStyle = '#6f6a60';
+    ctx.fillText('一万日', W - MARGIN, H - 60);
+  }
+
   // --- journal (v3): entry-level CRUD, lives inside kotoba-data's data.json -
   function findJournalEntry(id) { return data.journal.find((j) => j.id === id) || null; }
 
@@ -2536,6 +2784,27 @@
     canvas.toBlob((blob) => { walkSharePngBlob = blob; if (btn) btn.disabled = false; }, 'image/png');
   }
 
+  // v3.1: the morning share text, editable for the day it applies to.
+  const WALK_SHARE_TEXT_EDIT_KEY = 'kotoba_walkShareTextEdit';
+  function computeDefaultShareText(derived, morningEntry) {
+    let text = `【${derived.n}日目 / 10000】`;
+    const pick = morningEntry && morningEntry.picks && morningEntry.picks[0];
+    const note = pick ? findNote(pick.id) : null;
+    if (note) text += `\n\n今朝の言葉\n「${note.text}」\n— ${note.source || ''}`;
+    return text;
+  }
+  function getShareTextEdit(today) {
+    try {
+      const raw = localStorage.getItem(WALK_SHARE_TEXT_EDIT_KEY);
+      if (!raw) return null;
+      const obj = JSON.parse(raw);
+      return obj.date === today ? obj.text : null;
+    } catch (e) { return null; }
+  }
+  function saveShareTextEdit(today, text) {
+    localStorage.setItem(WALK_SHARE_TEXT_EDIT_KEY, JSON.stringify({ date: today, text }));
+  }
+
   function pickRandomNoteId(excludeId) {
     const pool = data.notes.filter((n) => n.id !== excludeId);
     const source = pool.length ? pool : data.notes;
@@ -2653,6 +2922,17 @@
       const canvas = document.getElementById('walkPreviewCanvas');
       drawWalkImage(canvas);
       regenerateWalkShareBlob(canvas, document.getElementById('btnWalkShare'));
+
+      // Only ever set .value once per date - saveShareTextEdit() below keeps
+      // localStorage in sync as the user types, but re-running renderHome()
+      // (which happens often: mood taps, saves, focus/visibility syncs) must
+      // never stomp on text they're actively editing.
+      const shareTextInput = document.getElementById('walkShareTextInput');
+      if (shareTextInput.dataset.loadedDate !== today) {
+        const edit = getShareTextEdit(today);
+        shareTextInput.value = edit != null ? edit : computeDefaultShareText(derived, morningEntry);
+        shareTextInput.dataset.loadedDate = today;
+      }
     }
 
     document.getElementById('btnWalkYesterday').hidden = new Set(walkData.walkedDates).has(derived.yesterday);
@@ -2763,31 +3043,58 @@
     alert('保存しました');
   });
 
+  // Three-tier fallback: full files+text share -> files-only share with the
+  // text copied to the clipboard first (for environments whose Web Share
+  // implementation can't take an image and text together) -> download the
+  // image and copy the text, for environments with no file-share at all.
   document.getElementById('btnWalkShare').addEventListener('click', async () => {
     const canvas = document.getElementById('walkPreviewCanvas');
     const derived = computeWalkDerived();
     const filename = `walk10000_day${derived.n}.png`;
-    const shareText = `【${derived.n}日目 / 10000】\n`;
+    const shareText = document.getElementById('walkShareTextInput').value;
     const file = walkSharePngBlob
       ? new File([walkSharePngBlob], filename, { type: 'image/png' })
       : dataUrlToFile(canvas.toDataURL('image/png'), filename);
     const statusEl = document.getElementById('walkShareStatus');
     const setStatus = (msg, isError) => { statusEl.textContent = msg || ''; statusEl.classList.toggle('error', !!isError); };
+    async function copyTextBestEffort() {
+      try { await navigator.clipboard.writeText(shareText); return true; } catch (e) { return false; }
+    }
 
-    const canShareFiles = !!(navigator.canShare && navigator.canShare({ files: [file] }));
-    if (canShareFiles) {
+    const canShareWithText = !!(navigator.canShare && navigator.canShare({ files: [file], text: shareText }));
+    if (canShareWithText) {
       try {
         await navigator.share({ files: [file], text: shareText });
         setStatus('');
-        return;
       } catch (e) {
         if (e && e.name === 'AbortError') { setStatus(''); return; }
         setStatus(`共有に失敗しました（${e && e.message ? e.message : e}）。画像をダウンロードします。`, true);
+        downloadFile(file);
       }
-    } else {
-      setStatus('この端末は画像の共有に対応していないため、ダウンロードしました。');
+      return;
     }
+
+    const canShareFilesOnly = !!(navigator.canShare && navigator.canShare({ files: [file] }));
+    if (canShareFilesOnly) {
+      const copied = await copyTextBestEffort();
+      try {
+        await navigator.share({ files: [file] });
+        setStatus(copied ? 'テキストをコピーしました。共有画面に貼り付けてください。' : '');
+      } catch (e) {
+        if (e && e.name === 'AbortError') { setStatus(''); return; }
+        setStatus(`共有に失敗しました（${e && e.message ? e.message : e}）。画像をダウンロードします。`, true);
+        downloadFile(file);
+      }
+      return;
+    }
+
+    const copied = await copyTextBestEffort();
+    setStatus(copied ? 'この端末は画像の共有に対応していないため、ダウンロードし、テキストをコピーしました。' : 'この端末は画像の共有に対応していないため、ダウンロードしました。');
     downloadFile(file);
+  });
+
+  document.getElementById('walkShareTextInput').addEventListener('input', (e) => {
+    saveShareTextEdit(todayStr(), e.target.value);
   });
 
   // --- List ---------------------------------------------------------------
@@ -3106,6 +3413,36 @@
     triggerAutoLinkForNote(nav.detailId);
   });
 
+  // Note image share: images only per spec (no text passed alongside), so
+  // the fallback chain is simpler than the morning share's - just
+  // file-share vs. plain download, no clipboard-text step needed.
+  document.getElementById('btnPostNoteImage').addEventListener('click', async () => {
+    const note = findNote(nav.detailId);
+    if (!note) return;
+    const canvas = document.getElementById('notePostCanvas');
+    drawNotePostImage(canvas, note);
+    const statusEl = document.getElementById('notePostStatus');
+    const setStatus = (msg, isError) => { statusEl.textContent = msg || ''; statusEl.classList.toggle('warn', !!isError); };
+    const filename = `note_${note.id}.png`;
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+    const file = blob ? new File([blob], filename, { type: 'image/png' }) : dataUrlToFile(canvas.toDataURL('image/png'), filename);
+
+    const canShareFiles = !!(navigator.canShare && navigator.canShare({ files: [file] }));
+    if (canShareFiles) {
+      try {
+        await navigator.share({ files: [file] });
+        setStatus('');
+        return;
+      } catch (e) {
+        if (e && e.name === 'AbortError') { setStatus(''); return; }
+        setStatus(`共有に失敗しました（${e && e.message ? e.message : e}）。画像をダウンロードします。`, true);
+      }
+    } else {
+      setStatus('この端末は画像の共有に対応していないため、ダウンロードしました。');
+    }
+    downloadFile(file);
+  });
+
   // --- Records (v3, new tab) -------------------------------------------
   const recordsState = { subTab: 'morning' };
   const expandedConsultRecords = new Set(); // session-only "続きを見る" state
@@ -3121,12 +3458,47 @@
     });
     document.getElementById('recordsMorningView').hidden = recordsState.subTab !== 'morning';
     document.getElementById('recordsConsultView').hidden = recordsState.subTab !== 'consult';
+    document.getElementById('recordsDrawView').hidden = recordsState.subTab !== 'draw';
     document.getElementById('recordsWalkView').hidden = recordsState.subTab !== 'walk';
     document.getElementById('dayEditorView').hidden = true;
 
     if (recordsState.subTab === 'morning') renderRecordsMorning();
     else if (recordsState.subTab === 'consult') renderRecordsConsult();
+    else if (recordsState.subTab === 'draw') renderRecordsDraw();
     else renderRecordsWalk();
+  }
+
+  function renderRecordsDraw() {
+    const list = document.getElementById('recordsDrawList');
+    list.innerHTML = '';
+    const entries = journalEntriesSorted('draw');
+    document.getElementById('recordsDrawEmpty').hidden = entries.length > 0;
+    entries.forEach((j) => {
+      const note = j.picks[0] && findNote(j.picks[0].id);
+      const item = document.createElement('div');
+      item.className = 'recordEntry';
+      const top = document.createElement('div');
+      top.className = 'recordEntryTop';
+      const dateEl = document.createElement('span');
+      dateEl.className = 'recordEntryDate';
+      dateEl.textContent = dotDate(j.date);
+      top.appendChild(dateEl);
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'recordEntryDelete';
+      del.textContent = '消す';
+      del.addEventListener('click', () => { deleteJournalEntry(j.id); renderRecordsDraw(); });
+      top.appendChild(del);
+      item.appendChild(top);
+      if (note) {
+        const mini = document.createElement('div');
+        mini.className = 'journalCardMini';
+        mini.textContent = noteSnippet(note.text, 60) + (note.source ? ' ・ ' + note.source : '');
+        mini.addEventListener('click', () => openDetail(note.id, 'records'));
+        item.appendChild(mini);
+      }
+      list.appendChild(item);
+    });
   }
 
   function journalEntriesSorted(kind) {
@@ -3437,6 +3809,485 @@
   });
   document.getElementById('navRecords').addEventListener('click', openRecords);
   document.getElementById('backFromRecords').addEventListener('click', goHome);
+
+  // --- Draw ("引く", v3.1) ----------------------------------------------
+  // Fullscreen overlay independent of the normal screen system (it must sit
+  // above everything, nav included, for a clean recording). State is kept
+  // in a small object rather than nav.* since it never needs back-stack
+  // integration - only ever opened from/closed back to the list screen.
+  const drawState = { current: null, shuffling: false, revealTimer: null };
+
+  function recentDrawExcludedIds() {
+    const cutoff = addDays(todayStr(), -30);
+    const ids = new Set();
+    data.journal.forEach((j) => { if (j.kind === 'draw' && j.date >= cutoff) j.picks.forEach((p) => ids.add(p.id)); });
+    return ids;
+  }
+
+  function pickDrawTargetNote() {
+    const excluded = recentDrawExcludedIds();
+    let pool = data.notes.filter((n) => !excluded.has(n.id));
+    if (!pool.length) pool = data.notes;
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  function recordDrawPick(note) {
+    const iso = nowIso();
+    saveJournalEntry({ id: generateJournalId(), date: todayStr(), kind: 'draw', text: '', picks: [{ id: note.id }], closing: '', createdAt: iso, updatedAt: iso });
+  }
+
+  function clearDrawTimers() {
+    if (drawState.revealTimer) { clearTimeout(drawState.revealTimer); drawState.revealTimer = null; }
+  }
+
+  function resetDrawStage() {
+    clearDrawTimers();
+    drawState.current = null;
+    drawState.shuffling = false;
+    document.getElementById('drawTapHint').hidden = data.notes.length === 0;
+    document.getElementById('drawShuffleText').hidden = true;
+    document.getElementById('drawResult').hidden = true;
+    document.getElementById('drawLinks').innerHTML = '';
+    document.getElementById('drawEmpty').hidden = data.notes.length > 0;
+    document.getElementById('btnDrawToGraph').hidden = true;
+  }
+
+  function openDraw(centerNoteId) {
+    document.getElementById('screen-draw').hidden = false;
+    syncBarEl.style.visibility = 'hidden';
+    resetDrawStage();
+    if (centerNoteId && findNote(centerNoteId)) {
+      document.getElementById('drawTapHint').hidden = true;
+      showDrawnNote(findNote(centerNoteId), { pop: true, record: false });
+    }
+  }
+
+  function closeDraw() {
+    document.getElementById('screen-draw').hidden = true;
+    syncBarEl.style.visibility = '';
+    clearDrawTimers();
+  }
+
+  function startDrawShuffle() {
+    if (!data.notes.length || drawState.shuffling || drawState.current) return;
+    drawState.shuffling = true;
+    document.getElementById('drawTapHint').hidden = true;
+    document.getElementById('drawResult').hidden = true;
+    document.getElementById('drawLinks').innerHTML = '';
+    const shuffleEl = document.getElementById('drawShuffleText');
+    shuffleEl.hidden = false;
+    const finalNote = pickDrawTargetNote();
+    const total = 2000;
+    const start = performance.now();
+    function tick() {
+      const r = data.notes[Math.floor(Math.random() * data.notes.length)];
+      shuffleEl.textContent = noteSnippet(r.text, 60);
+      const elapsed = performance.now() - start;
+      if (elapsed >= total) {
+        shuffleEl.hidden = true;
+        drawState.shuffling = false;
+        showDrawnNote(finalNote, { pop: true, record: true });
+        return;
+      }
+      const delay = 90 + Math.pow(elapsed / total, 2) * 260; // eases from ~90ms to ~350ms
+      setTimeout(tick, delay);
+    }
+    tick();
+  }
+
+  function showDrawnNote(note, opts) {
+    opts = opts || {};
+    clearDrawTimers();
+    drawState.current = note;
+    const resultEl = document.getElementById('drawResult');
+    document.getElementById('drawResultText').textContent = note.text;
+    document.getElementById('drawResultSource').textContent = note.source || '';
+    document.getElementById('drawResultMyWords').textContent = note.myWords || '';
+    document.getElementById('drawLinks').innerHTML = '';
+    resultEl.hidden = false;
+    document.getElementById('btnDrawToGraph').hidden = false;
+    if (opts.pop) {
+      resultEl.classList.remove('pop');
+      // eslint-disable-next-line no-unused-expressions
+      resultEl.offsetHeight; // force reflow so the class re-triggers the transition on repeat taps
+      resultEl.classList.add('pop');
+      setTimeout(() => resultEl.classList.remove('pop'), 260);
+    }
+    if (opts.record) recordDrawPick(note);
+    drawState.revealTimer = setTimeout(() => revealDrawLinks(note), 2000);
+  }
+
+  function revealDrawLinks(note) {
+    const linked = note.links.map((l) => ({ link: l, target: findNote(l.id) })).filter((x) => x.target).slice(0, 5);
+    const container = document.getElementById('drawLinks');
+    container.innerHTML = '';
+    linked.forEach(({ link, target }, i) => {
+      const el = document.createElement('div');
+      el.className = 'drawLinkItem';
+      const t = document.createElement('div');
+      t.className = 'lText';
+      t.textContent = noteSnippet(target.text, 50) + (target.source ? ' ・ ' + target.source : '');
+      const label = document.createElement('span');
+      label.className = 'relLabel ' + relationLabelClass(link);
+      label.textContent = relationLabelText(link);
+      el.appendChild(t);
+      el.appendChild(label);
+      attachLongPress(el, () => { closeDraw(); openDetail(target.id, 'list'); }, () => showDrawnNote(target, { pop: true, record: true }));
+      container.appendChild(el);
+      setTimeout(() => el.classList.add('shown'), i * 500);
+    });
+  }
+
+  // Shared long-press-vs-tap gesture: onLongPress fires once after ~600ms of
+  // holding without release; a release before that fires onShortTap instead.
+  function attachLongPress(el, onLongPress, onShortTap) {
+    let timer = null, fired = false;
+    el.addEventListener('pointerdown', (e) => {
+      fired = false;
+      timer = setTimeout(() => { fired = true; onLongPress(); }, 600);
+    });
+    el.addEventListener('pointerup', (e) => {
+      clearTimeout(timer);
+      if (!fired && onShortTap) onShortTap();
+    });
+    el.addEventListener('pointerleave', () => clearTimeout(timer));
+  }
+
+  document.getElementById('btnOpenDraw').addEventListener('click', () => openDraw());
+  document.getElementById('drawStage').addEventListener('click', () => {
+    if (!drawState.current && !drawState.shuffling) startDrawShuffle();
+  });
+  attachLongPress(document.getElementById('drawResult'), () => {
+    if (drawState.current) { const id = drawState.current.id; closeDraw(); openDetail(id, 'list'); }
+  }, null);
+  document.getElementById('btnDrawAgain').addEventListener('click', (e) => {
+    e.stopPropagation();
+    resetDrawStage();
+    startDrawShuffle();
+  });
+  document.getElementById('btnDrawClose').addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeDraw();
+  });
+  document.getElementById('btnDrawToGraph').addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!drawState.current) return;
+    const id = drawState.current.id;
+    closeDraw();
+    openGraph(id);
+  });
+
+  // --- Graph ("網", v3.1) -------------------------------------------------
+  // Canvas-rendered (not SVG/DOM per node) so it stays smooth past ~100
+  // notes per spec; d3-force only drives positions via the 'tick' callback.
+  const graphState = {
+    simulation: null, nodes: [], links: [], transform: d3.zoomIdentity,
+    filterSource: '', filterTag: '', lastTappedId: null, centerNoteId: null,
+    canvas: null, ctx: null, width: 0, height: 0, colorScale: null, resizeHandler: null,
+  };
+
+  const GRAPH_RELATION_COLOR = { similar: '#8fb39b', opposite: '#d1837a', supplement: '#86a9c9', manual: '#6f6a60' };
+  function graphEdgeColor(link) {
+    return link.kind !== 'auto' ? GRAPH_RELATION_COLOR.manual : (GRAPH_RELATION_COLOR[link.relation] || GRAPH_RELATION_COLOR.similar);
+  }
+  function graphNodeRadius(n) { return 5 + Math.sqrt(n.linkCount) * 4; }
+
+  function buildGraphData() {
+    const nodesById = new Map();
+    data.notes.forEach((n) => {
+      nodesById.set(n.id, { id: n.id, text: n.text, source: n.source || '（出典なし）', tags: n.tags, linkCount: n.links.length });
+    });
+    const links = [];
+    const seenPairs = new Set();
+    data.notes.forEach((n) => {
+      n.links.forEach((l) => {
+        if (!nodesById.has(l.id)) return;
+        const key = [n.id, l.id].sort().join('|');
+        if (seenPairs.has(key)) return;
+        seenPairs.add(key);
+        links.push({ source: n.id, target: l.id, kind: l.kind, relation: l.relation });
+      });
+    });
+    return { nodes: [...nodesById.values()], links };
+  }
+
+  function buildSourceColorScale(nodes) {
+    const counts = new Map();
+    nodes.forEach((n) => counts.set(n.source, (counts.get(n.source) || 0) + 1));
+    const sources = [...counts.keys()].sort((a, b) => counts.get(b) - counts.get(a));
+    const scheme = d3.schemeTableau10 || d3.schemeCategory10;
+    return { scale: d3.scaleOrdinal(scheme).domain(sources), sources };
+  }
+
+  function renderGraphLegend(sources, scale) {
+    const el = document.getElementById('graphLegend');
+    el.innerHTML = '';
+    sources.slice(0, 8).forEach((s) => {
+      const row = document.createElement('div');
+      row.className = 'graphLegendRow';
+      const swatch = document.createElement('span');
+      swatch.className = 'graphLegendSwatch';
+      swatch.style.background = scale(s);
+      const label = document.createElement('span');
+      label.textContent = noteSnippet(s, 16);
+      row.appendChild(swatch);
+      row.appendChild(label);
+      el.appendChild(row);
+    });
+  }
+
+  function renderGraphFilters() {
+    const bar = document.getElementById('graphFilterBar');
+    bar.innerHTML = '';
+    function buildSelect(defaultLabel, values, onChange) {
+      const sel = document.createElement('select');
+      sel.className = 'graphFilterSelect';
+      const def = document.createElement('option');
+      def.value = '';
+      def.textContent = defaultLabel;
+      sel.appendChild(def);
+      values.forEach((v) => {
+        const opt = document.createElement('option');
+        opt.value = v;
+        opt.textContent = v;
+        sel.appendChild(opt);
+      });
+      sel.addEventListener('change', () => onChange(sel.value));
+      return sel;
+    }
+    const sources = [...new Set(data.notes.map((n) => n.source).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'));
+    bar.appendChild(buildSelect('出典すべて', sources, (v) => { graphState.filterSource = v; drawGraph(); }));
+    bar.appendChild(buildSelect('タグすべて', allTags(), (v) => { graphState.filterTag = v; drawGraph(); }));
+  }
+
+  // Matching nodes (by 出典/タグ filter) render at full opacity; a link
+  // renders at full opacity if EITHER endpoint matches (spec: narrowing
+  // "keeps the matching nodes and the links connected to them"); everything
+  // else dims. No filter selected -> null -> nothing dims.
+  function computeGraphActiveSet() {
+    if (!graphState.filterSource && !graphState.filterTag) return null;
+    const matchIds = new Set();
+    graphState.nodes.forEach((n) => {
+      const note = findNote(n.id);
+      if (!note) return;
+      const sourceOk = !graphState.filterSource || note.source === graphState.filterSource;
+      const tagOk = !graphState.filterTag || note.tags.includes(graphState.filterTag);
+      if (sourceOk && tagOk) matchIds.add(n.id);
+    });
+    return matchIds;
+  }
+
+  function drawGraph() {
+    const ctx = graphState.ctx;
+    if (!ctx) return;
+    const { width, height, nodes, links, transform } = graphState;
+    ctx.save();
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, width, height);
+    ctx.translate(transform.x, transform.y);
+    ctx.scale(transform.k, transform.k);
+
+    const activeSet = computeGraphActiveSet();
+
+    links.forEach((l) => {
+      const s = l.source, t = l.target;
+      if (typeof s !== 'object' || typeof t !== 'object') return;
+      const dim = activeSet && !(activeSet.has(s.id) || activeSet.has(t.id));
+      ctx.strokeStyle = graphEdgeColor(l);
+      ctx.globalAlpha = dim ? 0.1 : 0.7;
+      ctx.lineWidth = 1.2 / transform.k;
+      ctx.beginPath();
+      ctx.moveTo(s.x, s.y);
+      ctx.lineTo(t.x, t.y);
+      ctx.stroke();
+    });
+
+    const showLabels = transform.k > 1.8;
+    nodes.forEach((n) => {
+      const r = graphNodeRadius(n);
+      const dim = activeSet && !activeSet.has(n.id);
+      ctx.globalAlpha = dim ? 0.2 : (n.linkCount === 0 ? 0.5 : 1);
+      ctx.fillStyle = graphState.colorScale(n.source);
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+      ctx.fill();
+      if (n.id === graphState.centerNoteId) {
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2 / transform.k;
+        ctx.stroke();
+      }
+      if (showLabels && !dim) {
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = '#f2efea';
+        ctx.font = `${12 / transform.k}px system-ui, sans-serif`;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(noteSnippet(n.text, 14), n.x + r + 4 / transform.k, n.y);
+      }
+    });
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  function resizeGraphCanvas() {
+    const canvas = graphState.canvas;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    graphState.width = rect.width;
+    graphState.height = rect.height;
+    canvas.width = Math.max(1, Math.round(rect.width * dpr));
+    canvas.height = Math.max(1, Math.round(rect.height * dpr));
+    graphState.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawGraph();
+  }
+
+  function startGraphSimulation() {
+    const { nodes, links, width: w, height: h } = graphState;
+    nodes.forEach((n) => {
+      if (n.id === graphState.centerNoteId) { n.x = w / 2; n.y = h / 2; }
+      else { n.x = w / 2 + (Math.random() - 0.5) * w * 0.8; n.y = h / 2 + (Math.random() - 0.5) * h * 0.8; }
+    });
+
+    const sim = d3.forceSimulation(nodes)
+      .force('link', d3.forceLink(links).id((d) => d.id).distance(70).strength(0.4))
+      .force('charge', d3.forceManyBody().strength(-120))
+      .force('center', d3.forceCenter(w / 2, h / 2))
+      .force('collide', d3.forceCollide((d) => graphNodeRadius(d) + 6))
+      .on('tick', drawGraph);
+
+    if (graphState.centerNoteId) {
+      const centerNode = nodes.find((n) => n.id === graphState.centerNoteId);
+      if (centerNode) {
+        centerNode.fx = w / 2;
+        centerNode.fy = h / 2;
+        setTimeout(() => { centerNode.fx = null; centerNode.fy = null; }, 1500);
+      }
+    }
+    graphState.simulation = sim;
+  }
+
+  function graphNodeAt(gx, gy) {
+    let found = null, bestDist = Infinity;
+    for (const n of graphState.nodes) {
+      const r = graphNodeRadius(n) + 4;
+      const dx = n.x - gx, dy = n.y - gy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist <= r && dist < bestDist) { found = n; bestDist = dist; }
+    }
+    return found;
+  }
+
+  function hideGraphPopup() { document.getElementById('graphPopup').hidden = true; }
+  function showGraphPopup(node) {
+    const el = document.getElementById('graphPopup');
+    el.innerHTML = '';
+    const t = document.createElement('div');
+    t.className = 'lText';
+    t.textContent = noteSnippet(node.text, 60);
+    const s = document.createElement('div');
+    s.className = 'lSource';
+    s.textContent = node.source;
+    el.appendChild(t);
+    el.appendChild(s);
+    el.hidden = false;
+    el.onclick = () => { closeGraph(); openDetail(node.id, 'list'); };
+  }
+
+  function setupGraphInteraction() {
+    const canvas = graphState.canvas;
+    const sel = d3.select(canvas);
+
+    function toGraphCoords(event) {
+      const [x, y] = d3.pointer(event, canvas);
+      return { x: (x - graphState.transform.x) / graphState.transform.k, y: (y - graphState.transform.y) / graphState.transform.k };
+    }
+
+    const drag = d3.drag()
+      .subject((event) => { const { x, y } = toGraphCoords(event); return graphNodeAt(x, y); })
+      .on('start', (event) => {
+        if (!event.active) graphState.simulation.alphaTarget(0.3).restart();
+        event.subject.fx = event.subject.x;
+        event.subject.fy = event.subject.y;
+      })
+      .on('drag', (event) => {
+        const { x, y } = toGraphCoords(event);
+        event.subject.fx = x;
+        event.subject.fy = y;
+      })
+      .on('end', (event) => {
+        if (!event.active) graphState.simulation.alphaTarget(0);
+        event.subject.fx = null;
+        event.subject.fy = null;
+      });
+
+    const zoom = d3.zoom()
+      .scaleExtent([0.3, 8])
+      .on('zoom', (event) => { graphState.transform = event.transform; drawGraph(); });
+
+    sel.call(drag);
+    sel.call(zoom);
+
+    sel.on('click', (event) => {
+      const { x, y } = toGraphCoords(event);
+      const node = graphNodeAt(x, y);
+      hideGraphPopup();
+      if (!node) { graphState.lastTappedId = null; return; }
+      if (graphState.lastTappedId === node.id) {
+        graphState.lastTappedId = null;
+        closeGraph();
+        openDetail(node.id, 'list');
+      } else {
+        graphState.lastTappedId = node.id;
+        showGraphPopup(node);
+      }
+    });
+  }
+
+  function initGraph() {
+    const canvas = document.getElementById('graphCanvas');
+    graphState.canvas = canvas;
+    graphState.ctx = canvas.getContext('2d');
+    graphState.transform = d3.zoomIdentity;
+    graphState.filterSource = '';
+    graphState.filterTag = '';
+    graphState.lastTappedId = null;
+    hideGraphPopup();
+
+    const { nodes, links } = buildGraphData();
+    graphState.nodes = nodes;
+    graphState.links = links;
+    const { scale, sources } = buildSourceColorScale(nodes);
+    graphState.colorScale = scale;
+    renderGraphLegend(sources, scale);
+    renderGraphFilters();
+
+    requestAnimationFrame(() => {
+      resizeGraphCanvas();
+      startGraphSimulation();
+      setupGraphInteraction();
+    });
+
+    graphState.resizeHandler = () => resizeGraphCanvas();
+    window.addEventListener('resize', graphState.resizeHandler);
+  }
+
+  function openGraph(centerNoteId) {
+    graphState.centerNoteId = centerNoteId || null;
+    document.getElementById('screen-graph').hidden = false;
+    syncBarEl.style.visibility = 'hidden';
+    initGraph();
+  }
+
+  function closeGraph() {
+    document.getElementById('screen-graph').hidden = true;
+    syncBarEl.style.visibility = '';
+    if (graphState.simulation) { graphState.simulation.stop(); graphState.simulation = null; }
+    if (graphState.resizeHandler) window.removeEventListener('resize', graphState.resizeHandler);
+  }
+
+  document.getElementById('btnOpenGraph').addEventListener('click', () => openGraph());
+  document.getElementById('btnGraphClose').addEventListener('click', () => closeGraph());
 
   // --- Editor -----------------------------------------------------------
   const editorState = { tags: [], links: [] };

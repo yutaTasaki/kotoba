@@ -1,6 +1,6 @@
 {
-  "name": "kotoba — 言葉と考えのノート",
-  "short_name": "kotoba",
+  "name": "一万日 — 言葉と考えのノート",
+  "short_name": "一万日",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
