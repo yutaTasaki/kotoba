@@ -448,7 +448,6 @@
   }
   #walkShareStatus { text-align: center; font-size: 12px; color: var(--text-faint); min-height: 1em; }
   #walkShareStatus.error { color: var(--danger); }
-  .todaySummary { background: var(--bg-card); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 10px; }
   .calNav { display: flex; align-items: center; gap: 8px; }
   .calNav button { width: auto; padding: 10px 14px; font-size: 15px; }
   #calMonthLabel { flex: 1; text-align: center; font-size: 16px; }
@@ -495,8 +494,9 @@
     </header>
     <div class="dayCount" id="dayCountLabel"></div>
     <div id="homeEmpty" class="emptyMsg" hidden>まだノートがありません。「＋ 追加」から最初の1枚を書いてみましょう。</div>
+    <div id="walkUnavailableMsg" class="emptyMsg" hidden>散歩データを読み込めていません。設定 → 同期を確認してください。</div>
 
-    <div class="field">
+    <div class="field" id="wakeMoodField">
       <span class="fieldLabel">今朝の体調</span>
       <div class="moodRow" id="wakeMoodRow"></div>
     </div>
@@ -518,6 +518,7 @@
     </div>
 
     <div id="afterWalkStage" class="morningStage" hidden>
+      <canvas id="walkPreviewCanvas" width="1080" height="1080"></canvas>
       <div class="field">
         <span class="fieldLabel">散歩後の体調</span>
         <div class="moodRow" id="afterMoodRow"></div>
@@ -528,16 +529,8 @@
         <input type="number" id="walkDistanceInput" min="0" placeholder="距離（m）">
         <button id="btnSaveWalkStats" class="secondaryBtn">保存</button>
       </div>
-      <canvas id="walkPreviewCanvas" width="1080" height="1080"></canvas>
       <button id="btnWalkShare" class="primaryBtn">Xで投稿</button>
       <div id="walkShareStatus"></div>
-    </div>
-
-    <div id="todaySummaryStage" class="todaySummary" hidden>
-      <div class="statRow"><span>今朝</span><span id="summaryWakeMood"></span></div>
-      <div class="statRow"><span>散歩後</span><span id="summaryAfterMood"></span></div>
-      <div class="detailField"><span class="fieldLabel">今朝の言葉</span><div id="summaryMorningText"></div></div>
-      <div class="statRow"><span>日数</span><span id="summaryDayCount"></span></div>
     </div>
 
     <button id="btnWalkYesterday" type="button" class="linkLikeBtn" hidden>昨日の分を記録</button>
@@ -663,6 +656,7 @@
         <button id="btnSaveGhToken" class="secondaryBtn">保存</button>
         <div class="statRow"><span>同期状態</span><span id="statSyncState"></span></div>
         <div class="statRow"><span>最終同期時刻</span><span id="statLastSync"></span></div>
+        <div class="statRow"><span>最終同期エラー</span><span id="statLastSyncError"></span></div>
         <button id="btnSyncNow" class="secondaryBtn">今すぐ同期</button>
       </div>
       <hr>
@@ -840,6 +834,8 @@
   const BACKUP_KEY = 'kotoba_data_backup';
   const GH_TOKEN_KEY = 'kotoba_ghToken';
   const LAST_SYNC_KEY = 'kotoba_lastSyncAt';
+  const LAST_SYNC_ERROR_KEY = 'kotoba_lastSyncError';
+  const WALK_LAST_SYNC_ERROR_KEY = 'kotoba_walkLastSyncError';
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
@@ -1171,7 +1167,7 @@
       { headers: ghHeaders(token), cache: 'no-store' }
     );
     if (res.status === 404) return { data: null, sha: null };
-    if (!res.ok) throw new Error('GitHub GET failed: ' + res.status);
+    if (!res.ok) { const err = new Error('GitHub GET failed: ' + res.status); err.status = res.status; throw err; }
     const json = await res.json();
     const parsed = normalizeData(JSON.parse(base64ToUtf8(json.content)));
     return { data: parsed, sha: json.sha };
@@ -1193,6 +1189,30 @@
       throw err;
     }
     return res.json();
+  }
+
+  // Builds a message naming which repo failed and why, so a sync error is
+  // actionable (e.g. "散歩データ（walk10000-data）にアクセスできません。
+  // トークンの権限を確認してください（401）") instead of just "エラー".
+  function repoErrorMessage(repoLabel, e) {
+    const status = e && e.status;
+    if (status === 401 || status === 403) return `${repoLabel}にアクセスできません。トークンの権限を確認してください（${status}）`;
+    if (status === 404) return `${repoLabel}が見つかりません（404）`;
+    if (status) return `${repoLabel}への同期に失敗しました（${status}）`;
+    return `${repoLabel}への同期に失敗しました（通信エラー）`;
+  }
+  function recordSyncError(key, message) { localStorage.setItem(key, JSON.stringify({ message, at: nowIso() })); }
+  function clearSyncError(key) { localStorage.removeItem(key); }
+  function getSyncError(key) {
+    try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+  }
+  function combinedSyncErrorText() {
+    const noteErr = getSyncError(LAST_SYNC_ERROR_KEY);
+    const walkErr = getSyncError(WALK_LAST_SYNC_ERROR_KEY);
+    if (noteErr && walkErr) return `${noteErr.message} / ${walkErr.message}`;
+    if (noteErr) return noteErr.message;
+    if (walkErr) return walkErr.message;
+    return '同期エラー';
   }
 
   // v3: one token drives two independent repo syncs (kotoba-data for notes+
@@ -1223,7 +1243,7 @@
       const latest = [t1, t2].filter(Boolean).sort().pop();
       text = latest ? `同期済み ${formatDateTime(latest)}` : '同期済み';
     } else if (state === 'error') {
-      text = pending > 0 ? `同期エラー（未反映 ${pending}件）` : '同期エラー（次回保存時に再試行します）';
+      text = combinedSyncErrorText() + (pending > 0 ? `（未反映 ${pending}件）` : '');
     } else if (state === 'syncing') {
       text = '同期中…';
     } else if (state === 'off') {
@@ -1303,8 +1323,10 @@
       }
       localStorage.setItem(LAST_SYNC_KEY, nowIso());
       pendingChangeCount = 0;
+      clearSyncError(LAST_SYNC_ERROR_KEY);
       setSyncStatus('synced');
     } catch (e) {
+      recordSyncError(LAST_SYNC_ERROR_KEY, repoErrorMessage('言葉データ（kotoba-data）', e));
       setSyncStatus('error');
     } finally {
       syncInFlight = false;
@@ -1325,8 +1347,10 @@
       backupData(data);
       localStorage.setItem(LAST_SYNC_KEY, nowIso());
       pendingChangeCount = 0;
+      clearSyncError(LAST_SYNC_ERROR_KEY);
       setSyncStatus('synced');
     } catch (e) {
+      recordSyncError(LAST_SYNC_ERROR_KEY, repoErrorMessage('言葉データ（kotoba-data）', e));
       setSyncStatus('error');
     }
   }
@@ -1345,9 +1369,6 @@
   const WALK_STORAGE_KEY = 'kotoba_walkData';
   const WALK_BACKUP_KEY = 'kotoba_walkData_backup';
   const WALK_LAST_SYNC_KEY = 'kotoba_walkLastSyncAt';
-  // Device-local only ("Xで投稿" completion for today) - deliberately NOT
-  // part of walkData/dailyStats, since that object's shape must not change.
-  const WALK_POSTED_DATE_KEY = 'kotoba_walkPostedDate';
   const GITHUB_REPO_WALK = 'walk10000-data';
 
   function walkDefaultData() { return { startDate: todayStr(), walkedDates: [], dailyStats: {} }; }
@@ -1394,7 +1415,7 @@
       { headers: ghHeaders(token), cache: 'no-store' }
     );
     if (res.status === 404) return { data: null, sha: null };
-    if (!res.ok) throw new Error('GitHub GET failed: ' + res.status);
+    if (!res.ok) { const err = new Error('GitHub GET failed: ' + res.status); err.status = res.status; throw err; }
     const json = await res.json();
     const parsed = normalizeWalkData(JSON.parse(base64ToUtf8(json.content)));
     return { data: parsed, sha: json.sha };
@@ -1448,8 +1469,10 @@
       }
       localStorage.setItem(WALK_LAST_SYNC_KEY, nowIso());
       walkPendingChangeCount = 0;
+      clearSyncError(WALK_LAST_SYNC_ERROR_KEY);
       setWalkSyncStatus('synced');
     } catch (e) {
+      recordSyncError(WALK_LAST_SYNC_ERROR_KEY, repoErrorMessage('散歩データ（walk10000-data）', e));
       setWalkSyncStatus('error');
     } finally {
       walkSyncInFlight = false;
@@ -1469,10 +1492,19 @@
       backupWalkData(walkData);
       localStorage.setItem(WALK_LAST_SYNC_KEY, nowIso());
       walkPendingChangeCount = 0;
+      clearSyncError(WALK_LAST_SYNC_ERROR_KEY);
       setWalkSyncStatus('synced');
     } catch (e) {
+      recordSyncError(WALK_LAST_SYNC_ERROR_KEY, repoErrorMessage('散歩データ（walk10000-data）', e));
       setWalkSyncStatus('error');
     }
+  }
+
+  function isWalkDataUnavailable() {
+    if (!getGhToken()) return false; // no sync configured -> local-only use is fine, not an error
+    if (walkSyncState === 'error') return true;
+    if (!localStorage.getItem(WALK_LAST_SYNC_KEY)) return true; // token set but never successfully synced yet
+    return false;
   }
 
   async function syncAllNow() {
@@ -1829,9 +1861,6 @@
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 10000);
   }
-
-  function getWalkPostedDate() { return localStorage.getItem(WALK_POSTED_DATE_KEY) || ''; }
-  function markWalkPostedToday() { localStorage.setItem(WALK_POSTED_DATE_KEY, todayStr()); }
 
   // --- journal (v3): entry-level CRUD, lives inside kotoba-data's data.json -
   function findJournalEntry(id) { return data.journal.find((j) => j.id === id) || null; }
@@ -2583,6 +2612,18 @@
   function renderHome() {
     document.getElementById('homeEmpty').hidden = data.notes.length > 0;
 
+    const unavailable = isWalkDataUnavailable();
+    document.getElementById('walkUnavailableMsg').hidden = !unavailable;
+    document.getElementById('wakeMoodField').hidden = unavailable;
+    if (unavailable) {
+      document.getElementById('dayCountLabel').textContent = '';
+      ['morningWordsStage', 'morningCardsStage', 'walkStage', 'afterWalkStage'].forEach((id) => {
+        document.getElementById(id).hidden = true;
+      });
+      document.getElementById('btnWalkYesterday').hidden = true;
+      return;
+    }
+
     const derived = computeWalkDerived();
     document.getElementById('dayCountLabel').textContent = `${derived.n}日目 / 10000`;
 
@@ -2599,25 +2640,19 @@
     document.getElementById('morningCardsStage').hidden = !(hasWakeMood && wordsResolved);
     if (hasWakeMood && wordsResolved) renderMorningCards(morningEntry);
 
-    const posted = getWalkPostedDate() === today;
+    // Once today's walk is recorded, the post-walk section (image, mood,
+    // steps/distance, share) stays up for the rest of the day - same as
+    // walk10000's own single persistent screen, no separate "posted" state.
     document.getElementById('walkStage').hidden = !(hasWakeMood && wordsResolved && !derived.todayWalked);
-    document.getElementById('afterWalkStage').hidden = !(hasWakeMood && wordsResolved && derived.todayWalked && !posted);
-    document.getElementById('todaySummaryStage').hidden = !(hasWakeMood && wordsResolved && derived.todayWalked && posted);
+    document.getElementById('afterWalkStage').hidden = !(hasWakeMood && wordsResolved && derived.todayWalked);
 
-    if (hasWakeMood && wordsResolved && derived.todayWalked && !posted) {
+    if (hasWakeMood && wordsResolved && derived.todayWalked) {
       paintMoodRow(afterMoodButtons, todayStats.afterMood != null ? todayStats.afterMood : null);
       document.getElementById('walkStepsInput').value = todayStats.steps != null ? todayStats.steps : '';
       document.getElementById('walkDistanceInput').value = todayStats.distanceM != null ? todayStats.distanceM : '';
       const canvas = document.getElementById('walkPreviewCanvas');
       drawWalkImage(canvas);
       regenerateWalkShareBlob(canvas, document.getElementById('btnWalkShare'));
-    }
-
-    if (hasWakeMood && wordsResolved && derived.todayWalked && posted) {
-      document.getElementById('summaryWakeMood').textContent = todayStats.wakeMood != null ? MOOD_EMOJI[todayStats.wakeMood] : '-';
-      document.getElementById('summaryAfterMood').textContent = todayStats.afterMood != null ? MOOD_EMOJI[todayStats.afterMood] : '-';
-      document.getElementById('summaryMorningText').textContent = morningEntry ? (morningEntry.closing || morningEntry.text || '（スキップ）') : '（スキップ）';
-      document.getElementById('summaryDayCount').textContent = `${derived.n}日目`;
     }
 
     document.getElementById('btnWalkYesterday').hidden = new Set(walkData.walkedDates).has(derived.yesterday);
@@ -2744,8 +2779,6 @@
       try {
         await navigator.share({ files: [file], text: shareText });
         setStatus('');
-        markWalkPostedToday();
-        renderHome();
         return;
       } catch (e) {
         if (e && e.name === 'AbortError') { setStatus(''); return; }
@@ -2755,8 +2788,6 @@
       setStatus('この端末は画像の共有に対応していないため、ダウンロードしました。');
     }
     downloadFile(file);
-    markWalkPostedToday();
-    renderHome();
   });
 
   // --- List ---------------------------------------------------------------
@@ -3801,6 +3832,12 @@
     const lastWalkSync = localStorage.getItem(WALK_LAST_SYNC_KEY);
     const latestSync = [lastSync, lastWalkSync].filter(Boolean).sort().pop();
     document.getElementById('statLastSync').textContent = latestSync ? formatDateTime(latestSync) : '-';
+    const noteErr = getSyncError(LAST_SYNC_ERROR_KEY);
+    const walkErr = getSyncError(WALK_LAST_SYNC_ERROR_KEY);
+    const errParts = [];
+    if (noteErr) errParts.push(`${noteErr.message}（${formatDateTime(noteErr.at)}）`);
+    if (walkErr) errParts.push(`${walkErr.message}（${formatDateTime(walkErr.at)}）`);
+    document.getElementById('statLastSyncError').textContent = errParts.length ? errParts.join(' / ') : '-';
 
     document.getElementById('walkStartDateInput').value = walkData.startDate;
     document.getElementById('walkBestStreakInput').value = walkDerived.longest;
