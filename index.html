@@ -424,7 +424,19 @@
     flex-direction: column;
     gap: 8px;
   }
-  .consultCard .cardText { font-size: 17px; line-height: 1.8; }
+  .consultCard { position: relative; }
+  .consultCard .cardText { font-size: 17px; line-height: 1.8; padding-right: 28px; }
+  /* --- v5.2: 刺さった ★ --- */
+  .hitBtn { position: absolute; top: 10px; right: 10px; background: none; border: none; font-size: 20px; line-height: 1; padding: 6px; color: var(--text-faint); font-family: inherit; cursor: pointer; }
+  .hitBtn.on { color: #f0c04a; }
+  .journalCardMini.withHit { display: flex; align-items: center; gap: 8px; }
+  .journalCardMini.withHit .lText { flex: 1 1 auto; min-width: 0; }
+  .journalCardMini.withHit .hitBtn { position: static; padding: 2px 4px; font-size: 18px; flex: 0 0 auto; }
+  .detailHitRow { padding: 8px 0; border-top: 1px solid var(--border); font-size: 13px; }
+  .detailHitHead { color: var(--text-dim); font-size: 12px; }
+  .detailHitText { margin-top: 3px; line-height: 1.5; }
+  .detailHitWhy { margin-top: 3px; color: var(--accent); font-size: 12px; }
+  .drawResultHit { color: #f0c04a; font-size: 13px; margin-top: 6px; }
   .consultWhy {
     font-size: 13px;
     color: var(--accent);
@@ -902,6 +914,10 @@
       </div>
       <div class="detailTags" id="detailTags"></div>
       <p class="fieldNote" id="detailPickStats" hidden></p>
+      <div class="detailLinksSection" id="detailHitSection" hidden>
+        <h3>刺さった記録</h3>
+        <div id="detailHitList" class="detailHitList"></div>
+      </div>
       <p class="fieldNote" id="detailQuestionStats" hidden></p>
       <div class="detailLinksSection" id="detailVideoOf" hidden>
         <h3>この動画で生まれた言葉</h3>
@@ -1380,6 +1396,7 @@
         <div class="drawResultText" id="drawResultText"></div>
         <div class="drawResultSource" id="drawResultSource"></div>
         <div class="drawResultMyWords" id="drawResultMyWords"></div>
+        <div class="drawResultHit" id="drawResultHit" hidden></div>
       </div>
       <div id="questionResult" class="questionResult" hidden>
         <div class="questionText" id="questionText"></div>
@@ -1553,7 +1570,7 @@
       kind,
       text: typeof j.text === 'string' ? j.text : '',
       picks: Array.isArray(j.picks)
-        ? j.picks.filter((p) => p && p.id).map((p) => ({ id: String(p.id), why: typeof p.why === 'string' ? p.why : '' }))
+        ? j.picks.filter((p) => p && p.id).map((p) => { const o = { id: String(p.id), why: typeof p.why === 'string' ? p.why : '' }; if (p.hit) { o.hit = 1; o.hitAt = typeof p.hitAt === 'string' ? p.hitAt : ''; } return o; })
         : [],
       closing: typeof j.closing === 'string' ? j.closing : '',
       createdAt: j.createdAt || nowIso(),
@@ -2837,21 +2854,91 @@
     return { count, lastDate };
   }
 
-  // v3.2 "今月よく届いた言葉から": notes that showed up in a morning/consult
-  // pick (not 引く itself) within the last 30 days, ranked by how often.
-  function topMonthlyPickedNoteIds(limit) {
-    const cutoff = addDays(todayStr(), -30);
-    const counts = new Map();
+  // --- 刺さった (v5.2) -------------------------------------------------------
+  // A pick the user marks with ★ carries `hit: 1, hitAt`. Nothing is stored
+  // on the note; every number below is recomputed from the journal.
+  // Tuning lives here and nowhere else: change these constants to make the
+  // weight bite harder or softer.
+  const HIT_TUNING = {
+    hitVsPick: 1.5,    // one ★ is worth this many plain deliveries (before saturation) - kept modest on purpose
+    halfLifeDays: 30,  // a delivery / ★ counts half as much after this many days
+    restDays: 3,       // a word ★'d within these days is left out of 引く
+    exploreEvery: 3,   // every Nth monthly draw comes from words never ★'d
+    windowDays: 30,    // how far back 今月 looks
+  };
+  function toggleJournalHit(journalId, noteId) {
+    const j = data.journal.find((x) => x.id === journalId);
+    if (!j) return null;
+    const p = j.picks.find((x) => x.id === noteId);
+    if (!p) return null;
+    if (p.hit) { delete p.hit; delete p.hitAt; } else { p.hit = 1; p.hitAt = nowIso(); }
+    saveJournalEntry(j);
+    return !!p.hit;
+  }
+  function isPickHit(journalId, noteId) {
+    const j = data.journal.find((x) => x.id === journalId);
+    const p = j && j.picks.find((x) => x.id === noteId);
+    return !!(p && p.hit);
+  }
+  // ★ records for one note, newest first, each with the state it was ★'d in
+  function journalHitStatsForNote(noteId) {
+    const entries = [];
     data.journal.forEach((j) => {
-      if ((j.kind === 'morning' || j.kind === 'consult') && j.date >= cutoff) {
-        j.picks.forEach((p) => counts.set(p.id, (counts.get(p.id) || 0) + 1));
-      }
+      const p = j.picks.find((x) => x.id === noteId && x.hit);
+      if (p) entries.push({ id: j.id, date: j.date, kind: j.kind, mood: j.mood, text: j.text || '', why: p.why || '', hitAt: p.hitAt || '' });
     });
-    return [...counts.entries()]
-      .filter(([id]) => findNote(id))
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, limit)
-      .map(([id]) => id);
+    entries.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    return { count: entries.length, lastDate: entries.length ? entries[0].date : '', entries };
+  }
+  function hitDecay(dateStr) {
+    const age = Math.max(0, (parseDateStr(todayStr()) - parseDateStr(dateStr)) / 86400000);
+    return Math.pow(0.5, age / HIT_TUNING.halfLifeDays);
+  }
+  // weight of a note over the 今月 window: decayed deliveries + saturated,
+  // decayed ★ (log2 so five ★ are not five times one ★)
+  function noteWeightsInWindow() {
+    const cutoff = addDays(todayStr(), -HIT_TUNING.windowDays);
+    const picks = new Map(), hits = new Map();
+    data.journal.forEach((j) => {
+      if ((j.kind !== 'morning' && j.kind !== 'consult') || j.date < cutoff) return;
+      const d = hitDecay(j.date);
+      j.picks.forEach((p) => {
+        picks.set(p.id, (picks.get(p.id) || 0) + d);
+        if (p.hit) hits.set(p.id, (hits.get(p.id) || 0) + d);
+      });
+    });
+    const out = new Map();
+    picks.forEach((v, id) => { if (findNote(id)) out.set(id, v + HIT_TUNING.hitVsPick * Math.log2(1 + (hits.get(id) || 0))); });
+    return out;
+  }
+  function noteWeight(noteId) { return noteWeightsInWindow().get(noteId) || 0; }
+  // "今月よく届いた言葉": morning + consult deliveries (not 引く) in the last
+  // 30 days, ranked by the weight above. Feeds 引く (今月), 問い (core) and
+  // the far-opposition ranking.
+  function topMonthlyPickedNoteIds(limit) {
+    return [...noteWeightsInWindow().entries()].sort((a, b) => b[1] - a[1]).slice(0, limit).map(([id]) => id);
+  }
+  function recentlyHitIds(days) {
+    const cutoff = addDays(todayStr(), -days);
+    const ids = new Set();
+    data.journal.forEach((j) => j.picks.forEach((p) => { if (p.hit && p.hitAt && p.hitAt.slice(0, 10) >= cutoff) ids.add(p.id); }));
+    return ids;
+  }
+  function everHitIds() {
+    const ids = new Set();
+    data.journal.forEach((j) => j.picks.forEach((p) => { if (p.hit) ids.add(p.id); }));
+    return ids;
+  }
+  // weighted sample without replacement
+  function weightedSample(items, weightOf, n) {
+    const pool = items.slice(), out = [];
+    while (pool.length && out.length < n) {
+      const total = pool.reduce((a, x) => a + Math.max(0.0001, weightOf(x)), 0);
+      let r = Math.random() * total, idx = 0;
+      for (; idx < pool.length; idx++) { r -= Math.max(0.0001, weightOf(pool[idx])); if (r <= 0) break; }
+      out.push(pool.splice(Math.min(idx, pool.length - 1), 1)[0]);
+    }
+    return out;
   }
 
   // --- 問い (v3.3): journal-side helpers ---------------------------------
@@ -3769,7 +3856,8 @@
       if (!pairs.length) return null;
       notes = pairs[Math.floor(Math.random() * pairs.length)];
     } else if (mode === 'core') {
-      notes = topMonthlyPickedNoteIds(2).map(findNote).filter(Boolean);
+      const w = noteWeightsInWindow();
+      notes = weightedSample(topMonthlyPickedNoteIds(5).map(findNote).filter(Boolean), (n) => w.get(n.id) || 0, 2);
     } else if (mode === 'far') {
       const ranked = rankFarTriples(allFarOppositionTriples());
       if (!ranked.length) return null;
@@ -4112,6 +4200,7 @@
             why.textContent = pick.why;
             card.appendChild(why);
           }
+          if (turn.journalId) card.appendChild(makeHitButton(turn.journalId, note.id));
           card.addEventListener('click', () => openDetail(note.id, 'consult'));
           wrap.appendChild(card);
         });
@@ -4256,7 +4345,16 @@
     return morningRandomNoteId ? findNote(morningRandomNoteId) : null;
   }
 
-  function renderPickCard(container, note, why) {
+  // ★ toggle for one pick of one journal entry (consult / morning / records)
+  function makeHitButton(journalId, noteId, onChange) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    const paint = () => { const on = isPickHit(journalId, noteId); b.className = 'hitBtn' + (on ? ' on' : ''); b.textContent = on ? '★' : '☆'; b.title = on ? '刺さった（もう一度押すと外す）' : '刺さった'; };
+    paint();
+    b.addEventListener('click', (e) => { e.stopPropagation(); toggleJournalHit(journalId, noteId); paint(); if (onChange) onChange(); });
+    return b;
+  }
+  function renderPickCard(container, note, why, journalId) {
     const card = document.createElement('div');
     card.className = 'consultCard';
     const t = document.createElement('div');
@@ -4279,6 +4377,7 @@
       w.textContent = why;
       card.appendChild(w);
     }
+    if (journalId) card.appendChild(makeHitButton(journalId, note.id));
     card.addEventListener('click', () => openDetail(note.id, 'home'));
     container.appendChild(card);
   }
@@ -4310,7 +4409,7 @@
     }
     picks.forEach((pick) => {
       const note = findNote(pick.id);
-      if (note) renderPickCard(container, note, pick.why);
+      if (note) renderPickCard(container, note, pick.why, morningEntry ? morningEntry.id : null);
     });
     if (closing) {
       const c = document.createElement('div');
@@ -5721,6 +5820,25 @@
     }
   }
 
+  // "same word, a different me": every ★ with the state it was ★'d in
+  function renderDetailHitList(stats) {
+    const sec = document.getElementById('detailHitSection');
+    const list = document.getElementById('detailHitList');
+    list.innerHTML = '';
+    sec.hidden = !stats.count;
+    if (!stats.count) return;
+    stats.entries.forEach((e) => {
+      const row = document.createElement('div');
+      row.className = 'detailHitRow';
+      const head = document.createElement('div');
+      head.className = 'detailHitHead';
+      head.textContent = dotDate(e.date) + '　' + (e.kind === 'morning' ? '朝' + (e.mood != null ? ' ' + MOOD_EMOJI[e.mood] : '') : e.kind === 'consult' ? '相談' : e.kind);
+      row.appendChild(head);
+      if (e.text) { const t = document.createElement('div'); t.className = 'detailHitText'; t.textContent = noteSnippet(e.text, 80); row.appendChild(t); }
+      if (e.why) { const w = document.createElement('div'); w.className = 'detailHitWhy'; w.textContent = e.why; row.appendChild(w); }
+      list.appendChild(row);
+    });
+  }
   function renderDetail() {
     const note = findNote(nav.detailId);
     if (!note) { backFromDetail(); return; }
@@ -5732,7 +5850,9 @@
     const pickStats = journalPickStatsForNote(note.id);
     const pickStatsEl = document.getElementById('detailPickStats');
     pickStatsEl.hidden = pickStats.count === 0;
-    if (pickStats.count > 0) pickStatsEl.textContent = `届いた回数: ${pickStats.count}回（直近 ${dotDate(pickStats.lastDate)}）`;
+    const hitStats = journalHitStatsForNote(note.id);
+    if (pickStats.count > 0) pickStatsEl.textContent = `届いた回数: ${pickStats.count}回（直近 ${dotDate(pickStats.lastDate)}）` + (hitStats.count ? `　刺さった: ${hitStats.count}回` : '');
+    renderDetailHitList(hitStats);
 
     const qStats = questionUseStatsForNote(note.id);
     const qStatsEl = document.getElementById('detailQuestionStats');
@@ -7529,11 +7649,12 @@
       const note = findNote(pick.id);
       if (!note) return;
       const mini = document.createElement('div');
-      mini.className = 'journalCardMini';
+      mini.className = 'journalCardMini withHit';
       const mt = document.createElement('div');
       mt.className = 'lText';
       mt.textContent = noteSnippet(note.text, 50);
       mini.appendChild(mt);
+      mini.appendChild(makeHitButton(j.id, note.id));
       mini.addEventListener('click', () => openDetail(note.id, 'records'));
       item.appendChild(mini);
     });
@@ -7575,8 +7696,12 @@
         const note = findNote(pick.id);
         if (!note) return;
         const mini = document.createElement('div');
-        mini.className = 'journalCardMini';
-        mini.textContent = noteSnippet(note.text, 50);
+        mini.className = 'journalCardMini withHit';
+        const mt = document.createElement('div');
+        mt.className = 'lText';
+        mt.textContent = noteSnippet(note.text, 50);
+        mini.appendChild(mt);
+        mini.appendChild(makeHitButton(j.id, note.id));
         mini.addEventListener('click', () => openDetail(note.id, 'records'));
         item.appendChild(mini);
       });
@@ -7940,6 +8065,7 @@
     });
   });
 
+  const DRAW_EXPLORE_KEY = 'kotoba_drawExploreN';
   function recentDrawExcludedIds() {
     const cutoff = addDays(todayStr(), -30);
     const ids = new Set();
@@ -7951,9 +8077,20 @@
   // treats that as "nothing to draw from" and falls back to 'all'.
   function pickDrawTargetNote() {
     if (getDrawMode() === 'monthly') {
-      const pool = topMonthlyPickedNoteIds(10).map(findNote).filter(Boolean);
+      const resting = recentlyHitIds(HIT_TUNING.restDays);
+      const w = noteWeightsInWindow();
+      let pool = topMonthlyPickedNoteIds(10).map(findNote).filter((n) => n && !resting.has(n.id));
       if (!pool.length) return null;
-      return pool[Math.floor(Math.random() * pool.length)];
+      // every Nth draw: a word from this month that was never ★'d (else any never-★'d word)
+      const n = (Number(localStorage.getItem(DRAW_EXPLORE_KEY)) || 0) + 1;
+      localStorage.setItem(DRAW_EXPLORE_KEY, String(n));
+      if (n % HIT_TUNING.exploreEvery === 0) {
+        const hitEver = everHitIds();
+        let fresh = pool.filter((x) => !hitEver.has(x.id));
+        if (!fresh.length) fresh = data.notes.filter((x) => !hitEver.has(x.id) && !resting.has(x.id));
+        if (fresh.length) return fresh[Math.floor(Math.random() * fresh.length)];
+      }
+      return weightedSample(pool, (x) => w.get(x.id) || 0, 1)[0];
     }
     const excluded = recentDrawExcludedIds();
     let pool = data.notes.filter((n) => !excluded.has(n.id));
@@ -8059,6 +8196,7 @@
     document.getElementById('drawResultText').textContent = note.text;
     document.getElementById('drawResultSource').textContent = note.source || '';
     document.getElementById('drawResultMyWords').textContent = note.myWords || '';
+    { const hs = journalHitStatsForNote(note.id); const el = document.getElementById('drawResultHit'); el.hidden = !hs.count; if (hs.count) el.textContent = '★ 刺さった ' + hs.count + '回（直近 ' + dotDate(hs.lastDate) + '）'; }
     document.getElementById('drawLinks').innerHTML = '';
     resultEl.hidden = false;
     document.getElementById('btnDrawToGraph').hidden = false;
