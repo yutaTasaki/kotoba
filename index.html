@@ -1020,6 +1020,8 @@
         <div class="statRow"><span>同期状態</span><span id="statSyncState"></span></div>
         <div class="statRow"><span>最終同期時刻</span><span id="statLastSync"></span></div>
         <div class="statRow"><span>最終同期エラー</span><span id="statLastSyncError"></span></div>
+        <div class="statRow"><span>データ量</span><span id="statDataSize"></span></div>
+        <p class="fieldNote" id="statDataSizeNote"></p>
         <button id="btnSyncNow" class="secondaryBtn">今すぐ同期</button>
       </div>
       <hr>
@@ -1748,12 +1750,23 @@
     return defaultData();
   }
 
+  // v6.0: a full localStorage must never swallow a change. The write is
+  // guarded; on failure the error is surfaced in the sync bar and the sync
+  // (which is what actually keeps the data) still goes ahead.
+  const BACKUP_MAX_CHARS = 1000000;
+  let localSaveError = '';
   function persistLocal(d) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(d));
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); localSaveError = ''; }
+    catch (e) { localSaveError = '端末の保存容量を超えました（クラウドには同期します）'; recordSyncError(LAST_SYNC_ERROR_KEY, localSaveError); try { localStorage.removeItem(BACKUP_KEY); } catch (e2) {} }
   }
-
+  // The second copy is a safety net against a corrupt primary; once the
+  // data is big it costs more (half the quota) than it protects, so it is
+  // only kept below BACKUP_MAX_CHARS - the repo is the backup after that.
   function backupData(d) {
-    try { localStorage.setItem(BACKUP_KEY, JSON.stringify(d)); } catch (e) {}
+    try {
+      const json = JSON.stringify(d);
+      if (json.length < BACKUP_MAX_CHARS) localStorage.setItem(BACKUP_KEY, json); else localStorage.removeItem(BACKUP_KEY);
+    } catch (e) {}
   }
 
   let pendingChangeCount = 0;
@@ -2024,17 +2037,25 @@
   function utf8ToBase64(str) { return btoa(unescape(encodeURIComponent(str))); }
   function base64ToUtf8(b64) { return decodeURIComponent(escape(atob(b64.replace(/\n/g, '')))); }
   function ghHeaders(token) { return { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' }; }
-
-  async function ghGetFile(token) {
-    const res = await fetch(
-      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_PATH}`,
-      { headers: ghHeaders(token), cache: 'no-store' }
-    );
-    if (res.status === 404) return { data: null, sha: null };
+  // GET of one file as text + sha. The Contents API only inlines files up to
+  // 1 MB; beyond that the object form still carries the sha and the raw
+  // media type carries the bytes (up to 100 MB), so this reads both ways.
+  async function ghGetContents(repo, path, token) {
+    const url = `https://api.github.com/repos/${GITHUB_OWNER}/${repo}/contents/${path}`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.object+json' }, cache: 'no-store' });
+    if (res.status === 404) return { text: null, sha: null, size: 0 };
     if (!res.ok) { const err = new Error('GitHub GET failed: ' + res.status); err.status = res.status; throw err; }
     const json = await res.json();
-    const parsed = normalizeData(JSON.parse(base64ToUtf8(json.content)));
-    return { data: parsed, sha: json.sha };
+    if (json.content && json.encoding === 'base64') return { text: base64ToUtf8(json.content), sha: json.sha, size: json.size || 0 };
+    const raw = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.raw+json' }, cache: 'no-store' });
+    if (!raw.ok) { const err = new Error('GitHub GET(raw) failed: ' + raw.status); err.status = raw.status; throw err; }
+    return { text: await raw.text(), sha: json.sha, size: json.size || 0 };
+  }
+
+  async function ghGetFile(token) {
+    const got = await ghGetContents(GITHUB_REPO, GITHUB_PATH, token);
+    if (got.text === null) return { data: null, sha: null };
+    return { data: normalizeData(JSON.parse(got.text)), sha: got.sha };
   }
 
   async function ghPutFile(token, newData, sha) {
@@ -2282,15 +2303,9 @@
   }
 
   async function ghGetWalkFile(token) {
-    const res = await fetch(
-      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO_WALK}/contents/${GITHUB_PATH}`,
-      { headers: ghHeaders(token), cache: 'no-store' }
-    );
-    if (res.status === 404) return { data: null, sha: null };
-    if (!res.ok) { const err = new Error('GitHub GET failed: ' + res.status); err.status = res.status; throw err; }
-    const json = await res.json();
-    const parsed = normalizeWalkData(JSON.parse(base64ToUtf8(json.content)));
-    return { data: parsed, sha: json.sha };
+    const got = await ghGetContents(GITHUB_REPO_WALK, GITHUB_PATH, token);
+    if (got.text === null) return { data: null, sha: null };
+    return { data: normalizeWalkData(JSON.parse(got.text)), sha: got.sha };
   }
 
   async function ghPutWalkFile(token, newData, sha) {
@@ -6184,11 +6199,9 @@
 
   // sync (same shape as the notes sync, third file in the same repo)
   async function ghGetTrainingFile(token) {
-    const res = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${TRAINING_PATH}`, { headers: ghHeaders(token), cache: 'no-store' });
-    if (res.status === 404) return { data: null, sha: null };
-    if (!res.ok) { const err = new Error('GitHub GET failed: ' + res.status); err.status = res.status; throw err; }
-    const json = await res.json();
-    return { data: normalizeTrainingData(JSON.parse(base64ToUtf8(json.content))), sha: json.sha };
+    const got = await ghGetContents(GITHUB_REPO, TRAINING_PATH, token);
+    if (got.text === null) return { data: null, sha: null };
+    return { data: normalizeTrainingData(JSON.parse(got.text)), sha: got.sha };
   }
   async function ghPutTrainingFile(token, newData, sha) {
     const body = { message: `training: ${newData.days.length} days`, content: utf8ToBase64(JSON.stringify(newData, null, 2)) };
@@ -9222,6 +9235,23 @@
     document.getElementById('walkStatsDistanceInput').value = stats.distanceM != null ? stats.distanceM : '';
   }
 
+  // v6.0: how much data there is and how much of the device's store it uses
+  function fmtBytes(n) { return n < 1048576 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (n / 1048576).toFixed(2) + ' MB'; }
+  function dataSizeReport() {
+    const enc = new TextEncoder();
+    const sz = (o) => enc.encode(JSON.stringify(o)).length;
+    const notesB = sz(data.notes), journalB = sz(data.journal), trainingB = sz(trainingData), walkB = sz(walkData);
+    let localChars = 0;
+    try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); localChars += k.length + (localStorage.getItem(k) || '').length; } } catch (e) {}
+    const localBytes = localChars * 2; // localStorage counts UTF-16 units
+    const quota = 5 * 1048576;
+    const pct = Math.round(localBytes / quota * 100);
+    return {
+      line: `言葉 ${fmtBytes(notesB)}（${data.notes.length}枚）／記録 ${fmtBytes(journalB)}（${data.journal.length}件）／筋トレ ${fmtBytes(trainingB)}／散歩 ${fmtBytes(walkB)}`,
+      note: `端末の保存領域: 約 ${fmtBytes(localBytes)} 使用（iPhone の目安 5 MB の ${pct}%）` + (localSaveError ? '　⚠ ' + localSaveError : ''),
+      pct,
+    };
+  }
   function openSettings() {
     showScreen('settings');
     document.getElementById('ghTokenInput').value = getGhToken();
@@ -9282,6 +9312,7 @@
     const lastWalkSync = localStorage.getItem(WALK_LAST_SYNC_KEY);
     const latestSync = [lastSync, lastWalkSync].filter(Boolean).sort().pop();
     document.getElementById('statLastSync').textContent = latestSync ? formatDateTime(latestSync) : '-';
+    { const r = dataSizeReport(); document.getElementById('statDataSize').textContent = r.line; document.getElementById('statDataSizeNote').textContent = r.note; }
     const noteErr = getSyncError(LAST_SYNC_ERROR_KEY);
     const walkErr = getSyncError(WALK_LAST_SYNC_ERROR_KEY);
     const errParts = [];
