@@ -1079,8 +1079,8 @@
         <button id="btnJournalRevert" class="secondaryBtn">記録を data.json 方式に戻す</button>
         <p class="fieldNote" id="journalMigrateStatus"></p>
         <div class="statRow"><span>言葉の保存方式</span><span id="statNotesMode"></span></div>
-        <p class="fieldNote">「年ファイル」は言葉（ノート）を作成年ごとに kotoba-data の notes/YYYY.json に分けて置く方式です。端末には全件を持つので網・相談は変わりません。同期で送るのは触った年の分だけになります。</p>
-        <button id="btnNotesMigrate" class="secondaryBtn">言葉を年ファイル方式に移行</button>
+        <p class="fieldNote">「月ファイル」は言葉（ノート）を作成月ごとに kotoba-data の notes/YYYY-MM.json に分けて置く方式です。端末には全件を持つので網・相談は変わりません。同期で送るのは触った月の分だけになります。</p>
+        <button id="btnNotesMigrate" class="secondaryBtn">言葉を月ファイル方式に移行</button>
         <button id="btnNotesRevert" class="secondaryBtn">言葉を data.json 方式に戻す</button>
         <p class="fieldNote" id="notesMigrateStatus"></p>
         <button id="btnClearLegacyStorage" class="secondaryBtn">古い保存形式のコピーを消す（localStorage）</button>
@@ -1845,7 +1845,7 @@
       journalMode: parsed.journalMode === 'monthly' ? 'monthly' : 'legacy',
       journalModeAt: typeof parsed.journalModeAt === 'string' ? parsed.journalModeAt : '',
       // v7.2: 'yearly' = notes live in notes/YYYY.json files (by creation year)
-      notesMode: parsed.notesMode === 'yearly' ? 'yearly' : 'legacy',
+      notesMode: parsed.notesMode === 'monthly' ? 'monthly' : parsed.notesMode === 'yearly' ? 'yearly' : 'legacy',
       notesModeAt: typeof parsed.notesModeAt === 'string' ? parsed.notesModeAt : '',
     };
   }
@@ -1894,6 +1894,23 @@
     for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k.startsWith(KV_LS_PREFIX + prefix)) out.push(k.slice(KV_LS_PREFIX.length)); }
     return out;
   }
+  // every key with a prefix in one cursor walk (hundreds of note months at boot)
+  async function kvGetAllPrefix(prefix) {
+    const out = new Map();
+    if (kv.mode === 'idb' && kv.db) {
+      await new Promise((resolve, reject) => {
+        try {
+          const tx = kv.db.transaction(KV_STORE, 'readonly');
+          const req = tx.objectStore(KV_STORE).openCursor(IDBKeyRange.bound(prefix, prefix + '\uffff'));
+          req.onsuccess = () => { const c = req.result; if (c) { out.set(String(c.key), c.value); c.continue(); } else resolve(); };
+          req.onerror = () => reject(req.error);
+        } catch (e) { reject(e); }
+      });
+      return out;
+    }
+    (await kvKeys(prefix)).forEach((k) => { out.set(k, localStorage.getItem(KV_LS_PREFIX + k)); });
+    return out;
+  }
   function monthOfDate(d) { return String(d).slice(0, 7); }
   // the months the app always keeps in memory and in sync: this one and the
   // previous one (every 30-day statistic fits inside them)
@@ -1902,54 +1919,57 @@
   const bootKV = { months: {} };
   for (const k of ['data', 'dataBackup', 'walk', 'walkBackup', 'training', 'journalIndex', 'journalDirty']) { try { bootKV[k] = await kvGet(k); } catch (e) { bootKV[k] = null; } }
   for (const m of liveJournalMonths()) { try { bootKV.months[m] = await kvGet('journal:' + m); } catch (e) { bootKV.months[m] = null; } }
-  bootKV.noteYears = {};
-  try { for (const k of await kvKeys('notes:')) bootKV.noteYears[k.slice(6)] = await kvGet(k); } catch (e) {}
+  bootKV.noteDocs = {};
+  try { (await kvGetAllPrefix('notes:')).forEach((v, k) => { bootKV.noteDocs[k.slice(6)] = v; }); } catch (e) {}
   for (const k of ['notesDirty', 'notesStamps']) { try { bootKV[k] = await kvGet(k); } catch (e) { bootKV[k] = null; } }
 
-  // --- 言葉の年ファイル (v7.2) ------------------------------------------------
-  // Legacy mode: notes are an array inside data.json. Yearly mode:
-  // notes/YYYY.json per creation year (+ notes/index.json with one row per
-  // year) in kotoba-data. The device keeps EVERY year in kv (`notes:YYYY`)
-  // and in memory (data.notes), so 網・相談 keep their whole-set view; only
-  // the years touched since the last sync are written back.
+  // --- 言葉の月ファイル (v7.4; v7.2 was per year) ---------------------------------
+  // Legacy mode: notes are an array inside data.json. Monthly mode:
+  // notes/YYYY-MM.json per creation month (+ notes/index.json with one row
+  // per month) in kotoba-data. The device keeps EVERY month in kv
+  // (`notes:YYYY-MM`) and in memory (data.notes), so 網・相談 keep their
+  // whole-set view; only the months touched since the last sync are written
+  // back. A file never grows past one month of notes, whatever the pace.
+  // notesMode 'yearly' (v7.2, notes/YYYY.json) is upgraded automatically at
+  // boot: the year documents are re-bucketed by month and left behind.
   const NOTES_INDEX_PATH = 'notes/index.json';
-  const notesYearPath = (y) => 'notes/' + y + '.json';
-  const nm = { dirty: new Set(), stamps: {}, yearJson: {}, busy: false };
-  function notesYearly() { return data.notesMode === 'yearly'; }
-  function yearOfNote(n) { const c = (n && n.createdAt) || ''; if (/^\d{4}/.test(c)) return c.slice(0, 4); return yearOfNoteId(n && n.id) || todayStr().slice(0, 4); }
-  function yearOfNoteId(id) { const m = /^n_(\d{4})\d{4}_/.exec(String(id || '')); return m ? m[1] : null; }
-  function emptyNotesIndex() { return { version: 1, updatedAt: '', years: {} }; }
+  const notesMonthPath = (y) => 'notes/' + y + '.json';
+  const nm = { dirty: new Set(), stamps: {}, monthJson: {}, busy: false, legacyKeys: new Set() };
+  function notesSplit() { return data.notesMode === 'monthly' || data.notesMode === 'yearly'; }
+  function monthOfNote(n) { const c = (n && n.createdAt) || ''; if (/^\d{4}-\d{2}/.test(c)) return c.slice(0, 7); return monthOfNoteId(n && n.id) || todayStr().slice(0, 7); }
+  function monthOfNoteId(id) { const m = /^n_(\d{4})(\d{2})\d{2}_/.exec(String(id || '')); return m ? m[1] + '-' + m[2] : null; }
+  function emptyNotesIndex() { return { version: 1, updatedAt: '', months: {} }; }
   function normalizeNotesIndex(raw) {
     const out = emptyNotesIndex();
-    if (!raw || typeof raw !== 'object' || !raw.years || typeof raw.years !== 'object') return out;
+    if (!raw || typeof raw !== 'object' || !raw.months || typeof raw.months !== 'object') return out;
     out.updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : '';
-    Object.entries(raw.years).forEach(([y, v]) => { if (/^\d{4}$/.test(y) && v && typeof v === 'object') out.years[y] = { updatedAt: typeof v.updatedAt === 'string' ? v.updatedAt : '', count: Number(v.count) || 0 }; });
+    Object.entries(raw.months).forEach(([y, v]) => { if (/^\d{4}-\d{2}$/.test(y) && v && typeof v === 'object') out.months[y] = { updatedAt: typeof v.updatedAt === 'string' ? v.updatedAt : '', count: Number(v.count) || 0 }; });
     return out;
   }
-  function emptyYearDoc(y) { return { version: 1, year: y, updatedAt: '', notes: [], deletedIds: [] }; }
-  function normalizeYearDoc(raw, y) {
-    const out = emptyYearDoc(y);
+  function emptyNoteMonthDoc(y) { return { version: 1, month: y, updatedAt: '', notes: [], deletedIds: [] }; }
+  function normalizeNoteMonthDoc(raw, y) {
+    const out = emptyNoteMonthDoc(y);
     if (!raw || typeof raw !== 'object') return out;
     out.updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : '';
     out.notes = (Array.isArray(raw.notes) ? raw.notes : []).filter((n) => n && n.id).map(normalizeNote);
     out.deletedIds = (Array.isArray(raw.deletedIds) ? raw.deletedIds : []).filter((t) => t && t.id).map((t) => ({ id: String(t.id), deletedAt: t.deletedAt || nowIso() }));
     return out;
   }
-  function notesYearDoc(d, y) {
-    return { version: 1, year: y, updatedAt: nowIso(), notes: d.notes.filter((n) => yearOfNote(n) === y), deletedIds: (d.deletedIds || []).filter((t) => (yearOfNoteId(t.id) || todayStr().slice(0, 4)) === y) };
+  function notesMonthDoc(d, y) {
+    return { version: 1, month: y, updatedAt: nowIso(), notes: d.notes.filter((n) => monthOfNote(n) === y), deletedIds: (d.deletedIds || []).filter((t) => (monthOfNoteId(t.id) || todayStr().slice(0, 7)) === y) };
   }
-  function yearDocBody(doc) { return JSON.stringify({ notes: doc.notes, deletedIds: doc.deletedIds }); }
-  function notesYearsOf(d) { const ys = new Set(); d.notes.forEach((n) => ys.add(yearOfNote(n))); (d.deletedIds || []).forEach((t) => ys.add(yearOfNoteId(t.id) || todayStr().slice(0, 4))); Object.keys(nm.yearJson).forEach((y) => ys.add(y)); return [...ys].sort(); }
+  function noteMonthDocBody(doc) { return JSON.stringify({ notes: doc.notes, deletedIds: doc.deletedIds }); }
+  function notesMonthsOf(d) { const ys = new Set(); d.notes.forEach((n) => ys.add(monthOfNote(n))); (d.deletedIds || []).forEach((t) => ys.add(monthOfNoteId(t.id) || todayStr().slice(0, 7))); Object.keys(nm.monthJson).forEach((y) => ys.add(y)); return [...ys].sort(); }
   function persistNotesDirty() { return kvSet('notesDirty', JSON.stringify([...nm.dirty])).catch(() => {}); }
   function persistNotesStamps() { return kvSet('notesStamps', JSON.stringify(nm.stamps)).catch(() => {}); }
   // write every year whose content differs from what is in kv (cheap diff on the JSON), and mark it for sync
-  function persistNoteYears(d) {
+  function persistNoteMonths(d) {
     let changed = false;
-    notesYearsOf(d).forEach((y) => {
-      const doc = notesYearDoc(d, y);
-      const body = yearDocBody(doc);
-      if (nm.yearJson[y] === body) return;
-      nm.yearJson[y] = body;
+    notesMonthsOf(d).forEach((y) => {
+      const doc = notesMonthDoc(d, y);
+      const body = noteMonthDocBody(doc);
+      if (nm.monthJson[y] === body) return;
+      nm.monthJson[y] = body;
       kvSet('notes:' + y, JSON.stringify(doc)).catch(() => { localSaveError = '端末の保存に失敗しました（クラウドには同期します）'; recordSyncError(LAST_SYNC_ERROR_KEY, localSaveError); });
       nm.dirty.add(y); changed = true;
     });
@@ -1957,41 +1977,59 @@
   }
   // boot: lay the cached year files over whatever data.json still carried
   function notesBoot() {
-    if (!notesYearly()) return;
+    if (!notesSplit()) return;
     try { JSON.parse(bootKV.notesDirty || '[]').forEach((y) => nm.dirty.add(y)); } catch (e) {}
     try { nm.stamps = JSON.parse(bootKV.notesStamps || '{}') || {}; } catch (e) { nm.stamps = {}; }
     let notes = [], deleted = [];
-    Object.entries(bootKV.noteYears || {}).forEach(([y, raw]) => { try { const doc = normalizeYearDoc(JSON.parse(raw), y); notes = notes.concat(doc.notes); deleted = deleted.concat(doc.deletedIds); nm.yearJson[y] = yearDocBody(doc); } catch (e) {} });
+    Object.entries(bootKV.noteDocs || {}).forEach(([k, raw]) => {
+      try {
+        const doc = normalizeNoteMonthDoc(JSON.parse(raw), k);
+        notes = notes.concat(doc.notes); deleted = deleted.concat(doc.deletedIds);
+        if (/^\d{4}-\d{2}$/.test(k)) nm.monthJson[k] = noteMonthDocBody(doc); else nm.legacyKeys.add(k);   // v7.2 year document
+      } catch (e) {}
+    });
     const stray = mergeNoteSets(notes, deleted, data.notes, data.deletedIds || []);
     data.notes = stray.notes; data.deletedIds = stray.deleted;
-    persistNoteYears(data);   // anything data.json carried beyond the year files becomes dirty here
+    notesEnsureMonthly();
+    persistNoteMonths(data);   // anything data.json / year documents carried beyond the month files becomes dirty here
   }
-  function yearSignature(doc) { return doc.notes.map((n) => n.id + ':' + n.updatedAt).sort().join('|') + '#' + doc.deletedIds.map((t) => t.id + ':' + t.deletedAt).sort().join('|'); }
-  async function syncNotesYear(token, y, attempt) {
-    const remote = await ghGetContents(GITHUB_REPO, notesYearPath(y), token);
-    let rdoc = emptyYearDoc(y);
-    try { if (remote.text) rdoc = normalizeYearDoc(JSON.parse(remote.text), y); } catch (e) {}
-    const local = notesYearDoc(data, y);
+  // v7.2 -> v7.4: a device (or the data.json it merged) still says 'yearly'.
+  // Memory already holds every note, so switching is just re-bucketing: the
+  // month documents differ from what is cached, get written and marked
+  // dirty, and the old year keys are dropped. Other devices see the mode in
+  // data.json and do the same on their next merge.
+  function notesEnsureMonthly() {
+    if (data.notesMode === 'yearly') { data.notesMode = 'monthly'; data.notesModeAt = nowIso(); nm.stamps = {}; }
+    if (data.notesMode !== 'monthly') return;
+    Object.keys(nm.stamps).forEach((k) => { if (!/^\d{4}-\d{2}$/.test(k)) delete nm.stamps[k]; });
+    if (nm.legacyKeys.size) { nm.legacyKeys.forEach((k) => kvDel('notes:' + k).catch(() => {})); nm.legacyKeys.clear(); }
+  }
+  function noteMonthSignature(doc) { return doc.notes.map((n) => n.id + ':' + n.updatedAt).sort().join('|') + '#' + doc.deletedIds.map((t) => t.id + ':' + t.deletedAt).sort().join('|'); }
+  async function syncNotesMonth(token, y, attempt) {
+    const remote = await ghGetContents(GITHUB_REPO, notesMonthPath(y), token);
+    let rdoc = emptyNoteMonthDoc(y);
+    try { if (remote.text) rdoc = normalizeNoteMonthDoc(JSON.parse(remote.text), y); } catch (e) {}
+    const local = notesMonthDoc(data, y);
     const ms = mergeNoteSets(local.notes, local.deletedIds, rdoc.notes, rdoc.deletedIds);
-    const merged = { version: 1, year: y, updatedAt: nowIso(), notes: ms.notes, deletedIds: ms.deleted };
+    const merged = { version: 1, month: y, updatedAt: nowIso(), notes: ms.notes, deletedIds: ms.deleted };
     // put the merged year back into memory (other years untouched)
     const alive = new Set(merged.notes.map((n) => n.id));
-    data.notes = data.notes.filter((n) => yearOfNote(n) !== y).concat(merged.notes);
-    data.deletedIds = (data.deletedIds || []).filter((t) => (yearOfNoteId(t.id) || todayStr().slice(0, 4)) !== y).concat(merged.deletedIds);
+    data.notes = data.notes.filter((n) => monthOfNote(n) !== y).concat(merged.notes);
+    data.deletedIds = (data.deletedIds || []).filter((t) => (monthOfNoteId(t.id) || todayStr().slice(0, 7)) !== y).concat(merged.deletedIds);
     data.trash = (data.trash || []).filter((n) => !alive.has(n.id));
-    nm.yearJson[y] = yearDocBody(merged);
+    nm.monthJson[y] = noteMonthDocBody(merged);
     await kvSet('notes:' + y, JSON.stringify(merged)).catch(() => {});
     const isEmpty = !merged.notes.length && !merged.deletedIds.length;
-    if ((!remote.text && !isEmpty) || (remote.text && yearSignature(rdoc) !== yearSignature(merged))) {
-      try { await ghPutJson(notesYearPath(y), merged, remote.sha, `notes ${y}: ${merged.notes.length} notes`); }
-      catch (e) { if (e.status === 409 && !attempt) return syncNotesYear(token, y, 1); throw e; }
+    if ((!remote.text && !isEmpty) || (remote.text && noteMonthSignature(rdoc) !== noteMonthSignature(merged))) {
+      try { await ghPutJson(notesMonthPath(y), merged, remote.sha, `notes ${y}: ${merged.notes.length} notes`); }
+      catch (e) { if (e.status === 409 && !attempt) return syncNotesMonth(token, y, 1); throw e; }
     }
     nm.dirty.delete(y);
-    return { changed: yearSignature(rdoc) !== yearSignature(merged), count: merged.notes.length };
+    return { changed: noteMonthSignature(rdoc) !== noteMonthSignature(merged), count: merged.notes.length };
   }
   function mergeNotesIndex(a, b) {
     const out = emptyNotesIndex();
-    new Set([...Object.keys(a.years), ...Object.keys(b.years)]).forEach((y) => { const x = a.years[y], z = b.years[y]; out.years[y] = (x && z) ? ((z.updatedAt > x.updatedAt) ? z : x) : (x || z); });
+    new Set([...Object.keys(a.months), ...Object.keys(b.months)]).forEach((y) => { const x = a.months[y], z = b.months[y]; out.months[y] = (x && z) ? ((z.updatedAt > x.updatedAt) ? z : x) : (x || z); });
     out.updatedAt = a.updatedAt > b.updatedAt ? a.updatedAt : b.updatedAt;
     return out;
   }
@@ -2003,21 +2041,21 @@
       let remoteIndex = emptyNotesIndex();
       try { if (ri.text) remoteIndex = normalizeNotesIndex(JSON.parse(ri.text)); } catch (e) {}
       const localIndex = emptyNotesIndex();
-      Object.keys(nm.yearJson).forEach((y) => { localIndex.years[y] = { updatedAt: nm.stamps[y] || '', count: data.notes.filter((n) => yearOfNote(n) === y).length }; });
+      Object.keys(nm.monthJson).forEach((y) => { localIndex.months[y] = { updatedAt: nm.stamps[y] || '', count: data.notes.filter((n) => monthOfNote(n) === y).length }; });
       // years to touch: edited here, unknown here, or changed elsewhere since last seen
       const years = new Set([...nm.dirty]);
-      Object.entries(remoteIndex.years).forEach(([y, row]) => { if (!(y in nm.yearJson) || row.updatedAt !== (nm.stamps[y] || '')) years.add(y); });
+      Object.entries(remoteIndex.months).forEach(([y, row]) => { if (!(y in nm.monthJson) || row.updatedAt !== (nm.stamps[y] || '')) years.add(y); });
       let indexChanged = false;
       const index = mergeNotesIndex(localIndex, remoteIndex);
       for (const y of [...years].sort()) {
-        const r = await syncNotesYear(token, y);
-        const prev = index.years[y];
-        if (r.changed || !prev) { index.years[y] = { updatedAt: nowIso(), count: r.count }; indexChanged = true; }
-        nm.stamps[y] = index.years[y].updatedAt;
+        const r = await syncNotesMonth(token, y);
+        const prev = index.months[y];
+        if (r.changed || !prev) { index.months[y] = { updatedAt: nowIso(), count: r.count }; indexChanged = true; }
+        nm.stamps[y] = index.months[y].updatedAt;
       }
       persistNotesDirty(); persistNotesStamps();
       if (years.size) refreshCurrentScreen();
-      const sig = (ix) => JSON.stringify(Object.keys(ix.years).sort().map((y) => [y, ix.years[y].updatedAt]));
+      const sig = (ix) => JSON.stringify(Object.keys(ix.months).sort().map((y) => [y, ix.months[y].updatedAt]));
       if (indexChanged || sig(index) !== sig(remoteIndex)) {
         index.updatedAt = nowIso();
         try { await ghPutJson(NOTES_INDEX_PATH, index, ri.sha, 'notes index'); }
@@ -2026,38 +2064,38 @@
     } finally { nm.busy = false; }
   }
   function notesMigrationStatus(text) { const el = document.getElementById('notesMigrateStatus'); if (el) el.textContent = text; }
-  async function migrateNotesToYearly() {
+  async function migrateNotesToMonthly() {
     const token = getGhToken();
     if (!token) { alert('同期トークンが必要です'); return; }
     if (!navigator.onLine) { alert('オンラインで実行してください'); return; }
-    if (notesYearly()) { alert('すでに年ファイル方式です'); return; }
-    if (!confirm('言葉（ノート）を作成年ごとのファイルに移します。先に kotoba-data のバックアップを取りましたか？')) return;
+    if (notesSplit()) { alert('すでに月ファイル方式です'); return; }
+    if (!confirm('言葉（ノート）を作成月ごとのファイルに移します。先に kotoba-data のバックアップを取りましたか？')) return;
     if (!confirm('移行を始めます。完了まで画面を閉じないでください。')) return;
     try {
       notesMigrationStatus('最新の状態を取得中…');
       await syncNow();
       if (noteSyncState === 'error') throw new Error('同期に失敗したため中止しました');
-      nm.dirty = new Set(); nm.stamps = {}; nm.yearJson = {};
-      const years = notesYearsOf(data);
+      nm.dirty = new Set(); nm.stamps = {}; nm.monthJson = {};
+      const years = notesMonthsOf(data);
       const index = emptyNotesIndex();
       let i = 0;
       for (const y of years) {
         i++;
-        notesMigrationStatus(`年ファイルを書き込み中 ${i}/${years.length}（${y}）`);
-        const r = await syncNotesYear(token, y);
-        index.years[y] = { updatedAt: nowIso(), count: r.count };
-        nm.stamps[y] = index.years[y].updatedAt;
+        notesMigrationStatus(`月ファイルを書き込み中 ${i}/${years.length}（${y}）`);
+        const r = await syncNotesMonth(token, y);
+        index.months[y] = { updatedAt: nowIso(), count: r.count };
+        nm.stamps[y] = index.months[y].updatedAt;
       }
       notesMigrationStatus('索引を書き込み中…');
       index.updatedAt = nowIso();
       const ri = await ghGetContents(GITHUB_REPO, NOTES_INDEX_PATH, token);
       await ghPutJson(NOTES_INDEX_PATH, index, ri.sha, 'notes index (migrated)');
       await persistNotesStamps(); await persistNotesDirty();
-      data.notesMode = 'yearly'; data.notesModeAt = nowIso();
+      data.notesMode = 'monthly'; data.notesModeAt = nowIso();
       persistLocal(data);
       notesMigrationStatus('data.json を更新中…');
       await hardPushCurrentData();
-      notesMigrationStatus('移行が完了しました（' + years.length + ' 年分）');
+      notesMigrationStatus('移行が完了しました（' + years.length + ' か月分）');
       openSettings();
     } catch (e) {
       notesMigrationStatus('移行に失敗しました: ' + (e.message || e) + '。data.json は変更していないので、そのまま使えます。');
@@ -2067,16 +2105,16 @@
     const token = getGhToken();
     if (!token) { alert('同期トークンが必要です'); return; }
     if (!navigator.onLine) { alert('オンラインで実行してください'); return; }
-    if (!notesYearly()) { alert('すでに data.json 方式です'); return; }
-    if (!confirm('言葉をすべて data.json に書き戻し、年ファイル方式をやめます。よろしいですか？')) return;
+    if (!notesSplit()) { alert('すでに data.json 方式です'); return; }
+    if (!confirm('言葉をすべて data.json に書き戻し、月ファイル方式をやめます。よろしいですか？')) return;
     try {
-      notesMigrationStatus('年ファイルを取得中…');
+      notesMigrationStatus('月ファイルを取得中…');
       await notesSyncNow(token);   // pulls every year listed in the index into memory
       data.notesMode = 'legacy'; data.notesModeAt = nowIso();
       persistLocal(data);
       notesMigrationStatus('data.json に書き戻し中…');
       await hardPushCurrentData();
-      notesMigrationStatus('data.json 方式に戻しました（言葉 ' + data.notes.length + ' 枚）。年ファイルは残っていますが使われません。');
+      notesMigrationStatus('data.json 方式に戻しました（言葉 ' + data.notes.length + ' 枚）。月ファイルは残っていますが使われません。');
       openSettings();
     } catch (e) {
       notesMigrationStatus('戻しに失敗しました: ' + (e.message || e));
@@ -2119,7 +2157,7 @@
   const BACKUP_MAX_CHARS = 1000000;
   let localSaveError = '';
   function persistLocal(d) {
-    if (d && d.notesMode === 'yearly') persistNoteYears(d);
+    if (d && (d.notesMode === 'yearly' || d.notesMode === 'monthly')) persistNoteMonths(d);
     let json;
     try { json = JSON.stringify(dataForStorage(d)); } catch (e) { return; }
     kvSet('data', json).then(() => { localSaveError = ''; }).catch(() => {
@@ -2134,7 +2172,7 @@
     if (!d) return d;
     let out = d;
     if (d.journalMode === 'monthly') out = Object.assign({}, out, { journal: [], deletedJournalIds: [] });
-    if (d.notesMode === 'yearly') out = Object.assign({}, out, { notes: [], deletedIds: [] });
+    if (d.notesMode === 'yearly' || d.notesMode === 'monthly') out = Object.assign({}, out, { notes: [], deletedIds: [] });
     return out;
   }
   // The second copy is a safety net against a corrupt primary; once the
@@ -2465,7 +2503,9 @@
     if (status === 401 || status === 403) return `${repoLabel}にアクセスできません。トークンの権限を確認してください（${status}）`;
     if (status === 404) return `${repoLabel}が見つかりません（404）`;
     if (status) return `${repoLabel}への同期に失敗しました（${status}）`;
-    return `${repoLabel}への同期に失敗しました（通信エラー）`;
+    // no HTTP status: a network failure, or a bug in the sync code - keep the raw message so it can be read in 設定
+    const detail = (e && e.message && e.message !== 'Failed to fetch') ? '：' + String(e.message).slice(0, 120) : '';
+    return `${repoLabel}への同期に失敗しました（通信エラー${detail}）`;
   }
   function recordSyncError(key, message) { localStorage.setItem(key, JSON.stringify({ message, at: nowIso() })); }
   function clearSyncError(key) { localStorage.removeItem(key); }
@@ -2585,6 +2625,7 @@
       const localHadNoNotes = data.notes.length === 0;
       const remote = await ghGetFile(token); // throws on failure -> no push is attempted below
       data = mergeData(data, remote.data || emptyRemoteData());
+      notesEnsureMonthly();
       adoptJournalMonths();
       persistLocal(data);
       backupData(data);
@@ -2595,7 +2636,7 @@
         await pushWithConflictRetry(token, remote.sha);
         backupData(data);
       }
-      if (notesYearly()) await notesSyncNow(token);
+      if (notesSplit()) await notesSyncNow(token);
       if (journalMonthly()) await journalSyncNow(token);
       localStorage.setItem(LAST_SYNC_KEY, nowIso());
       pendingChangeCount = 0;
@@ -5611,11 +5652,24 @@
     return el;
   }
 
+  // v7.4: never put thousands of cards into the DOM at once - 200 per page,
+  // 「もっと見る」 adds the next 200. A change of filter/search/sort starts over.
+  const LIST_PAGE = 200;
   function renderFlatList(notes) {
     const listEl = document.getElementById('listItems');
     listEl.innerHTML = '';
     document.getElementById('listEmpty').hidden = notes.length > 0;
-    sortNotesForFlatList(notes).forEach((n) => listEl.appendChild(renderListItemRow(n)));
+    const sig = [listState.search, listState.kind, [...listState.tags].join(','), listState.sortMode, listState.noLinksOnly].join('|');
+    if (listState.pageSig !== sig) { listState.pageSig = sig; listState.pageLimit = LIST_PAGE; }
+    const sorted = sortNotesForFlatList(notes);
+    sorted.slice(0, listState.pageLimit).forEach((n) => listEl.appendChild(renderListItemRow(n)));
+    if (sorted.length > listState.pageLimit) {
+      const more = document.createElement('button');
+      more.type = 'button'; more.className = 'secondaryBtn';
+      more.textContent = `もっと見る（あと ${sorted.length - listState.pageLimit} 枚）`;
+      more.addEventListener('click', () => { listState.pageLimit += LIST_PAGE; renderList(); });
+      listEl.appendChild(more);
+    }
   }
 
   // Tracks which group currently has its rename panel open (keyPrefix+':'+
@@ -10265,9 +10319,9 @@
     document.getElementById('statJournalMode').textContent = journalMonthly() ? `月ファイル（${jm.index ? Object.keys(jm.index.months).length : 0} か月、読み込み中 ${jm.loaded.size} か月）` : 'data.json（旧方式）';
     document.getElementById('btnJournalMigrate').hidden = journalMonthly();
     document.getElementById('btnJournalRevert').hidden = !journalMonthly();
-    document.getElementById('statNotesMode').textContent = notesYearly() ? `年ファイル（${Object.keys(nm.yearJson).length} 年分、未同期 ${nm.dirty.size}）` : 'data.json（旧方式）';
-    document.getElementById('btnNotesMigrate').hidden = notesYearly();
-    document.getElementById('btnNotesRevert').hidden = !notesYearly();
+    document.getElementById('statNotesMode').textContent = notesSplit() ? `月ファイル（${Object.keys(nm.monthJson).length} か月分、未同期 ${nm.dirty.size}）` : 'data.json（旧方式）';
+    document.getElementById('btnNotesMigrate').hidden = notesSplit();
+    document.getElementById('btnNotesRevert').hidden = !notesSplit();
     if (navigator.storage && navigator.storage.estimate) navigator.storage.estimate().then((est) => { const el = document.getElementById('statDataSizeNote'); if (el && est && est.usage != null) el.textContent = el.textContent + `　／　IndexedDB 使用量 約 ${fmtBytes(est.usage)}` + (est.quota ? `（上限の目安 ${fmtBytes(est.quota)}）` : ''); }).catch(() => {});
     const noteErr = getSyncError(LAST_SYNC_ERROR_KEY);
     const walkErr = getSyncError(WALK_LAST_SYNC_ERROR_KEY);
@@ -10496,7 +10550,7 @@
   });
 
   document.getElementById('btnJournalMigrate').addEventListener('click', () => migrateJournalToMonthly());
-  document.getElementById('btnNotesMigrate').addEventListener('click', () => migrateNotesToYearly());
+  document.getElementById('btnNotesMigrate').addEventListener('click', () => migrateNotesToMonthly());
   document.getElementById('btnNotesRevert').addEventListener('click', () => revertNotesToLegacy());
   document.getElementById('btnJournalRevert').addEventListener('click', () => revertJournalToLegacy());
   document.getElementById('btnClearLegacyStorage').addEventListener('click', () => {
