@@ -201,7 +201,7 @@
     color: var(--text-dim);
   }
   .navBtn.selected { color: var(--accent); border-color: var(--accent-dim); }
-  input[type="text"], input[type="search"], input[type="password"], input[type="date"], textarea {
+  input[type="text"], input[type="search"], input[type="password"], input[type="date"], input[type="number"], textarea {
     font-family: inherit;
     font-size: 16px;
     background: var(--bg-elevated);
@@ -513,6 +513,33 @@
   .calDot.dotConsult { background: #86a9c9; }
   .calDot.dotDraw { background: #a98fd0; }
   .calDot.dotQuestion { background: #d3b16a; }
+  .calDot.dotTraining { background: #e07a5f; }
+  /* --- v4.0: 筋トレ ------------------------------------------------- */
+  .trBlock { background: var(--bg-card); border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; }
+  .trBlockHead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .trBlockHead .trPart { font-size: 15px; color: var(--accent); }
+  .trAddRow { display: flex; gap: 8px; margin-top: 8px; }
+  .trAddRow input { flex: 1; }
+  .trChipEdit { display: inline-flex; gap: 6px; align-items: center; margin: 4px 6px 4px 0; }
+  .trChipEdit input { width: 11em; }
+  .trEx { border-top: 1px solid var(--border); padding: 10px 0 6px; }
+  .trExHead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .trExName { font-size: 16px; }
+  .trExMax { font-size: 12px; color: #e0785a; white-space: nowrap; }
+  .trPrev { font-size: 12px; color: var(--text-dim); margin: 4px 0 6px; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .trPrev .trPrevSets { flex: 1; min-width: 12em; }
+  .trSetRow { display: grid; grid-template-columns: auto 1fr auto 1fr auto; gap: 6px; align-items: center; margin-bottom: 6px; }
+  .trSetRow input[type=number] { width: 100%; min-width: 0; text-align: center; }
+  .trSetRow .trX { color: var(--text-faint); }
+  .trBw { font-size: 12px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text-dim); font-family: inherit; white-space: nowrap; }
+  .trBw.selected { color: var(--accent); border-color: var(--accent); }
+  .trSetDel { color: var(--text-faint); background: none; border: none; font-size: 16px; padding: 4px 6px; font-family: inherit; }
+  .trExFoot { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim); margin-top: 2px; flex-wrap: wrap; }
+  .trDelta.up { color: var(--accent); }
+  .trDelta.down { color: #d1665a; }
+  .trDayCardEx { font-size: 13px; line-height: 1.6; }
+  .trDayCardEx .trDayCardSets { color: var(--text-dim); }
+  .trDayCardMax { color: #e0785a; }
   .calCell.today { border-color: var(--accent-dim); }
   .calCell.selected { background: var(--bg-elevated); border-color: var(--accent); }
   .calCell.disabled { background: none; color: #444; border-color: #1e1e1e; cursor: default; }
@@ -1074,11 +1101,44 @@
     </div>
   </section>
 
+  <section id="screen-training" class="screen" hidden>
+    <header class="topbar">
+      <button class="backBtn" id="backFromTraining">← 戻る</button>
+      <div class="topbar-title">筋トレ</div>
+      <div style="width:40px;"></div>
+    </header>
+    <div class="editorBody">
+      <div class="field">
+        <span class="fieldLabel">日付</span>
+        <input type="date" id="trDate">
+      </div>
+      <div class="field">
+        <span class="fieldLabel">体重（kg・任意）</span>
+        <input type="number" id="trWeight" step="0.1" inputmode="decimal" placeholder="例 68.5">
+      </div>
+      <div class="field">
+        <span class="fieldLabel">部位（複数可）</span>
+        <div class="tagFilterRow" id="trPartRow"></div>
+      </div>
+      <div id="trBlocks"></div>
+      <button id="btnTrSave" class="primaryBtn">保存</button>
+      <p class="fieldNote" id="trStatus"></p>
+      <div class="field">
+        <button id="btnTrImage" class="secondaryBtn">ログ画像を保存</button>
+        <p class="fieldNote" id="trImageStatus"></p>
+        <canvas id="trCanvas" width="1080" height="1920" hidden></canvas>
+      </div>
+      <div class="detailActions" id="trDeleteRow" hidden>
+        <button id="btnTrDelete" class="dangerBtn">この日の記録を消す</button>
+      </div>
+    </div>
+  </section>
+
   <section id="screen-records" class="screen" hidden>
     <header class="topbar">
       <button class="backBtn" id="backFromRecords">← 戻る</button>
       <div class="topbar-title">記録</div>
-      <div style="width:40px;"></div>
+      <button id="btnOpenTraining" class="iconBtn">筋トレ</button>
     </header>
 
     <div id="recordsCalendarView">
@@ -1102,6 +1162,7 @@
         <div class="statRow"><span>朝の言葉を受け取った日数</span><span id="summaryMorningDays"></span></div>
         <div class="statRow"><span>相談した回数</span><span id="summaryConsultCount"></span></div>
         <div class="statRow"><span>生成した問い</span><span id="summaryQuestionCount"></span></div>
+        <div class="statRow"><span>筋トレ日数</span><span id="summaryTrainingDays"></span></div>
         <div class="field">
           <span class="fieldLabel">その月に最も多く届いた言葉</span>
           <div id="summaryTopNotes" class="listItems"></div>
@@ -1321,6 +1382,13 @@
   const LAST_SYNC_KEY = 'kotoba_lastSyncAt';
   const LAST_SYNC_ERROR_KEY = 'kotoba_lastSyncError';
   const WALK_LAST_SYNC_ERROR_KEY = 'kotoba_walkLastSyncError';
+  const TRAINING_LAST_SYNC_ERROR_KEY = 'kotoba_trainingLastSyncError';
+  const TRAINING_LAST_SYNC_KEY = 'kotoba_trainingLastSyncAt';
+  const TRAINING_STORAGE_KEY = 'kotoba_trainingData';
+  const TRAINING_PATH = 'training.json';
+  // declared up here, not in the 筋トレ section: loadTrainingData() runs at boot
+  // and normalizeTrainingData reads this - a later const would be in its TDZ
+  const TRAINING_PARTS = ['肩', '胸', '背中', '腕', '足', '腹筋', '有酸素', 'その他'];
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
@@ -1891,12 +1959,8 @@
     try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
   }
   function combinedSyncErrorText() {
-    const noteErr = getSyncError(LAST_SYNC_ERROR_KEY);
-    const walkErr = getSyncError(WALK_LAST_SYNC_ERROR_KEY);
-    if (noteErr && walkErr) return `${noteErr.message} / ${walkErr.message}`;
-    if (noteErr) return noteErr.message;
-    if (walkErr) return walkErr.message;
-    return '同期エラー';
+    const msgs = [LAST_SYNC_ERROR_KEY, WALK_LAST_SYNC_ERROR_KEY, TRAINING_LAST_SYNC_ERROR_KEY].map(getSyncError).filter(Boolean).map((e) => e.message);
+    return msgs.length ? msgs.join(' / ') : '同期エラー';
   }
 
   // v3: one token drives two independent repo syncs (kotoba-data for notes+
@@ -1906,11 +1970,12 @@
   const syncBarEl = document.getElementById('syncBar');
   let noteSyncState = getGhToken() ? 'unsynced' : 'off';
   let walkSyncState = getGhToken() ? 'unsynced' : 'off';
+  let trainingSyncState = getGhToken() ? 'unsynced' : 'off';
 
   function combinedPendingCount() { return pendingChangeCount + (typeof walkPendingChangeCount === 'number' ? walkPendingChangeCount : 0); }
 
   function renderSyncBar() {
-    const states = [noteSyncState, walkSyncState];
+    const states = [noteSyncState, walkSyncState, trainingSyncState];
     let state;
     if (states.includes('syncing')) state = 'syncing';
     else if (states.includes('error')) state = 'error';
@@ -1924,7 +1989,8 @@
     if (state === 'synced') {
       const t1 = localStorage.getItem(LAST_SYNC_KEY);
       const t2 = localStorage.getItem(WALK_LAST_SYNC_KEY);
-      const latest = [t1, t2].filter(Boolean).sort().pop();
+      const t3 = localStorage.getItem(TRAINING_LAST_SYNC_KEY);
+      const latest = [t1, t2, t3].filter(Boolean).sort().pop();
       text = latest ? `同期済み ${formatDateTime(latest)}` : '同期済み';
     } else if (state === 'error') {
       text = combinedSyncErrorText() + (pending > 0 ? `（未反映 ${pending}件）` : '');
@@ -1943,6 +2009,7 @@
 
   function setSyncStatus(state) { noteSyncState = state; renderSyncBar(); }
   function setWalkSyncStatus(state) { walkSyncState = state; renderSyncBar(); }
+  function setTrainingSyncStatus(state) { trainingSyncState = state; renderSyncBar(); }
 
   let syncDebounceTimer = null;
   function scheduleSync() {
@@ -2093,6 +2160,7 @@
   function backupWalkData(d) { try { localStorage.setItem(WALK_BACKUP_KEY, JSON.stringify(d)); } catch (e) {} }
 
   let walkData = loadWalkData();
+  let trainingData = loadTrainingData();
   let walkPendingChangeCount = 0;
 
   function saveWalkData(d) {
@@ -2200,7 +2268,7 @@
   }
 
   async function syncAllNow() {
-    await Promise.all([syncNow(), walkSyncNow()]);
+    await Promise.all([syncNow(), walkSyncNow(), trainingSyncNow()]);
   }
 
   // --- Walk derived values / canvas / share (ported verbatim from walk10000,
@@ -4013,7 +4081,7 @@
   };
 
   function showScreen(name) {
-    ['home', 'list', 'consult', 'detail', 'editor', 'settings', 'records', 'bulk', 'draftreview'].forEach((s) => {
+    ['home', 'list', 'consult', 'detail', 'editor', 'settings', 'records', 'bulk', 'draftreview', 'training'].forEach((s) => {
       document.getElementById('screen-' + s).hidden = s !== name;
     });
     nav.screen = name;
@@ -4023,11 +4091,12 @@
     // mechanism that already hid it before this nav became position:fixed.
     document.getElementById('globalBottomNav').hidden = false;
     document.querySelectorAll('#globalBottomNav .navBtn').forEach((b) => b.classList.remove('selected'));
-    const activeBtn = { home: 'navHome', list: 'navList', consult: 'navConsult', records: 'navRecords', settings: 'navSettings' }[name];
+    const activeBtn = { home: 'navHome', list: 'navList', consult: 'navConsult', records: 'navRecords', settings: 'navSettings', training: 'navRecords' }[name];
     if (activeBtn) document.getElementById(activeBtn).classList.add('selected');
   }
 
   function refreshCurrentScreen() {
+    if (nav.screen === 'training') { renderTraining(); return; }
     if (nav.screen === 'home') renderHome();
     else if (nav.screen === 'list') renderList();
     else if (nav.screen === 'detail') renderDetail();
@@ -5762,6 +5831,690 @@
     downloadFile(file);
   });
 
+  // --- 筋トレ (v4.0) ----------------------------------------------------
+  // Its own file in kotoba-data (training.json), synced the way notes are:
+  // one entry per day, merged per entry by updatedAt with tombstones - not
+  // the walk file's "longer list wins", because sets get edited daily.
+
+  function trainingDefaultData() { return { version: 1, updatedAt: nowIso(), days: [], deletedDayIds: [], exercises: {} }; }
+
+  function normalizeTrainingSet(x) {
+    if (!x || typeof x !== 'object') return null;
+    const r = Number(x.r);
+    if (!Number.isFinite(r) || r <= 0) return null;
+    const w = (x.w === null || x.w === undefined || x.w === '') ? null : Number(x.w);
+    return { w: Number.isFinite(w) ? w : null, r: Math.round(r) };
+  }
+  function normalizeTrainingDay(d) {
+    if (!d || !d.date || !/^\d{4}-\d{2}-\d{2}$/.test(d.date)) return null;
+    const parts = (Array.isArray(d.parts) ? d.parts : []).map((p) => ({
+      part: TRAINING_PARTS.includes(p && p.part) ? p.part : 'その他',
+      exercises: (Array.isArray(p && p.exercises) ? p.exercises : []).map((e) => ({
+        name: (e && typeof e.name === 'string') ? e.name.trim() : '',
+        sets: (Array.isArray(e && e.sets) ? e.sets : []).map(normalizeTrainingSet).filter(Boolean),
+      })).filter((e) => e.name),
+    }));
+    const w = (d.weight === null || d.weight === undefined || d.weight === '') ? null : Number(d.weight);
+    return {
+      id: d.date, date: d.date,
+      weight: Number.isFinite(w) ? w : null,
+      parts,
+      createdAt: d.createdAt || nowIso(),
+      updatedAt: d.updatedAt || d.createdAt || nowIso(),
+    };
+  }
+  function normalizeTrainingData(parsed) {
+    if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.days)) return null;
+    const exercises = {};
+    Object.entries((parsed.exercises && typeof parsed.exercises === 'object') ? parsed.exercises : {}).forEach(([part, list]) => {
+      if (!TRAINING_PARTS.includes(part) || !Array.isArray(list)) return;
+      exercises[part] = list.filter((e) => e && typeof e.name === 'string' && e.name.trim()).map((e) => ({ name: e.name.trim(), lastUsedAt: e.lastUsedAt || '' }));
+    });
+    return {
+      version: 1,
+      updatedAt: parsed.updatedAt || nowIso(),
+      days: parsed.days.map(normalizeTrainingDay).filter(Boolean),
+      deletedDayIds: Array.isArray(parsed.deletedDayIds) ? parsed.deletedDayIds.filter((t) => t && t.id).map((t) => ({ id: String(t.id), deletedAt: t.deletedAt || nowIso() })) : [],
+      exercises,
+    };
+  }
+  function loadTrainingData() {
+    try {
+      const raw = localStorage.getItem(TRAINING_STORAGE_KEY);
+      if (raw) { const p = normalizeTrainingData(JSON.parse(raw)); if (p) return p; }
+    } catch (e) {}
+    return trainingDefaultData();
+  }
+  function persistTrainingLocal(d) { localStorage.setItem(TRAINING_STORAGE_KEY, JSON.stringify(d)); }
+  function saveTrainingData(d) {
+    d.updatedAt = nowIso();
+    persistTrainingLocal(d);
+    scheduleTrainingSync();
+  }
+  function findTrainingDay(date) { return trainingData.days.find((d) => d.date === date) || null; }
+
+  function mergeTrainingData(a, b) {
+    const dA = new Map((a.days || []).map((d) => [d.id, d])), dB = new Map((b.days || []).map((d) => [d.id, d]));
+    const tA = new Map((a.deletedDayIds || []).map((t) => [t.id, t.deletedAt])), tB = new Map((b.deletedDayIds || []).map((t) => [t.id, t.deletedAt]));
+    const days = [];
+    new Set([...dA.keys(), ...dB.keys()]).forEach((id) => {
+      const x = dA.get(id), y = dB.get(id);
+      let w;
+      if (x && y) w = new Date(x.updatedAt) >= new Date(y.updatedAt) ? x : y;
+      else { const only = x || y; const tomb = x ? tB.get(id) : tA.get(id); w = (tomb && new Date(tomb) >= new Date(only.updatedAt)) ? null : only; }
+      if (w) days.push(JSON.parse(JSON.stringify(w)));
+    });
+    days.sort((p, q) => (p.date < q.date ? -1 : 1));
+    const tombs = new Map(); tA.forEach((at, id) => tombs.set(id, at)); tB.forEach((at, id) => { const c = tombs.get(id); if (!c || new Date(at) > new Date(c)) tombs.set(id, at); });
+    days.forEach((d) => tombs.delete(d.id));
+    const exercises = {};
+    TRAINING_PARTS.forEach((part) => {
+      const m = new Map();
+      [...((a.exercises || {})[part] || []), ...((b.exercises || {})[part] || [])].forEach((e) => { const c = m.get(e.name); if (!c || (e.lastUsedAt || '') > (c.lastUsedAt || '')) m.set(e.name, { name: e.name, lastUsedAt: e.lastUsedAt || '' }); });
+      if (m.size) exercises[part] = [...m.values()];
+    });
+    return { version: 1, updatedAt: nowIso(), days, deletedDayIds: [...tombs.entries()].map(([id, deletedAt]) => ({ id, deletedAt })), exercises };
+  }
+
+  // sync (same shape as the notes sync, third file in the same repo)
+  async function ghGetTrainingFile(token) {
+    const res = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${TRAINING_PATH}`, { headers: ghHeaders(token), cache: 'no-store' });
+    if (res.status === 404) return { data: null, sha: null };
+    if (!res.ok) { const err = new Error('GitHub GET failed: ' + res.status); err.status = res.status; throw err; }
+    const json = await res.json();
+    return { data: normalizeTrainingData(JSON.parse(base64ToUtf8(json.content))), sha: json.sha };
+  }
+  async function ghPutTrainingFile(token, newData, sha) {
+    const body = { message: `training: ${newData.days.length} days`, content: utf8ToBase64(JSON.stringify(newData, null, 2)) };
+    if (sha) body.sha = sha;
+    const res = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${TRAINING_PATH}`, { method: 'PUT', headers: ghHeaders(token), body: JSON.stringify(body) });
+    if (!res.ok) { const err = new Error('GitHub PUT failed: ' + res.status); err.status = res.status; throw err; }
+    return res.json();
+  }
+  let trainingSyncTimer = null, trainingSyncInFlight = false;
+  function scheduleTrainingSync() {
+    if (!getGhToken()) return;
+    if (trainingSyncTimer) clearTimeout(trainingSyncTimer);
+    setTrainingSyncStatus('unsynced');
+    trainingSyncTimer = setTimeout(trainingSyncNow, 800);
+  }
+  async function trainingSyncNow() {
+    const token = getGhToken();
+    if (!token) { setTrainingSyncStatus('off'); return; }
+    if (trainingSyncInFlight) return;
+    if (!navigator.onLine) { setTrainingSyncStatus('offline'); return; }
+    trainingSyncInFlight = true;
+    setTrainingSyncStatus('syncing');
+    try {
+      const localHadNoDays = trainingData.days.length === 0;
+      const remote = await ghGetTrainingFile(token);
+      trainingData = mergeTrainingData(trainingData, remote.data || trainingDefaultData());
+      persistTrainingLocal(trainingData);
+      refreshCurrentScreen();
+      const skipPush = localHadNoDays && remote.data && remote.data.days.length > 0;
+      if (!skipPush) {
+        try { await ghPutTrainingFile(token, trainingData, remote.sha); }
+        catch (e) {
+          if (e.status !== 409) throw e;
+          const r2 = await ghGetTrainingFile(token);
+          trainingData = mergeTrainingData(trainingData, r2.data || trainingDefaultData());
+          persistTrainingLocal(trainingData);
+          await ghPutTrainingFile(token, trainingData, r2.sha);
+        }
+      }
+      localStorage.setItem(TRAINING_LAST_SYNC_KEY, nowIso());
+      clearSyncError(TRAINING_LAST_SYNC_ERROR_KEY);
+      setTrainingSyncStatus('synced');
+    } catch (e) {
+      recordSyncError(TRAINING_LAST_SYNC_ERROR_KEY, repoErrorMessage('筋トレデータ（kotoba-data/training.json）', e));
+      setTrainingSyncStatus('error');
+    } finally {
+      trainingSyncInFlight = false;
+    }
+  }
+
+  // --- derived -------------------------------------------------------------
+  // Epley: w * (1 + r/30). A single rep is the weight itself; bodyweight
+  // sets (w null) have no 1RM.
+  function est1RM(set) {
+    if (!set || set.w === null || !set.r) return null;
+    return set.r === 1 ? set.w : set.w * (1 + set.r / 30);
+  }
+  function bestSet(sets) {
+    let best = null, bestV = -1;
+    (sets || []).forEach((st) => { const v = est1RM(st); if (v !== null && v > bestV) { bestV = v; best = st; } });
+    return best;
+  }
+  function fmtKg(v) { return v === null || v === undefined ? '' : (Math.round(v * 10) / 10).toString(); }
+  function fmtSet(st) { return (st.w === null ? '自重' : fmtKg(st.w)) + '×' + st.r; }
+  // 60×8, 60×8, 60×8, 55×10 -> 60×8 ×3, 55×10
+  function fmtSetsCompact(sets) {
+    const out = [];
+    (sets || []).forEach((st) => {
+      const key = fmtSet(st);
+      const last = out[out.length - 1];
+      if (last && last.key === key) last.n++; else out.push({ key, n: 1 });
+    });
+    return out.map((o) => o.key + (o.n > 1 ? ' ×' + o.n : '')).join(', ');
+  }
+  // All-time best e1RM for an exercise, optionally excluding one date (so
+  // "today" can be compared against "before today").
+  function exerciseMax(name, excludeDate) {
+    let max = null, maxDate = '';
+    trainingData.days.forEach((d) => {
+      if (excludeDate && d.date === excludeDate) return;
+      d.parts.forEach((p) => p.exercises.forEach((e) => {
+        if (e.name !== name) return;
+        const b = bestSet(e.sets); const v = b ? est1RM(b) : null;
+        if (v !== null && (max === null || v > max)) { max = v; maxDate = d.date; }
+      }));
+    });
+    return { max, maxDate };
+  }
+  // Most recent earlier day that has this exercise.
+  function previousExercise(name, beforeDate) {
+    let found = null;
+    trainingData.days.forEach((d) => {
+      if (d.date >= beforeDate) return;
+      d.parts.forEach((p) => p.exercises.forEach((e) => { if (e.name === name && (!found || d.date > found.date)) found = { date: d.date, sets: e.sets }; }));
+    });
+    return found;
+  }
+  function exercisesForPart(part) {
+    return ((trainingData.exercises || {})[part] || []).slice().sort((a, b) => ((a.lastUsedAt || '') < (b.lastUsedAt || '') ? 1 : -1));
+  }
+  function touchExercise(part, name, at) {
+    if (!trainingData.exercises[part]) trainingData.exercises[part] = [];
+    const e = trainingData.exercises[part].find((x) => x.name === name);
+    if (e) { if (!e.lastUsedAt || e.lastUsedAt < at) e.lastUsedAt = at; }
+    else trainingData.exercises[part].push({ name, lastUsedAt: at });
+  }
+  function renameTrainingExercise(part, oldName, newName) {
+    const list = trainingData.exercises[part] || [];
+    const e = list.find((x) => x.name === oldName);
+    if (e) e.name = newName;
+    const iso = nowIso();
+    trainingData.days.forEach((d) => {
+      let changed = false;
+      d.parts.forEach((p) => { if (p.part !== part) return; p.exercises.forEach((x) => { if (x.name === oldName) { x.name = newName; changed = true; } }); });
+      if (changed) d.updatedAt = iso;
+    });
+    trState.parts.forEach((p) => { if (p.part === part) p.exercises.forEach((x) => { if (x.name === oldName) x.name = newName; }); });
+    saveTrainingData(trainingData);
+  }
+
+  // --- the record screen ---------------------------------------------------
+  // trState is the in-progress edit for one date; 保存 writes it as that
+  // day's entry (upsert) and refreshes the exercise chips' usage order.
+  const trState = { date: '', weight: '', parts: [], renaming: null, dirty: false };
+
+  function trLoadDate(date) {
+    trState.date = date;
+    trState.renaming = null;
+    trState.dirty = false;
+    const day = findTrainingDay(date);
+    trState.weight = day && day.weight !== null ? String(day.weight) : '';
+    trState.parts = day ? day.parts.map((p) => ({ part: p.part, exercises: p.exercises.map((e) => ({ name: e.name, sets: e.sets.map((st) => ({ w: st.w === null ? '' : String(st.w), r: String(st.r), bw: st.w === null })) })) })) : [];
+    document.getElementById('trDate').value = date;
+    document.getElementById('trWeight').value = trState.weight;
+    document.getElementById('trStatus').textContent = '';
+    document.getElementById('trImageStatus').textContent = '';
+  }
+  function openTraining(date) {
+    trLoadDate(date || todayStr());
+    showScreen('training');
+    renderTraining();
+  }
+  function trCollectDay() {
+    const w = document.getElementById('trWeight').value.trim();
+    return normalizeTrainingDay({
+      date: trState.date,
+      weight: w === '' ? null : Number(w),
+      parts: trState.parts.map((p) => ({ part: p.part, exercises: p.exercises.map((e) => ({ name: e.name, sets: e.sets.map((st) => ({ w: st.bw ? null : (st.w === '' ? NaN : Number(st.w)), r: Number(st.r) })) })) })),
+    });
+  }
+
+  function renderTraining() {
+    const day = findTrainingDay(trState.date);
+    document.getElementById('trDeleteRow').hidden = !day;
+    // parts
+    const row = document.getElementById('trPartRow');
+    row.innerHTML = '';
+    TRAINING_PARTS.forEach((part) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'tagFilterBtn' + (trState.parts.some((p) => p.part === part) ? ' selected' : '');
+      b.textContent = part;
+      b.addEventListener('click', () => {
+        const i = trState.parts.findIndex((p) => p.part === part);
+        if (i === -1) trState.parts.push({ part, exercises: [] });
+        else { if (trState.parts[i].exercises.length && !confirm(part + 'の種目ごと外しますか？')) return; trState.parts.splice(i, 1); }
+        trState.dirty = true;
+        renderTraining();
+      });
+      row.appendChild(b);
+    });
+    // blocks
+    const blocks = document.getElementById('trBlocks');
+    blocks.innerHTML = '';
+    trState.parts.forEach((p) => blocks.appendChild(renderTrBlock(p)));
+  }
+
+  function renderTrBlock(p) {
+    const wrap = document.createElement('div');
+    wrap.className = 'trBlock';
+    const head = document.createElement('div');
+    head.className = 'trBlockHead';
+    const title = document.createElement('div');
+    title.className = 'trPart';
+    title.textContent = p.part;
+    head.appendChild(title);
+    const manage = document.createElement('button');
+    manage.type = 'button';
+    manage.className = 'linkLikeBtn';
+    manage.textContent = trState.renaming === p.part ? '完了' : '種目の名前を変更';
+    manage.addEventListener('click', () => { trState.renaming = trState.renaming === p.part ? null : p.part; renderTraining(); });
+    head.appendChild(manage);
+    wrap.appendChild(head);
+
+    // chips: every exercise ever used for this part, most recent first
+    const chips = document.createElement('div');
+    chips.className = 'tagFilterRow';
+    exercisesForPart(p.part).forEach((e) => {
+      if (trState.renaming === p.part) {
+        const ed = document.createElement('span');
+        ed.className = 'trChipEdit';
+        const input = document.createElement('input');
+        input.type = 'text'; input.value = e.name;
+        const ok = document.createElement('button');
+        ok.type = 'button'; ok.className = 'tagFilterBtn'; ok.textContent = '変更';
+        ok.addEventListener('click', () => { const nn = input.value.trim(); if (nn && nn !== e.name) renameTrainingExercise(p.part, e.name, nn); renderTraining(); });
+        ed.appendChild(input); ed.appendChild(ok);
+        chips.appendChild(ed);
+        return;
+      }
+      const b = document.createElement('button');
+      b.type = 'button';
+      const on = p.exercises.some((x) => x.name === e.name);
+      b.className = 'tagFilterBtn' + (on ? ' selected' : '');
+      b.textContent = e.name;
+      b.addEventListener('click', () => {
+        const i = p.exercises.findIndex((x) => x.name === e.name);
+        if (i === -1) p.exercises.push({ name: e.name, sets: [{ w: '', r: '', bw: false }] });
+        else { if (p.exercises[i].sets.some((st) => st.r) && !confirm('「' + e.name + '」を外しますか？')) return; p.exercises.splice(i, 1); }
+        trState.dirty = true;
+        renderTraining();
+      });
+      chips.appendChild(b);
+    });
+    wrap.appendChild(chips);
+    const addRow = document.createElement('div');
+    addRow.className = 'trAddRow';
+    const addInput = document.createElement('input');
+    addInput.type = 'text'; addInput.placeholder = '種目を追加'; addInput.autocomplete = 'off';
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button'; addBtn.className = 'secondaryBtn'; addBtn.textContent = '追加'; addBtn.style.width = 'auto';
+    const doAdd = () => {
+      const name = addInput.value.trim();
+      if (!name) return;
+      touchExercise(p.part, name, '');
+      if (!p.exercises.some((x) => x.name === name)) p.exercises.push({ name, sets: [{ w: '', r: '', bw: false }] });
+      trState.dirty = true;
+      renderTraining();
+    };
+    addBtn.addEventListener('click', doAdd);
+    addInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doAdd(); } });
+    addRow.appendChild(addInput); addRow.appendChild(addBtn);
+    wrap.appendChild(addRow);
+
+    p.exercises.forEach((ex) => wrap.appendChild(renderTrExercise(p, ex)));
+    return wrap;
+  }
+
+  function renderTrExercise(p, ex) {
+    const box = document.createElement('div');
+    box.className = 'trEx';
+    const head = document.createElement('div');
+    head.className = 'trExHead';
+    const name = document.createElement('div');
+    name.className = 'trExName';
+    name.textContent = ex.name;
+    head.appendChild(name);
+    const maxInfo = exerciseMax(ex.name, trState.date);
+    const maxEl = document.createElement('div');
+    maxEl.className = 'trExMax';
+    maxEl.textContent = maxInfo.max !== null ? 'MAX 1RM ' + fmtKg(maxInfo.max) + 'kg（' + dotDate(maxInfo.maxDate).slice(5) + '）' : '';
+    head.appendChild(maxEl);
+    box.appendChild(head);
+
+    // last time this exercise was done, with a one-tap copy
+    const prev = previousExercise(ex.name, trState.date);
+    const prevEl = document.createElement('div');
+    prevEl.className = 'trPrev';
+    if (prev) {
+      const t = document.createElement('div');
+      t.className = 'trPrevSets';
+      const pb = bestSet(prev.sets);
+      t.textContent = '前回 ' + dotDate(prev.date).slice(5) + '：' + fmtSetsCompact(prev.sets) + (pb ? '（1RM ' + fmtKg(est1RM(pb)) + '）' : '');
+      prevEl.appendChild(t);
+      const copy = document.createElement('button');
+      copy.type = 'button'; copy.className = 'tagFilterBtn'; copy.textContent = '前回をコピー';
+      copy.addEventListener('click', () => { ex.sets = prev.sets.map((st) => ({ w: st.w === null ? '' : String(st.w), r: String(st.r), bw: st.w === null })); trState.dirty = true; renderTraining(); });
+      prevEl.appendChild(copy);
+    } else {
+      prevEl.textContent = '前回の記録はありません';
+    }
+    box.appendChild(prevEl);
+
+    ex.sets.forEach((st, i) => {
+      const row = document.createElement('div');
+      row.className = 'trSetRow';
+      const bw = document.createElement('button');
+      bw.type = 'button'; bw.className = 'trBw' + (st.bw ? ' selected' : ''); bw.textContent = '自重';
+      bw.addEventListener('click', () => { st.bw = !st.bw; trState.dirty = true; renderTraining(); });
+      row.appendChild(bw);
+      const wIn = document.createElement('input');
+      wIn.type = 'number'; wIn.step = '0.5'; wIn.inputMode = 'decimal'; wIn.placeholder = st.bw ? '自重' : 'kg'; wIn.value = st.bw ? '' : st.w; wIn.disabled = !!st.bw;
+      wIn.addEventListener('input', () => { st.w = wIn.value; trState.dirty = true; });
+      row.appendChild(wIn);
+      const x = document.createElement('span'); x.className = 'trX'; x.textContent = '×'; row.appendChild(x);
+      const rIn = document.createElement('input');
+      rIn.type = 'number'; rIn.step = '1'; rIn.inputMode = 'numeric'; rIn.placeholder = '回'; rIn.value = st.r;
+      rIn.addEventListener('input', () => { st.r = rIn.value; trState.dirty = true; });
+      row.appendChild(rIn);
+      const del = document.createElement('button');
+      del.type = 'button'; del.className = 'trSetDel'; del.textContent = '×'; del.title = 'このセットを消す';
+      del.addEventListener('click', () => { ex.sets.splice(i, 1); trState.dirty = true; renderTraining(); });
+      row.appendChild(del);
+      box.appendChild(row);
+    });
+    const foot = document.createElement('div');
+    foot.className = 'trExFoot';
+    const add = document.createElement('button');
+    add.type = 'button'; add.className = 'tagFilterBtn'; add.textContent = '＋ セット';
+    add.addEventListener('click', () => { const last = ex.sets[ex.sets.length - 1]; ex.sets.push(last ? { w: last.w, r: last.r, bw: last.bw } : { w: '', r: '', bw: false }); trState.dirty = true; renderTraining(); });
+    foot.appendChild(add);
+    // today's e1RM and the difference against last time - the comparison at a glance
+    const todaySets = ex.sets.map((st) => normalizeTrainingSet({ w: st.bw ? null : (st.w === '' ? NaN : Number(st.w)), r: Number(st.r) })).filter(Boolean);
+    const tb = bestSet(todaySets);
+    const info = document.createElement('div');
+    if (tb) {
+      const v = est1RM(tb);
+      let txt = '今日の1RM ' + fmtKg(v) + 'kg';
+      const pb = prev ? bestSet(prev.sets) : null;
+      if (pb) {
+        const dv = v - est1RM(pb);
+        const span = document.createElement('span');
+        span.className = 'trDelta ' + (dv > 0 ? 'up' : dv < 0 ? 'down' : '');
+        span.textContent = '　前回比 ' + (dv > 0 ? '+' : '') + fmtKg(dv) + 'kg';
+        info.textContent = txt;
+        info.appendChild(span);
+      } else info.textContent = txt;
+      if (maxInfo.max === null || v > maxInfo.max) { const nb = document.createElement('span'); nb.className = 'trExMax'; nb.textContent = '　NEW MAX'; info.appendChild(nb); }
+    } else if (todaySets.length) {
+      info.textContent = '自重（1RM なし）';
+    }
+    foot.appendChild(info);
+    box.appendChild(foot);
+    return box;
+  }
+
+  function trSave() {
+    const day = trCollectDay();
+    if (!day) { document.getElementById('trStatus').textContent = '日付が不正です'; return null; }
+    const iso = nowIso();
+    const existing = findTrainingDay(day.date);
+    day.createdAt = existing ? existing.createdAt : iso;
+    day.updatedAt = iso;
+    // drop exercises that ended up with no valid sets, and empty parts
+    day.parts = day.parts.map((p) => ({ part: p.part, exercises: p.exercises.filter((e) => e.sets.length) })).filter((p) => p.exercises.length);
+    if (!day.parts.length && day.weight === null) { document.getElementById('trStatus').textContent = 'セットか体重を入れてください'; return null; }
+    const idx = trainingData.days.findIndex((d) => d.id === day.id);
+    if (idx === -1) trainingData.days.push(day); else trainingData.days[idx] = day;
+    trainingData.days.sort((a, b) => (a.date < b.date ? -1 : 1));
+    trainingData.deletedDayIds = (trainingData.deletedDayIds || []).filter((t) => t.id !== day.id);
+    day.parts.forEach((p) => p.exercises.forEach((e) => touchExercise(p.part, e.name, day.date + 'T' + iso.slice(11))));
+    saveTrainingData(trainingData);
+    trState.dirty = false;
+    trLoadDate(day.date);
+    renderTraining();
+    document.getElementById('trStatus').textContent = '保存しました（' + dotDate(day.date) + '）';
+    return day;
+  }
+
+  document.getElementById('btnOpenTraining').addEventListener('click', () => openTraining(todayStr()));
+  document.getElementById('backFromTraining').addEventListener('click', () => {
+    if (trState.dirty && !confirm('保存していない変更があります。戻りますか？')) return;
+    openRecords();
+  });
+  document.getElementById('trDate').addEventListener('change', (e) => {
+    if (trState.dirty && !confirm('保存していない変更があります。日付を変えますか？')) { e.target.value = trState.date; return; }
+    trLoadDate(e.target.value || todayStr());
+    renderTraining();
+  });
+  document.getElementById('trWeight').addEventListener('input', () => { trState.dirty = true; });
+  document.getElementById('btnTrSave').addEventListener('click', () => { trSave(); });
+  document.getElementById('btnTrDelete').addEventListener('click', () => {
+    const day = findTrainingDay(trState.date);
+    if (!day) return;
+    if (!confirm(dotDate(day.date) + ' の筋トレの記録を消しますか？')) return;
+    trainingData.days = trainingData.days.filter((d) => d.id !== day.id);
+    trainingData.deletedDayIds = (trainingData.deletedDayIds || []).filter((t) => t.id !== day.id);
+    trainingData.deletedDayIds.push({ id: day.id, deletedAt: nowIso() });
+    saveTrainingData(trainingData);
+    trLoadDate(trState.date);
+    renderTraining();
+    document.getElementById('trStatus').textContent = '消しました';
+  });
+
+  // --- the log image (1080x1920: it closes a vertical video) --------------
+  // Content is measured first; if it does not fit, the type shrinks (to a
+  // floor), then goes to two columns, then - only then - splits into pages
+  // by part. Nothing is ever clipped.
+  const TR_IMG_W = 1080, TR_IMG_H = 1920, TR_IMG_MARGIN = 70;
+  const TR_GREEN = '#39FF14', TR_RED = '#FF4A3D', TR_DIM = '#8FBF86';
+  function trBuildLines(day) {
+    // one part -> { title, rows: [{name, sets, rm, isMax}] }
+    return day.parts.map((p) => ({
+      part: p.part,
+      rows: p.exercises.map((e) => {
+        const b = bestSet(e.sets);
+        const v = b ? est1RM(b) : null;
+        const prevMax = exerciseMax(e.name, day.date).max;
+        const allMax = prevMax === null ? v : (v === null ? prevMax : Math.max(prevMax, v));
+        return { name: e.name, sets: fmtSetsCompact(e.sets), rm: v, isNewMax: v !== null && (prevMax === null || v > prevMax), allMax };
+      }),
+    }));
+  }
+  // Height of one block list at a given scale (font sizes are multiplied).
+  function trMeasure(ctx, blocks, scale, colW) {
+    const nameF = 40 * scale, setF = 32 * scale, partF = 34 * scale;
+    let h = 0;
+    blocks.forEach((b) => {
+      h += partF * 1.6 + 10 * scale;
+      b.rows.forEach((r) => {
+        ctx.font = `${setF}px 'DotGothic16'`;
+        const setsW = ctx.measureText(r.sets).width + (r.rm !== null ? 230 * scale : 0); // room for the numbers on the first line
+        const lines = Math.max(1, Math.ceil(setsW / (colW - 20)));
+        h += nameF * 1.35 + lines * setF * 1.3 + 14 * scale;
+      });
+      h += 18 * scale;
+    });
+    return h;
+  }
+  function trDrawBlocks(ctx, blocks, scale, x0, y0, colW) {
+    const nameF = 40 * scale, setF = 32 * scale, partF = 34 * scale, rmF = 26 * scale;
+    let y = y0;
+    blocks.forEach((b) => {
+      ctx.fillStyle = TR_GREEN; ctx.font = `${partF}px 'DotGothic16'`; ctx.textAlign = 'left';
+      ctx.fillText('■ ' + b.part, x0, y);
+      y += partF * 1.6;
+      ctx.fillStyle = TR_GREEN; ctx.fillRect(x0, y - 6 * scale, colW, 2);
+      y += 10 * scale;
+      b.rows.forEach((r) => {
+        // line 1: the name gets the whole column (shrink, then ellipsize - never overflow)
+        ctx.fillStyle = '#F2EFEA'; ctx.textAlign = 'left';
+        let nf = nameF, name = r.name;
+        ctx.font = `${nf}px 'DotGothic16'`;
+        while (ctx.measureText(name).width > colW && nf > nameF * 0.72) { nf -= 2; ctx.font = `${nf}px 'DotGothic16'`; }
+        while (ctx.measureText(name).width > colW && name.length > 2) { name = name.slice(0, -2) + '…'; }
+        ctx.fillText(name, x0, y + (nameF - nf) * 0.5);
+        y += nameF * 1.35;
+        // line 2+: sets left, numbers right-aligned on the first sets line
+        let numsW = 0;
+        if (r.rm !== null) {
+          ctx.font = `${rmF}px 'DotGothic16'`; ctx.textAlign = 'right';
+          const ny = y + (setF - rmF) * 0.5;
+          const maxTxt = (r.isNewMax ? 'NEW MAX ' : 'MAX ') + fmtKg(r.isNewMax ? r.rm : r.allMax) + 'kg';
+          ctx.fillStyle = TR_RED; ctx.fillText(maxTxt, x0 + colW, ny);
+          numsW = ctx.measureText(maxTxt).width;
+          if (!r.isNewMax) { const t = '1RM ' + fmtKg(r.rm) + 'kg'; ctx.fillStyle = TR_DIM; ctx.fillText(t, x0 + colW - numsW - 14 * scale, ny); numsW += ctx.measureText(t).width + 14 * scale; }
+          ctx.textAlign = 'left';
+        }
+        ctx.fillStyle = TR_GREEN; ctx.font = `${setF}px 'DotGothic16'`;
+        const words = r.sets.split(', ');
+        let line = '', first = true;
+        const maxW = () => (first ? colW - 16 * scale - numsW - (numsW ? 18 * scale : 0) : colW - 16 * scale);
+        words.forEach((w) => {
+          const t = line ? line + ', ' + w : w;
+          if (ctx.measureText(t).width > maxW() && line) { ctx.fillText(line, x0 + 16 * scale, y); y += setF * 1.3; first = false; line = w; }
+          else line = t;
+        });
+        if (line) { ctx.fillText(line, x0 + 16 * scale, y); y += setF * 1.3; }
+        y += 14 * scale;
+      });
+      y += 18 * scale;
+    });
+    return y;
+  }
+  function trDrawPage(canvas, day, blocks, pageNo, pageCount) {
+    const ctx = canvas.getContext('2d');
+    const W = TR_IMG_W, H = TR_IMG_H, M = TR_IMG_MARGIN;
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#000'; roundRectPath(ctx, 0, 0, W, H, 24); ctx.fill();
+    ctx.lineWidth = 6; ctx.strokeStyle = TR_GREEN; roundRectPath(ctx, 3, 3, W - 6, H - 6, 21); ctx.stroke();
+    ctx.textBaseline = 'top';
+    // header
+    ctx.fillStyle = TR_GREEN; ctx.font = "56px 'DotGothic16'"; ctx.textAlign = 'left';
+    ctx.fillText(dotDate(day.date), M, M);
+    ctx.font = "30px 'DotGothic16'"; ctx.textAlign = 'right'; ctx.fillStyle = TR_DIM;
+    const right = [day.weight !== null ? '体重 ' + fmtKg(day.weight) + 'kg' : '', pageCount > 1 ? (pageNo + 1) + '/' + pageCount : ''].filter(Boolean).join('　');
+    if (right) ctx.fillText(right, W - M, M + 18);
+    ctx.fillStyle = TR_GREEN; ctx.fillRect(M, M + 80, W - 2 * M, 3);
+    const top = M + 110, bottom = H - M;
+    const avail = bottom - top;
+    const fullW = W - 2 * M;
+    // Try one column and two columns, each shrunk until it fits (floor 0.62),
+    // and draw whichever keeps the type larger. Neither fits -> caller pages.
+    const colW2 = (fullW - 40) / 2;
+    const fitScale = (measure) => { let sc = 1; while (sc > 0.62 && measure(sc) > avail) sc -= 0.04; return measure(sc) > avail ? null : sc; };
+    const s1 = fitScale((sc) => trMeasure(ctx, blocks, sc, fullW));
+    const split = trSplitColumns(ctx, blocks, 1, colW2);
+    const s2 = blocks.length > 1 ? fitScale((sc) => Math.max(trMeasure(ctx, split[0], sc, colW2), trMeasure(ctx, split[1], sc, colW2))) : null;
+    if (s1 === null && s2 === null) return false; // needs paging
+    if (s2 !== null && (s1 === null || s2 > s1 + 0.001)) {
+      trDrawBlocks(ctx, split[0], s2, M, top, colW2);
+      trDrawBlocks(ctx, split[1], s2, M + colW2 + 40, top, colW2);
+    } else {
+      trDrawBlocks(ctx, blocks, s1, M, top, fullW);
+    }
+    ctx.fillStyle = TR_DIM; ctx.font = "24px 'DotGothic16'"; ctx.textAlign = 'right';
+    ctx.fillText('一万日', W - M, H - M + 20);
+    return true;
+  }
+  // Greedy: fill column 1 with whole parts until half the height, rest to column 2.
+  function trSplitColumns(ctx, blocks, scale, colW) {
+    const total = trMeasure(ctx, blocks, scale, colW);
+    const a = [], b = [];
+    let acc = 0;
+    blocks.forEach((blk) => { const h = trMeasure(ctx, [blk], scale, colW); if (acc + h <= total / 2 + h / 2 && !b.length) { a.push(blk); acc += h; } else b.push(blk); });
+    if (!a.length && b.length) a.push(b.shift());
+    return [a, b];
+  }
+  // Returns one canvas per page. Pages are cut by part; a single part that
+  // still cannot fit is cut by exercise.
+  function trRenderImages(day) {
+    const canvas = document.getElementById('trCanvas');
+    const blocks = trBuildLines(day);
+    const pages = [];
+    let queue = blocks.slice();
+    let guard = 0;
+    while (queue.length && guard++ < 20) {
+      // take as many blocks as fit
+      let take = queue.length;
+      while (take > 0 && !trDrawPage(canvas, day, queue.slice(0, take), pages.length, 0)) take--;
+      if (take === 0) {
+        // split the first block's rows
+        const blk = queue[0];
+        let rows = blk.rows.length;
+        while (rows > 1 && !trDrawPage(canvas, day, [{ part: blk.part, rows: blk.rows.slice(0, rows) }], pages.length, 0)) rows--;
+        pages.push([{ part: blk.part, rows: blk.rows.slice(0, rows) }]);
+        const rest = blk.rows.slice(rows);
+        queue = rest.length ? [{ part: blk.part + '（続き）', rows: rest }, ...queue.slice(1)] : queue.slice(1);
+      } else {
+        pages.push(queue.slice(0, take));
+        queue = queue.slice(take);
+      }
+    }
+    const out = [];
+    pages.forEach((pg, i) => {
+      const c = document.createElement('canvas');
+      c.width = TR_IMG_W; c.height = TR_IMG_H;
+      trDrawPage(c, day, pg, i, pages.length);
+      out.push(c);
+    });
+    return out;
+  }
+  async function trShareImages() {
+    const statusEl = document.getElementById('trImageStatus');
+    const day = trSave();
+    if (!day) return;
+    if (!day.parts.length) { statusEl.textContent = '種目がありません'; return; }
+    try { if (document.fonts && document.fonts.load) await document.fonts.load("32px 'DotGothic16'"); } catch (e) {}
+    const canvases = trRenderImages(day);
+    const files = [];
+    for (let i = 0; i < canvases.length; i++) {
+      const blob = await new Promise((resolve) => canvases[i].toBlob(resolve, 'image/png'));
+      const name = `training_${day.date}${canvases.length > 1 ? '_' + (i + 1) : ''}.png`;
+      files.push(blob ? new File([blob], name, { type: 'image/png' }) : dataUrlToFile(canvases[i].toDataURL('image/png'), name));
+    }
+    if (navigator.canShare && navigator.canShare({ files })) {
+      try { await navigator.share({ files }); statusEl.textContent = canvases.length > 1 ? canvases.length + '枚に分けました' : ''; return; }
+      catch (e) { if (e && e.name === 'AbortError') { statusEl.textContent = ''; return; } }
+    }
+    files.forEach(downloadFile);
+    statusEl.textContent = (canvases.length > 1 ? canvases.length + '枚に分けて' : '') + 'ダウンロードしました';
+  }
+  document.getElementById('btnTrImage').addEventListener('click', trShareImages);
+
+  // records: the day card
+  function renderDayTrainingCard(day) {
+    const item = document.createElement('div');
+    item.className = 'recordEntry';
+    const top = document.createElement('div');
+    top.className = 'recordEntryTop';
+    const label = document.createElement('span');
+    label.className = 'recordEntryDate';
+    label.textContent = '筋トレ ・ ' + day.parts.map((p) => p.part).join('・') + (day.weight !== null ? ' ・ ' + fmtKg(day.weight) + 'kg' : '');
+    top.appendChild(label);
+    item.appendChild(top);
+    day.parts.forEach((p) => p.exercises.forEach((e) => {
+      const row = document.createElement('div');
+      row.className = 'trDayCardEx';
+      const b = bestSet(e.sets); const v = b ? est1RM(b) : null;
+      const prevMax = exerciseMax(e.name, day.date).max;
+      row.textContent = e.name + '　';
+      const setsEl = document.createElement('span'); setsEl.className = 'trDayCardSets'; setsEl.textContent = fmtSetsCompact(e.sets); row.appendChild(setsEl);
+      if (v !== null) { const m = document.createElement('span'); m.className = (prevMax === null || v > prevMax) ? 'trDayCardMax' : 'trDayCardSets'; m.textContent = '　1RM ' + fmtKg(v) + ((prevMax === null || v > prevMax) ? ' MAX' : ''); row.appendChild(m); }
+      item.appendChild(row);
+    }));
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button'; editBtn.className = 'linkLikeBtn'; editBtn.textContent = '開く';
+    editBtn.addEventListener('click', () => openTraining(day.date));
+    item.appendChild(editBtn);
+    return item;
+  }
+
   // --- Records (v3.4: single calendar, day-detail below) --------------------
   const expandedConsultRecords = new Set(); // session-only "続きを見る" state
   const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
@@ -5829,6 +6582,7 @@
       const hasConsult = data.journal.some((j) => j.kind === 'consult' && j.date === dateStr);
       const hasDraw = data.journal.some((j) => j.kind === 'draw' && j.date === dateStr);
       const hasQuestion = data.journal.some((j) => j.kind === 'question' && j.date === dateStr);
+      const hasTraining = !!findTrainingDay(dateStr);
       const walked = walkedSet.has(dateStr);
 
       const el = document.createElement('button');
@@ -5855,6 +6609,7 @@
       if (hasConsult) { const d = document.createElement('span'); d.className = 'calDot dotConsult'; dots.appendChild(d); }
       if (hasDraw) { const d = document.createElement('span'); d.className = 'calDot dotDraw'; dots.appendChild(d); }
       if (hasQuestion) { const d = document.createElement('span'); d.className = 'calDot dotQuestion'; dots.appendChild(d); }
+      if (hasTraining) { const d = document.createElement('span'); d.className = 'calDot dotTraining'; dots.appendChild(d); }
       el.appendChild(dots);
 
       if (disabled) {
@@ -6166,6 +6921,9 @@
 
     if (walkData.walkedDates.includes(dateStr)) { any = true; body.appendChild(renderDayWalkCard(dateStr)); }
 
+    const trDay = findTrainingDay(dateStr);
+    if (trDay) { any = true; body.appendChild(renderDayTrainingCard(trDay)); }
+
     data.journal
       .filter((j) => j.kind === 'consult' && j.date === dateStr)
       .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
@@ -6195,6 +6953,7 @@
     const monthQuestions = data.journal.filter((j) => j.kind === 'question' && inMonth(j.date));
     const usedQuestions = monthQuestions.filter((j) => j.used).length;
     document.getElementById('summaryQuestionCount').textContent = `${monthQuestions.length}件 / 使った ${usedQuestions}件`;
+    document.getElementById('summaryTrainingDays').textContent = `${trainingData.days.filter((d) => inMonth(d.date)).length}日`;
 
     // "届いた言葉" mirrors topMonthlyPickedNoteIds's own scope: morning +
     // consult picks only - 引く is something the user pulls themselves, not
@@ -7518,9 +8277,9 @@
     document.getElementById('statUsagePrevMonthTotal').textContent = `約$${prevMonthCost.toFixed(3)}`;
     const allTimeCost = totalCostForKindStats(sumUsageAcrossDevices(null));
     document.getElementById('statUsageAllTimeTotal').textContent = `約$${allTimeCost.toFixed(3)}`;
-    document.getElementById('statSyncState').textContent = noteSyncState === walkSyncState
+    document.getElementById('statSyncState').textContent = (noteSyncState === walkSyncState && walkSyncState === trainingSyncState)
       ? syncStateLabel(noteSyncState)
-      : `言葉: ${syncStateLabel(noteSyncState)} / 散歩: ${syncStateLabel(walkSyncState)}`;
+      : `言葉: ${syncStateLabel(noteSyncState)} / 散歩: ${syncStateLabel(walkSyncState)} / 筋トレ: ${syncStateLabel(trainingSyncState)}`;
     const lastSync = localStorage.getItem(LAST_SYNC_KEY);
     const lastWalkSync = localStorage.getItem(WALK_LAST_SYNC_KEY);
     const latestSync = [lastSync, lastWalkSync].filter(Boolean).sort().pop();
