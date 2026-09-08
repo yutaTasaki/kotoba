@@ -767,6 +767,13 @@
   .graphCard.center { border-color: var(--accent); background: #1c2620; }
   .graphCard .gcText { font-size: 12px; line-height: 1.45; }
   .graphCard .gcSource { font-size: 10px; color: var(--text-faint); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* v7.0: 種類 */
+  .graphCard.k-book { border-left: 3px solid #7fb3d5; }
+  .graphCard.k-self { border-left: 3px solid #d3b16a; }
+  .kindBadge { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-dim); margin-left: 6px; vertical-align: middle; }
+  .sourceKindRow { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--border); font-size: 13px; }
+  .sourceKindRow .tagFilterRow { flex: 0 0 auto; }
+  .sourceKindRow .tagFilterBtn { padding: 4px 8px; font-size: 12px; }
   .graphHint { position: absolute; right: 10px; bottom: 8px; font-size: 10px; color: var(--text-faint); pointer-events: none; }
   .graphFar { flex-shrink: 0; padding: 10px 0 calc(8px + env(safe-area-inset-bottom)); }
   .graphFarHead { font-size: 11px; color: var(--text-faint); letter-spacing: .06em; margin-bottom: 6px; }
@@ -877,6 +884,12 @@
       <button type="button" class="tagFilterBtn" data-sort="new">新しい順</button>
       <button type="button" class="tagFilterBtn" data-sort="links">つながりが多い順</button>
     </div>
+    <div id="listKindRow" class="tagFilterRow">
+      <button type="button" class="tagFilterBtn" data-kind="all">全部</button>
+      <button type="button" class="tagFilterBtn" data-kind="quote">名言</button>
+      <button type="button" class="tagFilterBtn" data-kind="book">本</button>
+      <button type="button" class="tagFilterBtn" data-kind="self">自分</button>
+    </div>
     <div id="listTagFilter" class="tagFilterRow"></div>
     <label class="checkboxRow">
       <input type="checkbox" id="noLinksFilter">
@@ -965,6 +978,15 @@
         <span class="fieldLabel">出典</span>
         <input id="editSource" type="text" placeholder="本のタイトル／人名。自分の考えなら「自分」" autocomplete="off">
         <div id="sourceCandidates" class="chipRow candidateChipRow"></div>
+      </div>
+      <div class="field">
+        <span class="fieldLabel">種類</span>
+        <div class="tagFilterRow" id="editKindRow">
+          <button type="button" class="tagFilterBtn" data-kind="quote">名言</button>
+          <button type="button" class="tagFilterBtn" data-kind="book">本</button>
+          <button type="button" class="tagFilterBtn" data-kind="self">自分</button>
+        </div>
+        <input id="editBookAuthor" type="text" placeholder="著者（任意）" autocomplete="off" hidden>
       </div>
       <label class="field">
         <span class="fieldLabel">自分の言葉での一言<span class="required">必須</span></span>
@@ -1102,9 +1124,14 @@
         <button id="btnSaveMorningQuoteHeading" class="secondaryBtn">保存</button>
       </div>
       <div class="field">
-        <span class="fieldLabel">候補ノートの圧縮しきい値</span>
-        <p class="fieldNote">既存ノートがこの件数を超える場合、タグの重なりと文字一致で絞り込んでからAPIに送ります。</p>
-        <input id="compressThresholdInput" type="text" inputmode="numeric" placeholder="400" autocomplete="off">
+        <span class="fieldLabel">出典ごとの種類</span>
+        <p class="fieldNote">出典（本・名言集・人名）ごとに、その言葉の種類（名言／本／自分）をまとめて設定します。押すとその出典の言葉すべてに反映されます。</p>
+        <div id="sourceKindList"></div>
+      </div>
+      <div class="field">
+        <span class="fieldLabel">候補の言葉の上限</span>
+        <p class="fieldNote">言葉がこの数以下なら全件を（キャッシュして）モデルに渡します。超えたら、相談・関連づけのたびに「入力に近い言葉」をこの数だけ端末側で選んで渡します。</p>
+        <input id="compressThresholdInput" type="text" inputmode="numeric" placeholder="200" autocomplete="off">
         <button id="btnSaveCompressThreshold" class="secondaryBtn">保存</button>
       </div>
       <div class="field">
@@ -1274,8 +1301,9 @@
     </header>
     <div class="editorBody">
       <div class="tagFilterRow" id="bulkKindRow">
-        <button type="button" class="tagFilterBtn" data-kind="book">本・名言集</button>
-        <button type="button" class="tagFilterBtn" data-kind="transcript">自分の話（文字起こし）</button>
+        <button type="button" class="tagFilterBtn" data-kind="book" data-note-kind="quote">名言集</button>
+        <button type="button" class="tagFilterBtn" data-kind="book" data-note-kind="book">本</button>
+        <button type="button" class="tagFilterBtn" data-kind="transcript" data-note-kind="self">自分の話（文字起こし）</button>
       </div>
       <div class="field autocompleteField" id="bulkSourceField">
         <span class="fieldLabel">出典<span class="required">必須</span></span>
@@ -1395,6 +1423,12 @@
         <div id="drawModeRow" class="tagFilterRow drawModeRow">
           <button type="button" class="tagFilterBtn" data-mode="all">すべてから</button>
           <button type="button" class="tagFilterBtn" data-mode="monthly">今月よく届いた言葉から</button>
+        </div>
+        <div id="drawKindRow" class="tagFilterRow drawModeRow">
+          <button type="button" class="tagFilterBtn" data-kind="all">全部</button>
+          <button type="button" class="tagFilterBtn" data-kind="quote">名言</button>
+          <button type="button" class="tagFilterBtn" data-kind="book">本</button>
+          <button type="button" class="tagFilterBtn" data-kind="self">自分</button>
         </div>
         <p class="fieldNote warn" id="drawChoiceHint" hidden></p>
         <div id="unusedQuestions" class="unusedQuestionList" hidden></div>
@@ -1621,6 +1655,11 @@
       updatedAt: d.updatedAt || d.createdAt || nowIso(),
     };
     if (d.batchDup === true) out.batchDup = true;
+    if (NOTE_KINDS.includes(d.kind)) out.kind = d.kind;
+    if (d.book && typeof d.book === 'object') { const b = normalizeBook(d.book, out.source); if (b) out.book = b; }
+    const ctx = normalizeContextList(d.context);
+    if (ctx.length) out.context = ctx;
+    if (typeof d.linkToDraft === 'string' && d.linkToDraft) out.linkToDraft = d.linkToDraft;
     const video = normalizeVideoRef(d.video);
     if (video) out.video = video;
     return out;
@@ -1645,6 +1684,20 @@
     return out;
   }
 
+  // v7.0: 種類. 'quote' = 名言（名言集・人物の言葉）, 'book' = 本（書名・著者つき）,
+  // 'self' = 自分の考え. A note always has one; `book` only exists on 'book'.
+  const NOTE_KINDS = ['quote', 'book', 'self'];
+  const NOTE_KIND_LABEL = { quote: '名言', book: '本', self: '自分' };
+  function inferNoteKind(source) { return (source || '').startsWith('自分') ? 'self' : 'quote'; }
+  function normalizeBook(b, source) {
+    const title = (b && typeof b.title === 'string' && b.title.trim()) ? b.title.trim() : (source || '');
+    const author = (b && typeof b.author === 'string') ? b.author.trim() : '';
+    return (title || author) ? { title, author } : null;
+  }
+  // 周辺のメモ (v7.1): text hung under a note, never sent to the model
+  function normalizeContextList(list) {
+    return (Array.isArray(list) ? list : []).filter((c) => c && typeof c.text === 'string' && c.text.trim()).map((c) => ({ text: c.text.trim().slice(0, 4000), at: typeof c.at === 'string' ? c.at : '' }));
+  }
   function normalizeNote(n) {
     const linksById = new Map();
     (Array.isArray(n.links) ? n.links : []).forEach((raw) => {
@@ -1663,6 +1716,11 @@
       createdAt: n.createdAt || nowIso(),
       updatedAt: n.updatedAt || n.createdAt || nowIso(),
     };
+    // v7.0: 種類 (名言 / 本 / 自分). Older notes get it from the source string.
+    out.kind = NOTE_KINDS.includes(n.kind) ? n.kind : inferNoteKind(out.source);
+    if (out.kind === 'book') { const b = normalizeBook(n.book, out.source); if (b) out.book = b; }
+    const ctx = normalizeContextList(n.context);
+    if (ctx.length) out.context = ctx;
     // v3.4: notes that came out of a video transcript remember which batch
     // (= which video) and which 問い that video was spoken from. Optional -
     // every note that predates this simply has no `video` key.
@@ -3354,7 +3412,15 @@
     const model = getClaudeChatModel();
     const system = buildChatSystemBlocks();
     const historyText = history && history.length ? '直近のやり取り:\n' + JSON.stringify(history) + '\n\n' : '';
+    let inlineList = '';
+    if (notesInlineMode()) {
+      const picked = new Set((history || []).flatMap((h) => h.picks || []));
+      const cands = selectCandidateNotes({ text: input, tags: [] }, { useWeights: true });
+      picked.forEach((id) => { const n = findNote(id); if (n && !cands.includes(n)) cands.push(n); });
+      inlineList = '候補の言葉:\n' + JSON.stringify(cands.map(buildCompactNote)) + '\n\n';
+    }
     const promptText =
+      inlineList +
       historyText +
       '今の状態:\n' + input +
       '\n\n最大' + maxPicks + '件まで選んでください。';
@@ -3419,7 +3485,7 @@
   const DEVICE_LABEL_KEY = 'kotoba_deviceLabel';
   const DEFAULT_AUTOLINK_MODEL = 'claude-haiku-4-5';
   const DEFAULT_CHAT_MODEL = 'claude-sonnet-5';
-  const DEFAULT_COMPRESS_THRESHOLD = 400;
+  const DEFAULT_COMPRESS_THRESHOLD = 200;
 
   function getClaudeApiKey() { return localStorage.getItem(CLAUDE_API_KEY_KEY) || ''; }
 
@@ -3743,6 +3809,7 @@
       source: n.source || '',
       myWords: (n.myWords || '').slice(0, 50),
       tags: n.tags,
+      k: n.kind || 'quote',
     };
   }
 
@@ -3754,12 +3821,41 @@
   // per-call target to rank against once this is shared across calls) -
   // that path necessarily varies less predictably and won't cache as well,
   // but it only matters once a device has more notes than the threshold.
-  function stableCompactNotesList() {
-    const threshold = getCompressThreshold();
-    const list = data.notes.length > threshold
-      ? compressCandidates({ text: '', myWords: '', tags: [] }, data.notes, threshold)
-      : data.notes;
-    return list.map(buildCompactNote);
+  function stableCompactNotesList() { return data.notes.map(buildCompactNote); }
+  // v7.0: above the threshold the whole list no longer goes to the model.
+  // Each call picks the notes closest to its seed (the consult input or the
+  // note being linked) and sends them in the user message instead. Before
+  // this, the shared list silently froze at the oldest N notes.
+  function notesInlineMode() { return data.notes.length > getCompressThreshold(); }
+  function textBigrams(str) {
+    const t = (str || '').toLowerCase().replace(/[\s、。，．,.!?！？「」『』()（）\-—・:：;；"']+/g, '');
+    const out = new Set();
+    for (let i = 0; i + 1 < t.length; i++) out.add(t.slice(i, i + 2));
+    return out;
+  }
+  // seed: {text, myWords, tags, kind}; opts: {limit, excludeIds, useWeights}
+  function selectCandidateNotes(seed, opts) {
+    opts = opts || {};
+    const limit = opts.limit || getCompressThreshold();
+    const exclude = new Set(opts.excludeIds || []);
+    const seedGrams = textBigrams((seed.text || '') + ' ' + (seed.myWords || ''));
+    const seedTags = new Set(seed.tags || []);
+    const weights = opts.useWeights ? noteWeightsInWindow() : new Map();
+    const recent = addDays(todayStr(), -30);
+    const scored = data.notes.filter((n) => !exclude.has(n.id)).map((n, i) => {
+      let sc = 0;
+      const grams = textBigrams((n.text || '') + ' ' + (n.myWords || ''));
+      let hit = 0; seedGrams.forEach((g) => { if (grams.has(g)) hit++; });
+      sc += Math.min(12, hit);
+      n.tags.forEach((t) => { if (seedTags.has(t)) sc += 3; });
+      if (seed.kind === 'self' && (n.kind || 'quote') !== 'self') sc += 0.5;   // a thought reaches for the words it came from
+      if (!seed.kind && (n.kind || 'quote') === 'self') sc += 0.5;             // consult: the person's own words weigh a little more
+      sc += Math.min(4, (weights.get(n.id) || 0));
+      if ((n.createdAt || '') >= recent) sc += 1;
+      return { n, sc, i };
+    });
+    scored.sort((a, b) => b.sc - a.sc || b.i - a.i);
+    return scored.slice(0, limit).map((x) => x.n);
   }
 
   // Both cached blocks combine the (per-feature) static instructions with
@@ -3768,7 +3864,9 @@
   // instead of re-billing the full list at 1x every time.
   function buildAutoLinkSystemBlocks() {
     const text =
-      '以下はこの人が集めたノート（言葉・出典・自分の解釈・タグ）の一覧である。\n' + JSON.stringify(stableCompactNotesList()) +
+      (notesInlineMode()
+        ? 'この人が集めたノート（言葉・出典・自分の解釈・タグ）のうち、対象に近いものの一覧をユーザーメッセージで渡す。\n'
+        : '以下はこの人が集めたノート（言葉・出典・自分の解釈・タグ）の一覧である。\n' + JSON.stringify(stableCompactNotesList())) +
       '\n\nこのあとユーザーメッセージで対象ノートと、除外すべきid（対象自身・既にリンク済み・却下済み）を提示する。' +
       '除外id以外の一覧の中から、対象ノートと同じ考えを別の言い方で述べている（similar）／反対の立場を取っている（opposite）／' +
       '前提や具体例として補い合う（supplement）ノートを最大5件、関連の強い順に選び、JSONのみで返してください。' +
@@ -3787,7 +3885,10 @@
   // maintaining its own.
   function buildChatSystemBlocks() {
     const text =
-      '以下はこの人が本や名言集から集めた言葉と、本人の解釈である。\n' + JSON.stringify(stableCompactNotesList()) +
+      (notesInlineMode()
+        ? 'この人が本や名言集から集めた言葉と本人の解釈のうち、今の状態に近いものの一覧をユーザーメッセージで渡す。その中から選ぶこと。\n'
+        : '以下はこの人が本や名言集から集めた言葉と、本人の解釈である。\n' + JSON.stringify(stableCompactNotesList())) +
+      'k は種類（quote=名言, book=本, self=本人の考え）。\n' +
       '\n\nこのあとユーザーメッセージで、今の状態（および直近のやり取りがあればそれ）と、' +
       '最大何件選ぶかを提示する。入力された状態に対して、指定された件数まで最も応える言葉を選び、' +
       'それぞれになぜ近いかを30字程度で書いてください。最後に、選んだ言葉同士の関係やそこから見える一つの見方を3行以内で書いてください。' +
@@ -3881,9 +3982,11 @@
     if (!apiKey) { const e = new Error('no-api-key'); e.noKey = true; throw e; }
     const model = getClaudeAutoLinkModel();
     const system = buildAutoLinkSystemBlocks();
+    const inlineList = notesInlineMode() ? '候補ノートの一覧:\n' + JSON.stringify(selectCandidateNotes(note, { excludeIds }).map(buildCompactNote)) + '\n\n' : '';
     const promptText =
+      inlineList +
       '対象ノート:\n' +
-      JSON.stringify({ text: note.text, source: note.source, myWords: note.myWords, tags: note.tags }) +
+      JSON.stringify({ text: note.text, source: note.source, myWords: note.myWords, tags: note.tags, k: note.kind || 'quote' }) +
       '\n\n除外するid（対象自身・既にリンク済み・却下済み。これらは選ばないこと）:\n' + JSON.stringify(excludeIds);
 
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -5110,6 +5213,7 @@
   // localStorage persistence, so that's the one piece that outlives a reload.
   const listState = {
     search: '',
+    kind: 'all',
     tags: new Set(),
     noLinksOnly: false,
     viewMode: 'all', // 'all' | 'source' | 'tag'
@@ -5189,6 +5293,7 @@
         n.text.toLowerCase().includes(q) || n.source.toLowerCase().includes(q) || n.myWords.toLowerCase().includes(q)
       );
     }
+    if (listState.kind !== 'all') results = results.filter((n) => (n.kind || 'quote') === listState.kind);
     if (listState.tags.size) {
       results = results.filter((n) => [...listState.tags].every((t) => n.tags.includes(t)));
     }
@@ -5603,6 +5708,11 @@
     document.querySelectorAll('#listViewModeRow button').forEach((b) => {
       b.classList.toggle('selected', b.dataset.mode === listState.viewMode);
     });
+    document.querySelectorAll('#listKindRow button').forEach((b) => {
+      b.classList.toggle('selected', b.dataset.kind === listState.kind);
+      const k = b.dataset.kind; const cnt = k === 'all' ? data.notes.length : data.notes.filter((n) => (n.kind || 'quote') === k).length;
+      b.textContent = (k === 'all' ? '全部' : NOTE_KIND_LABEL[k]) + ' ' + cnt;
+    });
     document.getElementById('listSortRow').hidden = listState.viewMode !== 'all';
     document.querySelectorAll('#listSortRow button').forEach((b) => {
       b.classList.toggle('selected', b.dataset.sort === listState.sortMode);
@@ -5629,6 +5739,7 @@
   document.querySelectorAll('#listSortRow button').forEach((b) => {
     b.addEventListener('click', () => { listState.sortMode = b.dataset.sort; renderList(); });
   });
+  document.querySelectorAll('#listKindRow button').forEach((b) => b.addEventListener('click', () => { listState.kind = b.dataset.kind; renderList(); }));
   document.getElementById('noLinksFilter').addEventListener('change', (e) => {
     listState.noLinksOnly = e.target.checked;
     renderList();
@@ -5638,7 +5749,7 @@
   document.getElementById('draftBanner').addEventListener('click', () => openDraftReview());
 
   // --- Bulk input (v3.2, "一括") ------------------------------------------
-  const bulkState = { kind: 'book' };
+  const bulkState = { kind: 'book', noteKind: 'quote' };
   const BULK_MAX_CHARS = 20000;
 
   // Strips leading per-line timestamps from transcript tool output
@@ -5656,7 +5767,7 @@
   }
 
   function openBulk() {
-    bulkState.kind = 'book';
+    bulkState.kind = 'book'; bulkState.noteKind = 'quote';
     bulkState.questionId = null; // null = not chosen yet -> default to the latest candidate
     bulkState.showAllQuestions = false;
     document.getElementById('bulkSourceInput').value = '';
@@ -5672,7 +5783,7 @@
 
   function renderBulkKindRow() {
     document.querySelectorAll('#bulkKindRow button').forEach((b) => {
-      b.classList.toggle('selected', b.dataset.kind === bulkState.kind);
+      b.classList.toggle('selected', b.dataset.kind === bulkState.kind && b.dataset.noteKind === bulkState.noteKind);
     });
     document.getElementById('bulkSourceField').hidden = bulkState.kind !== 'book';
     document.getElementById('bulkTitleField').hidden = bulkState.kind !== 'transcript';
@@ -5722,7 +5833,7 @@
       : (recent.length ? '問いを紐づけません' : '直近48時間に「この問いで話した」問いはありません。「他の問いから…」で選ぶか、なしで進めます。');
   }
   document.querySelectorAll('#bulkKindRow button').forEach((b) => {
-    b.addEventListener('click', () => { bulkState.kind = b.dataset.kind; renderBulkKindRow(); });
+    b.addEventListener('click', () => { bulkState.kind = b.dataset.kind; bulkState.noteKind = b.dataset.noteKind; renderBulkKindRow(); });
   });
 
   function renderBulkSourceCandidates() {
@@ -5796,7 +5907,8 @@
         : null;
       items.forEach((item, i) => {
         const id = generateDraftId();
-        const draft = { id, text: item.text, source, tags: item.tags, createdAt: iso, updatedAt: iso };
+        const draft = { id, text: item.text, source, tags: item.tags, createdAt: iso, updatedAt: iso, kind: bulkState.noteKind };
+        if (bulkState.noteKind === 'book') draft.book = { title: source, author: '' };
         if (batchDupFlags[i]) draft.batchDup = true;
         if (video) draft.video = { ...video };
         data.drafts.push(draft);
@@ -6059,6 +6171,9 @@
       links: [], rejectedLinks: [], autoLinkedAt: null, createdAt: iso, updatedAt: iso,
     };
     if (draft.video) note.video = { ...draft.video };
+    note.kind = draft.kind || inferNoteKind(draft.source);
+    if (note.kind === 'book') note.book = normalizeBook(draft.book, draft.source) || { title: draft.source, author: '' };
+    if (draft.context && draft.context.length) note.context = draft.context.map((c) => ({ ...c }));
     data.notes.push(note);
     deleteDraft(draft.id); // saves once, persisting both the new note and the draft's removal
     triggerAutoLinkForNote(id, 'autolink');
@@ -6196,7 +6311,7 @@
     const note = findNote(nav.detailId);
     if (!note) { backFromDetail(); return; }
     document.getElementById('detailText').textContent = note.text;
-    document.getElementById('detailSource').textContent = note.source || '-';
+    { const el = document.getElementById('detailSource'); el.textContent = note.source || '-'; if (note.kind === 'book' && note.book && note.book.author) el.textContent += '（' + note.book.author + '）'; const badge = document.createElement('span'); badge.className = 'kindBadge'; badge.textContent = NOTE_KIND_LABEL[note.kind || 'quote']; el.appendChild(badge); }
     document.getElementById('detailMyWords').textContent = note.myWords;
     renderTagPills(document.getElementById('detailTags'), note.tags);
 
@@ -8425,10 +8540,18 @@
   const DRAW_MODE_KEY = 'kotoba_drawMode';
   function getDrawMode() { return localStorage.getItem(DRAW_MODE_KEY) === 'monthly' ? 'monthly' : 'all'; }
   function setDrawMode(mode) { localStorage.setItem(DRAW_MODE_KEY, mode === 'monthly' ? 'monthly' : 'all'); }
+  const DRAW_KIND_KEY = 'kotoba_drawKind';
+  function getDrawKind() { const v = localStorage.getItem(DRAW_KIND_KEY); return NOTE_KINDS.includes(v) ? v : 'all'; }
+  function drawKindFilter(list) { const k = getDrawKind(); if (k === 'all') return list; const f = list.filter((n) => (n.kind || 'quote') === k); return f.length ? f : list; }
   function renderDrawModeRow() {
     const mode = getDrawMode();
     document.querySelectorAll('#drawModeRow button').forEach((b) => b.classList.toggle('selected', b.dataset.mode === mode));
+    const kind = getDrawKind();
+    document.querySelectorAll('#drawKindRow button').forEach((b) => b.classList.toggle('selected', b.dataset.kind === kind));
   }
+  document.querySelectorAll('#drawKindRow button').forEach((b) => {
+    b.addEventListener('click', (e) => { e.stopPropagation(); localStorage.setItem(DRAW_KIND_KEY, b.dataset.kind); renderDrawModeRow(); });
+  });
   document.querySelectorAll('#drawModeRow button').forEach((b) => {
     b.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -8451,7 +8574,7 @@
     if (getDrawMode() === 'monthly') {
       const resting = recentlyHitIds(HIT_TUNING.restDays);
       const w = noteWeightsInWindow();
-      let pool = topMonthlyPickedNoteIds(10).map(findNote).filter((n) => n && !resting.has(n.id));
+      let pool = drawKindFilter(topMonthlyPickedNoteIds(10).map(findNote).filter((n) => n && !resting.has(n.id)));
       if (!pool.length) return null;
       // every Nth draw: a word from this month that was never ★'d (else any never-★'d word)
       const n = (Number(localStorage.getItem(DRAW_EXPLORE_KEY)) || 0) + 1;
@@ -8465,8 +8588,8 @@
       return weightedSample(pool, (x) => w.get(x.id) || 0, 1)[0];
     }
     const excluded = recentDrawExcludedIds();
-    let pool = data.notes.filter((n) => !excluded.has(n.id));
-    if (!pool.length) pool = data.notes;
+    let pool = drawKindFilter(data.notes.filter((n) => !excluded.has(n.id)));
+    if (!pool.length) pool = drawKindFilter(data.notes);
     return pool[Math.floor(Math.random() * pool.length)];
   }
 
@@ -8906,7 +9029,7 @@
 
   function graphCardEl(note, cls) {
     const el = document.createElement('div');
-    el.className = 'graphCard' + (cls ? ' ' + cls : '');
+    el.className = 'graphCard' + (cls ? ' ' + cls : '') + ' k-' + (note.kind || 'quote');
     el.dataset.noteId = note.id;
     const t = document.createElement('div');
     t.className = 'gcText';
@@ -9173,7 +9296,13 @@
   })();
 
   // --- Editor -----------------------------------------------------------
-  const editorState = { tags: [], links: [] };
+  const editorState = { tags: [], links: [], kind: 'quote' };
+  const editBookAuthorEl = document.getElementById('editBookAuthor');
+  function renderEditKindRow() {
+    document.querySelectorAll('#editKindRow button').forEach((b) => b.classList.toggle('selected', b.dataset.kind === editorState.kind));
+    editBookAuthorEl.hidden = editorState.kind !== 'book';
+  }
+  document.querySelectorAll('#editKindRow button').forEach((b) => b.addEventListener('click', () => { editorState.kind = b.dataset.kind; renderEditKindRow(); }));
   const editTextEl = document.getElementById('editText');
   const editSourceEl = document.getElementById('editSource');
   const editMyWordsEl = document.getElementById('editMyWords');
@@ -9195,13 +9324,18 @@
       editMyWordsEl.value = note.myWords;
       editorState.tags = [...note.tags];
       editorState.links = note.links.filter((l) => l.kind === 'manual').map((l) => l.id);
+      editorState.kind = note.kind || inferNoteKind(note.source);
+      editBookAuthorEl.value = (note.book && note.book.author) || '';
     } else {
       editTextEl.value = '';
       editSourceEl.value = '';
       editMyWordsEl.value = '';
       editorState.tags = [];
       editorState.links = [];
+      editorState.kind = 'quote';
+      editBookAuthorEl.value = '';
     }
+    renderEditKindRow();
     editTagInputEl.value = '';
     editLinkSearchEl.value = '';
     document.getElementById('editSimilarPanel').hidden = true;
@@ -9248,6 +9382,10 @@
     if (note[key].length > 200) note[key].shift();
   }
 
+  function applyEditorKind(note, source) {
+    note.kind = editorState.kind;
+    if (note.kind === 'book') note.book = { title: source, author: editBookAuthorEl.value.trim() }; else delete note.book;
+  }
   function performSaveNote() {
     document.getElementById('editSimilarPanel').hidden = true;
     const myWords = editMyWordsEl.value.trim();
@@ -9272,6 +9410,7 @@
       note.source = source;
       note.myWords = myWords;
       note.tags = [...editorState.tags];
+      applyEditorKind(note, source);
       note.updatedAt = iso;
       applyManualLinksDiff(note.id, oldManualLinks, newManualLinks);
       savedId = note.id;
@@ -9279,6 +9418,7 @@
     } else {
       const id = generateId(data.notes);
       const note = { id, text, source, myWords, tags: [...editorState.tags], links: [], rejectedLinks: [], autoLinkedAt: null, createdAt: iso, updatedAt: iso };
+      applyEditorKind(note, source);
       data.notes.push(note);
       applyManualLinksDiff(id, [], newManualLinks);
       savedId = id;
@@ -9383,7 +9523,7 @@
       renderSourceCandidates();
     });
   }
-  editSourceEl.addEventListener('input', renderSourceCandidates);
+  editSourceEl.addEventListener('input', () => { renderSourceCandidates(); if (editSourceEl.value.trim().startsWith('自分') && editorState.kind !== 'self') { editorState.kind = 'self'; renderEditKindRow(); } });
 
   const TAG_MAX = 3;
   const tagLimitHintEl = document.getElementById('tagLimitHint');
@@ -9611,6 +9751,37 @@
       pct,
     };
   }
+  // one row per source: the count and three kind chips (the selected one is
+  // the kind most of that source's notes have now)
+  function renderSourceKindList() {
+    const box = document.getElementById('sourceKindList');
+    box.innerHTML = '';
+    const groups = new Map();
+    data.notes.forEach((n) => { const k = n.source || ''; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(n); });
+    [...groups.entries()].sort((a, b) => b[1].length - a[1].length).forEach(([source, notes]) => {
+      const row = document.createElement('div'); row.className = 'sourceKindRow';
+      const label = document.createElement('span'); label.textContent = (source || '（出典なし）') + '　' + notes.length + '枚';
+      row.appendChild(label);
+      const counts = {}; notes.forEach((n) => { counts[n.kind || 'quote'] = (counts[n.kind || 'quote'] || 0) + 1; });
+      const major = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0];
+      const mixed = Object.keys(counts).length > 1;
+      const chips = document.createElement('div'); chips.className = 'tagFilterRow';
+      NOTE_KINDS.forEach((k) => {
+        const b = document.createElement('button'); b.type = 'button';
+        b.className = 'tagFilterBtn' + (k === major && !mixed ? ' selected' : '');
+        b.textContent = NOTE_KIND_LABEL[k] + (mixed && counts[k] ? ' ' + counts[k] : '');
+        b.addEventListener('click', () => {
+          const iso = nowIso();
+          notes.forEach((n) => { if ((n.kind || 'quote') === k && (k !== 'book' || n.book)) return; n.kind = k; if (k === 'book') { if (!n.book) n.book = { title: n.source, author: '' }; } else delete n.book; n.updatedAt = iso; });
+          saveData(data);
+          renderSourceKindList();
+        });
+        chips.appendChild(b);
+      });
+      row.appendChild(chips);
+      box.appendChild(row);
+    });
+  }
   function openSettings() {
     showScreen('settings');
     document.getElementById('ghTokenInput').value = getGhToken();
@@ -9623,6 +9794,7 @@
     document.getElementById('autoLinkToggle').checked = getAutoLinkEnabled();
     document.getElementById('morningEnabledToggle').checked = getMorningEnabled();
     document.getElementById('compressThresholdInput').value = getCompressThreshold();
+    renderSourceKindList();
     document.getElementById('morningQuoteHeadingInput').value = getMorningQuoteHeading();
     document.getElementById('statNoteCount').textContent = data.notes.length;
     document.getElementById('statTagCount').textContent = allTags().length;
