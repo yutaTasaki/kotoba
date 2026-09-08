@@ -4970,6 +4970,7 @@
     const input = inputEl.value.trim();
     if (!input || consultBusy) return;
     if (isUsageOverBudget() && !confirm('上限を超えています。続けますか？')) return;
+    clearInputDraft();
     const historyForThisCall = consultTurns
       .filter((t) => t.status === 'done')
       .slice(-CONSULT_HISTORY_TURNS)
@@ -5012,6 +5013,7 @@
   };
 
   function showScreen(name) {
+    if (nav.screen !== name) captureInputDraftNow();
     if (nav.screen === 'training' && name !== 'training') trFlush();
     ['home', 'list', 'consult', 'detail', 'editor', 'settings', 'records', 'bulk', 'draftreview', 'training'].forEach((s) => {
       document.getElementById('screen-' + s).hidden = s !== name;
@@ -5033,6 +5035,7 @@
     else if (nav.screen === 'list') renderList();
     else if (nav.screen === 'detail') renderDetail();
     else if (nav.screen === 'records') renderRecords();
+    applyInputDraftFields();
   }
 
   // --- Home ("朝") ----------------------------------------------------------
@@ -5302,6 +5305,7 @@
           } else if (!statsSaved) {
             document.getElementById('walkStepsInput').value = todayStats.steps != null ? todayStats.steps : '';
             document.getElementById('walkDistanceInput').value = todayStats.distanceM != null ? todayStats.distanceM : '';
+            applyInputDraftFields(['walkStepsInput', 'walkDistanceInput']);
             order.push(...homeStepRowIds('aftermood', `散歩後 ${MOOD_EMOJI[todayStats.afterMood]}`, 'afterMoodStage', 'afterMoodCollapsedRow'));
             order.push('walkStatsStage');
           } else {
@@ -5378,6 +5382,7 @@
   });
 
   document.getElementById('btnMorningAsk').addEventListener('click', async () => {
+    clearInputDraft();
     const btn = document.getElementById('btnMorningAsk');
     const skipBtn = document.getElementById('btnMorningSkip');
     const inputEl = document.getElementById('morningInput');
@@ -5434,6 +5439,7 @@
   });
 
   document.getElementById('btnSaveWalkStats').addEventListener('click', () => {
+    clearInputDraft();
     const stepsRaw = document.getElementById('walkStepsInput').value;
     const distRaw = document.getElementById('walkDistanceInput').value;
     const steps = stepsRaw === '' ? null : parseInt(stepsRaw, 10);
@@ -6172,6 +6178,7 @@
 
   document.getElementById('btnBulkDecompose').addEventListener('click', async () => {
     const text = stripTranscriptTimestamps(document.getElementById('bulkTextInput').value);
+    if (text) clearInputDraft();
     const statusEl = document.getElementById('bulkStatus');
     if (!text) { statusEl.textContent = 'テキストを貼り付けてください。'; return; }
     if (text.length > BULK_MAX_CHARS) {
@@ -6225,6 +6232,7 @@
       saveData(data);
       btn.disabled = false;
       statusEl.textContent = '';
+      document.getElementById('bulkTextInput').value = ''; clearInputDraft();
       openDraftReview();
     } catch (e) {
       btn.disabled = false;
@@ -6381,6 +6389,7 @@
       saveData(data);
       btn.disabled = false;
       statusEl.textContent = '';
+      document.getElementById('bulkTextInput').value = ''; document.getElementById('bulkReadingBookInput').value = ''; clearInputDraft();
       openDraftReview();
     } catch (e) {
       btn.disabled = false;
@@ -6466,6 +6475,7 @@
     clearDraftTagLimitMessage();
     renderDraftTagChips();
     renderDraftTagCandidates();
+    applyInputDraftFields();
     updateDraftSaveButtonState();
   }
 
@@ -6665,6 +6675,7 @@
   document.getElementById('btnDraftSave').addEventListener('click', () => {
     const myWords = document.getElementById('draftMyWordsInput').value.trim();
     if (!myWords) { updateDraftSaveButtonState(); return; }
+    clearInputDraft();
     commitDraftTagInput();
     const draft = findDraft(draftQueue[draftQueueIndex]);
     if (!draft) return;
@@ -6706,6 +6717,7 @@
     const draft = findDraft(draftQueue[draftQueueIndex]);
     if (!draft) return;
     if (!confirm('この下書きを削除します。よろしいですか？')) return;
+    clearInputDraft();
     deleteDraft(draft.id);
     draftQueue.splice(draftQueueIndex, 1);
     advanceDraftQueueAfterRemoval();
@@ -6713,6 +6725,7 @@
 
   document.getElementById('btnDraftLater').addEventListener('click', () => {
     if (!draftQueue.length) return;
+    clearInputDraft();
     const id = draftQueue[draftQueueIndex];
     draftQueue.splice(draftQueueIndex, 1);
     draftQueue.push(id);
@@ -6832,6 +6845,7 @@
     const list = document.getElementById('detailContextList');
     list.innerHTML = '';
     document.getElementById('detailContextInput').value = '';
+    applyInputDraftFields(['detailContextInput']);
     (note.context || []).forEach((c, i) => {
       const row = document.createElement('div'); row.className = 'detailContextItem';
       const t = document.createElement('div'); t.className = 'detailContextText'; t.textContent = c.text; row.appendChild(t);
@@ -6846,6 +6860,7 @@
   document.getElementById('btnDetailContextAdd').addEventListener('click', () => {
     const note = findNote(nav.detailId); if (!note) return;
     const text = document.getElementById('detailContextInput').value.trim(); if (!text) return;
+    clearInputDraft();
     if (!note.context) note.context = [];
     note.context.push({ text: text.slice(0, 4000), at: nowIso() });
     note.updatedAt = nowIso();
@@ -9032,9 +9047,12 @@
     paintMoodRow(editAfterMoodButtons, stats.afterMood != null ? stats.afterMood : null);
     document.getElementById('recordsCalendarView').hidden = true;
     document.getElementById('dayEditorView').hidden = false;
+    applyInputDraftFields(['editStepsInput', 'editDistanceInput']);
   }
 
   function closeDayEditor() {
+    clearInputDraft();
+    document.getElementById('editStepsInput').value = ''; document.getElementById('editDistanceInput').value = '';
     editingDate = null;
     document.getElementById('dayEditorView').hidden = true;
     document.getElementById('recordsCalendarView').hidden = false;
@@ -9043,6 +9061,7 @@
 
   document.getElementById('btnSaveDayEdit').addEventListener('click', () => {
     if (!editingDate) return;
+    clearInputDraft();
     const steps = document.getElementById('editStepsInput').value === '' ? null : parseInt(document.getElementById('editStepsInput').value, 10);
     const distanceM = document.getElementById('editDistanceInput').value === '' ? null : parseFloat(document.getElementById('editDistanceInput').value);
     setWalkDailyStats(editingDate, steps, distanceM);
@@ -9900,7 +9919,10 @@
     showScreen('editor');
   }
 
+  function blankEditorFields() { ['editText', 'editSource', 'editMyWords', 'editBookAuthor', 'editTagInput', 'editLinkSearch'].forEach((id) => { const el = document.getElementById(id); if (el) el.value = ''; }); }
   function closeEditor() {
+    clearInputDraft();
+    blankEditorFields();
     if (nav.editorReturnScreen === 'detail') {
       showScreen('detail');
       renderDetail();
@@ -9938,6 +9960,7 @@
     if (note.kind === 'book') note.book = { title: source, author: editBookAuthorEl.value.trim() }; else delete note.book;
   }
   function performSaveNote() {
+    clearInputDraft();
     document.getElementById('editSimilarPanel').hidden = true;
     const myWords = editMyWordsEl.value.trim();
     if (!myWords) { updateSaveButtonState(); return; }
@@ -9978,6 +10001,7 @@
 
     saveData(data);
     if (shouldAutoLink) triggerAutoLinkForNote(savedId);
+    blankEditorFields();
 
     if (nav.editorMode === 'new') {
       const origin = nav.editorReturnScreen === 'list' ? 'list' : nav.editorReturnScreen === 'consult' ? 'consult' : 'home';
@@ -10712,10 +10736,108 @@
     }
   });
 
+  // --- 入力の退避 (v7.5) ----------------------------------------------------
+  // iOS drops a backgrounded page (and this app reloads itself after an
+  // update), so anything typed but not yet saved used to vanish. Every
+  // input/textarea of the visible screen is copied to localStorage as the
+  // user types, when the app goes to the background, and when the screen
+  // changes; at boot the app returns to that screen and refills the fields.
+  // Saved data is never touched - this is only the unsaved draft, and the
+  // submit/save handlers clear it.
+  const INPUT_DRAFT_KEY = 'kotoba_inputDraft';
+  const INPUT_DRAFT_MAX_AGE_MS = 48 * 3600 * 1000;
+  const INPUT_DRAFT_SKIP = new Set(['trDate', 'trWeight', 'listSearch', 'walkShareTextInput']);   // own persistence / not worth restoring
+  let inputDraftTimer = null, inputDraftRestoring = false;
+  function readInputDraft() { try { const raw = localStorage.getItem(INPUT_DRAFT_KEY); const d = raw ? JSON.parse(raw) : null; return (d && d.fields && d.ctx) ? d : null; } catch (e) { return null; } }
+  function inputDraftContext() {
+    const ctx = { screen: nav.screen };
+    if (nav.screen === 'editor') ctx.editor = { mode: nav.editorMode, editId: nav.editorEditId, ret: nav.editorReturnScreen, tags: [...editorState.tags], links: [...editorState.links], kind: editorState.kind };
+    if (nav.screen === 'bulk') ctx.bulk = { kind: bulkState.kind, noteKind: bulkState.noteKind, questionId: bulkState.questionId };
+    if (nav.screen === 'draftreview') ctx.draftId = draftQueue[draftQueueIndex] || null;
+    if (nav.screen === 'detail') ctx.detailId = nav.detailId;
+    if (nav.screen === 'records') ctx.editingDate = editingDate;
+    return ctx;
+  }
+  function inputDraftMatches(d) {
+    const c = d.ctx;
+    if (c.screen !== nav.screen) return false;
+    if (c.screen === 'editor') return !!c.editor && c.editor.mode === nav.editorMode && (c.editor.editId || null) === (nav.editorEditId || null);
+    if (c.screen === 'draftreview') return (c.draftId || null) === (draftQueue[draftQueueIndex] || null);
+    if (c.screen === 'detail') return c.detailId === nav.detailId;
+    if (c.screen === 'records') return (c.editingDate || null) === (editingDate || null);
+    return true;
+  }
+  function captureInputDraftNow() {
+    if (inputDraftRestoring) return;
+    const sec = document.getElementById('screen-' + nav.screen);
+    if (!sec) return;
+    const fields = {};
+    sec.querySelectorAll('input, textarea').forEach((el) => {
+      if (!el.id || INPUT_DRAFT_SKIP.has(el.id) || el.readOnly || el.disabled) return;
+      const t = el.type || 'text';
+      if (t === 'checkbox' || t === 'radio' || t === 'file' || t === 'hidden' || t === 'button' || t === 'submit') return;
+      for (let p = el.parentElement; p && p !== sec; p = p.parentElement) { if (p.hidden) return; } // field inside a closed stage/editor
+      if (el.id === 'bulkFilmedAtInput' && el.value === todayStr()) return; // default value, not user input
+      if (el.value !== '') fields[el.id] = el.value;
+    });
+    try {
+      if (!Object.keys(fields).length) { const prev = readInputDraft(); if (prev && prev.ctx.screen === nav.screen) localStorage.removeItem(INPUT_DRAFT_KEY); return; }
+      localStorage.setItem(INPUT_DRAFT_KEY, JSON.stringify({ at: nowIso(), fields, ctx: inputDraftContext() }));
+    } catch (e) {}
+  }
+  function scheduleInputDraft() { if (inputDraftTimer) clearTimeout(inputDraftTimer); inputDraftTimer = setTimeout(() => { inputDraftTimer = null; captureInputDraftNow(); }, 300); }
+  function clearInputDraft() { if (inputDraftTimer) { clearTimeout(inputDraftTimer); inputDraftTimer = null; } try { localStorage.removeItem(INPUT_DRAFT_KEY); } catch (e) {} }
+  // put the draft back into the fields of the screen on view (after a render reset them)
+  function applyInputDraftFields(onlyIds) {
+    const d = readInputDraft();
+    if (!d || !inputDraftMatches(d)) return;
+    let changed = false;
+    Object.entries(d.fields).forEach(([id, v]) => {
+      if (onlyIds && !onlyIds.includes(id)) return;
+      const el = document.getElementById(id);
+      if (el && el.value !== v) { el.value = v; changed = true; inputDraftRestoring = true; try { el.dispatchEvent(new Event('input', { bubbles: true })); } finally { inputDraftRestoring = false; } }
+    });
+    return changed;
+  }
+  // boot: go back to the screen the draft was typed on
+  function restoreInputDraft() {
+    const d = readInputDraft();
+    if (!d) return;
+    if (Date.now() - new Date(d.at).getTime() > INPUT_DRAFT_MAX_AGE_MS || !Object.keys(d.fields).length) { clearInputDraft(); return; }
+    const c = d.ctx;
+    inputDraftRestoring = true;
+    try {
+      if (c.screen === 'editor' && c.editor) {
+        if (c.editor.mode === 'edit' && !findNote(c.editor.editId)) { clearInputDraft(); return; }
+        openEditor(c.editor.mode, c.editor.editId, c.editor.ret || 'list');
+        editorState.tags = [...(c.editor.tags || [])]; editorState.links = (c.editor.links || []).filter(findNote); editorState.kind = NOTE_KINDS.includes(c.editor.kind) ? c.editor.kind : editorState.kind;
+        renderTagChips(); renderLinkChips(); renderEditKindRow();
+      } else if (c.screen === 'bulk') {
+        openBulk();
+        if (c.bulk) { bulkState.kind = c.bulk.kind || 'book'; bulkState.noteKind = c.bulk.noteKind || 'quote'; bulkState.questionId = c.bulk.questionId || null; renderBulkKindRow(); }
+      } else if (c.screen === 'consult') openConsult(true);
+      else if (c.screen === 'detail') { if (!findNote(c.detailId)) { clearInputDraft(); return; } openDetail(c.detailId, 'list'); }
+      else if (c.screen === 'draftreview') { openDraftReview(); const i = draftQueue.indexOf(c.draftId); if (i >= 0) { draftQueueIndex = i; renderDraftCard(); } }
+      else if (c.screen === 'records') { openRecords(); if (c.editingDate) openDayEditor(c.editingDate); }
+      else if (c.screen === 'settings') openSettings();
+      else if (c.screen === 'list') openList();
+      else goHome();
+    } catch (e) { recordFeatureError('入力の復元', e); }
+    finally { inputDraftRestoring = false; }
+    applyInputDraftFields();
+    if (nav.screen === 'editor') updateSaveButtonState();
+  }
+  document.addEventListener('input', (e) => { if (e.target && e.target.closest && e.target.closest('#app')) scheduleInputDraft(); }, true);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') captureInputDraftNow(); });
+  window.addEventListener('pagehide', () => captureInputDraftNow());
+  // settings: any 保存 press clears, then the still-unsaved fields are captured again
+  document.getElementById('screen-settings').addEventListener('click', (e) => { if (e.target.closest('button')) { clearInputDraft(); setTimeout(captureInputDraftNow, 100); } });
+
   // --- boot ---------------------------------------------------------------
   notesBoot();
   journalBoot();
   goHome();
+  restoreInputDraft();
   syncAllNow();
   if (document.fonts && document.fonts.ready) {
     // walk canvas uses DotGothic16; re-render once it's actually loaded so
