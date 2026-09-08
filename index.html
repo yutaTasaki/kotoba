@@ -2594,7 +2594,11 @@
         'anthropic-version': '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true',
       },
-      body: JSON.stringify({ model, max_tokens: 2048, system, messages: [{ role: 'user', content: promptText }] }),
+      // 2048 before v3.3. The answer itself is small (up to 3 picks with a
+      // ~30字 why, plus a 3-line closing - roughly 400-700 tokens), but the
+      // thinking pass that chooses them weighs the whole notes list, so that
+      // is the part needing room. 8192 leaves ~7.4k for it.
+      body: JSON.stringify({ model, max_tokens: 8192, system, messages: [{ role: 'user', content: promptText }] }),
     });
 
     if (res.status === 429 && !is429Retry) {
@@ -2611,6 +2615,7 @@
     const textOut = (json.content || []).map((b) => b.text || '').join('');
     const parsed = parseConsultResponseLoose(textOut);
     if (!parsed) {
+      if (isTruncated(json)) throw truncatedResponseError();
       if (!isParseRetry) return callChatApi(input, history, maxPicks, usageKind, false, true);
       throw new Error('invalid response shape');
     }
@@ -2829,6 +2834,36 @@
       + (stat.cacheRead / 1e6) * p.input * 0.1;
   }
 
+  // v3.3: every model this app realistically runs on the chat/question side
+  // (Sonnet 5, Opus 5) has adaptive thinking ON by default, and those
+  // thinking tokens come out of the SAME max_tokens budget as the answer.
+  // When the budget runs out mid-think the API still returns 200 - with
+  // stop_reason "max_tokens" and a content array holding an empty text
+  // block. That was indistinguishable here from a malformed answer: it
+  // burned a retry (a second full charge on a request that truncates
+  // identically the second time) and then failed with "invalid response
+  // shape", which points at nothing the user can act on. So: detect it by
+  // stop_reason, never retry it, and say what actually happened.
+  //
+  // Deliberately checked only AFTER the loose parser has had its go: a
+  // response that got cut off but still yielded usable JSON (the consult
+  // parser recovers picks when closing is truncated; the array parser
+  // recovers a partial list) is better delivered than thrown away.
+  function truncatedResponseError() {
+    const err = new Error('応答が長すぎて途中で切れました');
+    err.truncated = true;
+    return err;
+  }
+  function isTruncated(json) { return !!json && json.stop_reason === 'max_tokens'; }
+
+  // One shared error log (surfaced in settings as 「最終エラー」), prefixed with
+  // the feature so a truncation says which call it came from. Every one of
+  // these features used to swallow its failures - the morning flow silently
+  // fell back to a random word - so nothing ever reached that line.
+  function recordFeatureError(label, e) {
+    recordAutoLinkError(label + ': ' + ((e && e.message) ? e.message : String(e)));
+  }
+
   function recordAutoLinkError(message) {
     localStorage.setItem(LAST_AUTO_LINK_ERROR_KEY, JSON.stringify({ message: String(message), at: nowIso() }));
   }
@@ -3022,7 +3057,13 @@
         'anthropic-version': '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true',
       },
-      body: JSON.stringify({ model, max_tokens: 8192, system, messages: [{ role: 'user', content: promptText }] }),
+      // 8192 before v3.3, and this is the call most likely to need more:
+      // book mode has no per-item cap, so a full 20,000字 paste can come back
+      // as ~100 items of up to 200字 each - well over 8k tokens of JSON on its
+      // own, before the thinking pass that reads the whole paste. 32000 is
+      // sized so the answer is never what runs out; unused budget costs
+      // nothing, and a longer wait beats losing the whole decomposition.
+      body: JSON.stringify({ model, max_tokens: 32000, system, messages: [{ role: 'user', content: promptText }] }),
     });
 
     if (res.status === 429 && !is429Retry) {
@@ -3039,6 +3080,7 @@
     const textOut = (json.content || []).map((b) => b.text || '').join('');
     const parsed = parseJsonArrayLoose(textOut);
     if (!parsed) {
+      if (isTruncated(json)) throw truncatedResponseError();
       if (!isParseRetry) return callBulkDecomposeApi(rawText, kind, false, true);
       throw new Error('invalid response shape');
     }
@@ -3436,6 +3478,7 @@
     const textOut = (json.content || []).map((b) => b.text || '').join('');
     const parsed = parseQuestionResponseLoose(textOut);
     if (!parsed || !parsed.question.trim()) {
+      if (isTruncated(json)) throw truncatedResponseError();
       if (!isParseRetry) return callQuestionApi(materials, is429Retry, true);
       throw new Error('invalid response shape');
     }
@@ -3531,6 +3574,11 @@
         s.className = 'fieldNote warn';
         s.textContent = '設定画面でClaude APIキーを入力してください。';
         wrap.appendChild(s);
+      } else if (turn.status === 'truncated') {
+        const s = document.createElement('p');
+        s.className = 'fieldNote warn';
+        s.textContent = '応答が長すぎて途中で切れました。短く書き直すか、もう一度お試しください。';
+        wrap.appendChild(s);
       } else if (turn.status === 'error') {
         const s = document.createElement('p');
         s.className = 'fieldNote warn';
@@ -3616,7 +3664,8 @@
       saveJournalEntry(entry);
       turn.journalId = entry.id;
     } catch (e) {
-      turn.status = e && e.noKey ? 'no-key' : 'error';
+      turn.status = e && e.noKey ? 'no-key' : e && e.truncated ? 'truncated' : 'error';
+      if (!(e && e.noKey)) recordFeatureError('相談', e);
     }
     consultBusy = false;
     btn.disabled = false;
@@ -3659,6 +3708,9 @@
 
   // --- Home ("朝") ----------------------------------------------------------
   let morningSkippedDate = null;
+  // Session-only: why this morning's API call failed, shown above the
+  // fallback word. Not persisted - it describes one attempt, not the day.
+  let morningLastError = '';
   let morningRandomNoteId = null, morningRandomNoteDate = null;
   let walkSharePngBlob = null;
 
@@ -3741,6 +3793,13 @@
   function renderMorningCards(morningEntry) {
     const container = document.getElementById('morningCards');
     container.innerHTML = '';
+    if (morningEntry) morningLastError = '';
+    if (!morningEntry && morningLastError) {
+      const warn = document.createElement('p');
+      warn.className = 'fieldNote warn';
+      warn.textContent = morningLastError;
+      container.appendChild(warn);
+    }
     let picks = [], closing = '';
     if (morningEntry) {
       picks = morningEntry.picks;
@@ -4005,8 +4064,14 @@
     } catch (e) {
       // network/parse failure (or no key, though that path is normally
       // short-circuited before this button is ever shown): fall back to the
-      // same "skip today" state rather than leaving the user stuck.
+      // same "skip today" state rather than leaving the user stuck - but
+      // v3.3: no longer silently. The fallback word is still shown; the
+      // reason is shown above it and written to the settings error log.
       morningSkippedDate = today;
+      morningLastError = (e && e.truncated)
+        ? '応答が長すぎて途中で切れました。下は今朝の代わりの一枚です。'
+        : '言葉を受け取れませんでした。下は今朝の代わりの一枚です。';
+      if (!(e && e.noKey)) recordFeatureError('朝の言葉', e);
     }
     btn.disabled = false;
     skipBtn.disabled = false;
@@ -4739,7 +4804,12 @@
       openDraftReview();
     } catch (e) {
       btn.disabled = false;
-      statusEl.textContent = (e && e.noKey) ? '設定画面でClaude APIキーを入力してください。' : '分解に失敗しました。もう一度お試しください。';
+      statusEl.textContent = (e && e.noKey)
+        ? '設定画面でClaude APIキーを入力してください。'
+        : (e && e.truncated)
+          ? '応答が長すぎて途中で切れました。テキストを分けて貼り付けてください。'
+          : '分解に失敗しました。もう一度お試しください。';
+      if (!(e && e.noKey)) recordFeatureError('一括入力', e);
     }
   });
 
@@ -6053,7 +6123,10 @@
       document.getElementById('drawChoice').hidden = false;
       setDrawChoiceHint(e && e.noKey
         ? '設定画面でClaude APIキーを入力してください。'
-        : '問いを作れませんでした。もう一度お試しください。');
+        : e && e.truncated
+          ? '応答が長すぎて途中で切れました。もう一度お試しください。'
+          : '問いを作れませんでした。もう一度お試しください。');
+      if (!(e && e.noKey)) recordFeatureError('問い', e);
     } finally {
       questionState.busy = false;
     }
