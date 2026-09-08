@@ -629,6 +629,9 @@
   .questionFromSource { font-size: 12px; color: var(--text-dim); }
   .questionFromMyWords { font-size: 12px; color: var(--text-faint); line-height: 1.7; margin-top: 4px; }
   .questionUsedNote { font-size: 12px; color: var(--accent); text-align: center; }
+  .questionViewer { border-top: 1px solid var(--border); padding-top: 14px; display: flex; flex-direction: column; gap: 6px; }
+  .questionViewerHead { font-size: 11px; color: var(--text-faint); letter-spacing: .06em; }
+  .questionViewerText { font-size: 16px; line-height: 1.8; white-space: pre-wrap; }
   .questionNone { display: flex; flex-direction: column; gap: 14px; align-items: center; }
   .questionNoneText { font-size: 18px; color: var(--text-dim); line-height: 1.8; }
   .drawChoiceHintDim { font-size: 12px; color: var(--text-faint); }
@@ -1230,6 +1233,10 @@
     <div id="drawLinks" class="drawLinks"></div>
     <div id="questionFooter" class="questionFooter" hidden>
       <div id="questionFrom" class="drawLinks"></div>
+      <div id="questionViewer" class="questionViewer" hidden>
+        <div class="questionViewerHead">視聴者に向けて</div>
+        <div class="questionViewerText" id="questionViewerText"></div>
+      </div>
       <button type="button" id="btnQuestionUse" class="primaryBtn">この問いで話す</button>
       <p class="questionUsedNote" id="questionUsedNote" hidden></p>
     </div>
@@ -1341,6 +1348,7 @@
       out.from = Array.isArray(j.from) ? j.from.filter(Boolean).map(String).slice(0, 4) : [];
       out.why_now = typeof j.why_now === 'string' ? j.why_now : '';
       out.tension = typeof j.tension === 'string' ? j.tension : '';
+      out.for_viewer = typeof j.for_viewer === 'string' ? j.for_viewer : ''; // v3.3.2
       out.source_mode = QUESTION_MODES.includes(j.source_mode) ? j.source_mode : 'self';
       out.used = j.used === true;
     }
@@ -3412,11 +3420,20 @@
       '- why_now は、この1ヶ月の朝の一言・相談に具体的な接点があるときだけ書く。その記録の言葉を引いて2行以内で書く。接点がなければ空文字にする。ないものを作らない。\n' +
       '- 最近この人に出した問い（渡したもの）と、同じ切り口・同じ言葉の組み合わせを使わない。\n' +
       '- from には、その問いが立っている材料の id を入れる（軸の1枚を先頭に）。渡された id 以外は書かない。\n' +
-      '- question・why_now・tension・reason には改行を使わない。\n\n' +
+      '- question・for_viewer・why_now・tension・reason には改行を使わない。\n\n' +
+      'for_viewer（視聴者に向けた一行）：\n' +
+      'この問いは、本人がひとりで話す動画の入口に使う。本人の問いは材料と記録を知っている前提で書かれているので、そのままでは視聴者に届かない。同じ核心を、何も知らない視聴者に届く一行に書き直す。\n' +
+      '- 核心を保つ：本人の問いが立っている食い違い（tension）と同じ食い違いを、視聴者の側から問う。別の話にしない、丸めない。\n' +
+      '- 前提を捨てる：本人の記録の言葉、材料の言葉の言い回し、出典の名前は使わない。視聴者はどれも知らない。「〜と書いた自分」のような本人の話にしない。\n' +
+      '- 一般論・説教・「〜とは何か」「〜は大切か」「〜すべきか」にしない。視聴者が「それは自分にもある」と気づく具体的な場面や身体の感覚から入る。その場面は、本人の記録や問いにある実際の状況（朝の状態、続けていること、人との関係など）から取り、固有の言葉を落として誰にでもある場面に直す。作った場面や、他所から借りた決まり文句にしない。\n' +
+      '- 視聴者が自分のこととして考え始められる問いかけにする。答えや教訓を含めない。\n' +
+      '- 30〜50字程度の1文。\n' +
+      '- 例（本人の問い→視聴者向け）：「『力が今日鍛えられている』と書いた自分は、頭に靄がかかって気持ち悪い今朝を、その鍛えられている最中と見るか、それとも鍛える力そのものが弱っている状態と見るか」→「頭が重くて何も進まない朝を、鍛えられている途中と思えるか、力が落ちている合図と見るか」。この例の文の形も場面の語も使い回さず、その問いに合った形にする。\n' +
+      '- 問いが null のときは for_viewer も null。\n\n' +
       '返答は JSON のみ。前置きも説明も書かない：\n' +
-      '{"question":"...","from":["id","id"],"why_now":"...","tension":"..."}\n' +
+      '{"question":"...","for_viewer":"...","from":["id","id"],"why_now":"...","tension":"..."}\n' +
       '問いが立たなかったとき：\n' +
-      '{"question":null,"reason":"..."}';
+      '{"question":null,"for_viewer":null,"reason":"..."}';
     return [{ type: 'text', text }];
   }
 
@@ -3481,7 +3498,11 @@
         // max_tokens) about half the time. The JSON itself is ~250 tokens;
         // the rest of this is headroom for the thinking pass, which is
         // exactly the part that makes the question specific.
-        max_tokens: 4096,
+        // v3.3.2: raised from 4096 after a real run spent 4095 tokens thinking
+        // and returned nothing - the for_viewer rules lengthened the pass, and
+        // the dedup against recent questions makes the fixed 今月の核 pair
+        // harder each time. Same budget as 相談 now.
+        max_tokens: 8192,
         system: buildQuestionSystemBlocks(),
         messages: [{ role: 'user', content: buildQuestionUserPrompt(materials) }],
       }),
@@ -3522,6 +3543,7 @@
     }
     return {
       question: parsed.question.trim().replace(/\s+/g, ' ').slice(0, 200),
+      for_viewer: (typeof parsed.for_viewer === 'string' ? parsed.for_viewer : '').trim().replace(/\s+/g, ' ').slice(0, 120),
       from,
       why_now: (typeof parsed.why_now === 'string' ? parsed.why_now : '').trim().slice(0, 160),
       tension: (typeof parsed.tension === 'string' ? parsed.tension : '').trim().replace(/\s+/g, ' ').slice(0, 160),
@@ -5608,6 +5630,12 @@
         why.textContent = j.why_now;
         item.appendChild(why);
       }
+      if (j.for_viewer) {
+        const viewer = document.createElement('div');
+        viewer.className = 'questionRecordMeta';
+        viewer.textContent = '視聴者に向けて ・ ' + j.for_viewer;
+        item.appendChild(viewer);
+      }
 
       (j.from || []).forEach((id) => {
         const note = findNote(id);
@@ -6105,6 +6133,9 @@
       setTimeout(() => resultEl.classList.remove('pop'), 260);
     }
     renderQuestionFromCards(entry);
+    const viewerEl = document.getElementById('questionViewer');
+    document.getElementById('questionViewerText').textContent = entry.for_viewer || '';
+    viewerEl.hidden = !entry.for_viewer; // older entries (pre-v3.3.2) simply have none
     renderQuestionUseButton(entry);
     document.getElementById('questionFooter').hidden = false;
   }
@@ -6154,7 +6185,7 @@
       const entry = {
         id: generateJournalId(), date: todayStr(), kind: 'question',
         text: result.question, picks: [], closing: '',
-        from: result.from, why_now: result.why_now, tension: result.tension,
+        from: result.from, why_now: result.why_now, tension: result.tension, for_viewer: result.for_viewer,
         source_mode: materials.mode, used: false,
         createdAt: iso, updatedAt: iso,
       };
