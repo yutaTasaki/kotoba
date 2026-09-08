@@ -6607,26 +6607,28 @@
           hair(y - 6 * scale);
         } else {
           const wR = 0.46, xX = 0.575, rX = 0.65;
-          const setLine = (label, labelF, w, rr) => {
+          // Drop rows sit under their set, shifted right and a size smaller, so
+          // they line up with each other; 'drop' is written once per set.
+          const setLine = (label, w, rr, drop) => {
+            const f = drop ? setF * 0.78 : setF, sf = drop ? smallF * 0.85 : smallF, off = drop ? colW * 0.1 : 0, rh = drop ? rowH * 0.88 : rowH;
             if (!dry) {
-              ctx.textAlign = 'left'; ctx.fillStyle = TR_GREEN; ctx.font = F(labelF);
-              ctx.fillText(label, x0 + 8 * scale, y + (setF - labelF) * 0.5 + 4 * scale);
+              ctx.textAlign = 'left'; ctx.fillStyle = TR_GREEN; ctx.font = F(sf);
+              if (label) ctx.fillText(label, x0 + off + 8 * scale, y + (f - sf) * 0.5 + 4 * scale);
               const wt = w === null ? '自重' : fmtKg(w);
-              ctx.font = F(setF); ctx.textAlign = 'right'; ctx.fillText(wt, x0 + colW * wR, y);
-              ctx.textAlign = 'left'; ctx.fillStyle = TR_DIM; ctx.font = F(smallF);
-              if (w !== null) ctx.fillText('kg', x0 + colW * wR + 10 * scale, y + setF - smallF);
-              ctx.font = F(36 * scale); ctx.fillText('×', x0 + colW * xX, y + (setF - 36 * scale) * 0.5);
-              ctx.fillStyle = TR_GREEN; ctx.font = F(setF); ctx.fillText(String(rr), x0 + colW * rX, y);
+              ctx.font = F(f); ctx.textAlign = 'right'; ctx.fillText(wt, x0 + off + colW * wR, y);
+              ctx.textAlign = 'left'; ctx.fillStyle = TR_DIM; ctx.font = F(sf);
+              if (w !== null) ctx.fillText('kg', x0 + off + colW * wR + 10 * scale, y + f - sf);
+              ctx.font = F(36 * scale * (drop ? 0.8 : 1)); ctx.fillText('×', x0 + off + colW * xX, y + (f - 36 * scale * (drop ? 0.8 : 1)) * 0.5);
+              ctx.fillStyle = TR_GREEN; ctx.font = F(f); ctx.fillText(String(rr), x0 + off + colW * rX, y);
               const rw = ctx.measureText(String(rr)).width;
-              ctx.fillStyle = TR_DIM; ctx.font = F(smallF); ctx.fillText('回', x0 + colW * rX + rw + 8 * scale, y + setF - smallF);
+              ctx.fillStyle = TR_DIM; ctx.font = F(sf); ctx.fillText('回', x0 + off + colW * rX + rw + 8 * scale, y + f - sf);
             }
-            hair(y + rowH - 6 * scale);
-            y += rowH;
+            hair(y + rh - 6 * scale);
+            y += rh;
           };
           r.sets.forEach((st, i) => {
-            setLine('SET ' + (i + 1), smallF, st.w, st.r);
-            // drop sets continue under their set, 'drop' in the SET column, same kg / 回 columns
-            (st.drops || []).forEach((d) => setLine('drop', smallF * 0.85, d.w, d.r));
+            setLine('SET ' + (i + 1), st.w, st.r, false);
+            (st.drops || []).forEach((d, di) => setLine(di === 0 ? 'drop' : '', d.w, d.r, true));
           });
         }
         y += 24 * scale;
