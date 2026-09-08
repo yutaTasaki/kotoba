@@ -6899,8 +6899,25 @@
       'ルール:\n' +
       '- p（主働筋）は1〜3個、s（協働筋）は0〜4個。IDは一覧にあるものだけを使う。\n' +
       '- 種目名から動作が推測できないときは null にする（無理に当てない）。\n' +
-      '- 有酸素（ランニング、バイク、ウォーキングなど）は脚の筋肉を主働に、ふくらはぎ・臀筋を協働にする。\n' +
+      '- 各種目には本人が付けた部位（肩/胸/背中/腕/足/腹筋/有酸素/その他）が添えてある。部位が有酸素の種目（ランニング、バイク、Carb Day など名前が何であれ）は脚の筋肉（rectus_femoris, vastus_lateralis, vastus_medialis）を主働に、gastrocnemius と gluteus_maximus を協働にする。\n' +
+      '- 一覧にない ID や仮の ID は絶対に書かない。JSON は 1 回だけ出力し、訂正や追記はしない。\n' +
       '- 出力は JSON オブジェクトのみ。キーは与えられた種目名をそのまま、値は {"p": [...], "s": [...]} または null。説明文は書かない。' }];
+  }
+  function partOfExercise(name) {
+    const hit = TRAINING_PARTS.find((part) => ((trainingData.exercises || {})[part] || []).some((e) => e.name === name));
+    return hit || 'その他';
+  }
+  // The reply may carry more than one JSON block (the model sometimes
+  // corrects itself); the last one that parses wins.
+  function parseMuscleReply(text) {
+    const blocks = [];
+    const re = /```(?:json)?\s*([\s\S]*?)```/g;
+    let m;
+    while ((m = re.exec(text))) blocks.push(m[1]);
+    const a = text.indexOf('{'), b = text.lastIndexOf('}');
+    if (a !== -1 && b > a) blocks.unshift(text.slice(a, b + 1));
+    for (let i = blocks.length - 1; i >= 0; i--) { try { const v = JSON.parse(blocks[i]); if (v && typeof v === 'object') return v; } catch (e) {} }
+    return null;
   }
   async function generateMuscleMaps(names) {
     const apiKey = getClaudeApiKey();
@@ -6908,16 +6925,14 @@
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-      body: JSON.stringify({ model: getClaudeChatModel(), max_tokens: 8192, system: buildMuscleSystemBlocks(), messages: [{ role: 'user', content: '種目名:\n' + JSON.stringify(names) }] }),
+      body: JSON.stringify({ model: getClaudeChatModel(), max_tokens: 8192, system: buildMuscleSystemBlocks(), messages: [{ role: 'user', content: '種目名（name）と本人の部位（part）:\n' + JSON.stringify(names.map((n) => ({ name: n, part: partOfExercise(n) }))) + '\n\n出力のキーは name をそのまま使うこと。' }] }),
     });
     if (!res.ok) { const err = new Error('API ' + res.status); err.status = res.status; throw err; }
     const json = await res.json();
     recordApiUsage('muscle', json.usage);
     saveData(data);
     const text = (json.content || []).map((b) => b.text || '').join('');
-    const a = text.indexOf('{'), b = text.lastIndexOf('}');
-    let parsed = null;
-    try { parsed = JSON.parse(text.slice(a, b + 1)); } catch (e) { parsed = null; }
+    const parsed = parseMuscleReply(text);
     if (!parsed) { if (isTruncated(json)) throw truncatedResponseError(); throw new Error('応答を読めませんでした'); }
     const out = {};
     names.forEach((n) => { const v = parsed[n]; out[n] = (v && typeof v === 'object') ? { p: Array.isArray(v.p) ? v.p : [], s: Array.isArray(v.s) ? v.s : [] } : null; });
