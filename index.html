@@ -12,7 +12,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
 <style>
   :root {
     --bg: #121212;
@@ -657,47 +656,28 @@
   .questionRecordText { font-size: 15px; line-height: 1.8; }
   .questionRecordMeta { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
 
-  .graphFilterBar { display: flex; gap: 8px; flex: 1; flex-wrap: wrap; }
-  .graphFilterSelect {
-    font-family: inherit;
-    font-size: 13px;
-    background: var(--bg-elevated);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 6px 8px;
+  /* --- v3.6: 網 = 遠い対立 (concentric cards, no physics) ----------- */
+  .graphTitle { font-size: 13px; color: var(--text-dim); flex: 1; }
+  .graphViewport { flex: 1; min-height: 44vh; overflow: auto; -webkit-overflow-scrolling: touch; position: relative; border-radius: 12px; background: #0b0b0b; }
+  .graphStage { position: relative; }
+  .graphSvg { position: absolute; left: 0; top: 0; pointer-events: none; }
+  .graphCard {
+    position: absolute; width: 108px; box-sizing: border-box;
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 6px 8px; cursor: pointer; transform: translate(-50%, -50%); user-select: none; -webkit-user-select: none;
   }
-  .graphCanvas { flex: 1; width: 100%; touch-action: none; }
-  .graphLegend {
-    position: absolute;
-    right: 16px;
-    bottom: calc(16px + env(safe-area-inset-bottom));
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    font-size: 11px;
-    color: var(--text-dim);
-    background: rgba(24,24,24,0.7);
-    padding: 8px 10px;
-    border-radius: 10px;
-    max-width: 40vw;
+  .graphCard.center { border-color: var(--accent); background: #1c2620; }
+  .graphCard .gcText { font-size: 12px; line-height: 1.45; }
+  .graphCard .gcSource { font-size: 10px; color: var(--text-faint); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .graphFar { flex-shrink: 0; max-height: 36vh; overflow-y: auto; padding: 10px 0 calc(8px + env(safe-area-inset-bottom)); }
+  .graphFarHead { font-size: 11px; color: var(--text-faint); letter-spacing: .06em; margin-bottom: 6px; }
+  .graphFarRow {
+    display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; gap: 6px; align-items: center;
+    background: var(--bg-card); border-radius: 10px; padding: 8px 10px; margin-bottom: 6px;
+    font-size: 12px; line-height: 1.5; cursor: pointer; user-select: none; -webkit-user-select: none;
   }
-  .graphLegendRow { display: flex; align-items: center; gap: 6px; }
-  .graphLegendSwatch { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-  .graphPopup {
-    position: absolute;
-    left: 50%;
-    bottom: calc(24px + env(safe-area-inset-bottom));
-    transform: translateX(-50%);
-    background: var(--bg-card);
-    border-radius: 12px;
-    padding: 14px 18px;
-    max-width: 80vw;
-    text-align: center;
-    cursor: pointer;
-  }
-  .graphPopup .lText { font-size: 15px; }
-  .graphPopup .lSource { font-size: 12px; color: var(--text-faint); margin-top: 4px; }
+  .graphFarRow .gfRel { font-size: 10px; white-space: nowrap; }
+  .graphFarRow .gfC { color: var(--text); }
 </style>
 </head>
 <body>
@@ -843,6 +823,7 @@
         <div id="detailLinks" class="detailLinksList"></div>
         <div id="detailLinksEmpty" class="emptyMsg" hidden>関連ノートはありません。</div>
         <button id="btnRelinkNote" class="secondaryBtn">関連を探し直す</button>
+        <button id="btnDetailGraph" class="secondaryBtn">網で見る（遠い対立）</button>
       </div>
       <div class="field">
         <button id="btnPostNoteImage" class="secondaryBtn">この言葉を投稿</button>
@@ -1010,6 +991,11 @@
         <button id="btnBatchAutoLink" class="secondaryBtn">全ノートを一括で関連づけ</button>
         <div id="batchProgress" class="fieldNote" hidden></div>
         <button id="btnBatchStop" class="dangerBtn" hidden>停止</button>
+      </div>
+      <div class="field">
+        <span class="fieldLabel">全件やり直し</span>
+        <p class="fieldNote">既存の自動リンクをすべて消して、全ノートを今の基準（対立がありうるなら必ず1件）で関連づけ直します。手動リンクと却下済みは残ります。進捗と停止は上の欄に出ます。</p>
+        <button id="btnRelinkAll" class="dangerBtn">全件やり直し（既存の自動リンクを消して再生成）</button>
       </div>
       <div class="field" id="errorNotesSection" hidden>
         <span class="fieldLabel">エラーが出たノート（<span id="errorNoteCount"></span>件）</span>
@@ -1286,13 +1272,22 @@
 
   <div id="screen-graph" class="drawOverlay" hidden>
     <div class="drawTopBar">
-      <div id="graphFilterBar" class="graphFilterBar"></div>
+      <div class="graphTitle" id="graphTitle">網</div>
       <button id="btnGraphClose" class="drawIconBtn" type="button">×</button>
     </div>
-    <canvas id="graphCanvas" class="graphCanvas"></canvas>
-    <div id="graphLegend" class="graphLegend"></div>
-    <div id="graphPopup" class="graphPopup" hidden></div>
+    <div id="graphViewport" class="graphViewport">
+      <div id="graphStage" class="graphStage">
+        <svg id="graphSvg" class="graphSvg"></svg>
+        <div id="graphCards"></div>
+      </div>
+    </div>
+    <div id="graphFar" class="graphFar">
+      <div class="graphFarHead">遠い対立 — 真ん中の言葉を通じて食い違っている2枚</div>
+      <div id="graphFarList"></div>
+      <p class="emptyMsg" id="graphFarEmpty" hidden>2ホップ先の対立はありません。</p>
+    </div>
   </div>
+
 
 </div>
 <script>
@@ -1357,7 +1352,7 @@
     };
   }
 
-  const QUESTION_MODES = ['opposite', 'core', 'self'];
+  const QUESTION_MODES = ['opposite', 'core', 'self', 'far'];
 
   // journal entries: kind 'morning' (今朝の言葉), 'consult' (相談の記録),
   // 'draw' (引く), or 'question' (問いを引く, v3.3). One per API response /
@@ -1392,6 +1387,7 @@
       out.why_now = typeof j.why_now === 'string' ? j.why_now : '';
       out.tension = typeof j.tension === 'string' ? j.tension : '';
       out.for_viewer = typeof j.for_viewer === 'string' ? j.for_viewer : ''; // v3.3.2
+      out.via = typeof j.via === 'string' ? j.via : ''; // v3.6: 遠い対立の経由した言葉
       out.source_mode = QUESTION_MODES.includes(j.source_mode) ? j.source_mode : 'self';
       out.used = j.used === true;
     }
@@ -3150,6 +3146,8 @@
       '\n\nこのあとユーザーメッセージで対象ノートと、除外すべきid（対象自身・既にリンク済み・却下済み）を提示する。' +
       '除外id以外の一覧の中から、対象ノートと同じ考えを別の言い方で述べている（similar）／反対の立場を取っている（opposite）／' +
       '前提や具体例として補い合う（supplement）ノートを最大5件、関連の強い順に選び、JSONのみで返してください。' +
+      '最大5件のうち、対立が1件でもありうるなら必ず1件は対立（opposite）にしてください。' +
+      '対立とは、同じ主題について反対の態度・結論・前提を取っているものです。主題が違うだけのものは対立ではありません。' +
       '表面的な単語の一致ではなく、考え方・態度・問いの共通性で判断してください。myWords（本人の解釈）を重視してください。' +
       '該当がなければ空配列を返してください。reason には引用符や改行を使わないでください。\n\n' +
       '返答形式（JSON配列のみ、他の文章は含めない）:\n' +
@@ -3305,7 +3303,7 @@
   // returned result.
   async function autoLinkNote(note, opts) {
     opts = opts || {};
-    if (!getAutoLinkEnabled()) return { skipped: true };
+    if (!opts.force && !getAutoLinkEnabled()) return { skipped: true };
     if (!getClaudeApiKey()) return { skipped: true };
     if (isUsageOverBudget()) return { skipped: true };
     const linkedIds = new Set(note.links.map((l) => l.id));
@@ -3318,6 +3316,10 @@
       let added = 0;
       results.slice(0, 5).forEach((r) => {
         if (!r || !validIds.has(r.id)) return;
+        // v3.6: a rejection holds from either side - if the target rejected
+        // THIS note, do not re-create the link from this direction either.
+        const target = findNote(r.id);
+        if (target && (target.rejectedLinks || []).includes(note.id)) return;
         const relation = RELATIONS.includes(r.relation) ? r.relation : 'similar';
         const reason = typeof r.reason === 'string' ? r.reason.slice(0, 200) : '';
         addLinkBidirectional(note.id, r.id, { kind: 'auto', relation, reason });
@@ -3372,12 +3374,13 @@
     stopBtn.hidden = !!done;
   }
 
-  async function runBatchAutoLink() {
+  async function runBatchAutoLink(opts) {
+    opts = opts || {};
     if (batchState.running) return;
     if (!getClaudeApiKey()) { alert('先にAPIキーを設定してください'); return; }
     const pending = data.notes.filter((n) => !n.autoLinkedAt).sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
     if (!pending.length) { alert('未処理のノートはありません（全ノートが処理済みです）'); return; }
-    if (!confirm(`未処理のノート ${pending.length} 件に自動関連づけを実行します（API呼び出し概算 ${pending.length} 回）。よろしいですか？`)) return;
+    if (!opts.skipConfirm && !confirm(`未処理のノート ${pending.length} 件に自動関連づけを実行します（API呼び出し概算 ${pending.length} 回）。よろしいですか？`)) return;
 
     batchState.running = true;
     batchState.stop = false;
@@ -3385,7 +3388,7 @@
     updateBatchProgressUI(processed, pending.length);
     for (const note of pending) {
       if (batchState.stop) break;
-      await autoLinkNote(note, { markLinkedAt: true });
+      await autoLinkNote(note, { markLinkedAt: true, force: true });
       processed++;
       updateBatchProgressUI(processed, pending.length);
       if (processed % 10 === 0) {
@@ -3403,19 +3406,86 @@
     refreshCurrentScreen();
   }
 
+  // v3.6: wipe every auto link (manual links and rejectedLinks stay), mark
+  // every note unprocessed, and run the normal batch over all of them under
+  // the new 対立 rule. Two confirmations because the wiped links do not
+  // come back except by re-running.
+  document.getElementById('btnRelinkAll').addEventListener('click', async () => {
+    if (batchState.running) return;
+    if (!getClaudeApiKey()) { alert('先にAPIキーを設定してください'); return; }
+    const autoEnds = data.notes.reduce((a, n) => a + n.links.filter((l) => l.kind === 'auto').length, 0);
+    if (!confirm(`自動リンク約 ${Math.round(autoEnds / 2)} 本を消して、${data.notes.length} 枚すべてを関連づけ直します。手動リンクと却下済みは残ります。よろしいですか？`)) return;
+    if (!confirm(`本当に実行しますか？ API 呼び出しは約 ${data.notes.length} 回（自動関連づけのモデル）です。消した自動リンクは、やり直しの結果でしか戻りません。`)) return;
+    const iso = nowIso();
+    data.notes.forEach((n) => {
+      n.links = n.links.filter((l) => l.kind !== 'auto');
+      n.autoLinkedAt = null;
+      n.updatedAt = iso;
+    });
+    saveData(data);
+    await runBatchAutoLink({ skipConfirm: true });
+  });
+
   // --- 問いを引く: 材料の選び方 + API (v3.3) -------------------------------
   // The whole point is that a question can only come from THIS person's
   // material, so the browser picks the material first (one of three fixed
   // angles) and the API is called exactly once, with those few notes sent
   // uncompressed. No cached note-list block here on purpose: the payload is
   // a handful of notes, and it changes every call anyway.
-  const QUESTION_MODE_LABEL = { opposite: '対立から', core: '今月の核から', self: '自分の言葉から' };
+  const QUESTION_MODE_LABEL = { opposite: '対立から', core: '今月の核から', self: '自分の言葉から', far: '遠い対立から' };
   const LAST_QUESTION_MODE_KEY = 'kotoba_lastQuestionMode';
   const QUESTION_MODE_NOTE = {
     opposite: 'この2枚は、本人自身が「反対」としてつないだ組である。どちらかを軸に決め、もう片方をその軸から照らす。どちらが正しいかは決めない。',
     core: 'この2枚は直近1ヶ月で本人に最も多く届いた言葉である。届き続けていること自体が何かを示している。片方を軸に、もう片方か1ヶ月の記録を照らす。',
     self: '1枚目は本人が自分の言葉として書いたもの、2枚目はそれに最も近い言葉。本人の言い切り（1枚目）を軸にして、2枚目か1ヶ月の記録をその軸から照らす。',
+    far: 'この2枚は直接はつながっていない。真ん中の「経由した言葉」を通じて食い違っている（構造は下に書く）。1枚目を軸にして、経由した言葉を通ってもう1枚を照らす。経由した言葉そのものを軸にしない。',
   };
+
+  // --- 遠い対立 (v3.6): two-hop paths whose relation changes in the middle --
+  // A —似→ B —対立→ C means A and C disagree *through* B, even though no
+  // link joins them directly. Shared by the 網 screen and the 4th angle.
+  function linkRelationKey(l) { return l.kind === 'manual' ? 'manual' : (l.relation || 'similar'); }
+  function relationShort(key) { return key === 'similar' ? '似' : key === 'opposite' ? '対立' : key === 'supplement' ? '補足' : '手動'; }
+  function graphPathsFrom(center) {
+    const ring1 = [];
+    const seen = new Set([center.id]);
+    (center.links || []).forEach((l) => {
+      const b = findNote(l.id);
+      if (!b || seen.has(b.id)) return;
+      seen.add(b.id);
+      ring1.push({ note: b, rel: linkRelationKey(l) });
+    });
+    const ring1Ids = new Set(ring1.map((r) => r.note.id));
+    const ring2 = [];
+    ring1.forEach((r) => {
+      (r.note.links || []).forEach((l2) => {
+        const c = findNote(l2.id);
+        if (!c || c.id === center.id || ring1Ids.has(c.id)) return;
+        const rel2 = linkRelationKey(l2);
+        if (rel2 === r.rel) return; // 似→似, 補足→補足: not drawn
+        ring2.push({ note: c, via: r.note, rel1: r.rel, rel2 });
+      });
+    });
+    return { ring1, ring2 };
+  }
+  // Exactly one of the two hops is 対立: 似→対立 (A is like B, B opposes C)
+  // and 対立→似 (A opposes B, C is like B) both make A and C far opponents.
+  function farOppositionsFrom(center) {
+    return graphPathsFrom(center).ring2.filter((p) => (p.rel1 === 'opposite') !== (p.rel2 === 'opposite'));
+  }
+  function allFarOppositionTriples() {
+    const seen = new Set();
+    const out = [];
+    data.notes.forEach((a) => {
+      farOppositionsFrom(a).forEach((p) => {
+        const key = [a.id, p.note.id].sort().join('|') + '|' + p.via.id;
+        if (seen.has(key)) return;
+        seen.add(key);
+        out.push({ a, via: p.via, c: p.note, rel1: p.rel1, rel2: p.rel2 });
+      });
+    });
+    return out;
+  }
 
   function shuffled(arr) {
     const a = [...arr];
@@ -3485,6 +3555,11 @@
       notes = pairs[Math.floor(Math.random() * pairs.length)];
     } else if (mode === 'core') {
       notes = topMonthlyPickedNoteIds(2).map(findNote).filter(Boolean);
+    } else if (mode === 'far') {
+      const triples = allFarOppositionTriples();
+      if (!triples.length) return null;
+      const t = triples[Math.floor(Math.random() * triples.length)];
+      return { mode, notes: [t.a, t.c], via: t.via, rel1: t.rel1, rel2: t.rel2 };
     } else {
       const pool = selfSourcedNotes();
       if (!pool.length) return null;
@@ -3590,9 +3665,16 @@
       myWords: n.myWords || '',
       tags: n.tags || [],
     }));
+    const viaBlock = materials.via
+      ? '経由した言葉（材料ではない。この言葉を通って2枚が食い違っている）：\n' +
+        JSON.stringify({ id: materials.via.id, text: materials.via.text || '', source: materials.via.source || '', myWords: materials.via.myWords || '' }, null, 1) + '\n' +
+        '構造：「' + (materials.notes[0].text || '') + '」は「' + (materials.via.text || '') + '」と' + relationShort(materials.rel1) + 'の関係、' +
+        '「' + (materials.via.text || '') + '」は「' + (materials.notes[1].text || '') + '」と' + relationShort(materials.rel2) + 'の関係。' +
+        'つまり「' + (materials.via.text || '') + '」を通じて、1枚目と2枚目が食い違っている。from には材料の2枚の id だけを入れる。\n\n'
+      : '';
     return '材料の選び方: ' + QUESTION_MODE_LABEL[materials.mode] + '\n' +
       QUESTION_MODE_NOTE[materials.mode] + '\n\n' +
-      '材料の言葉：\n' + JSON.stringify(notesJson, null, 1) + '\n\n' +
+      '材料の言葉：\n' + JSON.stringify(notesJson, null, 1) + '\n\n' + viaBlock +
       'この1ヶ月の朝に書いた一言：\n' + lines(recentJournalTextsFor('morning', 10)) + '\n\n' +
       'この1ヶ月の相談で書いたこと：\n' + lines(recentJournalTextsFor('consult', 10)) + '\n\n' +
       '最近この人に出した問い（同じ切り口を避けるため）：\n' +
@@ -5981,6 +6063,8 @@
       item.appendChild(textEl);
 
       const metaParts = [QUESTION_MODE_LABEL[j.source_mode] || ''];
+      const viaNote = j.via ? findNote(j.via) : null;
+      if (viaNote) metaParts.push('経由：' + noteSnippet(viaNote.text, 20));
       if (j.tension) metaParts.push(j.tension);
       const meta = document.createElement('div');
       meta.className = 'questionRecordMeta';
@@ -6454,6 +6538,22 @@
       card.addEventListener('click', () => { closeDraw(); openDetail(note.id, 'list'); });
       container.appendChild(card);
     });
+    const via = entry.via ? findNote(entry.via) : null;
+    if (via) {
+      const card = document.createElement('div');
+      card.className = 'questionFromCard';
+      const head = document.createElement('div');
+      head.className = 'questionFromSource';
+      head.textContent = '経由した言葉';
+      card.appendChild(head);
+      const t = document.createElement('div');
+      t.className = 'questionFromText';
+      t.textContent = via.text;
+      card.appendChild(t);
+      if (via.source) { const sEl = document.createElement('div'); sEl.className = 'questionFromSource'; sEl.textContent = via.source; card.appendChild(sEl); }
+      card.addEventListener('click', () => { closeDraw(); openDetail(via.id, 'list'); });
+      container.appendChild(card);
+    }
   }
 
   function renderQuestionUseButton(entry) {
@@ -6547,7 +6647,7 @@
       const entry = {
         id: generateJournalId(), date: todayStr(), kind: 'question',
         text: result.question, picks: [], closing: '',
-        from: result.from, why_now: result.why_now, tension: result.tension, for_viewer: result.for_viewer,
+        from: result.from, why_now: result.why_now, tension: result.tension, for_viewer: result.for_viewer, via: materials.via ? materials.via.id : '',
         source_mode: materials.mode, used: false,
         createdAt: iso, updatedAt: iso,
       };
@@ -6587,343 +6687,144 @@
     renderUnusedQuestions();
   });
 
-  // --- Graph ("網", v3.1) -------------------------------------------------
-  // Canvas-rendered (not SVG/DOM per node) so it stays smooth past ~100
-  // notes per spec; d3-force only drives positions via the 'tick' callback.
-  const graphState = {
-    simulation: null, nodes: [], links: [], transform: d3.zoomIdentity,
-    filterSource: '', filterTag: '', lastTappedId: null, centerNoteId: null,
-    canvas: null, ctx: null, width: 0, height: 0, colorScale: null, resizeHandler: null,
-  };
-
+  // --- 網 ("遠い対立", v3.6) ---------------------------------------------
+  // Replaces the force-directed hairball. One note in the middle, its links
+  // on the first ring, and on the second ring only the notes reached by a
+  // path whose relation CHANGES at the middle note - that is where the
+  // material for questions is. Cards, not dots; a fixed concentric layout
+  // inside a scrollable stage, not physics. No filters, no legend: the line
+  // carries its own label.
   const GRAPH_RELATION_COLOR = { similar: '#8fb39b', opposite: '#d1837a', supplement: '#86a9c9', manual: '#6f6a60' };
-  function graphEdgeColor(link) {
-    return link.kind !== 'auto' ? GRAPH_RELATION_COLOR.manual : (GRAPH_RELATION_COLOR[link.relation] || GRAPH_RELATION_COLOR.similar);
-  }
-  function graphNodeRadius(n) { return 5 + Math.sqrt(n.linkCount) * 4; }
+  const graphState = { centerId: null };
+  const GRAPH_CARD_W = 108, GRAPH_CARD_H = 52;
 
-  function buildGraphData() {
-    const nodesById = new Map();
-    data.notes.forEach((n) => {
-      nodesById.set(n.id, { id: n.id, text: n.text, source: n.source || '（出典なし）', tags: n.tags, linkCount: n.links.length });
-    });
-    const links = [];
-    const seenPairs = new Set();
-    data.notes.forEach((n) => {
-      n.links.forEach((l) => {
-        if (!nodesById.has(l.id)) return;
-        const key = [n.id, l.id].sort().join('|');
-        if (seenPairs.has(key)) return;
-        seenPairs.add(key);
-        links.push({ source: n.id, target: l.id, kind: l.kind, relation: l.relation });
-      });
-    });
-    return { nodes: [...nodesById.values()], links };
-  }
+  function graphSnippet(n) { return noteSnippet(n.text || n.myWords || '', 20); }
 
-  function buildSourceColorScale(nodes) {
-    const counts = new Map();
-    nodes.forEach((n) => counts.set(n.source, (counts.get(n.source) || 0) + 1));
-    const sources = [...counts.keys()].sort((a, b) => counts.get(b) - counts.get(a));
-    const scheme = d3.schemeTableau10 || d3.schemeCategory10;
-    return { scale: d3.scaleOrdinal(scheme).domain(sources), sources };
-  }
-
-  function renderGraphLegend(sources, scale) {
-    const el = document.getElementById('graphLegend');
-    el.innerHTML = '';
-    sources.slice(0, 8).forEach((s) => {
-      const row = document.createElement('div');
-      row.className = 'graphLegendRow';
-      const swatch = document.createElement('span');
-      swatch.className = 'graphLegendSwatch';
-      swatch.style.background = scale(s);
-      const label = document.createElement('span');
-      label.textContent = noteSnippet(s, 16);
-      row.appendChild(swatch);
-      row.appendChild(label);
-      el.appendChild(row);
-    });
-  }
-
-  function renderGraphFilters() {
-    const bar = document.getElementById('graphFilterBar');
-    bar.innerHTML = '';
-    function buildSelect(defaultLabel, values, onChange) {
-      const sel = document.createElement('select');
-      sel.className = 'graphFilterSelect';
-      const def = document.createElement('option');
-      def.value = '';
-      def.textContent = defaultLabel;
-      sel.appendChild(def);
-      values.forEach((v) => {
-        const opt = document.createElement('option');
-        opt.value = v;
-        opt.textContent = v;
-        sel.appendChild(opt);
-      });
-      sel.addEventListener('change', () => onChange(sel.value));
-      return sel;
-    }
-    const sources = [...new Set(data.notes.map((n) => n.source).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'));
-    bar.appendChild(buildSelect('出典すべて', sources, (v) => { graphState.filterSource = v; drawGraph(); }));
-    bar.appendChild(buildSelect('タグすべて', allTags(), (v) => { graphState.filterTag = v; drawGraph(); }));
-  }
-
-  // Matching nodes (by 出典/タグ filter) render at full opacity; a link
-  // renders at full opacity if EITHER endpoint matches (spec: narrowing
-  // "keeps the matching nodes and the links connected to them"); everything
-  // else dims. No filter selected -> null -> nothing dims.
-  function computeGraphActiveSet() {
-    if (!graphState.filterSource && !graphState.filterTag) return null;
-    const matchIds = new Set();
-    graphState.nodes.forEach((n) => {
-      const note = findNote(n.id);
-      if (!note) return;
-      const sourceOk = !graphState.filterSource || note.source === graphState.filterSource;
-      const tagOk = !graphState.filterTag || note.tags.includes(graphState.filterTag);
-      if (sourceOk && tagOk) matchIds.add(n.id);
-    });
-    return matchIds;
-  }
-
-  function drawGraph() {
-    const ctx = graphState.ctx;
-    if (!ctx) return;
-    const { width, height, nodes, links, transform } = graphState;
-    ctx.save();
-    ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, width, height);
-    ctx.translate(transform.x, transform.y);
-    ctx.scale(transform.k, transform.k);
-
-    const activeSet = computeGraphActiveSet();
-
-    links.forEach((l) => {
-      const s = l.source, t = l.target;
-      if (typeof s !== 'object' || typeof t !== 'object') return;
-      const dim = activeSet && !(activeSet.has(s.id) || activeSet.has(t.id));
-      ctx.strokeStyle = graphEdgeColor(l);
-      ctx.globalAlpha = dim ? 0.1 : 0.7;
-      ctx.lineWidth = 1.2 / transform.k;
-      ctx.beginPath();
-      ctx.moveTo(s.x, s.y);
-      ctx.lineTo(t.x, t.y);
-      ctx.stroke();
-    });
-
-    const showLabels = transform.k > 1.8;
-    nodes.forEach((n) => {
-      const r = graphNodeRadius(n);
-      const dim = activeSet && !activeSet.has(n.id);
-      ctx.globalAlpha = dim ? 0.2 : (n.linkCount === 0 ? 0.5 : 1);
-      ctx.fillStyle = graphState.colorScale(n.source);
-      ctx.beginPath();
-      ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
-      ctx.fill();
-      if (n.id === graphState.centerNoteId) {
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 2 / transform.k;
-        ctx.stroke();
-      }
-      if (showLabels && !dim) {
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = '#f2efea';
-        ctx.font = `${12 / transform.k}px system-ui, sans-serif`;
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(noteSnippet(n.text, 14), n.x + r + 4 / transform.k, n.y);
-      }
-    });
-    ctx.globalAlpha = 1;
-    ctx.restore();
-  }
-
-  function resizeGraphCanvas() {
-    const canvas = graphState.canvas;
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    graphState.width = rect.width;
-    graphState.height = rect.height;
-    canvas.width = Math.max(1, Math.round(rect.width * dpr));
-    canvas.height = Math.max(1, Math.round(rect.height * dpr));
-    graphState.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    drawGraph();
-  }
-
-  function startGraphSimulation() {
-    const { nodes, links, width: w, height: h } = graphState;
-    nodes.forEach((n) => {
-      if (n.id === graphState.centerNoteId) { n.x = w / 2; n.y = h / 2; }
-      else { n.x = w / 2 + (Math.random() - 0.5) * w * 0.8; n.y = h / 2 + (Math.random() - 0.5) * h * 0.8; }
-    });
-
-    const sim = d3.forceSimulation(nodes)
-      .force('link', d3.forceLink(links).id((d) => d.id).distance(70).strength(0.4))
-      .force('charge', d3.forceManyBody().strength(-120))
-      .force('center', d3.forceCenter(w / 2, h / 2))
-      .force('collide', d3.forceCollide((d) => graphNodeRadius(d) + 6))
-      .on('tick', drawGraph);
-
-    if (graphState.centerNoteId) {
-      const centerNode = nodes.find((n) => n.id === graphState.centerNoteId);
-      if (centerNode) {
-        centerNode.fx = w / 2;
-        centerNode.fy = h / 2;
-        setTimeout(() => { centerNode.fx = null; centerNode.fy = null; }, 1500);
-      }
-    }
-    graphState.simulation = sim;
-  }
-
-  function graphNodeAt(gx, gy) {
-    let found = null, bestDist = Infinity;
-    for (const n of graphState.nodes) {
-      const r = graphNodeRadius(n) + 4;
-      const dx = n.x - gx, dy = n.y - gy;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist <= r && dist < bestDist) { found = n; bestDist = dist; }
-    }
-    return found;
-  }
-
-  function hideGraphPopup() { document.getElementById('graphPopup').hidden = true; }
-  function showGraphPopup(node) {
-    const el = document.getElementById('graphPopup');
-    el.innerHTML = '';
+  function graphCardEl(note, cls) {
+    const el = document.createElement('div');
+    el.className = 'graphCard' + (cls ? ' ' + cls : '');
     const t = document.createElement('div');
-    t.className = 'lText';
-    t.textContent = noteSnippet(node.text, 60);
-    const s = document.createElement('div');
-    s.className = 'lSource';
-    s.textContent = node.source;
+    t.className = 'gcText';
+    t.textContent = graphSnippet(note);
     el.appendChild(t);
-    el.appendChild(s);
-    el.hidden = false;
-    el.onclick = () => { closeGraph(); openDetail(node.id, 'list'); };
+    const sEl = document.createElement('div');
+    sEl.className = 'gcSource';
+    sEl.textContent = note.source || '';
+    el.appendChild(sEl);
+    attachLongPress(el, () => { closeGraph(); openDetail(note.id, 'list'); }, () => { if (note.id !== graphState.centerId) openGraph(note.id); });
+    return el;
   }
 
-  function setupGraphInteraction() {
-    const canvas = graphState.canvas;
-    const sel = d3.select(canvas);
+  function svgEl(tag, attrs) {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
+    return el;
+  }
+  function svgEdge(svg, x1, y1, x2, y2, rel) {
+    const color = GRAPH_RELATION_COLOR[rel] || GRAPH_RELATION_COLOR.manual;
+    svg.appendChild(svgEl('line', { x1, y1, x2, y2, stroke: color, 'stroke-width': rel === 'opposite' ? 2 : 1.2, 'stroke-opacity': 0.85 }));
+    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+    const label = svgEl('text', { x: mx, y: my, fill: color, 'font-size': 11, 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'paint-order': 'stroke', stroke: '#0b0b0b', 'stroke-width': 4 });
+    label.textContent = relationShort(rel);
+    svg.appendChild(label);
+  }
 
-    function rawPointerXY(event) {
-      // d3.pointer() only reads clientX/clientY, which live on Touch objects,
-      // not on TouchEvent itself — so it returns [null, null] for real touch
-      // input. Unwrap to the underlying DOM event (mirroring d3's own
-      // sourceEvent chain) and pull coordinates from the first touch when present.
-      let e = event;
-      while (e && e.sourceEvent) e = e.sourceEvent;
-      const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
-      const clientX = t ? t.clientX : e.clientX;
-      const clientY = t ? t.clientY : e.clientY;
-      const rect = canvas.getBoundingClientRect();
-      return [clientX - rect.left - canvas.clientLeft, clientY - rect.top - canvas.clientTop];
-    }
-    function toGraphCoords(event) {
-      const [x, y] = rawPointerXY(event);
-      return { x: (x - graphState.transform.x) / graphState.transform.k, y: (y - graphState.transform.y) / graphState.transform.k };
-    }
-
-    const drag = d3.drag()
-      .subject((event) => { const { x, y } = toGraphCoords(event); return graphNodeAt(x, y); })
-      .on('start', (event) => {
-        if (!event.active) graphState.simulation.alphaTarget(0.3).restart();
-        event.subject.fx = event.subject.x;
-        event.subject.fy = event.subject.y;
-      })
-      .on('drag', (event) => {
-        const { x, y } = toGraphCoords(event);
-        event.subject.fx = x;
-        event.subject.fy = y;
-      })
-      .on('end', (event) => {
-        if (!event.active) graphState.simulation.alphaTarget(0);
-        event.subject.fx = null;
-        event.subject.fy = null;
+  function renderGraph(center) {
+    const { ring1, ring2 } = graphPathsFrom(center);
+    // ring2 nodes are unique; every path still gets its own edge
+    const ring2Nodes = new Map();
+    ring2.forEach((p) => { if (!ring2Nodes.has(p.note.id)) ring2Nodes.set(p.note.id, { note: p.note, via: p.via }); });
+    const n1 = ring1.length;
+    const childrenOf = new Map();
+    ring2Nodes.forEach((v) => { const arr = childrenOf.get(v.via.id) || []; arr.push(v.note); childrenOf.set(v.via.id, arr); });
+    const maxKids = Math.max(1, ...[...childrenOf.values()].map((a) => a.length));
+    const r1 = Math.max(190, (n1 * GRAPH_CARD_W * 1.25) / (2 * Math.PI));
+    const r2 = r1 + Math.max(175, (ring2Nodes.size * GRAPH_CARD_W * 1.15) / (2 * Math.PI) - r1 + 120);
+    const half = r2 + GRAPH_CARD_W;
+    const size = half * 2;
+    const stage = document.getElementById('graphStage');
+    stage.style.width = size + 'px';
+    stage.style.height = size + 'px';
+    const svg = document.getElementById('graphSvg');
+    svg.setAttribute('width', size);
+    svg.setAttribute('height', size);
+    svg.innerHTML = '';
+    const cards = document.getElementById('graphCards');
+    cards.innerHTML = '';
+    const cx = half, cy = half;
+    const pos = new Map();
+    pos.set(center.id, { x: cx, y: cy });
+    ring1.forEach((r, i) => {
+      const th = -Math.PI / 2 + (2 * Math.PI * i) / Math.max(n1, 1);
+      pos.set(r.note.id, { x: cx + r1 * Math.cos(th), y: cy + r1 * Math.sin(th), th });
+    });
+    // second ring: each middle note's children fan out within its own arc
+    ring1.forEach((r) => {
+      const kids = childrenOf.get(r.note.id) || [];
+      const arc = (2 * Math.PI) / Math.max(n1, 1);
+      const th0 = pos.get(r.note.id).th;
+      kids.forEach((c, k) => {
+        const t = kids.length === 1 ? 0 : (k / (kids.length - 1) - 0.5) * arc * 0.9;
+        pos.set(c.id, { x: cx + r2 * Math.cos(th0 + t), y: cy + r2 * Math.sin(th0 + t) });
       });
+    });
+    ring1.forEach((r) => { const p = pos.get(r.note.id); svgEdge(svg, cx, cy, p.x, p.y, r.rel); });
+    ring2.forEach((p) => { const a = pos.get(p.via.id), b = pos.get(p.note.id); if (a && b) svgEdge(svg, a.x, a.y, b.x, b.y, p.rel2); });
+    const place = (note, cls) => { const p = pos.get(note.id); const el = graphCardEl(note, cls); el.style.left = p.x + 'px'; el.style.top = p.y + 'px'; cards.appendChild(el); };
+    place(center, 'center');
+    ring1.forEach((r) => place(r.note, ''));
+    ring2Nodes.forEach((v) => place(v.note, ''));
+    const vp = document.getElementById('graphViewport');
+    requestAnimationFrame(() => { vp.scrollLeft = cx - vp.clientWidth / 2; vp.scrollTop = cy - vp.clientHeight / 2; });
 
-    // v3.2 fix: on mobile, dragging a node used to also pan the whole view,
-    // since d3.zoom and d3.drag were both listening to the same touch. Split
-    // them by gesture target: a touch/click starting ON a node is drag's job
-    // (zoom.filter rejects it so zoom never engages); a touch on empty space
-    // is a pan; wheel and any 2+-finger touch (pinch) are always zoom's,
-    // regardless of what's under the first finger.
-    const zoom = d3.zoom()
-      .scaleExtent([0.3, 8])
-      .filter((event) => {
-        if (event.type === 'wheel') return true;
-        if (event.touches && event.touches.length > 1) return true;
-        if (event.type === 'dblclick') return false;
-        const { x, y } = toGraphCoords(event);
-        return !graphNodeAt(x, y);
-      })
-      .on('zoom', (event) => { graphState.transform = event.transform; drawGraph(); });
+    document.getElementById('graphTitle').textContent = '網 ・ ' + graphSnippet(center) + ' ・ ' + n1 + '枚 → ' + ring2Nodes.size + '枚';
+    renderGraphFarList(center);
+  }
 
-    sel.call(drag);
-    sel.call(zoom);
-
-    sel.on('click', (event) => {
-      const { x, y } = toGraphCoords(event);
-      const node = graphNodeAt(x, y);
-      hideGraphPopup();
-      if (!node) { graphState.lastTappedId = null; return; }
-      if (graphState.lastTappedId === node.id) {
-        graphState.lastTappedId = null;
-        closeGraph();
-        openDetail(node.id, 'list');
-      } else {
-        graphState.lastTappedId = node.id;
-        showGraphPopup(node);
-      }
+  function renderGraphFarList(center) {
+    const list = document.getElementById('graphFarList');
+    list.innerHTML = '';
+    const far = farOppositionsFrom(center);
+    document.getElementById('graphFarEmpty').hidden = far.length > 0;
+    far.forEach((p) => {
+      const row = document.createElement('div');
+      row.className = 'graphFarRow';
+      const cell = (text, cls) => { const d = document.createElement('div'); if (cls) d.className = cls; d.textContent = text; return d; };
+      row.appendChild(cell(graphSnippet(center), ''));
+      const r1 = cell(relationShort(p.rel1), 'gfRel'); r1.style.color = GRAPH_RELATION_COLOR[p.rel1]; row.appendChild(r1);
+      row.appendChild(cell(graphSnippet(p.via), ''));
+      const r2 = cell(relationShort(p.rel2), 'gfRel'); r2.style.color = GRAPH_RELATION_COLOR[p.rel2]; row.appendChild(r2);
+      row.appendChild(cell(graphSnippet(p.note), 'gfC'));
+      attachLongPress(row, () => { closeGraph(); openDetail(p.note.id, 'list'); }, () => openGraph(p.note.id));
+      list.appendChild(row);
     });
   }
 
-  function initGraph() {
-    const canvas = document.getElementById('graphCanvas');
-    graphState.canvas = canvas;
-    graphState.ctx = canvas.getContext('2d');
-    graphState.transform = d3.zoomIdentity;
-    graphState.filterSource = '';
-    graphState.filterTag = '';
-    graphState.lastTappedId = null;
-    hideGraphPopup();
-
-    const { nodes, links } = buildGraphData();
-    graphState.nodes = nodes;
-    graphState.links = links;
-    const { scale, sources } = buildSourceColorScale(nodes);
-    graphState.colorScale = scale;
-    renderGraphLegend(sources, scale);
-    renderGraphFilters();
-
-    requestAnimationFrame(() => {
-      resizeGraphCanvas();
-      startGraphSimulation();
-      setupGraphInteraction();
-    });
-
-    graphState.resizeHandler = () => resizeGraphCanvas();
-    window.addEventListener('resize', graphState.resizeHandler);
+  // No center given (the list's 網 button): start on a note that actually
+  // has a far opposition, so the screen opens on something to look at.
+  function pickGraphStartNote() {
+    const withFar = data.notes.filter((n) => farOppositionsFrom(n).length > 0);
+    const pool = withFar.length ? withFar : data.notes;
+    return pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
   }
 
   function openGraph(centerNoteId) {
-    graphState.centerNoteId = centerNoteId || null;
+    const center = (centerNoteId && findNote(centerNoteId)) || pickGraphStartNote();
+    if (!center) return;
+    graphState.centerId = center.id;
     document.getElementById('screen-graph').hidden = false;
     syncBarEl.style.visibility = 'hidden';
-    initGraph();
+    renderGraph(center);
   }
 
   function closeGraph() {
     document.getElementById('screen-graph').hidden = true;
     syncBarEl.style.visibility = '';
-    if (graphState.simulation) { graphState.simulation.stop(); graphState.simulation = null; }
-    if (graphState.resizeHandler) window.removeEventListener('resize', graphState.resizeHandler);
   }
 
   document.getElementById('btnOpenGraph').addEventListener('click', () => openGraph());
   document.getElementById('btnGraphClose').addEventListener('click', () => closeGraph());
+  document.getElementById('btnDetailGraph').addEventListener('click', () => openGraph(nav.detailId));
 
   // --- Editor -----------------------------------------------------------
   const editorState = { tags: [], links: [] };
