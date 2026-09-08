@@ -566,7 +566,12 @@
   #screen-muscle { flex-direction: column; }
   .muscleStage { position: relative; flex: 1 1 0; min-height: 220px; border-radius: 12px; overflow: hidden; background: #0b0b0b; }
   .muscleStage canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; display: block; touch-action: none; }
-  .muscleHint { position: absolute; left: 10px; bottom: 6px; font-size: 11px; color: var(--text-faint); pointer-events: none; }
+  .muscleHint { position: absolute; left: 10px; right: 10px; bottom: 6px; font-size: 11px; color: var(--text-faint); pointer-events: none; line-height: 1.3; }
+  .muscleLabel { position: absolute; left: 10px; top: 10px; max-width: 70%; background: rgba(0, 0, 0, 0.65); border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px; font-size: 13px; pointer-events: none; }
+  .muscleLabel .role { display: block; font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  .muscleLabel .role.mp { color: #ff6a5e; }
+  .muscleLabel .role.ms { color: #ffb36b; }
+  .muscleRow .muscleCount { color: var(--text-faint); font-size: 12px; margin-left: 6px; }
   .muscleList { flex: 0 0 auto; max-height: 36vh; overflow-y: auto; padding: 6px 0 4px; }
   .muscleRow { padding: 7px 0; border-top: 1px solid var(--border); font-size: 13px; }
   .muscleRowHead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
@@ -1433,11 +1438,13 @@
       <button type="button" id="btnMuscleFront" class="tagFilterBtn selected">前</button>
       <button type="button" id="btnMuscleBack" class="tagFilterBtn">後ろ</button>
       <button type="button" id="btnMuscleAll" class="tagFilterBtn selected">全種目</button>
+      <button type="button" id="btnMuscleWeek" class="tagFilterBtn">この週</button>
       <span id="muscleStatus"></span>
     </div>
     <div class="muscleStage" id="muscleStage">
       <canvas id="muscleCanvas"></canvas>
-      <div class="muscleHint">ドラッグで回転 ・ ピンチ／ホイールで拡大</div>
+      <div class="muscleLabel" id="muscleLabel" hidden></div>
+      <div class="muscleHint">ドラッグで回転 ・ 二本指／右ドラッグで移動 ・ ピンチ／ホイールで拡大 ・ 筋肉をタップで名前と注視</div>
     </div>
     <div class="muscleList" id="muscleList"></div>
     <div class="muscleCredit">3D: BodyParts3D, © The Database Center for Life Science, CC BY 4.0 ／ 広背筋・腹直筋は近似形状</div>
@@ -6866,6 +6873,10 @@
     muscleBtn.type = 'button'; muscleBtn.className = 'linkLikeBtn'; muscleBtn.textContent = '筋肉 (3D)';
     muscleBtn.addEventListener('click', () => openMuscleView(day.date));
     item.appendChild(muscleBtn);
+    const weekBtn = document.createElement('button');
+    weekBtn.type = 'button'; weekBtn.className = 'linkLikeBtn'; weekBtn.textContent = 'この週の筋肉';
+    weekBtn.addEventListener('click', () => openMuscleView(day.date, 'week'));
+    item.appendChild(weekBtn);
     editBtn.type = 'button'; editBtn.className = 'linkLikeBtn'; editBtn.textContent = '開く';
     editBtn.addEventListener('click', () => openTraining(day.date));
     item.appendChild(editBtn);
@@ -6957,7 +6968,12 @@
   }
 
   // --- the 3D view
-  const mv = { three: null, model: null, renderer: null, scene: null, camera: null, pivot: null, meshes: [], angle: 0, tilt: 0, zoom: 1, dist: 0, date: '', names: [], sel: null, editing: null, raf: 0, open: false };
+  // Orbit: the body is placed so the current target (a muscle centre, or the
+  // body centre) sits at the pivot origin; rotation happens around it, pan is
+  // a world-space offset of the pivot, zoom is the camera distance.
+  const mv = { three: null, model: null, renderer: null, scene: null, camera: null, pivot: null, body: null, meshes: [], angle: 0, tilt: 0, zoom: 1, dist: 0, pan: { x: 0, y: 0 }, target: null, center0: null, anim: 0,
+    date: '', mode: 'day', names: [], counts: {}, weights: null, sel: null, editing: null, raf: 0, open: false };
+  const MUSCLE_WEEK_DAYS = 7;
   async function loadMuscleModel() {
     if (mv.model) return mv.model;
     const res = await fetch(MUSCLE_BIN_URL);
@@ -6993,6 +7009,7 @@
     const body = new THREE.Group();
     body.rotation.x = -Math.PI / 2;   // BodyParts3D is z-up, -y is the front
     mv.pivot.add(body); mv.scene.add(mv.pivot);
+    mv.body = body;
     const lo = header.lo, span = header.span;
     header.meshes.forEach((m) => {
       const g = new THREE.BufferGeometry();
@@ -7006,14 +7023,17 @@
         ? new THREE.MeshStandardMaterial({ color: MUSCLE_COLORS.skin, transparent: true, opacity: 0.1, depthWrite: false, roughness: 0.9 })
         : new THREE.MeshStandardMaterial({ color: MUSCLE_COLORS.none, roughness: 0.65, metalness: 0.0 });
       const mesh = new THREE.Mesh(g, mat);
-      mesh.userData.id = m.id;
+      mesh.userData.id = m.id; mesh.userData.side = m.side;
+      mesh.userData.center = new THREE.Vector3(m.center[0], m.center[1], m.center[2]).applyEuler(body.rotation); // pivot space
       if (skin) mesh.renderOrder = 10;
       body.add(mesh);
       mv.meshes.push(mesh);
     });
     const box = new THREE.Box3().setFromObject(body);
     const c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
-    body.position.sub(c);
+    mv.center0 = c.clone();
+    mv.target = c.clone();
+    body.position.copy(c).negate();
     mv.dist = size.y * 1.8;
     mv.camera = new THREE.PerspectiveCamera(28, 1, 10, 20000);
   }
@@ -7027,44 +7047,143 @@
     if (!mv.open || !mv.renderer) return;
     mv.pivot.rotation.y = mv.angle;
     mv.pivot.rotation.x = mv.tilt;
+    mv.pivot.position.set(mv.pan.x, mv.pan.y, 0);
+    mv.body.position.copy(mv.target).negate();
     const d = mv.dist / mv.zoom;
     mv.camera.position.set(0, 0, d);
     mv.camera.lookAt(0, 0, 0);
     mv.renderer.render(mv.scene, mv.camera);
   }
   function muscleRequestRender() { if (!mv.raf) mv.raf = requestAnimationFrame(() => { mv.raf = 0; muscleRender(); }); }
-  // which muscles light up: the union of the day's exercises, or one exercise
+  // world units per screen pixel at the current distance (for panning)
+  function muscleUnitsPerPixel() {
+    const h = Math.max(1, document.getElementById('muscleStage').clientHeight);
+    return 2 * (mv.dist / mv.zoom) * Math.tan(mv.camera.fov * Math.PI / 360) / h;
+  }
+  // glide target / pan / zoom to new values (used by tap-to-focus and the view buttons)
+  function muscleAnimateTo(target, pan, zoom) {
+    const t0 = performance.now(), dur = 280;
+    const from = { target: mv.target.clone(), pan: { x: mv.pan.x, y: mv.pan.y }, zoom: mv.zoom };
+    const id = ++mv.anim;
+    const step = () => {
+      if (id !== mv.anim || !mv.open) return;
+      const k = Math.min(1, (performance.now() - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+      mv.target.lerpVectors(from.target, target, e);
+      mv.pan.x = from.pan.x + (pan.x - from.pan.x) * e; mv.pan.y = from.pan.y + (pan.y - from.pan.y) * e;
+      mv.zoom = from.zoom + (zoom - from.zoom) * e;
+      muscleRender();
+      if (k < 1) requestAnimationFrame(step);
+    };
+    step();
+  }
+  function muscleResetView(angle) {
+    mv.angle = angle; mv.tilt = 0;
+    if (mv.center0) muscleAnimateTo(mv.center0, { x: 0, y: 0 }, 1); else muscleRequestRender();
+    document.getElementById('muscleLabel').hidden = true;
+  }
+  // --- what lights up
+  // day mode: p = primary of any exercise that day, s = secondary (p wins).
+  // week mode: every exercise occurrence in the last 7 days adds 1 (p) or
+  // 0.5 (s) per muscle; the colour deepens with the total.
+  function muscleCollect() {
+    const names = [], counts = {}, occ = [];
+    const dates = [];
+    if (mv.mode === 'week') {
+      const end = new Date(mv.date + 'T00:00:00');
+      for (let i = MUSCLE_WEEK_DAYS - 1; i >= 0; i--) { const d = new Date(end); d.setDate(end.getDate() - i); dates.push(formatDateStr(d)); }
+    } else dates.push(mv.date);
+    dates.forEach((date) => {
+      const day = findTrainingDay(date);
+      if (!day) return;
+      day.parts.forEach((pt) => pt.exercises.forEach((e) => {
+        if (!names.includes(e.name)) names.push(e.name);
+        counts[e.name] = (counts[e.name] || 0) + 1;
+        occ.push(e.name);
+      }));
+    });
+    mv.names = names; mv.counts = counts; mv.occ = occ; mv.dates = dates;
+  }
   function muscleHighlightSets() {
-    const p = new Set(), s = new Set();
-    const names = mv.sel ? [mv.sel] : mv.names;
-    names.forEach((n) => { const m = muscleMapFor(n); if (!m) return; m.p.forEach((id) => p.add(id)); m.s.forEach((id) => { if (!p.has(id)) s.add(id); }); });
+    const p = new Set(), s = new Set(), w = new Map();
+    const occ = mv.sel ? mv.occ.filter((n) => n === mv.sel) : mv.occ;
+    occ.forEach((n) => { const m = muscleMapFor(n); if (!m) return; m.p.forEach((id) => { p.add(id); w.set(id, (w.get(id) || 0) + 1); }); m.s.forEach((id) => { s.add(id); w.set(id, (w.get(id) || 0) + 0.5); }); });
     s.forEach((id) => { if (p.has(id)) s.delete(id); });
-    return { p, s };
+    return { p, s, w };
   }
   function muscleApplyHighlights() {
     if (!mv.meshes.length) return;
-    const { p, s } = muscleHighlightSets();
+    const THREE = mv.three;
+    const { p, s, w } = muscleHighlightSets();
+    let max = 0; w.forEach((v) => { if (v > max) max = v; });
+    const pale = new THREE.Color(0xffb59a), deep = new THREE.Color(0xff2a1a);
     mv.meshes.forEach((mesh) => {
       const id = mesh.userData.id;
       if (id === 'skin') return;
-      mesh.material.color.setHex(p.has(id) ? MUSCLE_COLORS.p : s.has(id) ? MUSCLE_COLORS.s : MUSCLE_COLORS.none);
-      mesh.material.emissive.setHex(p.has(id) ? 0x3a0800 : s.has(id) ? 0x2a1200 : 0x000000);
+      if (mv.mode === 'week') {
+        const v = w.get(id) || 0;
+        if (!v) { mesh.material.color.setHex(MUSCLE_COLORS.none); mesh.material.emissive.setHex(0); return; }
+        const k = max > 0 ? Math.min(1, v / max) : 1;
+        mesh.material.color.copy(pale).lerp(deep, 0.25 + 0.75 * k);
+        mesh.material.emissive.setHex(0x3a0800).multiplyScalar(k);
+      } else {
+        mesh.material.color.setHex(p.has(id) ? MUSCLE_COLORS.p : s.has(id) ? MUSCLE_COLORS.s : MUSCLE_COLORS.none);
+        mesh.material.emissive.setHex(p.has(id) ? 0x3a0800 : s.has(id) ? 0x2a1200 : 0x000000);
+      }
     });
     muscleRequestRender();
   }
-  function muscleDayNames(date) {
-    const day = findTrainingDay(date);
-    const names = [];
-    if (day) day.parts.forEach((pt) => pt.exercises.forEach((e) => { if (!names.includes(e.name)) names.push(e.name); }));
-    return names;
+  // brief flash of one muscle (chip <-> model link)
+  function musclePulse(id) {
+    const targets = mv.meshes.filter((m) => m.userData.id === id);
+    if (!targets.length) return;
+    targets.forEach((m) => m.material.emissive.setHex(0x888888));
+    muscleRequestRender();
+    setTimeout(() => muscleApplyHighlights(), 350);
   }
-  async function openMuscleView(date) {
-    mv.date = date; mv.names = muscleDayNames(date); mv.sel = null; mv.editing = null; mv.open = true;
+  function muscleRoleText(id) {
+    const { p, s, w } = muscleHighlightSets();
+    const m = MUSCLE_BY_ID.get(id);
+    const approx = m && m.approx ? '（近似形状）' : '';
+    if (mv.mode === 'week') { const v = w.get(id) || 0; return { cls: v ? 'mp' : '', text: v ? 'この週 ' + (Math.round(v * 2) / 2) + ' 回分' + approx : 'この週は使っていない' + approx }; }
+    if (p.has(id)) return { cls: 'mp', text: '主働筋' + approx };
+    if (s.has(id)) return { cls: 'ms', text: '協働筋' + approx };
+    return { cls: '', text: 'この日は使っていない' + approx };
+  }
+  function muscleShowLabel(mesh) {
+    const el = document.getElementById('muscleLabel');
+    if (!mesh) { el.hidden = true; return; }
+    const id = mesh.userData.id;
+    const role = muscleRoleText(id);
+    el.innerHTML = '';
+    el.appendChild(document.createTextNode(muscleJa(id) + (mesh.userData.side === 'L' ? '（左）' : mesh.userData.side === 'R' ? '（右）' : '')));
+    const r = document.createElement('span'); r.className = 'role ' + role.cls; r.textContent = role.text; el.appendChild(r);
+    el.hidden = false;
+  }
+  function musclePick(clientX, clientY) {
+    const THREE = mv.three;
+    const rect = document.getElementById('muscleCanvas').getBoundingClientRect();
+    const ndc = new THREE.Vector2((clientX - rect.left) / rect.width * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(ndc, mv.camera);
+    const hits = ray.intersectObjects(mv.meshes.filter((m) => m.userData.id !== 'skin'), false);
+    return hits.length ? hits[0].object : null;
+  }
+  function muscleTap(clientX, clientY) {
+    const mesh = musclePick(clientX, clientY);
+    muscleShowLabel(mesh);
+    if (!mesh) return;
+    // look at that muscle and move in
+    muscleAnimateTo(mesh.userData.center.clone(), { x: 0, y: 0 }, Math.max(mv.zoom, 2.4));
+  }
+  async function openMuscleView(date, mode) {
+    mv.date = date; mv.mode = mode === 'week' ? 'week' : 'day'; mv.sel = null; mv.editing = null; mv.open = true;
+    muscleCollect();
     const overlay = document.getElementById('screen-muscle');
     const statusEl = document.getElementById('muscleStatus');
     overlay.hidden = false;
-    document.getElementById('muscleTitle').textContent = dotDate(date) + ' の筋肉';
+    muscleUpdateTitle();
     document.getElementById('btnMuscleAll').classList.add('selected');
+    document.getElementById('muscleLabel').hidden = true;
     renderMuscleList();
     statusEl.textContent = mv.model ? '' : '3D を読み込み中…';
     try {
@@ -7083,33 +7202,54 @@
     renderMuscleList();
     muscleApplyHighlights();
   }
+  function muscleUpdateTitle() {
+    document.getElementById('muscleTitle').textContent = mv.mode === 'week' ? dotDate(mv.dates[0]).slice(5) + '〜' + dotDate(mv.date).slice(5) + ' の筋肉' : dotDate(mv.date) + ' の筋肉';
+    document.getElementById('btnMuscleWeek').classList.toggle('selected', mv.mode === 'week');
+  }
+  async function muscleSetMode(mode) {
+    if (mv.mode === mode) return;
+    mv.mode = mode; mv.sel = null; mv.editing = null;
+    muscleCollect(); muscleUpdateTitle();
+    document.getElementById('btnMuscleAll').classList.add('selected');
+    renderMuscleList(); muscleApplyHighlights();
+    const date = mv.date;
+    await ensureMuscleMaps(mv.names, document.getElementById('muscleStatus'));
+    if (!mv.open || mv.date !== date || mv.mode !== mode) return;
+    renderMuscleList(); muscleApplyHighlights();
+  }
   function closeMuscleView() {
     mv.open = false;
     document.getElementById('screen-muscle').hidden = true;
     if (nav.screen === 'records') renderDayDetail();
   }
+  function renderMuscleNames(el, name, m) {
+    el.innerHTML = '';
+    if (m && (m.p.length || m.s.length)) {
+      const sp = document.createElement('span'); sp.className = 'mp'; sp.textContent = m.p.map(muscleJa).join('・'); el.appendChild(sp);
+      if (m.s.length) { const ss = document.createElement('span'); ss.className = 'ms'; ss.textContent = '　' + m.s.map(muscleJa).join('・'); el.appendChild(ss); }
+      if (m.by === 'user') { const u = document.createElement('span'); u.textContent = '　(手動)'; el.appendChild(u); }
+    } else el.textContent = '筋肉の対応が未設定';
+  }
   function renderMuscleList() {
     const list = document.getElementById('muscleList');
     list.innerHTML = '';
-    if (!mv.names.length) { const p = document.createElement('p'); p.className = 'emptyMsg'; p.textContent = 'この日の種目はありません'; list.appendChild(p); return; }
+    if (!mv.names.length) { const p = document.createElement('p'); p.className = 'emptyMsg'; p.textContent = mv.mode === 'week' ? 'この週の種目はありません' : 'この日の種目はありません'; list.appendChild(p); return; }
     mv.names.forEach((name) => {
       const row = document.createElement('div');
       row.className = 'muscleRow' + (mv.sel === name ? ' selected' : '');
       const head = document.createElement('div'); head.className = 'muscleRowHead';
+      const left = document.createElement('span');
       const nm = document.createElement('span'); nm.className = 'muscleExName'; nm.textContent = name;
       nm.addEventListener('click', () => { mv.sel = mv.sel === name ? null : name; document.getElementById('btnMuscleAll').classList.toggle('selected', !mv.sel); renderMuscleList(); muscleApplyHighlights(); });
-      head.appendChild(nm);
+      left.appendChild(nm);
+      if (mv.mode === 'week') { const c = document.createElement('span'); c.className = 'muscleCount'; c.textContent = '×' + (mv.counts[name] || 0); left.appendChild(c); }
+      head.appendChild(left);
       const edit = document.createElement('button'); edit.type = 'button'; edit.className = 'linkLikeBtn'; edit.textContent = mv.editing === name ? '完了' : '編集';
       edit.addEventListener('click', () => { mv.editing = mv.editing === name ? null : name; renderMuscleList(); });
       head.appendChild(edit);
       row.appendChild(head);
-      const m = muscleMapFor(name);
       const names = document.createElement('div'); names.className = 'muscleNames';
-      if (m && (m.p.length || m.s.length)) {
-        const sp = document.createElement('span'); sp.className = 'mp'; sp.textContent = m.p.map(muscleJa).join('・'); names.appendChild(sp);
-        if (m.s.length) { const ss = document.createElement('span'); ss.className = 'ms'; ss.textContent = '　' + m.s.map(muscleJa).join('・'); names.appendChild(ss); }
-        if (m.by === 'user') { const u = document.createElement('span'); u.textContent = '　(手動)'; names.appendChild(u); }
-      } else names.textContent = '筋肉の対応が未設定';
+      renderMuscleNames(names, name, muscleMapFor(name));
       row.appendChild(names);
       if (mv.editing === name) row.appendChild(renderMuscleEditor(name));
       list.appendChild(row);
@@ -7128,7 +7268,8 @@
         const b = document.createElement('button'); b.type = 'button';
         const paint = () => { const v = state.get(m.id); b.className = 'muscleChip' + (v === 'p' ? ' mp' : v === 's' ? ' ms' : ''); b.textContent = (v === 'p' ? '主 ' : v === 's' ? '協 ' : '') + m.ja + (m.approx ? '*' : ''); };
         paint();
-        b.addEventListener('click', () => { const v = state.get(m.id); if (!v) state.set(m.id, 'p'); else if (v === 'p') state.set(m.id, 's'); else state.delete(m.id); paint(); commit(); renderMuscleNamesOnly(name); });
+        b.addEventListener('click', () => { const v = state.get(m.id); if (!v) state.set(m.id, 'p'); else if (v === 'p') state.set(m.id, 's'); else state.delete(m.id); paint(); commit(); renderMuscleNamesOnly(name); musclePulse(m.id); });
+        b.addEventListener('pointerenter', () => musclePulse(m.id));
         box.appendChild(b);
       });
     });
@@ -7150,51 +7291,58 @@
   function renderMuscleNamesOnly(name) {
     // keep the editor open (re-rendering the whole list would drop the chips' scroll position)
     const rows = [...document.querySelectorAll('#muscleList .muscleRow')];
-    const i = mv.names.indexOf(name);
-    const row = rows[i]; if (!row) return;
-    const m = muscleMapFor(name);
-    const names = row.querySelector('.muscleNames');
-    names.innerHTML = '';
-    if (m && (m.p.length || m.s.length)) {
-      const sp = document.createElement('span'); sp.className = 'mp'; sp.textContent = m.p.map(muscleJa).join('・'); names.appendChild(sp);
-      if (m.s.length) { const ss = document.createElement('span'); ss.className = 'ms'; ss.textContent = '　' + m.s.map(muscleJa).join('・'); names.appendChild(ss); }
-      const u = document.createElement('span'); u.textContent = '　(手動)'; names.appendChild(u);
-    } else names.textContent = '筋肉の対応が未設定';
+    const row = rows[mv.names.indexOf(name)]; if (!row) return;
+    renderMuscleNames(row.querySelector('.muscleNames'), name, muscleMapFor(name));
   }
-  // gestures: one pointer rotates, two pinch-zoom, wheel zooms
+  // gestures: one finger / left drag rotates, two fingers pinch-zoom AND pan,
+  // right drag pans, wheel zooms, a short tap picks a muscle
   (function muscleGestures() {
     const canvas = document.getElementById('muscleCanvas');
     const pts = new Map();
-    let last = null, pinch0 = 0, zoom0 = 1;
+    let last = null, pinch0 = 0, zoom0 = 1, mid0 = null, down = null, moved = false, panning = false;
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     canvas.addEventListener('pointerdown', (e) => {
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
       try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
-      if (pts.size === 1) last = { x: e.clientX, y: e.clientY };
-      if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); zoom0 = mv.zoom; }
+      if (pts.size === 1) { last = { x: e.clientX, y: e.clientY }; down = { x: e.clientX, y: e.clientY, button: e.button }; moved = false; panning = e.button === 2; }
+      if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); zoom0 = mv.zoom; mid0 = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; moved = true; }
       e.preventDefault();
     });
     canvas.addEventListener('pointermove', (e) => {
       if (!pts.has(e.pointerId)) return;
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pts.size === 1 && last) {
-        mv.angle += (e.clientX - last.x) * 0.012;
-        mv.tilt = Math.max(-0.6, Math.min(0.6, mv.tilt + (e.clientY - last.y) * 0.006));
+        const dx = e.clientX - last.x, dy = e.clientY - last.y;
+        if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8) moved = true;
+        if (panning) { const u = muscleUnitsPerPixel(); mv.pan.x += dx * u; mv.pan.y -= dy * u; }
+        else { mv.angle += dx * 0.012; mv.tilt = Math.max(-0.6, Math.min(0.6, mv.tilt + dy * 0.006)); }
         last = { x: e.clientX, y: e.clientY };
         muscleRequestRender();
       } else if (pts.size === 2 && pinch0) {
         const [a, b] = [...pts.values()];
-        mv.zoom = Math.max(0.7, Math.min(4, zoom0 * Math.hypot(a.x - b.x, a.y - b.y) / pinch0));
+        mv.zoom = Math.max(0.7, Math.min(5, zoom0 * Math.hypot(a.x - b.x, a.y - b.y) / pinch0));
+        const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        if (mid0) { const u = muscleUnitsPerPixel(); mv.pan.x += (mid.x - mid0.x) * u; mv.pan.y -= (mid.y - mid0.y) * u; }
+        mid0 = mid;
         muscleRequestRender();
       }
     });
-    const end = (e) => { pts.delete(e.pointerId); if (pts.size < 2) pinch0 = 0; if (pts.size === 1) { const [a] = [...pts.values()]; last = { x: a.x, y: a.y }; } else last = null; };
+    const end = (e) => {
+      const wasSingle = pts.size === 1;
+      pts.delete(e.pointerId);
+      if (wasSingle && down && !moved && down.button === 0 && e.type === 'pointerup' && mv.camera) muscleTap(e.clientX, e.clientY);
+      if (pts.size < 2) { pinch0 = 0; mid0 = null; }
+      if (pts.size === 1) { const [a] = [...pts.values()]; last = { x: a.x, y: a.y }; moved = true; } else last = null;
+      if (!pts.size) { down = null; panning = false; }
+    };
     canvas.addEventListener('pointerup', end); canvas.addEventListener('pointercancel', end);
-    canvas.addEventListener('wheel', (e) => { e.preventDefault(); mv.zoom = Math.max(0.7, Math.min(4, mv.zoom * (e.deltaY < 0 ? 1.1 : 0.9))); muscleRequestRender(); }, { passive: false });
+    canvas.addEventListener('wheel', (e) => { e.preventDefault(); mv.zoom = Math.max(0.7, Math.min(5, mv.zoom * (e.deltaY < 0 ? 1.1 : 0.9))); muscleRequestRender(); }, { passive: false });
   })();
   document.getElementById('btnMuscleClose').addEventListener('click', closeMuscleView);
-  document.getElementById('btnMuscleFront').addEventListener('click', () => { mv.angle = 0; mv.tilt = 0; document.getElementById('btnMuscleFront').classList.add('selected'); document.getElementById('btnMuscleBack').classList.remove('selected'); muscleRequestRender(); });
-  document.getElementById('btnMuscleBack').addEventListener('click', () => { mv.angle = Math.PI; mv.tilt = 0; document.getElementById('btnMuscleBack').classList.add('selected'); document.getElementById('btnMuscleFront').classList.remove('selected'); muscleRequestRender(); });
+  document.getElementById('btnMuscleFront').addEventListener('click', () => { muscleResetView(0); document.getElementById('btnMuscleFront').classList.add('selected'); document.getElementById('btnMuscleBack').classList.remove('selected'); });
+  document.getElementById('btnMuscleBack').addEventListener('click', () => { muscleResetView(Math.PI); document.getElementById('btnMuscleBack').classList.add('selected'); document.getElementById('btnMuscleFront').classList.remove('selected'); });
   document.getElementById('btnMuscleAll').addEventListener('click', () => { mv.sel = null; document.getElementById('btnMuscleAll').classList.add('selected'); renderMuscleList(); muscleApplyHighlights(); });
+  document.getElementById('btnMuscleWeek').addEventListener('click', () => muscleSetMode(mv.mode === 'week' ? 'day' : 'week'));
   window.addEventListener('resize', () => { if (mv.open && mv.renderer) { muscleResize(); muscleRequestRender(); } });
   document.getElementById('btnTrMuscle').addEventListener('click', () => { trFlush(); trPersist(); openMuscleView(trState.date); });
 
