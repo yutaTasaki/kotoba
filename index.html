@@ -529,7 +529,11 @@
   .trExMax { font-size: 12px; color: #e0785a; white-space: nowrap; }
   .trPrev { font-size: 12px; color: var(--text-dim); margin: 4px 0 6px; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
   .trPrev .trPrevSets { flex: 1; min-width: 12em; }
-  .trSetRow { display: grid; grid-template-columns: auto 1fr auto 1fr auto; gap: 6px; align-items: center; margin-bottom: 6px; }
+  .trSetRow { display: grid; grid-template-columns: auto 1fr auto 1fr auto auto; gap: 6px; align-items: center; margin-bottom: 6px; }
+  .trDropBtn { font-size: 11px; padding: 6px 7px; border: 1px solid var(--border); border-radius: 8px; background: none; color: var(--text-dim); font-family: inherit; white-space: nowrap; }
+  .trDropRow { display: grid; grid-template-columns: auto 1fr auto 1fr auto; gap: 6px; align-items: center; margin: -2px 0 6px 0; padding-left: 40px; }
+  .trDropRow input[type=number] { width: 100%; min-width: 0; text-align: center; font-size: 14px; padding: 8px 6px; }
+  .trDropArrow { color: var(--text-dim); font-size: 14px; }
   .trSetRow input[type=number] { width: 100%; min-width: 0; text-align: center; }
   .trSetRow .trX { color: var(--text-faint); }
   .trBw { font-size: 12px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text-dim); font-family: inherit; white-space: nowrap; }
@@ -5862,6 +5866,15 @@
     const w = (x.w === null || x.w === undefined || x.w === '') ? null : Number(x.w);
     const out = { w: Number.isFinite(w) ? w : null, r: Math.round(r) };
     if (typeof x.note === 'string' && x.note.trim()) out.note = x.note.trim().slice(0, 80);
+    // drop set: the weight is lowered without rest and the set goes on. Stored
+    // under the set it follows; never counted as a set of its own and never
+    // part of 1RM / MAX. A drop needs a real weight and reps.
+    const drops = (Array.isArray(x.drops) ? x.drops : []).map((d) => {
+      if (!d || typeof d !== 'object') return null;
+      const dw = (d.w === '' || d.w === null || d.w === undefined) ? NaN : Number(d.w), dr = Number(d.r);
+      return (Number.isFinite(dw) && dw >= 0 && Number.isFinite(dr) && dr > 0) ? { w: dw, r: Math.round(dr) } : null;
+    }).filter(Boolean);
+    if (drops.length) out.drops = drops;
     return out;
   }
   // 有酸素: distance / time / calories / note instead of sets. Pace is derived.
@@ -6029,7 +6042,7 @@
     return best;
   }
   function fmtKg(v) { return v === null || v === undefined ? '' : (Math.round(v * 10) / 10).toString(); }
-  function fmtSet(st) { return (st.w === null ? '自重' : fmtKg(st.w)) + '×' + st.r; }
+  function fmtSet(st) { return (st.w === null ? '自重' : fmtKg(st.w)) + '×' + st.r + (st.drops || []).map((d) => ' ↓' + fmtKg(d.w) + '×' + d.r).join(''); }
   // 60×8, 60×8, 60×8, 55×10 -> 60×8 ×3, 55×10
   function fmtSetsCompact(sets) {
     const out = [];
@@ -6106,7 +6119,7 @@
       part: p.part,
       exercises: p.exercises.map((e) => e.cardio
         ? { name: e.name, cardio: { km: e.cardio.km === null ? '' : String(e.cardio.km), min: e.cardio.min === null ? '' : String(e.cardio.min), kcal: e.cardio.kcal === null ? '' : String(e.cardio.kcal), note: e.cardio.note || '' }, sets: [] }
-        : { name: e.name, sets: e.sets.map((st) => ({ w: st.w === null ? '' : String(st.w), r: String(st.r), bw: st.w === null, note: st.note || '' })) }),
+        : { name: e.name, sets: e.sets.map(trSetToState) }),
     })) : [];
     document.getElementById('trDate').value = date;
     document.getElementById('trWeight').value = trState.weight;
@@ -6118,8 +6131,12 @@
     showScreen('training');
     renderTraining();
   }
+  function trSetToState(st) {
+    return { w: st.w === null ? '' : String(st.w), r: String(st.r), bw: st.w === null, note: st.note || '', drops: (st.drops || []).map((d) => ({ w: String(d.w), r: String(d.r) })) };
+  }
+  function trBlankSet() { return { w: '', r: '', bw: false, note: '', drops: [] }; }
   function trNewExercise(part, name) {
-    return isCardioPart(part) ? { name, cardio: { km: '', min: '', kcal: '', note: '' }, sets: [] } : { name, sets: [{ w: '', r: '', bw: false, note: '' }] };
+    return isCardioPart(part) ? { name, cardio: { km: '', min: '', kcal: '', note: '' }, sets: [] } : { name, sets: [trBlankSet()] };
   }
   function trCollectDay() {
     return normalizeTrainingDay({
@@ -6129,7 +6146,7 @@
         part: p.part,
         exercises: p.exercises.map((e) => e.cardio
           ? { name: e.name, cardio: { km: e.cardio.km, min: e.cardio.min, kcal: e.cardio.kcal, note: e.cardio.note }, sets: [] }
-          : { name: e.name, sets: e.sets.map((st) => ({ w: st.bw ? null : (st.w === '' ? NaN : Number(st.w)), r: Number(st.r), note: st.note })) }),
+          : { name: e.name, sets: e.sets.map((st) => ({ w: st.bw ? null : (st.w === '' ? NaN : Number(st.w)), r: Number(st.r), note: st.note, drops: (st.drops || []).map((d) => ({ w: d.w === '' ? NaN : Number(d.w), r: Number(d.r) })) })) }),
       })),
     });
   }
@@ -6359,7 +6376,7 @@
       prevEl.appendChild(t);
       const copy = document.createElement('button');
       copy.type = 'button'; copy.className = 'tagFilterBtn'; copy.textContent = '前回をコピー';
-      copy.addEventListener('click', () => { ex.sets = prev.sets.map((st) => ({ w: st.w === null ? '' : String(st.w), r: String(st.r), bw: st.w === null, note: '' })); trScheduleSave(); renderTraining(); });
+      copy.addEventListener('click', () => { ex.sets = prev.sets.map((st) => Object.assign(trSetToState(st), { note: '' })); trScheduleSave(); renderTraining(); });
       prevEl.appendChild(copy);
     } else {
       prevEl.textContent = '前回の記録はありません';
@@ -6402,7 +6419,32 @@
       del.type = 'button'; del.className = 'trSetDel'; del.textContent = '×'; del.title = 'このセットを消す';
       del.addEventListener('click', () => { ex.sets.splice(i, 1); trScheduleSave(); renderTraining(); });
       row.appendChild(del);
+      const dropBtn = document.createElement('button');
+      dropBtn.type = 'button'; dropBtn.className = 'trDropBtn'; dropBtn.textContent = '↓ドロップ'; dropBtn.title = '休まず重量を落として続けた分を足す';
+      dropBtn.addEventListener('click', () => { if (!st.drops) st.drops = []; const last = st.drops[st.drops.length - 1]; st.drops.push({ w: '', r: last ? last.r : st.r }); trScheduleSave(); renderTraining(); });
+      row.appendChild(dropBtn);
       box.appendChild(row);
+      (st.drops || []).forEach((d, di) => {
+        const drow = document.createElement('div');
+        drow.className = 'trDropRow';
+        const arrow = document.createElement('span'); arrow.className = 'trDropArrow'; arrow.textContent = '↓'; drow.appendChild(arrow);
+        const dw = document.createElement('input');
+        dw.type = 'number'; dw.step = '0.5'; dw.inputMode = 'decimal'; dw.placeholder = 'kg'; dw.value = d.w;
+        dw.addEventListener('input', () => { d.w = dw.value; trScheduleSave(); });
+        dw.addEventListener('change', () => { trFlush(); });
+        drow.appendChild(dw);
+        const dx = document.createElement('span'); dx.className = 'trX'; dx.textContent = '×'; drow.appendChild(dx);
+        const dr = document.createElement('input');
+        dr.type = 'number'; dr.step = '1'; dr.inputMode = 'numeric'; dr.placeholder = '回'; dr.value = d.r;
+        dr.addEventListener('input', () => { d.r = dr.value; trScheduleSave(); });
+        dr.addEventListener('change', () => { trFlush(); });
+        drow.appendChild(dr);
+        const ddel = document.createElement('button');
+        ddel.type = 'button'; ddel.className = 'trSetDel'; ddel.textContent = '×'; ddel.title = 'この段を消す';
+        ddel.addEventListener('click', () => { st.drops.splice(di, 1); trScheduleSave(); renderTraining(); });
+        drow.appendChild(ddel);
+        box.appendChild(drow);
+      });
       // one small optional line under the set (not on the image)
       const noteRow = document.createElement('div');
       noteRow.className = 'trSetNoteRow';
@@ -6415,7 +6457,7 @@
     });
     const add = document.createElement('button');
     add.type = 'button'; add.className = 'tagFilterBtn'; add.textContent = '＋ セット';
-    add.addEventListener('click', () => { const last = ex.sets[ex.sets.length - 1]; ex.sets.push(last ? { w: last.w, r: last.r, bw: last.bw, note: '' } : { w: '', r: '', bw: false, note: '' }); trScheduleSave(); renderTraining(); });
+    add.addEventListener('click', () => { const last = ex.sets[ex.sets.length - 1]; ex.sets.push(last ? { w: last.w, r: last.r, bw: last.bw, note: '', drops: (last.drops || []).map((d) => ({ w: d.w, r: d.r })) } : trBlankSet()); trScheduleSave(); renderTraining(); });
     foot.appendChild(add);
     refreshInfo();
     foot.appendChild(info);
@@ -6462,7 +6504,7 @@
         const v = b ? est1RM(b) : null;
         const prevMax = exerciseMax(e.name, day.date).max;
         const allMax = prevMax === null ? v : (v === null ? prevMax : Math.max(prevMax, v));
-        return { name: e.name, sets: e.sets.map((st) => ({ w: st.w, r: st.r })), cardio: null, rm: v, isNewMax: v !== null && (prevMax === null || v > prevMax), allMax };
+        return { name: e.name, sets: e.sets.map((st) => ({ w: st.w, r: st.r, drops: st.drops || [] })), cardio: null, rm: v, isNewMax: v !== null && (prevMax === null || v > prevMax), allMax };
       }),
     }));
   }
@@ -6475,7 +6517,7 @@
     const F = (px) => `${px}px 'DotGothic16'`;
     const partF = 60 * scale, nameF = 34 * scale, setF = (compact ? 40 : 58) * scale, rmF = 44 * scale, smallF = 26 * scale;
     const rowH = setF * 1.32;
-    let y = y0;
+    let y = y0, overflow = false;
     blocks.forEach((b) => {
       if (!dry) {
         ctx.fillStyle = TR_GREEN; ctx.font = F(partF); ctx.textAlign = 'left';
@@ -6522,18 +6564,37 @@
           if (line) flush();
           hair(y - 6 * scale);
         } else {
+          // an exercise with drop sets pulls the columns left to make room for the chain
+          const hasDrops = r.sets.some((st) => st.drops && st.drops.length);
+          const wR = hasDrops ? 0.36 : 0.46, xX = hasDrops ? 0.45 : 0.575, rX = hasDrops ? 0.51 : 0.65;
           r.sets.forEach((st, i) => {
+            if (st.drops && st.drops.length) {
+              ctx.font = F(setF); const rw0 = ctx.measureText(String(st.r)).width; ctx.font = F(smallF);
+              const room = colW - (colW * rX + rw0 + 8 * scale + ctx.measureText('回').width + 14 * scale);
+              ctx.font = F(setF * 0.62);
+              if (ctx.measureText(st.drops.map((d) => '↓' + fmtKg(d.w) + '×' + d.r).join(' ')).width > room) overflow = true;
+            }
             if (!dry) {
               ctx.textAlign = 'left'; ctx.fillStyle = TR_GREEN; ctx.font = F(smallF);
               ctx.fillText('SET ' + (i + 1), x0 + 8 * scale, y + (setF - smallF) * 0.5 + 4 * scale);
               const wt = st.w === null ? '自重' : fmtKg(st.w);
-              ctx.font = F(setF); ctx.textAlign = 'right'; ctx.fillText(wt, x0 + colW * 0.46, y);
+              ctx.font = F(setF); ctx.textAlign = 'right'; ctx.fillText(wt, x0 + colW * wR, y);
               ctx.textAlign = 'left'; ctx.fillStyle = TR_DIM; ctx.font = F(smallF);
-              if (st.w !== null) ctx.fillText('kg', x0 + colW * 0.46 + 10 * scale, y + setF - smallF);
-              ctx.font = F(36 * scale); ctx.fillText('×', x0 + colW * 0.575, y + (setF - 36 * scale) * 0.5);
-              ctx.fillStyle = TR_GREEN; ctx.font = F(setF); ctx.fillText(String(st.r), x0 + colW * 0.65, y);
+              if (st.w !== null) ctx.fillText('kg', x0 + colW * wR + 10 * scale, y + setF - smallF);
+              ctx.font = F(36 * scale); ctx.fillText('×', x0 + colW * xX, y + (setF - 36 * scale) * 0.5);
+              ctx.fillStyle = TR_GREEN; ctx.font = F(setF); ctx.fillText(String(st.r), x0 + colW * rX, y);
               const rw = ctx.measureText(String(st.r)).width;
-              ctx.fillStyle = TR_DIM; ctx.font = F(smallF); ctx.fillText('回', x0 + colW * 0.65 + rw + 8 * scale, y + setF - smallF);
+              ctx.fillStyle = TR_DIM; ctx.font = F(smallF); ctx.fillText('回', x0 + colW * rX + rw + 8 * scale, y + setF - smallF);
+              if (st.drops && st.drops.length) {
+                // '↓55×6 ↓40×8' after the reps, on the same line; shrink then ellipsize
+                const dx = x0 + colW * rX + rw + 8 * scale + ctx.measureText('回').width + 14 * scale;
+                const room = x0 + colW - dx;
+                let df = setF * 0.62, txt = st.drops.map((d) => '↓' + fmtKg(d.w) + '×' + d.r).join(' ');
+                ctx.font = F(df);
+                while (ctx.measureText(txt).width > room && df > setF * 0.4) { df -= 2 * scale; ctx.font = F(df); }
+                while (ctx.measureText(txt).width > room && txt.length > 3) { txt = txt.slice(0, -2) + '…'; }
+                ctx.fillStyle = TR_GREEN; ctx.fillText(txt, dx, y + setF - df - 4 * scale);
+              }
             }
             hair(y + rowH - 6 * scale);
             y += rowH;
@@ -6543,7 +6604,7 @@
       });
       y += 26 * scale;
     });
-    return y - y0;
+    return overflow ? Infinity : y - y0;
   }
   function trMeasure(ctx, blocks, scale, colW, compact) { return trLayout(ctx, blocks, scale, 0, 0, colW, true, compact); }
   function trDrawBlocks(ctx, blocks, scale, x0, y0, colW, compact) { return trLayout(ctx, blocks, scale, x0, y0, colW, false, compact); }
@@ -6691,7 +6752,7 @@
       e.sets.forEach((st, i) => {
         const line = document.createElement('div'); line.className = 'trDayCardSet';
         const idx = document.createElement('span'); idx.className = 'trDayCardIdx'; idx.textContent = String(i + 1); line.appendChild(idx);
-        const t = document.createElement('span'); t.textContent = (st.w === null ? '自重' : fmtKg(st.w) + 'kg') + ' × ' + st.r; line.appendChild(t);
+        const t = document.createElement('span'); t.textContent = (st.w === null ? '自重' : fmtKg(st.w) + 'kg') + ' × ' + st.r + (st.drops || []).map((d) => ' ↓' + fmtKg(d.w) + '×' + d.r).join(''); line.appendChild(t);
         if (st.note) { const n = document.createElement('span'); n.className = 'trDayCardNote'; n.textContent = st.note; line.appendChild(n); }
         row.appendChild(line);
       });
