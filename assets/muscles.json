@@ -1,0 +1,433 @@
+{
+ "muscles": [
+  {
+   "id": "pectoralis_major",
+   "ja": "大胸筋",
+   "group": "胸",
+   "fma": [
+    "FMA34686"
+   ],
+   "approx": false
+  },
+  {
+   "id": "pectoralis_minor",
+   "ja": "小胸筋",
+   "group": "胸",
+   "fma": [
+    "FMA13109"
+   ],
+   "approx": false
+  },
+  {
+   "id": "serratus_anterior",
+   "ja": "前鋸筋",
+   "group": "胸",
+   "fma": [
+    "FMA13397"
+   ],
+   "approx": false
+  },
+  {
+   "id": "deltoid_front",
+   "ja": "三角筋 前部",
+   "group": "肩",
+   "fma": [
+    "FMA34677"
+   ],
+   "approx": false
+  },
+  {
+   "id": "deltoid_mid",
+   "ja": "三角筋 中部",
+   "group": "肩",
+   "fma": [
+    "FMA34678"
+   ],
+   "approx": false
+  },
+  {
+   "id": "deltoid_rear",
+   "ja": "三角筋 後部",
+   "group": "肩",
+   "fma": [
+    "FMA34679"
+   ],
+   "approx": false
+  },
+  {
+   "id": "supraspinatus",
+   "ja": "棘上筋",
+   "group": "肩",
+   "fma": [
+    "FMA9629"
+   ],
+   "approx": false
+  },
+  {
+   "id": "infraspinatus",
+   "ja": "棘下筋",
+   "group": "肩",
+   "fma": [
+    "FMA32546"
+   ],
+   "approx": false
+  },
+  {
+   "id": "teres_minor",
+   "ja": "小円筋",
+   "group": "肩",
+   "fma": [
+    "FMA32550"
+   ],
+   "approx": false
+  },
+  {
+   "id": "subscapularis",
+   "ja": "肩甲下筋",
+   "group": "肩",
+   "fma": [
+    "FMA13413"
+   ],
+   "approx": false
+  },
+  {
+   "id": "trapezius_upper",
+   "ja": "僧帽筋 上部",
+   "group": "背中",
+   "fma": [
+    "FMA32557"
+   ],
+   "approx": false
+  },
+  {
+   "id": "trapezius_middle",
+   "ja": "僧帽筋 中部",
+   "group": "背中",
+   "fma": [
+    "FMA32556"
+   ],
+   "approx": false
+  },
+  {
+   "id": "trapezius_lower",
+   "ja": "僧帽筋 下部",
+   "group": "背中",
+   "fma": [
+    "FMA32555"
+   ],
+   "approx": false
+  },
+  {
+   "id": "rhomboids",
+   "ja": "菱形筋",
+   "group": "背中",
+   "fma": [
+    "FMA13379",
+    "FMA13380"
+   ],
+   "approx": false
+  },
+  {
+   "id": "teres_major",
+   "ja": "大円筋",
+   "group": "背中",
+   "fma": [
+    "FMA32549"
+   ],
+   "approx": false
+  },
+  {
+   "id": "levator_scapulae",
+   "ja": "肩甲挙筋",
+   "group": "背中",
+   "fma": [
+    "FMA32519"
+   ],
+   "approx": false
+  },
+  {
+   "id": "erector_spinae",
+   "ja": "脊柱起立筋",
+   "group": "背中",
+   "fma": [
+    "FMA77177",
+    "FMA77178",
+    "FMA77179"
+   ],
+   "approx": false
+  },
+  {
+   "id": "biceps_brachii",
+   "ja": "上腕二頭筋",
+   "group": "腕",
+   "fma": [
+    "FMA37682",
+    "FMA37683"
+   ],
+   "approx": false
+  },
+  {
+   "id": "brachialis",
+   "ja": "上腕筋",
+   "group": "腕",
+   "fma": [
+    "FMA37667"
+   ],
+   "approx": false
+  },
+  {
+   "id": "coracobrachialis",
+   "ja": "烏口腕筋",
+   "group": "腕",
+   "fma": [
+    "FMA37664"
+   ],
+   "approx": false
+  },
+  {
+   "id": "triceps_brachii",
+   "ja": "上腕三頭筋",
+   "group": "腕",
+   "fma": [
+    "FMA37692",
+    "FMA37693",
+    "FMA37694"
+   ],
+   "approx": false
+  },
+  {
+   "id": "forearm_flexors",
+   "ja": "前腕屈筋群",
+   "group": "腕",
+   "fma": [
+    "FMA38485",
+    "FMA38459",
+    "FMA38462",
+    "FMA38615",
+    "FMA38616",
+    "FMA38469",
+    "FMA38558",
+    "FMA38559"
+   ],
+   "approx": false
+  },
+  {
+   "id": "forearm_extensors",
+   "ja": "前腕伸筋群",
+   "group": "腕",
+   "fma": [
+    "FMA38500",
+    "FMA38494",
+    "FMA38495",
+    "FMA38506"
+   ],
+   "approx": false
+  },
+  {
+   "id": "external_oblique",
+   "ja": "外腹斜筋",
+   "group": "腹筋",
+   "fma": [
+    "FMA13335"
+   ],
+   "approx": false
+  },
+  {
+   "id": "iliopsoas",
+   "ja": "腸腰筋",
+   "group": "腹筋",
+   "fma": [
+    "FMA18060",
+    "FMA22310"
+   ],
+   "approx": false
+  },
+  {
+   "id": "gluteus_maximus",
+   "ja": "大臀筋",
+   "group": "足",
+   "fma": [
+    "FMA22314"
+   ],
+   "approx": false
+  },
+  {
+   "id": "gluteus_medius",
+   "ja": "中臀筋",
+   "group": "足",
+   "fma": [
+    "FMA22315"
+   ],
+   "approx": false
+  },
+  {
+   "id": "gluteus_minimus",
+   "ja": "小臀筋",
+   "group": "足",
+   "fma": [
+    "FMA22317"
+   ],
+   "approx": false
+  },
+  {
+   "id": "tensor_fasciae_latae",
+   "ja": "大腿筋膜張筋",
+   "group": "足",
+   "fma": [
+    "FMA22423"
+   ],
+   "approx": false
+  },
+  {
+   "id": "rectus_femoris",
+   "ja": "大腿直筋",
+   "group": "足",
+   "fma": [
+    "FMA22430"
+   ],
+   "approx": false
+  },
+  {
+   "id": "vastus_lateralis",
+   "ja": "外側広筋",
+   "group": "足",
+   "fma": [
+    "FMA22431"
+   ],
+   "approx": false
+  },
+  {
+   "id": "vastus_medialis",
+   "ja": "内側広筋",
+   "group": "足",
+   "fma": [
+    "FMA22432"
+   ],
+   "approx": false
+  },
+  {
+   "id": "vastus_intermedius",
+   "ja": "中間広筋",
+   "group": "足",
+   "fma": [
+    "FMA22433"
+   ],
+   "approx": false
+  },
+  {
+   "id": "biceps_femoris",
+   "ja": "大腿二頭筋",
+   "group": "足",
+   "fma": [
+    "FMA45887",
+    "FMA45890"
+   ],
+   "approx": false
+  },
+  {
+   "id": "semitendinosus",
+   "ja": "半腱様筋",
+   "group": "足",
+   "fma": [
+    "FMA22357"
+   ],
+   "approx": false
+  },
+  {
+   "id": "semimembranosus",
+   "ja": "半膜様筋",
+   "group": "足",
+   "fma": [
+    "FMA22438"
+   ],
+   "approx": false
+  },
+  {
+   "id": "adductors",
+   "ja": "内転筋群",
+   "group": "足",
+   "fma": [
+    "FMA22443",
+    "FMA22441",
+    "FMA22442",
+    "FMA43882",
+    "FMA22440"
+   ],
+   "approx": false
+  },
+  {
+   "id": "sartorius",
+   "ja": "縫工筋",
+   "group": "足",
+   "fma": [
+    "FMA22353"
+   ],
+   "approx": false
+  },
+  {
+   "id": "gastrocnemius",
+   "ja": "腓腹筋",
+   "group": "足",
+   "fma": [
+    "FMA45956",
+    "FMA45959"
+   ],
+   "approx": false
+  },
+  {
+   "id": "soleus",
+   "ja": "ヒラメ筋",
+   "group": "足",
+   "fma": [
+    "FMA22542"
+   ],
+   "approx": false
+  },
+  {
+   "id": "tibialis_anterior",
+   "ja": "前脛骨筋",
+   "group": "足",
+   "fma": [
+    "FMA22532"
+   ],
+   "approx": false
+  },
+  {
+   "id": "fibularis_longus",
+   "ja": "長腓骨筋",
+   "group": "足",
+   "fma": [
+    "FMA22539"
+   ],
+   "approx": false
+  },
+  {
+   "id": "sternocleidomastoid",
+   "ja": "胸鎖乳突筋",
+   "group": "その他",
+   "fma": [
+    "FMA13407"
+   ],
+   "approx": false
+  },
+  {
+   "id": "rectus_abdominis",
+   "ja": "腹直筋",
+   "group": "腹筋",
+   "fma": [
+    "approx:skin"
+   ],
+   "approx": true
+  },
+  {
+   "id": "latissimus_dorsi",
+   "ja": "広背筋",
+   "group": "背中",
+   "fma": [
+    "approx:skin"
+   ],
+   "approx": true
+  }
+ ],
+ "attribution": "BodyParts3D, © The Database Center for Life Science licensed under CC Attribution 4.0 International"
+}

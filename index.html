@@ -562,6 +562,27 @@
   .trCardioCol input[type=number] { width: 100%; min-width: 0; text-align: center; font-size: 18px; padding: 8px 4px; }
   .trCardioCol input.trCardioValue { width: 100%; min-width: 0; text-align: center; font-size: 18px; padding: 8px 4px; color: var(--accent); background: none; }
   .trCardioUnit { font-size: 10px; color: var(--text-faint); }
+  /* --- v5.0: 筋肉 (3D) ------------------------------------------------ */
+  #screen-muscle { flex-direction: column; }
+  .muscleStage { position: relative; flex: 1 1 0; min-height: 220px; border-radius: 12px; overflow: hidden; background: #0b0b0b; }
+  .muscleStage canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; display: block; touch-action: none; }
+  .muscleHint { position: absolute; left: 10px; bottom: 6px; font-size: 11px; color: var(--text-faint); pointer-events: none; }
+  .muscleList { flex: 0 0 auto; max-height: 36vh; overflow-y: auto; padding: 6px 0 4px; }
+  .muscleRow { padding: 7px 0; border-top: 1px solid var(--border); font-size: 13px; }
+  .muscleRowHead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .muscleExName { cursor: pointer; }
+  .muscleRow.selected .muscleExName { color: var(--accent); }
+  .muscleNames { color: var(--text-dim); font-size: 12px; margin-top: 2px; line-height: 1.5; }
+  .muscleNames .mp { color: #ff6a5e; }
+  .muscleNames .ms { color: #ffb36b; }
+  .muscleEditor { margin-top: 6px; }
+  .muscleEditGroup { font-size: 11px; color: var(--text-faint); margin: 8px 0 3px; }
+  .muscleChip { font-size: 12px; padding: 5px 9px; border-radius: 999px; border: 1px solid var(--border); background: none; color: var(--text-dim); font-family: inherit; margin: 0 6px 6px 0; }
+  .muscleChip.mp { border-color: #ff6a5e; color: #ff6a5e; }
+  .muscleChip.ms { border-color: #ffb36b; color: #ffb36b; }
+  .muscleEditActions { display: flex; gap: 12px; align-items: center; margin-top: 4px; }
+  .muscleCredit { flex: 0 0 auto; font-size: 10px; color: var(--text-faint); padding: 4px 0 6px; }
+  #muscleStatus { font-size: 12px; color: var(--text-dim); align-self: center; }
   /* day card: the same four columns, numbers large, units small */
   .trDayCardCardio { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding-left: 12px; margin-top: 2px; }
   .trDayCardCardio .trCardioCol { align-items: flex-start; gap: 0; }
@@ -1117,6 +1138,7 @@
         <div class="statRow"><span>探し直し</span><span id="statUsageMonthSearchAgain"></span></div>
         <div class="statRow"><span>一括入力</span><span id="statUsageMonthBulk"></span></div>
         <div class="statRow"><span>問い</span><span id="statUsageMonthQuestion"></span></div>
+        <div class="statRow"><span>筋肉の対応</span><span id="statUsageMonthMuscle"></span></div>
         <div class="statRow"><span>今月・合計</span><span id="statUsageMonthTotal"></span></div>
         <div id="statUsagePerDevice"></div>
       </div>
@@ -1150,6 +1172,9 @@
       </div>
       <div id="trBlocks"></div>
       <p class="fieldNote" id="trStatus"></p>
+      <div class="field">
+        <button id="btnTrMuscle" class="secondaryBtn">この日の筋肉を 3D で見る</button>
+      </div>
       <div class="field">
         <button id="btnTrImage" class="secondaryBtn">ログ画像を保存</button>
         <p class="fieldNote" id="trImageStatus"></p>
@@ -1399,6 +1424,25 @@
     </div>
   </div>
 
+  <div id="screen-muscle" class="drawOverlay" hidden>
+    <div class="drawTopBar">
+      <div class="graphTitle" id="muscleTitle">筋肉</div>
+      <button id="btnMuscleClose" class="drawIconBtn" type="button">×</button>
+    </div>
+    <div class="graphControls">
+      <button type="button" id="btnMuscleFront" class="tagFilterBtn selected">前</button>
+      <button type="button" id="btnMuscleBack" class="tagFilterBtn">後ろ</button>
+      <button type="button" id="btnMuscleAll" class="tagFilterBtn selected">全種目</button>
+      <span id="muscleStatus"></span>
+    </div>
+    <div class="muscleStage" id="muscleStage">
+      <canvas id="muscleCanvas"></canvas>
+      <div class="muscleHint">ドラッグで回転 ・ ピンチ／ホイールで拡大</div>
+    </div>
+    <div class="muscleList" id="muscleList"></div>
+    <div class="muscleCredit">3D: BodyParts3D, © The Database Center for Life Science, CC BY 4.0 ／ 広背筋・腹直筋は近似形状</div>
+  </div>
+
 
 
 </div>
@@ -1417,6 +1461,22 @@
   // declared up here, not in the 筋トレ section: loadTrainingData() runs at boot
   // and normalizeTrainingData reads this - a later const would be in its TDZ
   const TRAINING_PARTS = ['肩', '胸', '背中', '腕', '足', '腹筋', '有酸素', 'その他'];
+  // v5.0: the muscles in assets/muscles.bin (BodyParts3D, CC BY 4.0). Two of
+  // them are skin-derived approximations because BodyParts3D 4.0 lacks them.
+  const MUSCLE_CATALOG = [{"id":"pectoralis_major","ja":"大胸筋","group":"胸","approx":false},{"id":"pectoralis_minor","ja":"小胸筋","group":"胸","approx":false},{"id":"serratus_anterior","ja":"前鋸筋","group":"胸","approx":false},{"id":"deltoid_front","ja":"三角筋 前部","group":"肩","approx":false},{"id":"deltoid_mid","ja":"三角筋 中部","group":"肩","approx":false},{"id":"deltoid_rear","ja":"三角筋 後部","group":"肩","approx":false},{"id":"supraspinatus","ja":"棘上筋","group":"肩","approx":false},{"id":"infraspinatus","ja":"棘下筋","group":"肩","approx":false},{"id":"teres_minor","ja":"小円筋","group":"肩","approx":false},{"id":"subscapularis","ja":"肩甲下筋","group":"肩","approx":false},{"id":"trapezius_upper","ja":"僧帽筋 上部","group":"背中","approx":false},{"id":"trapezius_middle","ja":"僧帽筋 中部","group":"背中","approx":false},{"id":"trapezius_lower","ja":"僧帽筋 下部","group":"背中","approx":false},{"id":"rhomboids","ja":"菱形筋","group":"背中","approx":false},{"id":"teres_major","ja":"大円筋","group":"背中","approx":false},{"id":"levator_scapulae","ja":"肩甲挙筋","group":"背中","approx":false},{"id":"erector_spinae","ja":"脊柱起立筋","group":"背中","approx":false},{"id":"biceps_brachii","ja":"上腕二頭筋","group":"腕","approx":false},{"id":"brachialis","ja":"上腕筋","group":"腕","approx":false},{"id":"coracobrachialis","ja":"烏口腕筋","group":"腕","approx":false},{"id":"triceps_brachii","ja":"上腕三頭筋","group":"腕","approx":false},{"id":"forearm_flexors","ja":"前腕屈筋群","group":"腕","approx":false},{"id":"forearm_extensors","ja":"前腕伸筋群","group":"腕","approx":false},{"id":"external_oblique","ja":"外腹斜筋","group":"腹筋","approx":false},{"id":"iliopsoas","ja":"腸腰筋","group":"腹筋","approx":false},{"id":"gluteus_maximus","ja":"大臀筋","group":"足","approx":false},{"id":"gluteus_medius","ja":"中臀筋","group":"足","approx":false},{"id":"gluteus_minimus","ja":"小臀筋","group":"足","approx":false},{"id":"tensor_fasciae_latae","ja":"大腿筋膜張筋","group":"足","approx":false},{"id":"rectus_femoris","ja":"大腿直筋","group":"足","approx":false},{"id":"vastus_lateralis","ja":"外側広筋","group":"足","approx":false},{"id":"vastus_medialis","ja":"内側広筋","group":"足","approx":false},{"id":"vastus_intermedius","ja":"中間広筋","group":"足","approx":false},{"id":"biceps_femoris","ja":"大腿二頭筋","group":"足","approx":false},{"id":"semitendinosus","ja":"半腱様筋","group":"足","approx":false},{"id":"semimembranosus","ja":"半膜様筋","group":"足","approx":false},{"id":"adductors","ja":"内転筋群","group":"足","approx":false},{"id":"sartorius","ja":"縫工筋","group":"足","approx":false},{"id":"gastrocnemius","ja":"腓腹筋","group":"足","approx":false},{"id":"soleus","ja":"ヒラメ筋","group":"足","approx":false},{"id":"tibialis_anterior","ja":"前脛骨筋","group":"足","approx":false},{"id":"fibularis_longus","ja":"長腓骨筋","group":"足","approx":false},{"id":"sternocleidomastoid","ja":"胸鎖乳突筋","group":"その他","approx":false},{"id":"rectus_abdominis","ja":"腹直筋","group":"腹筋","approx":true},{"id":"latissimus_dorsi","ja":"広背筋","group":"背中","approx":true}];
+  const MUSCLE_BY_ID = new Map(MUSCLE_CATALOG.map((m) => [m.id, m]));
+  const MUSCLE_GROUPS = ['胸', '肩', '背中', '腕', '腹筋', '足', 'その他'];
+  function normalizeMuscleMap(raw) {
+    const out = {};
+    if (!raw || typeof raw !== 'object') return out;
+    Object.entries(raw).forEach(([name, v]) => {
+      if (!name || !v || typeof v !== 'object') return;
+      const ids = (arr) => (Array.isArray(arr) ? arr : []).filter((id) => MUSCLE_BY_ID.has(id));
+      const p = ids(v.p), sRaw = ids(v.s).filter((id) => !p.includes(id));
+      out[name] = { p, s: sRaw, at: typeof v.at === 'string' ? v.at : '', by: v.by === 'user' ? 'user' : 'ai' };
+    });
+    return out;
+  }
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
@@ -2963,7 +3023,7 @@
   // {calls,input,output,cacheWrite,cacheRead} } } } - each device only ever
   // writes its own subtree (see mergeUsageData), so PC and iPhone combine
   // under sync while still keeping a per-device breakdown.
-  const USAGE_KINDS = ['autolink', 'morning', 'consult', 'searchAgain', 'bulk', 'question'];
+  const USAGE_KINDS = ['autolink', 'morning', 'consult', 'searchAgain', 'bulk', 'question', 'muscle'];
 
   function getDeviceId() {
     let id = localStorage.getItem(DEVICE_ID_KEY);
@@ -5865,7 +5925,7 @@
   // one entry per day, merged per entry by updatedAt with tombstones - not
   // the walk file's "longer list wins", because sets get edited daily.
 
-  function trainingDefaultData() { return { version: 1, updatedAt: nowIso(), days: [], deletedDayIds: [], exercises: {} }; }
+  function trainingDefaultData() { return { version: 1, updatedAt: nowIso(), days: [], deletedDayIds: [], exercises: {}, muscleMap: {} }; }
 
   function normalizeTrainingSet(x) {
     if (!x || typeof x !== 'object') return null;
@@ -5951,6 +6011,7 @@
       days: parsed.days.map(normalizeTrainingDay).filter(Boolean),
       deletedDayIds: Array.isArray(parsed.deletedDayIds) ? parsed.deletedDayIds.filter((t) => t && t.id).map((t) => ({ id: String(t.id), deletedAt: t.deletedAt || nowIso() })) : [],
       exercises,
+      muscleMap: normalizeMuscleMap(parsed.muscleMap),
     };
   }
   function loadTrainingData() {
@@ -5988,7 +6049,10 @@
       [...((a.exercises || {})[part] || []), ...((b.exercises || {})[part] || [])].forEach((e) => { const c = m.get(e.name); if (!c || (e.lastUsedAt || '') > (c.lastUsedAt || '')) m.set(e.name, { name: e.name, lastUsedAt: e.lastUsedAt || '' }); });
       if (m.size) exercises[part] = [...m.values()];
     });
-    return { version: 1, updatedAt: nowIso(), days, deletedDayIds: [...tombs.entries()].map(([id, deletedAt]) => ({ id, deletedAt })), exercises };
+    // exercise -> muscles: per exercise name, the later edit wins
+    const muscleMap = {};
+    [normalizeMuscleMap(a.muscleMap), normalizeMuscleMap(b.muscleMap)].forEach((mm) => Object.entries(mm).forEach(([name, v]) => { const c = muscleMap[name]; if (!c || (v.at || '') > (c.at || '')) muscleMap[name] = v; }));
+    return { version: 1, updatedAt: nowIso(), days, deletedDayIds: [...tombs.entries()].map(([id, deletedAt]) => ({ id, deletedAt })), exercises, muscleMap };
   }
 
   // sync (same shape as the notes sync, third file in the same repo)
@@ -6798,11 +6862,326 @@
       item.appendChild(row);
     }));
     const editBtn = document.createElement('button');
+    const muscleBtn = document.createElement('button');
+    muscleBtn.type = 'button'; muscleBtn.className = 'linkLikeBtn'; muscleBtn.textContent = '筋肉 (3D)';
+    muscleBtn.addEventListener('click', () => openMuscleView(day.date));
+    item.appendChild(muscleBtn);
     editBtn.type = 'button'; editBtn.className = 'linkLikeBtn'; editBtn.textContent = '開く';
     editBtn.addEventListener('click', () => openTraining(day.date));
     item.appendChild(editBtn);
     return item;
   }
+
+  // --- 筋肉 (v5.0): exercise -> muscle map + the 3D view --------------------
+  // The model is assets/muscles.bin (see scratch build script): one mesh per
+  // muscle side plus a translucent skin, quantized positions. three.js is
+  // loaded on first use from jsdelivr (module import); the app itself stays
+  // one file.
+  const MUSCLE_BIN_URL = 'assets/muscles.bin?v=1';
+  const THREE_MODULE_URL = 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js';
+  const MUSCLE_COLORS = { p: 0xff3b2f, s: 0xff9d45, none: 0x5a5a5a, skin: 0x8fa3b8 };
+
+  function muscleMapFor(name) { return (trainingData.muscleMap || {})[name] || null; }
+  function setMuscleMap(name, p, s, by) {
+    if (!trainingData.muscleMap) trainingData.muscleMap = {};
+    const pp = p.filter((id) => MUSCLE_BY_ID.has(id));
+    trainingData.muscleMap[name] = { p: pp, s: s.filter((id) => MUSCLE_BY_ID.has(id) && !pp.includes(id)), at: nowIso(), by };
+    saveTrainingData(trainingData);
+  }
+  function muscleJa(id) { const m = MUSCLE_BY_ID.get(id); return m ? m.ja : id; }
+
+  // --- mapping by the API (one call for every exercise that has none yet)
+  function buildMuscleSystemBlocks() {
+    const list = MUSCLE_CATALOG.map((m) => `${m.id}: ${m.ja}（${m.group}）`).join('\n');
+    return [{ type: 'text', text:
+      'あなたは筋力トレーニングの指導者です。与えられた種目名（日本語、個人の略称や表記ゆれを含む）ごとに、主働筋と協働筋を下の筋肉IDから選びます。\n\n' +
+      '筋肉ID一覧:\n' + list + '\n\n' +
+      'ルール:\n' +
+      '- p（主働筋）は1〜3個、s（協働筋）は0〜4個。IDは一覧にあるものだけを使う。\n' +
+      '- 種目名から動作が推測できないときは null にする（無理に当てない）。\n' +
+      '- 有酸素（ランニング、バイク、ウォーキングなど）は脚の筋肉を主働に、ふくらはぎ・臀筋を協働にする。\n' +
+      '- 出力は JSON オブジェクトのみ。キーは与えられた種目名をそのまま、値は {"p": [...], "s": [...]} または null。説明文は書かない。' }];
+  }
+  async function generateMuscleMaps(names) {
+    const apiKey = getClaudeApiKey();
+    if (!apiKey) { const e = new Error('no-api-key'); e.noKey = true; throw e; }
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({ model: getClaudeChatModel(), max_tokens: 8192, system: buildMuscleSystemBlocks(), messages: [{ role: 'user', content: '種目名:\n' + JSON.stringify(names) }] }),
+    });
+    if (!res.ok) { const err = new Error('API ' + res.status); err.status = res.status; throw err; }
+    const json = await res.json();
+    recordApiUsage('muscle', json.usage);
+    saveData(data);
+    const text = (json.content || []).map((b) => b.text || '').join('');
+    const a = text.indexOf('{'), b = text.lastIndexOf('}');
+    let parsed = null;
+    try { parsed = JSON.parse(text.slice(a, b + 1)); } catch (e) { parsed = null; }
+    if (!parsed) { if (isTruncated(json)) throw truncatedResponseError(); throw new Error('応答を読めませんでした'); }
+    const out = {};
+    names.forEach((n) => { const v = parsed[n]; out[n] = (v && typeof v === 'object') ? { p: Array.isArray(v.p) ? v.p : [], s: Array.isArray(v.s) ? v.s : [] } : null; });
+    return out;
+  }
+  // Fill in maps for the names that have none. Returns the names still unmapped.
+  async function ensureMuscleMaps(names, statusEl) {
+    const missing = names.filter((n) => !muscleMapFor(n));
+    if (!missing.length) return [];
+    if (statusEl) statusEl.textContent = '筋肉の対応を生成中…';
+    try {
+      const maps = await generateMuscleMaps(missing);
+      const still = [];
+      missing.forEach((n) => { const v = maps[n]; if (v && v.p.length) setMuscleMap(n, v.p, v.s, 'ai'); else still.push(n); });
+      if (statusEl) statusEl.textContent = still.length ? '対応が決まらない種目: ' + still.join('、') + '（編集で指定）' : '';
+      return still;
+    } catch (e) {
+      if (statusEl) statusEl.textContent = e.noKey ? 'API キー未設定のため自動対応なし（編集で指定できます）' : '対応の生成に失敗: ' + (e.message || e);
+      if (!e.noKey) recordFeatureError('筋肉', e);
+      return missing;
+    }
+  }
+
+  // --- the 3D view
+  const mv = { three: null, model: null, renderer: null, scene: null, camera: null, pivot: null, meshes: [], angle: 0, tilt: 0, zoom: 1, dist: 0, date: '', names: [], sel: null, editing: null, raf: 0, open: false };
+  async function loadMuscleModel() {
+    if (mv.model) return mv.model;
+    const res = await fetch(MUSCLE_BIN_URL);
+    if (!res.ok) throw new Error('model ' + res.status);
+    const buf = await res.arrayBuffer();
+    const dv = new DataView(buf);
+    if (String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3)) !== 'MUSC') throw new Error('bad model');
+    const hlen = dv.getUint32(4, true);
+    const header = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 8, hlen)));
+    const totalV = header.meshes.reduce((a, m) => a + m.vn, 0);
+    const pos = new Uint16Array(buf, 8 + hlen, totalV * 3);
+    const idx = new Uint16Array(buf, 8 + hlen + totalV * 6);
+    mv.model = { header, pos, idx };
+    return mv.model;
+  }
+  async function ensureThree() {
+    if (mv.three) return mv.three;
+    mv.three = await import(THREE_MODULE_URL);
+    return mv.three;
+  }
+  function muscleBuildScene() {
+    if (mv.scene) return;
+    const THREE = mv.three, { header, pos, idx } = mv.model;
+    const canvas = document.getElementById('muscleCanvas');
+    mv.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    mv.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    mv.scene = new THREE.Scene();
+    mv.scene.background = new THREE.Color(0x0b0b0b);
+    mv.scene.add(new THREE.HemisphereLight(0xffffff, 0x333333, 1.1));
+    const dl = new THREE.DirectionalLight(0xffffff, 1.4); dl.position.set(1, 1.5, 2); mv.scene.add(dl);
+    const dl2 = new THREE.DirectionalLight(0xffffff, 0.6); dl2.position.set(-1, 0.5, -2); mv.scene.add(dl2);
+    mv.pivot = new THREE.Group();
+    const body = new THREE.Group();
+    body.rotation.x = -Math.PI / 2;   // BodyParts3D is z-up, -y is the front
+    mv.pivot.add(body); mv.scene.add(mv.pivot);
+    const lo = header.lo, span = header.span;
+    header.meshes.forEach((m) => {
+      const g = new THREE.BufferGeometry();
+      const p = new Float32Array(m.vn * 3);
+      for (let i = 0; i < m.vn * 3; i++) p[i] = lo[i % 3] + pos[m.v * 3 + i] / 65535 * span[i % 3];
+      g.setAttribute('position', new THREE.BufferAttribute(p, 3));
+      g.setIndex(new THREE.BufferAttribute(idx.slice(m.i, m.i + m.in), 1));
+      g.computeVertexNormals();
+      const skin = m.id === 'skin';
+      const mat = skin
+        ? new THREE.MeshStandardMaterial({ color: MUSCLE_COLORS.skin, transparent: true, opacity: 0.1, depthWrite: false, roughness: 0.9 })
+        : new THREE.MeshStandardMaterial({ color: MUSCLE_COLORS.none, roughness: 0.65, metalness: 0.0 });
+      const mesh = new THREE.Mesh(g, mat);
+      mesh.userData.id = m.id;
+      if (skin) mesh.renderOrder = 10;
+      body.add(mesh);
+      mv.meshes.push(mesh);
+    });
+    const box = new THREE.Box3().setFromObject(body);
+    const c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+    body.position.sub(c);
+    mv.dist = size.y * 1.8;
+    mv.camera = new THREE.PerspectiveCamera(28, 1, 10, 20000);
+  }
+  function muscleResize() {
+    const stage = document.getElementById('muscleStage');
+    const w = Math.max(1, stage.clientWidth), h = Math.max(1, stage.clientHeight);
+    mv.renderer.setSize(w, h, false);
+    mv.camera.aspect = w / h; mv.camera.updateProjectionMatrix();
+  }
+  function muscleRender() {
+    if (!mv.open || !mv.renderer) return;
+    mv.pivot.rotation.y = mv.angle;
+    mv.pivot.rotation.x = mv.tilt;
+    const d = mv.dist / mv.zoom;
+    mv.camera.position.set(0, 0, d);
+    mv.camera.lookAt(0, 0, 0);
+    mv.renderer.render(mv.scene, mv.camera);
+  }
+  function muscleRequestRender() { if (!mv.raf) mv.raf = requestAnimationFrame(() => { mv.raf = 0; muscleRender(); }); }
+  // which muscles light up: the union of the day's exercises, or one exercise
+  function muscleHighlightSets() {
+    const p = new Set(), s = new Set();
+    const names = mv.sel ? [mv.sel] : mv.names;
+    names.forEach((n) => { const m = muscleMapFor(n); if (!m) return; m.p.forEach((id) => p.add(id)); m.s.forEach((id) => { if (!p.has(id)) s.add(id); }); });
+    s.forEach((id) => { if (p.has(id)) s.delete(id); });
+    return { p, s };
+  }
+  function muscleApplyHighlights() {
+    if (!mv.meshes.length) return;
+    const { p, s } = muscleHighlightSets();
+    mv.meshes.forEach((mesh) => {
+      const id = mesh.userData.id;
+      if (id === 'skin') return;
+      mesh.material.color.setHex(p.has(id) ? MUSCLE_COLORS.p : s.has(id) ? MUSCLE_COLORS.s : MUSCLE_COLORS.none);
+      mesh.material.emissive.setHex(p.has(id) ? 0x3a0800 : s.has(id) ? 0x2a1200 : 0x000000);
+    });
+    muscleRequestRender();
+  }
+  function muscleDayNames(date) {
+    const day = findTrainingDay(date);
+    const names = [];
+    if (day) day.parts.forEach((pt) => pt.exercises.forEach((e) => { if (!names.includes(e.name)) names.push(e.name); }));
+    return names;
+  }
+  async function openMuscleView(date) {
+    mv.date = date; mv.names = muscleDayNames(date); mv.sel = null; mv.editing = null; mv.open = true;
+    const overlay = document.getElementById('screen-muscle');
+    const statusEl = document.getElementById('muscleStatus');
+    overlay.hidden = false;
+    document.getElementById('muscleTitle').textContent = dotDate(date) + ' の筋肉';
+    document.getElementById('btnMuscleAll').classList.add('selected');
+    renderMuscleList();
+    statusEl.textContent = mv.model ? '' : '3D を読み込み中…';
+    try {
+      await Promise.all([ensureThree(), loadMuscleModel()]);
+      muscleBuildScene();
+      muscleResize();
+      if (statusEl.textContent === '3D を読み込み中…') statusEl.textContent = '';
+      muscleApplyHighlights();
+    } catch (e) {
+      statusEl.textContent = '3D を読み込めませんでした（' + (e.message || e) + '）';
+      recordFeatureError('筋肉3D', e);
+    }
+    if (!mv.open) return;
+    await ensureMuscleMaps(mv.names, statusEl);
+    if (!mv.open || mv.date !== date) return;
+    renderMuscleList();
+    muscleApplyHighlights();
+  }
+  function closeMuscleView() {
+    mv.open = false;
+    document.getElementById('screen-muscle').hidden = true;
+    if (nav.screen === 'records') renderDayDetail();
+  }
+  function renderMuscleList() {
+    const list = document.getElementById('muscleList');
+    list.innerHTML = '';
+    if (!mv.names.length) { const p = document.createElement('p'); p.className = 'emptyMsg'; p.textContent = 'この日の種目はありません'; list.appendChild(p); return; }
+    mv.names.forEach((name) => {
+      const row = document.createElement('div');
+      row.className = 'muscleRow' + (mv.sel === name ? ' selected' : '');
+      const head = document.createElement('div'); head.className = 'muscleRowHead';
+      const nm = document.createElement('span'); nm.className = 'muscleExName'; nm.textContent = name;
+      nm.addEventListener('click', () => { mv.sel = mv.sel === name ? null : name; document.getElementById('btnMuscleAll').classList.toggle('selected', !mv.sel); renderMuscleList(); muscleApplyHighlights(); });
+      head.appendChild(nm);
+      const edit = document.createElement('button'); edit.type = 'button'; edit.className = 'linkLikeBtn'; edit.textContent = mv.editing === name ? '完了' : '編集';
+      edit.addEventListener('click', () => { mv.editing = mv.editing === name ? null : name; renderMuscleList(); });
+      head.appendChild(edit);
+      row.appendChild(head);
+      const m = muscleMapFor(name);
+      const names = document.createElement('div'); names.className = 'muscleNames';
+      if (m && (m.p.length || m.s.length)) {
+        const sp = document.createElement('span'); sp.className = 'mp'; sp.textContent = m.p.map(muscleJa).join('・'); names.appendChild(sp);
+        if (m.s.length) { const ss = document.createElement('span'); ss.className = 'ms'; ss.textContent = '　' + m.s.map(muscleJa).join('・'); names.appendChild(ss); }
+        if (m.by === 'user') { const u = document.createElement('span'); u.textContent = '　(手動)'; names.appendChild(u); }
+      } else names.textContent = '筋肉の対応が未設定';
+      row.appendChild(names);
+      if (mv.editing === name) row.appendChild(renderMuscleEditor(name));
+      list.appendChild(row);
+    });
+  }
+  function renderMuscleEditor(name) {
+    const box = document.createElement('div'); box.className = 'muscleEditor';
+    const cur = muscleMapFor(name) || { p: [], s: [] };
+    const state = new Map(); cur.p.forEach((id) => state.set(id, 'p')); cur.s.forEach((id) => state.set(id, 's'));
+    const commit = () => { const p = [], s = []; state.forEach((v, id) => (v === 'p' ? p : s).push(id)); setMuscleMap(name, p, s, 'user'); muscleApplyHighlights(); };
+    MUSCLE_GROUPS.forEach((g) => {
+      const items = MUSCLE_CATALOG.filter((m) => m.group === g);
+      if (!items.length) return;
+      const lab = document.createElement('div'); lab.className = 'muscleEditGroup'; lab.textContent = g; box.appendChild(lab);
+      items.forEach((m) => {
+        const b = document.createElement('button'); b.type = 'button';
+        const paint = () => { const v = state.get(m.id); b.className = 'muscleChip' + (v === 'p' ? ' mp' : v === 's' ? ' ms' : ''); b.textContent = (v === 'p' ? '主 ' : v === 's' ? '協 ' : '') + m.ja + (m.approx ? '*' : ''); };
+        paint();
+        b.addEventListener('click', () => { const v = state.get(m.id); if (!v) state.set(m.id, 'p'); else if (v === 'p') state.set(m.id, 's'); else state.delete(m.id); paint(); commit(); renderMuscleNamesOnly(name); });
+        box.appendChild(b);
+      });
+    });
+    const actions = document.createElement('div'); actions.className = 'muscleEditActions';
+    const ai = document.createElement('button'); ai.type = 'button'; ai.className = 'linkLikeBtn'; ai.textContent = 'AI で決め直す';
+    ai.addEventListener('click', async () => {
+      const statusEl = document.getElementById('muscleStatus');
+      statusEl.textContent = '生成中…';
+      try { const maps = await generateMuscleMaps([name]); const v = maps[name]; if (v && v.p.length) { setMuscleMap(name, v.p, v.s, 'ai'); statusEl.textContent = ''; } else statusEl.textContent = '対応が決まりませんでした'; }
+      catch (e) { statusEl.textContent = e.noKey ? 'API キーが未設定です' : '失敗: ' + (e.message || e); if (!e.noKey) recordFeatureError('筋肉', e); }
+      renderMuscleList(); muscleApplyHighlights();
+    });
+    actions.appendChild(ai);
+    const note = document.createElement('span'); note.className = 'fieldNote'; note.textContent = 'タップで 主 → 協 → なし。* は近似形状';
+    actions.appendChild(note);
+    box.appendChild(actions);
+    return box;
+  }
+  function renderMuscleNamesOnly(name) {
+    // keep the editor open (re-rendering the whole list would drop the chips' scroll position)
+    const rows = [...document.querySelectorAll('#muscleList .muscleRow')];
+    const i = mv.names.indexOf(name);
+    const row = rows[i]; if (!row) return;
+    const m = muscleMapFor(name);
+    const names = row.querySelector('.muscleNames');
+    names.innerHTML = '';
+    if (m && (m.p.length || m.s.length)) {
+      const sp = document.createElement('span'); sp.className = 'mp'; sp.textContent = m.p.map(muscleJa).join('・'); names.appendChild(sp);
+      if (m.s.length) { const ss = document.createElement('span'); ss.className = 'ms'; ss.textContent = '　' + m.s.map(muscleJa).join('・'); names.appendChild(ss); }
+      const u = document.createElement('span'); u.textContent = '　(手動)'; names.appendChild(u);
+    } else names.textContent = '筋肉の対応が未設定';
+  }
+  // gestures: one pointer rotates, two pinch-zoom, wheel zooms
+  (function muscleGestures() {
+    const canvas = document.getElementById('muscleCanvas');
+    const pts = new Map();
+    let last = null, pinch0 = 0, zoom0 = 1;
+    canvas.addEventListener('pointerdown', (e) => {
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+      if (pts.size === 1) last = { x: e.clientX, y: e.clientY };
+      if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); zoom0 = mv.zoom; }
+      e.preventDefault();
+    });
+    canvas.addEventListener('pointermove', (e) => {
+      if (!pts.has(e.pointerId)) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size === 1 && last) {
+        mv.angle += (e.clientX - last.x) * 0.012;
+        mv.tilt = Math.max(-0.6, Math.min(0.6, mv.tilt + (e.clientY - last.y) * 0.006));
+        last = { x: e.clientX, y: e.clientY };
+        muscleRequestRender();
+      } else if (pts.size === 2 && pinch0) {
+        const [a, b] = [...pts.values()];
+        mv.zoom = Math.max(0.7, Math.min(4, zoom0 * Math.hypot(a.x - b.x, a.y - b.y) / pinch0));
+        muscleRequestRender();
+      }
+    });
+    const end = (e) => { pts.delete(e.pointerId); if (pts.size < 2) pinch0 = 0; if (pts.size === 1) { const [a] = [...pts.values()]; last = { x: a.x, y: a.y }; } else last = null; };
+    canvas.addEventListener('pointerup', end); canvas.addEventListener('pointercancel', end);
+    canvas.addEventListener('wheel', (e) => { e.preventDefault(); mv.zoom = Math.max(0.7, Math.min(4, mv.zoom * (e.deltaY < 0 ? 1.1 : 0.9))); muscleRequestRender(); }, { passive: false });
+  })();
+  document.getElementById('btnMuscleClose').addEventListener('click', closeMuscleView);
+  document.getElementById('btnMuscleFront').addEventListener('click', () => { mv.angle = 0; mv.tilt = 0; document.getElementById('btnMuscleFront').classList.add('selected'); document.getElementById('btnMuscleBack').classList.remove('selected'); muscleRequestRender(); });
+  document.getElementById('btnMuscleBack').addEventListener('click', () => { mv.angle = Math.PI; mv.tilt = 0; document.getElementById('btnMuscleBack').classList.add('selected'); document.getElementById('btnMuscleFront').classList.remove('selected'); muscleRequestRender(); });
+  document.getElementById('btnMuscleAll').addEventListener('click', () => { mv.sel = null; document.getElementById('btnMuscleAll').classList.add('selected'); renderMuscleList(); muscleApplyHighlights(); });
+  window.addEventListener('resize', () => { if (mv.open && mv.renderer) { muscleResize(); muscleRequestRender(); } });
+  document.getElementById('btnTrMuscle').addEventListener('click', () => { trFlush(); trPersist(); openMuscleView(trState.date); });
 
   // --- Records (v3.4: single calendar, day-detail below) --------------------
   const expandedConsultRecords = new Set(); // session-only "続きを見る" state
@@ -8572,6 +8951,7 @@
     document.getElementById('statUsageMonthSearchAgain').textContent = formatUsageRow(monthUsage.searchAgain, modelForUsageKind('searchAgain'));
     document.getElementById('statUsageMonthBulk').textContent = formatUsageRow(monthUsage.bulk, modelForUsageKind('bulk'));
     document.getElementById('statUsageMonthQuestion').textContent = formatUsageRow(monthUsage.question, modelForUsageKind('question'));
+    document.getElementById('statUsageMonthMuscle').textContent = formatUsageRow(monthUsage.muscle, modelForUsageKind('muscle'));
     const monthCost = totalCostForKindStats(monthUsage);
     const budget = getUsageBudget();
     document.getElementById('statUsageMonthTotal').textContent = `約$${monthCost.toFixed(3)}（上限 $${budget.toFixed(2)} の${Math.round((monthCost / budget) * 100)}%）`;
