@@ -31,14 +31,25 @@
     padding: 0;
     background: var(--bg);
     color: var(--text);
+    height: 100%;
+    overflow: hidden;   /* v7.3: the document is pinned; #shell scrolls (keeps the fixed nav still on iOS) */
   }
   body {
     font-family: system-ui, -apple-system, "Hiragino Sans", "Yu Gothic", sans-serif;
     font-size: 17px;
     line-height: 1.8;
-    min-height: 100vh;
+  }
+  /* On iOS Safari / home-screen apps a position:fixed bar drifts while the
+     document itself scrolls with momentum. With the document pinned and
+     this full-viewport box doing the scrolling, the bar stays put. */
+  #shell {
+    position: fixed;
+    inset: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
     padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
   }
   #syncBar {
     text-align: center;
@@ -803,6 +814,7 @@
 </style>
 </head>
 <body>
+<div id="shell">
 <div id="syncBar">-</div>
 <div id="app">
 
@@ -1547,6 +1559,7 @@
 
 
 
+</div>
 </div>
 <script>
 (async () => {
