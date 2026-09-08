@@ -540,6 +540,10 @@
   .trDayCardEx { font-size: 13px; line-height: 1.6; }
   .trDayCardEx .trDayCardSets { color: var(--text-dim); }
   .trDayCardMax { color: #e0785a; }
+  .trCardioGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 6px 0; }
+  .trCardioGrid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-dim); }
+  .trCardioGrid input { width: 100%; min-width: 0; }
+  .trCardioPace { font-size: 13px; color: var(--accent); margin: 4px 0 6px; }
   .calCell.today { border-color: var(--accent-dim); }
   .calCell.selected { background: var(--bg-elevated); border-color: var(--accent); }
   .calCell.disabled { background: none; color: #444; border-color: #1e1e1e; cursor: default; }
@@ -1121,7 +1125,6 @@
         <div class="tagFilterRow" id="trPartRow"></div>
       </div>
       <div id="trBlocks"></div>
-      <button id="btnTrSave" class="primaryBtn">保存</button>
       <p class="fieldNote" id="trStatus"></p>
       <div class="field">
         <button id="btnTrImage" class="secondaryBtn">ログ画像を保存</button>
@@ -4081,6 +4084,7 @@
   };
 
   function showScreen(name) {
+    if (nav.screen === 'training' && name !== 'training') trFlush();
     ['home', 'list', 'consult', 'detail', 'editor', 'settings', 'records', 'bulk', 'draftreview', 'training'].forEach((s) => {
       document.getElementById('screen-' + s).hidden = s !== name;
     });
@@ -5843,16 +5847,42 @@
     const r = Number(x.r);
     if (!Number.isFinite(r) || r <= 0) return null;
     const w = (x.w === null || x.w === undefined || x.w === '') ? null : Number(x.w);
-    return { w: Number.isFinite(w) ? w : null, r: Math.round(r) };
+    const out = { w: Number.isFinite(w) ? w : null, r: Math.round(r) };
+    if (typeof x.note === 'string' && x.note.trim()) out.note = x.note.trim().slice(0, 80);
+    return out;
+  }
+  // 有酸素: distance / time / calories / note instead of sets. Pace is derived.
+  function normalizeCardio(c) {
+    if (!c || typeof c !== 'object') return null;
+    const num = (v) => { if (v === null || v === undefined || v === '') return null; const n = Number(v); return Number.isFinite(n) && n >= 0 ? n : null; };
+    const out = { km: num(c.km), min: num(c.min), kcal: num(c.kcal), note: typeof c.note === 'string' ? c.note.trim().slice(0, 120) : '' };
+    return (out.km === null && out.min === null && out.kcal === null && !out.note) ? null : out;
+  }
+  function isCardioPart(part) { return part === '有酸素'; }
+  function cardioPace(c) { return (c && c.km && c.min) ? c.min / c.km : null; } // min per km
+  function fmtPace(p) { if (p === null) return ''; const m = Math.floor(p), sec = Math.round((p - m) * 60); return m + "'" + String(sec).padStart(2, '0') + '"/km'; }
+  function fmtMin(min) { if (min === null) return ''; const m = Math.floor(min), sec = Math.round((min - m) * 60); return sec ? m + '分' + sec + '秒' : m + '分'; }
+  function fmtCardio(c) {
+    const parts = [];
+    if (c.km !== null) parts.push(fmtKg(c.km) + 'km');
+    if (c.min !== null) parts.push(fmtMin(c.min));
+    const pace = cardioPace(c); if (pace !== null) parts.push(fmtPace(pace));
+    if (c.kcal !== null) parts.push(Math.round(c.kcal) + 'kcal');
+    return parts.join(' ・ ');
   }
   function normalizeTrainingDay(d) {
     if (!d || !d.date || !/^\d{4}-\d{2}-\d{2}$/.test(d.date)) return null;
     const parts = (Array.isArray(d.parts) ? d.parts : []).map((p) => ({
       part: TRAINING_PARTS.includes(p && p.part) ? p.part : 'その他',
-      exercises: (Array.isArray(p && p.exercises) ? p.exercises : []).map((e) => ({
-        name: (e && typeof e.name === 'string') ? e.name.trim() : '',
-        sets: (Array.isArray(e && e.sets) ? e.sets : []).map(normalizeTrainingSet).filter(Boolean),
-      })).filter((e) => e.name),
+      exercises: (Array.isArray(p && p.exercises) ? p.exercises : []).map((e) => {
+        const out = {
+          name: (e && typeof e.name === 'string') ? e.name.trim() : '',
+          sets: (Array.isArray(e && e.sets) ? e.sets : []).map(normalizeTrainingSet).filter(Boolean),
+        };
+        const cardio = normalizeCardio(e && e.cardio);
+        if (cardio) { out.cardio = cardio; out.sets = []; }
+        return out;
+      }).filter((e) => e.name),
     }));
     const w = (d.weight === null || d.weight === undefined || d.weight === '') ? null : Number(d.weight);
     return {
@@ -6046,18 +6076,28 @@
   // --- the record screen ---------------------------------------------------
   // trState is the in-progress edit for one date; 保存 writes it as that
   // day's entry (upsert) and refreshes the exercise chips' usage order.
-  const trState = { date: '', weight: '', parts: [], renaming: null, dirty: false };
+  // trState is the in-progress edit for one date and stays the source of
+  // truth while the screen is open; every change is persisted (debounced)
+  // without reloading the state from storage, so a half-typed set row is
+  // never wiped out from under the user. Sync stays batched as before.
+  const trState = { date: '', weight: '', parts: [], renaming: null };
+  let trSaveTimer = null;
 
   function trLoadDate(date) {
+    trFlush();
     trState.date = date;
     trState.renaming = null;
-    trState.dirty = false;
     const day = findTrainingDay(date);
     trState.weight = day && day.weight !== null ? String(day.weight) : '';
-    trState.parts = day ? day.parts.map((p) => ({ part: p.part, exercises: p.exercises.map((e) => ({ name: e.name, sets: e.sets.map((st) => ({ w: st.w === null ? '' : String(st.w), r: String(st.r), bw: st.w === null })) })) })) : [];
+    trState.parts = day ? day.parts.map((p) => ({
+      part: p.part,
+      exercises: p.exercises.map((e) => e.cardio
+        ? { name: e.name, cardio: { km: e.cardio.km === null ? '' : String(e.cardio.km), min: e.cardio.min === null ? '' : String(e.cardio.min), kcal: e.cardio.kcal === null ? '' : String(e.cardio.kcal), note: e.cardio.note || '' }, sets: [] }
+        : { name: e.name, sets: e.sets.map((st) => ({ w: st.w === null ? '' : String(st.w), r: String(st.r), bw: st.w === null, note: st.note || '' })) }),
+    })) : [];
     document.getElementById('trDate').value = date;
     document.getElementById('trWeight').value = trState.weight;
-    document.getElementById('trStatus').textContent = '';
+    document.getElementById('trStatus').textContent = day ? '保存済み' : '';
     document.getElementById('trImageStatus').textContent = '';
   }
   function openTraining(date) {
@@ -6065,19 +6105,66 @@
     showScreen('training');
     renderTraining();
   }
+  function trNewExercise(part, name) {
+    return isCardioPart(part) ? { name, cardio: { km: '', min: '', kcal: '', note: '' }, sets: [] } : { name, sets: [{ w: '', r: '', bw: false, note: '' }] };
+  }
   function trCollectDay() {
-    const w = document.getElementById('trWeight').value.trim();
     return normalizeTrainingDay({
       date: trState.date,
-      weight: w === '' ? null : Number(w),
-      parts: trState.parts.map((p) => ({ part: p.part, exercises: p.exercises.map((e) => ({ name: e.name, sets: e.sets.map((st) => ({ w: st.bw ? null : (st.w === '' ? NaN : Number(st.w)), r: Number(st.r) })) })) })),
+      weight: trState.weight === '' ? null : Number(trState.weight),
+      parts: trState.parts.map((p) => ({
+        part: p.part,
+        exercises: p.exercises.map((e) => e.cardio
+          ? { name: e.name, cardio: { km: e.cardio.km, min: e.cardio.min, kcal: e.cardio.kcal, note: e.cardio.note }, sets: [] }
+          : { name: e.name, sets: e.sets.map((st) => ({ w: st.bw ? null : (st.w === '' ? NaN : Number(st.w)), r: Number(st.r), note: st.note })) }),
+      })),
     });
   }
+  // Persist trState as this date's entry. Exercises with nothing valid in
+  // them are not stored (the row stays on screen); a day left with nothing
+  // at all is removed with a tombstone.
+  function trPersist() {
+    const day = trCollectDay();
+    if (!day) return;
+    const iso = nowIso();
+    day.parts = day.parts.map((p) => ({ part: p.part, exercises: p.exercises.filter((e) => e.cardio || e.sets.length) })).filter((p) => p.exercises.length);
+    const existing = findTrainingDay(day.date);
+    const empty = !day.parts.length && day.weight === null;
+    if (empty) {
+      if (existing) {
+        trainingData.days = trainingData.days.filter((d) => d.id !== day.id);
+        trainingData.deletedDayIds = (trainingData.deletedDayIds || []).filter((t) => t.id !== day.id);
+        trainingData.deletedDayIds.push({ id: day.id, deletedAt: iso });
+        saveTrainingData(trainingData);
+      }
+      document.getElementById('trStatus').textContent = '';
+      document.getElementById('trDeleteRow').hidden = true;
+      return;
+    }
+    day.createdAt = existing ? existing.createdAt : iso;
+    day.updatedAt = iso;
+    const idx = trainingData.days.findIndex((d) => d.id === day.id);
+    if (idx === -1) trainingData.days.push(day); else trainingData.days[idx] = day;
+    trainingData.days.sort((a, b) => (a.date < b.date ? -1 : 1));
+    trainingData.deletedDayIds = (trainingData.deletedDayIds || []).filter((t) => t.id !== day.id);
+    day.parts.forEach((p) => p.exercises.forEach((e) => touchExercise(p.part, e.name, day.date + 'T' + iso.slice(11))));
+    saveTrainingData(trainingData);
+    const t = new Date();
+    document.getElementById('trStatus').textContent = '自動保存 ' + String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0');
+    document.getElementById('trDeleteRow').hidden = false;
+  }
+  function trScheduleSave() {
+    if (trSaveTimer) clearTimeout(trSaveTimer);
+    trSaveTimer = setTimeout(() => { trSaveTimer = null; trPersist(); }, 400);
+  }
+  function trFlush() {
+    if (trSaveTimer) { clearTimeout(trSaveTimer); trSaveTimer = null; if (trState.date) trPersist(); }
+  }
+  // leaving the screen by any route (tab, back, app going to background) flushes
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && nav.screen === 'training') trFlush(); });
+  window.addEventListener('pagehide', () => { if (nav.screen === 'training') trFlush(); });
 
   function renderTraining() {
-    const day = findTrainingDay(trState.date);
-    document.getElementById('trDeleteRow').hidden = !day;
-    // parts
     const row = document.getElementById('trPartRow');
     row.innerHTML = '';
     TRAINING_PARTS.forEach((part) => {
@@ -6089,15 +6176,15 @@
         const i = trState.parts.findIndex((p) => p.part === part);
         if (i === -1) trState.parts.push({ part, exercises: [] });
         else { if (trState.parts[i].exercises.length && !confirm(part + 'の種目ごと外しますか？')) return; trState.parts.splice(i, 1); }
-        trState.dirty = true;
+        trScheduleSave();
         renderTraining();
       });
       row.appendChild(b);
     });
-    // blocks
     const blocks = document.getElementById('trBlocks');
     blocks.innerHTML = '';
     trState.parts.forEach((p) => blocks.appendChild(renderTrBlock(p)));
+    document.getElementById('trDeleteRow').hidden = !findTrainingDay(trState.date);
   }
 
   function renderTrBlock(p) {
@@ -6116,8 +6203,6 @@
     manage.addEventListener('click', () => { trState.renaming = trState.renaming === p.part ? null : p.part; renderTraining(); });
     head.appendChild(manage);
     wrap.appendChild(head);
-
-    // chips: every exercise ever used for this part, most recent first
     const chips = document.createElement('div');
     chips.className = 'tagFilterRow';
     exercisesForPart(p.part).forEach((e) => {
@@ -6140,9 +6225,14 @@
       b.textContent = e.name;
       b.addEventListener('click', () => {
         const i = p.exercises.findIndex((x) => x.name === e.name);
-        if (i === -1) p.exercises.push({ name: e.name, sets: [{ w: '', r: '', bw: false }] });
-        else { if (p.exercises[i].sets.some((st) => st.r) && !confirm('「' + e.name + '」を外しますか？')) return; p.exercises.splice(i, 1); }
-        trState.dirty = true;
+        if (i === -1) p.exercises.push(trNewExercise(p.part, e.name));
+        else {
+          const ex = p.exercises[i];
+          const hasData = ex.cardio ? (ex.cardio.km || ex.cardio.min || ex.cardio.kcal) : ex.sets.some((st) => st.r);
+          if (hasData && !confirm('「' + e.name + '」を外しますか？')) return;
+          p.exercises.splice(i, 1);
+        }
+        trScheduleSave();
         renderTraining();
       });
       chips.appendChild(b);
@@ -6158,17 +6248,76 @@
       const name = addInput.value.trim();
       if (!name) return;
       touchExercise(p.part, name, '');
-      if (!p.exercises.some((x) => x.name === name)) p.exercises.push({ name, sets: [{ w: '', r: '', bw: false }] });
-      trState.dirty = true;
+      if (!p.exercises.some((x) => x.name === name)) p.exercises.push(trNewExercise(p.part, name));
+      trScheduleSave();
       renderTraining();
     };
     addBtn.addEventListener('click', doAdd);
     addInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doAdd(); } });
     addRow.appendChild(addInput); addRow.appendChild(addBtn);
     wrap.appendChild(addRow);
-
-    p.exercises.forEach((ex) => wrap.appendChild(renderTrExercise(p, ex)));
+    p.exercises.forEach((ex) => wrap.appendChild(ex.cardio ? renderTrCardio(p, ex) : renderTrExercise(p, ex)));
     return wrap;
+  }
+
+  function previousCardio(name, beforeDate) {
+    let found = null;
+    trainingData.days.forEach((d) => {
+      if (d.date >= beforeDate) return;
+      d.parts.forEach((p) => p.exercises.forEach((e) => { if (e.name === name && e.cardio && (!found || d.date > found.date)) found = { date: d.date, cardio: e.cardio }; }));
+    });
+    return found;
+  }
+
+  function renderTrCardio(p, ex) {
+    const box = document.createElement('div');
+    box.className = 'trEx';
+    const head = document.createElement('div');
+    head.className = 'trExHead';
+    const name = document.createElement('div');
+    name.className = 'trExName';
+    name.textContent = ex.name;
+    head.appendChild(name);
+    box.appendChild(head);
+    const prev = previousCardio(ex.name, trState.date);
+    const prevEl = document.createElement('div');
+    prevEl.className = 'trPrev';
+    if (prev) {
+      const t = document.createElement('div'); t.className = 'trPrevSets';
+      t.textContent = '前回 ' + dotDate(prev.date).slice(5) + '：' + fmtCardio(prev.cardio);
+      prevEl.appendChild(t);
+      const copy = document.createElement('button');
+      copy.type = 'button'; copy.className = 'tagFilterBtn'; copy.textContent = '前回をコピー';
+      copy.addEventListener('click', () => { ex.cardio = { km: prev.cardio.km === null ? '' : String(prev.cardio.km), min: prev.cardio.min === null ? '' : String(prev.cardio.min), kcal: prev.cardio.kcal === null ? '' : String(prev.cardio.kcal), note: prev.cardio.note || '' }; trScheduleSave(); renderTraining(); });
+      prevEl.appendChild(copy);
+    } else prevEl.textContent = '前回の記録はありません';
+    box.appendChild(prevEl);
+    const grid = document.createElement('div');
+    grid.className = 'trCardioGrid';
+    const field = (key, label, unit, type) => {
+      const lab = document.createElement('label');
+      lab.textContent = label + (unit ? '（' + unit + '）' : '');
+      const input = document.createElement('input');
+      if (type === 'text') { input.type = 'text'; input.autocomplete = 'off'; input.placeholder = '任意'; }
+      else { input.type = 'number'; input.step = key === 'kcal' ? '1' : '0.1'; input.inputMode = 'decimal'; input.min = '0'; }
+      input.value = ex.cardio[key];
+      input.addEventListener('input', () => { ex.cardio[key] = input.value; trScheduleSave(); if (key !== 'note') paceEl.textContent = paceText(); });
+      input.addEventListener('change', () => { trFlush(); });
+      lab.appendChild(input);
+      return lab;
+    };
+    grid.appendChild(field('km', '距離', 'km'));
+    grid.appendChild(field('min', '時間', 'min'));
+    grid.appendChild(field('kcal', 'カロリー', 'kcal'));
+    const noteLab = field('note', 'メモ', '', 'text'); noteLab.style.gridColumn = '1 / -1';
+    grid.appendChild(noteLab);
+    box.appendChild(grid);
+    const paceEl = document.createElement('div');
+    paceEl.className = 'trCardioPace';
+    const paceText = () => { const c = normalizeCardio({ km: ex.cardio.km, min: ex.cardio.min }); const pace = cardioPace(c); return pace !== null ? '速さ ' + fmtPace(pace) : ''; };
+    paceEl.textContent = paceText();
+    box.appendChild(paceEl);
+    return box;
   }
 
   function renderTrExercise(p, ex) {
@@ -6186,8 +6335,6 @@
     maxEl.textContent = maxInfo.max !== null ? 'MAX 1RM ' + fmtKg(maxInfo.max) + 'kg（' + dotDate(maxInfo.maxDate).slice(5) + '）' : '';
     head.appendChild(maxEl);
     box.appendChild(head);
-
-    // last time this exercise was done, with a one-tap copy
     const prev = previousExercise(ex.name, trState.date);
     const prevEl = document.createElement('div');
     prevEl.className = 'trPrev';
@@ -6199,109 +6346,76 @@
       prevEl.appendChild(t);
       const copy = document.createElement('button');
       copy.type = 'button'; copy.className = 'tagFilterBtn'; copy.textContent = '前回をコピー';
-      copy.addEventListener('click', () => { ex.sets = prev.sets.map((st) => ({ w: st.w === null ? '' : String(st.w), r: String(st.r), bw: st.w === null })); trState.dirty = true; renderTraining(); });
+      copy.addEventListener('click', () => { ex.sets = prev.sets.map((st) => ({ w: st.w === null ? '' : String(st.w), r: String(st.r), bw: st.w === null, note: '' })); trScheduleSave(); renderTraining(); });
       prevEl.appendChild(copy);
     } else {
       prevEl.textContent = '前回の記録はありません';
     }
     box.appendChild(prevEl);
-
+    const foot = document.createElement('div');
+    foot.className = 'trExFoot';
+    const info = document.createElement('div');
+    const refreshInfo = () => {
+      const todaySets = ex.sets.map((st) => normalizeTrainingSet({ w: st.bw ? null : (st.w === '' ? NaN : Number(st.w)), r: Number(st.r) })).filter(Boolean);
+      const tb = bestSet(todaySets);
+      info.innerHTML = '';
+      if (tb) {
+        const v = est1RM(tb);
+        info.textContent = '今日の1RM ' + fmtKg(v) + 'kg';
+        const pb = prev ? bestSet(prev.sets) : null;
+        if (pb) { const dv = v - est1RM(pb); const span = document.createElement('span'); span.className = 'trDelta ' + (dv > 0 ? 'up' : dv < 0 ? 'down' : ''); span.textContent = '　前回比 ' + (dv > 0 ? '+' : '') + fmtKg(dv) + 'kg'; info.appendChild(span); }
+        if (maxInfo.max === null || v > maxInfo.max) { const nb = document.createElement('span'); nb.className = 'trExMax'; nb.textContent = '　NEW MAX'; info.appendChild(nb); }
+      } else if (todaySets.length) info.textContent = '自重（1RM なし）';
+    };
     ex.sets.forEach((st, i) => {
       const row = document.createElement('div');
       row.className = 'trSetRow';
       const bw = document.createElement('button');
       bw.type = 'button'; bw.className = 'trBw' + (st.bw ? ' selected' : ''); bw.textContent = '自重';
-      bw.addEventListener('click', () => { st.bw = !st.bw; trState.dirty = true; renderTraining(); });
+      bw.addEventListener('click', () => { st.bw = !st.bw; trScheduleSave(); renderTraining(); });
       row.appendChild(bw);
       const wIn = document.createElement('input');
       wIn.type = 'number'; wIn.step = '0.5'; wIn.inputMode = 'decimal'; wIn.placeholder = st.bw ? '自重' : 'kg'; wIn.value = st.bw ? '' : st.w; wIn.disabled = !!st.bw;
-      wIn.addEventListener('input', () => { st.w = wIn.value; trState.dirty = true; });
+      wIn.addEventListener('input', () => { st.w = wIn.value; trScheduleSave(); refreshInfo(); });
+      wIn.addEventListener('change', () => { trFlush(); });
       row.appendChild(wIn);
       const x = document.createElement('span'); x.className = 'trX'; x.textContent = '×'; row.appendChild(x);
       const rIn = document.createElement('input');
       rIn.type = 'number'; rIn.step = '1'; rIn.inputMode = 'numeric'; rIn.placeholder = '回'; rIn.value = st.r;
-      rIn.addEventListener('input', () => { st.r = rIn.value; trState.dirty = true; });
+      rIn.addEventListener('input', () => { st.r = rIn.value; trScheduleSave(); refreshInfo(); });
+      rIn.addEventListener('change', () => { trFlush(); });
       row.appendChild(rIn);
       const del = document.createElement('button');
       del.type = 'button'; del.className = 'trSetDel'; del.textContent = '×'; del.title = 'このセットを消す';
-      del.addEventListener('click', () => { ex.sets.splice(i, 1); trState.dirty = true; renderTraining(); });
+      del.addEventListener('click', () => { ex.sets.splice(i, 1); trScheduleSave(); renderTraining(); });
       row.appendChild(del);
       box.appendChild(row);
     });
-    const foot = document.createElement('div');
-    foot.className = 'trExFoot';
     const add = document.createElement('button');
     add.type = 'button'; add.className = 'tagFilterBtn'; add.textContent = '＋ セット';
-    add.addEventListener('click', () => { const last = ex.sets[ex.sets.length - 1]; ex.sets.push(last ? { w: last.w, r: last.r, bw: last.bw } : { w: '', r: '', bw: false }); trState.dirty = true; renderTraining(); });
+    add.addEventListener('click', () => { const last = ex.sets[ex.sets.length - 1]; ex.sets.push(last ? { w: last.w, r: last.r, bw: last.bw, note: '' } : { w: '', r: '', bw: false, note: '' }); trScheduleSave(); renderTraining(); });
     foot.appendChild(add);
-    // today's e1RM and the difference against last time - the comparison at a glance
-    const todaySets = ex.sets.map((st) => normalizeTrainingSet({ w: st.bw ? null : (st.w === '' ? NaN : Number(st.w)), r: Number(st.r) })).filter(Boolean);
-    const tb = bestSet(todaySets);
-    const info = document.createElement('div');
-    if (tb) {
-      const v = est1RM(tb);
-      let txt = '今日の1RM ' + fmtKg(v) + 'kg';
-      const pb = prev ? bestSet(prev.sets) : null;
-      if (pb) {
-        const dv = v - est1RM(pb);
-        const span = document.createElement('span');
-        span.className = 'trDelta ' + (dv > 0 ? 'up' : dv < 0 ? 'down' : '');
-        span.textContent = '　前回比 ' + (dv > 0 ? '+' : '') + fmtKg(dv) + 'kg';
-        info.textContent = txt;
-        info.appendChild(span);
-      } else info.textContent = txt;
-      if (maxInfo.max === null || v > maxInfo.max) { const nb = document.createElement('span'); nb.className = 'trExMax'; nb.textContent = '　NEW MAX'; info.appendChild(nb); }
-    } else if (todaySets.length) {
-      info.textContent = '自重（1RM なし）';
-    }
+    refreshInfo();
     foot.appendChild(info);
     box.appendChild(foot);
     return box;
   }
 
-  function trSave() {
-    const day = trCollectDay();
-    if (!day) { document.getElementById('trStatus').textContent = '日付が不正です'; return null; }
-    const iso = nowIso();
-    const existing = findTrainingDay(day.date);
-    day.createdAt = existing ? existing.createdAt : iso;
-    day.updatedAt = iso;
-    // drop exercises that ended up with no valid sets, and empty parts
-    day.parts = day.parts.map((p) => ({ part: p.part, exercises: p.exercises.filter((e) => e.sets.length) })).filter((p) => p.exercises.length);
-    if (!day.parts.length && day.weight === null) { document.getElementById('trStatus').textContent = 'セットか体重を入れてください'; return null; }
-    const idx = trainingData.days.findIndex((d) => d.id === day.id);
-    if (idx === -1) trainingData.days.push(day); else trainingData.days[idx] = day;
-    trainingData.days.sort((a, b) => (a.date < b.date ? -1 : 1));
-    trainingData.deletedDayIds = (trainingData.deletedDayIds || []).filter((t) => t.id !== day.id);
-    day.parts.forEach((p) => p.exercises.forEach((e) => touchExercise(p.part, e.name, day.date + 'T' + iso.slice(11))));
-    saveTrainingData(trainingData);
-    trState.dirty = false;
-    trLoadDate(day.date);
-    renderTraining();
-    document.getElementById('trStatus').textContent = '保存しました（' + dotDate(day.date) + '）';
-    return day;
-  }
-
   document.getElementById('btnOpenTraining').addEventListener('click', () => openTraining(todayStr()));
-  document.getElementById('backFromTraining').addEventListener('click', () => {
-    if (trState.dirty && !confirm('保存していない変更があります。戻りますか？')) return;
-    openRecords();
-  });
-  document.getElementById('trDate').addEventListener('change', (e) => {
-    if (trState.dirty && !confirm('保存していない変更があります。日付を変えますか？')) { e.target.value = trState.date; return; }
-    trLoadDate(e.target.value || todayStr());
-    renderTraining();
-  });
-  document.getElementById('trWeight').addEventListener('input', () => { trState.dirty = true; });
-  document.getElementById('btnTrSave').addEventListener('click', () => { trSave(); });
+  document.getElementById('backFromTraining').addEventListener('click', () => { trFlush(); openRecords(); });
+  document.getElementById('trDate').addEventListener('change', (e) => { trLoadDate(e.target.value || todayStr()); renderTraining(); });
+  document.getElementById('trWeight').addEventListener('input', (e) => { trState.weight = e.target.value.trim(); trScheduleSave(); });
+  document.getElementById('trWeight').addEventListener('change', () => { trFlush(); });
   document.getElementById('btnTrDelete').addEventListener('click', () => {
     const day = findTrainingDay(trState.date);
     if (!day) return;
     if (!confirm(dotDate(day.date) + ' の筋トレの記録を消しますか？')) return;
+    if (trSaveTimer) { clearTimeout(trSaveTimer); trSaveTimer = null; }
     trainingData.days = trainingData.days.filter((d) => d.id !== day.id);
     trainingData.deletedDayIds = (trainingData.deletedDayIds || []).filter((t) => t.id !== day.id);
     trainingData.deletedDayIds.push({ id: day.id, deletedAt: nowIso() });
     saveTrainingData(trainingData);
+    trState.parts = []; trState.weight = '';
     trLoadDate(trState.date);
     renderTraining();
     document.getElementById('trStatus').textContent = '消しました';
@@ -6318,6 +6432,10 @@
     return day.parts.map((p) => ({
       part: p.part,
       rows: p.exercises.map((e) => {
+        if (e.cardio) {
+          const bits = []; if (e.cardio.km !== null) bits.push(fmtKg(e.cardio.km) + 'km'); if (e.cardio.min !== null) bits.push(fmtMin(e.cardio.min));
+          return { name: e.name, sets: bits.join(', ') || '記録のみ', rm: null, isNewMax: false, allMax: null, cardio: true };
+        }
         const b = bestSet(e.sets);
         const v = b ? est1RM(b) : null;
         const prevMax = exerciseMax(e.name, day.date).max;
@@ -6467,9 +6585,10 @@
   }
   async function trShareImages() {
     const statusEl = document.getElementById('trImageStatus');
-    const day = trSave();
-    if (!day) return;
-    if (!day.parts.length) { statusEl.textContent = '種目がありません'; return; }
+    trFlush();
+    trPersist();
+    const day = findTrainingDay(trState.date);
+    if (!day || !day.parts.length) { statusEl.textContent = '種目がありません'; return; }
     try { if (document.fonts && document.fonts.load) await document.fonts.load("32px 'DotGothic16'"); } catch (e) {}
     const canvases = trRenderImages(day);
     const files = [];
@@ -6501,6 +6620,7 @@
     day.parts.forEach((p) => p.exercises.forEach((e) => {
       const row = document.createElement('div');
       row.className = 'trDayCardEx';
+      if (e.cardio) { row.textContent = e.name + '　'; const cEl = document.createElement('span'); cEl.className = 'trDayCardSets'; cEl.textContent = fmtCardio(e.cardio); row.appendChild(cEl); item.appendChild(row); return; }
       const b = bestSet(e.sets); const v = b ? est1RM(b) : null;
       const prevMax = exerciseMax(e.name, day.date).max;
       row.textContent = e.name + '　';
