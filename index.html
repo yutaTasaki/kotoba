@@ -629,6 +629,10 @@
   .questionFromSource { font-size: 12px; color: var(--text-dim); }
   .questionFromMyWords { font-size: 12px; color: var(--text-faint); line-height: 1.7; margin-top: 4px; }
   .questionUsedNote { font-size: 12px; color: var(--accent); text-align: center; }
+  .detailHistory { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+  .detailHistoryRow { font-size: 12px; color: var(--text-dim); line-height: 1.7; white-space: pre-wrap; }
+  .detailHistoryDate { color: var(--text-faint); margin-right: 6px; }
+  #trashList .secondaryBtn { width: auto; flex-shrink: 0; margin: 0; padding: 8px 16px; align-self: center; }
   .questionViewer { border-top: 1px solid var(--border); padding-top: 14px; display: flex; flex-direction: column; gap: 6px; }
   .questionViewerHead { font-size: 11px; color: var(--text-faint); letter-spacing: .06em; }
   .questionViewerText { font-size: 16px; line-height: 1.8; white-space: pre-wrap; }
@@ -814,8 +818,11 @@
     </header>
     <div class="detailBody">
       <div class="detailText" id="detailText"></div>
+      <div id="detailTextHistory" class="detailHistory" hidden></div>
       <div class="detailField"><span class="fieldLabel">出典</span><div id="detailSource"></div></div>
-      <div class="detailField"><span class="fieldLabel">自分の言葉での一言</span><div id="detailMyWords"></div></div>
+      <div class="detailField"><span class="fieldLabel">自分の言葉での一言</span><div id="detailMyWords"></div>
+        <div id="detailMyWordsHistory" class="detailHistory" hidden></div>
+      </div>
       <div class="detailTags" id="detailTags"></div>
       <p class="fieldNote" id="detailPickStats" hidden></p>
       <p class="fieldNote" id="detailQuestionStats" hidden></p>
@@ -1016,6 +1023,13 @@
         <div id="duplicateResults"></div>
         <p class="emptyMsg" id="duplicateEmptyMsg" hidden>似ている組は見つかりませんでした。</p>
       </div>
+      <div class="field">
+        <span class="fieldLabel">消した言葉（<span id="trashCount"></span>件）</span>
+        <p class="fieldNote">消したノートは本文ごとここに残ります。一覧・検索・引く・網・朝・相談・問いには出ません。復元すると一覧に戻り、まだ残っている関連ノートとのリンクもつなぎ直します。</p>
+        <div id="trashList" class="detailLinksList"></div>
+        <p class="emptyMsg" id="trashEmptyMsg" hidden>消した言葉はありません。</p>
+        <p class="fieldNote" id="trashStatus"></p>
+      </div>
       <hr>
       <div class="field">
         <h3>5. データ</h3>
@@ -1125,6 +1139,9 @@
       <div class="field" id="bulkTitleField" hidden>
         <span class="fieldLabel">動画タイトル（任意）</span>
         <input id="bulkTitleInput" type="text" placeholder="空なら「自分（動画）」として保存されます" autocomplete="off">
+        <span class="fieldLabel">撮影日</span>
+        <p class="fieldNote">言った日の記録（朝の体調・一言）と結びつくのはこの日付です。取り込んだ日ではありません。</p>
+        <input type="date" id="bulkFilmedAtInput">
       </div>
       <div class="field" id="bulkQuestionField" hidden>
         <span class="fieldLabel">この動画の問い</span>
@@ -1336,6 +1353,7 @@
       drafts: [], deletedDraftIds: [],
       dismissedDuplicatePairs: [],
       usage: {},
+      trash: [],
     };
   }
 
@@ -1442,6 +1460,29 @@
     // every note that predates this simply has no `video` key.
     const video = normalizeVideoRef(n.video);
     if (video) out.video = video;
+    // v3.5: earlier readings. Only present once an edit has actually
+    // replaced something - untouched notes carry no history keys at all.
+    const th = normalizeHistory(n.textHistory);
+    if (th.length) out.textHistory = th;
+    const mh = normalizeHistory(n.myWordsHistory);
+    if (mh.length) out.myWordsHistory = mh;
+    return out;
+  }
+
+  function normalizeHistory(h) {
+    if (!Array.isArray(h)) return [];
+    return h.filter((e) => e && typeof e.text === 'string' && e.text.trim())
+      .map((e) => ({ text: e.text, at: e.at || nowIso() }))
+      .slice(-200);
+  }
+
+  // A note in the trash is a normal note plus deletedAt. It is kept out of
+  // data.notes on purpose: every consumer of data.notes (list, search, 引く,
+  // 網, auto-link, 朝, 相談, 問い, duplicates, stats) is then correct without
+  // a single filter, and only the settings list ever looks at data.trash.
+  function normalizeTrashNote(n) {
+    const out = normalizeNote(n);
+    out.deletedAt = n.deletedAt || nowIso();
     return out;
   }
 
@@ -1451,6 +1492,8 @@
       batchId: String(v.batchId),
       title: typeof v.title === 'string' ? v.title : '',
       questionId: typeof v.questionId === 'string' ? v.questionId : '',
+      // v3.5: the day it was said, not the day it was imported
+      filmedAt: (typeof v.filmedAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.filmedAt)) ? v.filmedAt : '',
     };
   }
 
@@ -1478,6 +1521,7 @@
         ? parsed.dismissedDuplicatePairs.filter((p) => p && p.a && p.b).map((p) => ({ a: String(p.a), b: String(p.b), dismissedAt: p.dismissedAt || nowIso() }))
         : [],
       usage: (parsed.usage && typeof parsed.usage === 'object') ? parsed.usage : {},
+      trash: Array.isArray(parsed.trash) ? parsed.trash.filter((n) => n && n.id).map(normalizeTrashNote) : [],
     };
   }
 
@@ -1527,7 +1571,7 @@
   function generateId(notes) {
     const d = new Date();
     const prefix = `n_${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}_`;
-    const existing = new Set(notes.map((n) => n.id));
+    const existing = new Set([...notes, ...((typeof data !== 'undefined' && data && data.trash) || [])].map((n) => n.id)); // v3.5: never reuse a trashed id
     let seq = 1;
     while (existing.has(prefix + String(seq).padStart(3, '0'))) seq++;
     return prefix + String(seq).padStart(3, '0');
@@ -1579,12 +1623,45 @@
     added.forEach((otherId) => addLinkBidirectional(noteId, otherId, { kind: 'manual' }));
   }
 
+  // v3.5: 消す = move to trash, text and all. The tombstone is still
+  // written so the existing merge logic (and any older build) drops the
+  // note from data.notes everywhere; the trash copy travels separately.
   function deleteNoteById(id) {
+    const note = findNote(id);
+    const iso = nowIso();
     data.notes.forEach((n) => { n.links = n.links.filter((l) => l.id !== id); });
     data.notes = data.notes.filter((n) => n.id !== id);
+    if (note) {
+      if (!Array.isArray(data.trash)) data.trash = [];
+      data.trash = data.trash.filter((n) => n.id !== id);
+      data.trash.push({ ...note, deletedAt: iso });
+    }
     if (!Array.isArray(data.deletedIds)) data.deletedIds = [];
     data.deletedIds = data.deletedIds.filter((d) => d.id !== id);
-    data.deletedIds.push({ id, deletedAt: nowIso() });
+    data.deletedIds.push({ id, deletedAt: iso });
+  }
+
+  function findTrashNote(id) { return (data.trash || []).find((n) => n.id === id) || null; }
+
+  // Back to data.notes with a fresh updatedAt (so it outranks the tombstone
+  // on every device), tombstone withdrawn, and its old links re-tied to
+  // whichever partners still exist.
+  function restoreNoteById(id) {
+    const idx = (data.trash || []).findIndex((n) => n.id === id);
+    if (idx === -1) return null;
+    const note = data.trash[idx];
+    data.trash.splice(idx, 1);
+    delete note.deletedAt;
+    note.updatedAt = nowIso();
+    const oldLinks = note.links || [];
+    note.links = [];
+    data.notes.push(note);
+    oldLinks.forEach((l) => {
+      if (!findNote(l.id)) return;
+      addLinkBidirectional(note.id, l.id, l.kind === 'auto' ? { kind: 'auto', relation: l.relation, reason: l.reason } : { kind: 'manual' });
+    });
+    data.deletedIds = (data.deletedIds || []).filter((d) => d.id !== id);
+    return note;
   }
 
   function pruneDanglingLinks(d) {
@@ -1635,6 +1712,20 @@
       if (!cur || new Date(at) > new Date(cur)) mergedDeleted.set(id, at);
     });
     mergedNotes.forEach((_, id) => mergedDeleted.delete(id));
+
+    // trash (v3.5): union by id, the later deletedAt wins. A note that is
+    // alive in the merged notes was restored somewhere and so is not trash;
+    // that also keeps the note-side tombstone logic above the only judge of
+    // alive-vs-deleted (a restore bumps updatedAt past the tombstone).
+    const trashA = new Map((a.trash || []).map((n) => [n.id, n]));
+    const trashB = new Map((b.trash || []).map((n) => [n.id, n]));
+    const mergedTrash = new Map();
+    new Set([...trashA.keys(), ...trashB.keys()]).forEach((id) => {
+      const ta = trashA.get(id), tb = trashB.get(id);
+      const w = (ta && tb) ? (new Date(ta.deletedAt) >= new Date(tb.deletedAt) ? ta : tb) : (ta || tb);
+      mergedTrash.set(id, { ...w, tags: [...w.tags], links: w.links.map((l) => ({ ...l })), rejectedLinks: [...(w.rejectedLinks || [])] });
+    });
+    mergedNotes.forEach((_, id) => mergedTrash.delete(id));
 
     // journal: same per-entry union + tombstone approach as notes above.
     const journalA = new Map((a.journal || []).map((j) => [j.id, j]));
@@ -1703,6 +1794,7 @@
       deletedDraftIds: [...mergedDDeleted.entries()].map(([id, deletedAt]) => ({ id, deletedAt })),
       dismissedDuplicatePairs: mergeDismissedDuplicatePairs(a.dismissedDuplicatePairs, b.dismissedDuplicatePairs),
       usage: mergeUsageData(a.usage, b.usage),
+      trash: [...mergedTrash.values()],
     };
     pruneDanglingLinks(merged);
     return merged;
@@ -1849,6 +1941,7 @@
       drafts: [], deletedDraftIds: [],
       dismissedDuplicatePairs: [],
       usage: {},
+      trash: [],
     };
   }
 
@@ -4815,6 +4908,7 @@
     bulkState.showAllQuestions = false;
     document.getElementById('bulkSourceInput').value = '';
     document.getElementById('bulkTitleInput').value = '';
+    document.getElementById('bulkFilmedAtInput').value = todayStr();
     document.getElementById('bulkTextInput').value = '';
     document.getElementById('bulkStatus').textContent = '';
     updateBulkCharCount();
@@ -4944,7 +5038,8 @@
       const video = bulkState.kind === 'transcript'
         ? { batchId: 'vb_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
             title: document.getElementById('bulkTitleInput').value.trim(),
-            questionId: bulkState.questionId || '' }
+            questionId: bulkState.questionId || '',
+            filmedAt: document.getElementById('bulkFilmedAtInput').value || todayStr() }
         : null;
       items.forEach((item, i) => {
         const id = generateDraftId();
@@ -5261,6 +5356,7 @@
     const note = draftSimilarMatchNoteId ? findNote(draftSimilarMatchNoteId) : null;
     if (!draft || !note) return;
     if (!confirm('既存のノートを、この下書きの内容で置き換えます。よろしいですか？')) return;
+    if (note.text !== draft.text) pushHistory(note, 'textHistory', note.text, nowIso());
     note.text = draft.text;
     note.source = draft.source;
     note.tags = [...draft.tags];
@@ -5342,6 +5438,8 @@
     qStatsEl.hidden = qStats.count === 0;
     if (qStats.count > 0) qStatsEl.textContent = `問いに使われた回数: ${qStats.count}回（直近 ${dotDate(qStats.lastDate)}）`;
     renderDetailVideoSections(note);
+    renderHistory(document.getElementById('detailTextHistory'), note.textHistory);
+    renderHistory(document.getElementById('detailMyWordsHistory'), note.myWordsHistory);
 
     document.getElementById('detailLinkingStatus').hidden = !autoLinkInFlight.has(note.id);
 
@@ -5422,6 +5520,24 @@
     return el;
   }
 
+  // Newest replaced version first. The date is when that reading stopped
+  // being the current one, hence 「〜」.
+  function renderHistory(container, history) {
+    container.innerHTML = '';
+    const list = Array.isArray(history) ? history.slice().reverse() : [];
+    container.hidden = list.length === 0;
+    list.forEach((h) => {
+      const row = document.createElement('div');
+      row.className = 'detailHistoryRow';
+      const d = document.createElement('span');
+      d.className = 'detailHistoryDate';
+      d.textContent = '〜' + formatDateTime(h.at).slice(0, 10).replace(/\//g, '.');
+      row.appendChild(d);
+      row.appendChild(document.createTextNode(h.text));
+      container.appendChild(row);
+    });
+  }
+
   function renderDetailVideoSections(note) {
     // (a) this note came out of a video: show the video, its question's
     //     source words, and the other words from the same talk.
@@ -5431,7 +5547,7 @@
     if (note.video) {
       const q = note.video.questionId ? findJournalEntry(note.video.questionId) : null;
       document.getElementById('detailVideoOfTitle').textContent =
-        '動画：' + videoTitleLabel(note.video) + (q ? '　／　問い：' + noteSnippet(q.text, 40) : '　／　問いなし');
+        '動画：' + videoTitleLabel(note.video) + (note.video.filmedAt ? '（撮影 ' + dotDate(note.video.filmedAt) + '）' : '') + (q ? '　／　問い：' + noteSnippet(q.text, 40) : '　／　問いなし');
       const list = document.getElementById('detailVideoOfList');
       list.innerHTML = '';
       if (q) (q.from || []).map(findNote).filter(Boolean).forEach((n) => list.appendChild(videoNoteRow(n, '元になった言葉' + (n.source ? ' ・ ' + n.source : ''))));
@@ -5471,7 +5587,7 @@
   document.getElementById('btnDeleteNote').addEventListener('click', () => {
     const note = findNote(nav.detailId);
     if (!note) return;
-    if (!confirm('このノートを削除しますか？関連ノートのリンクも解除されます。この操作は取り消せません。')) return;
+    if (!confirm('このノートを消しますか？関連ノートとのリンクは解除されます。本文は設定の「消した言葉」に残り、そこから復元できます。')) return;
     deleteNoteById(note.id);
     saveData(data);
     backFromDetail();
@@ -6878,6 +6994,13 @@
   // v3.6: same similarity check as the draft-review flow, run at save time
   // for the regular add/edit editor too. Editing a note without changing its
   // text must not flag it as "similar to itself", hence excludeNoteId.
+  function pushHistory(note, key, oldText, at) {
+    if (!oldText || !oldText.trim()) return;
+    if (!Array.isArray(note[key])) note[key] = [];
+    note[key].push({ text: oldText, at });
+    if (note[key].length > 200) note[key].shift();
+  }
+
   function performSaveNote() {
     document.getElementById('editSimilarPanel').hidden = true;
     const myWords = editMyWordsEl.value.trim();
@@ -6894,6 +7017,10 @@
       const note = findNote(nav.editorEditId);
       const oldManualLinks = note.links.filter((l) => l.kind === 'manual').map((l) => l.id);
       const contentChanged = note.text !== text || note.myWords !== myWords;
+      // v3.5: the reading being replaced is kept, dated by when it stopped
+      // being current - this is the one thing that cannot be rebuilt later.
+      if (note.text !== text) pushHistory(note, 'textHistory', note.text, iso);
+      if (note.myWords !== myWords) pushHistory(note, 'myWordsHistory', note.myWords, iso);
       note.text = text;
       note.source = source;
       note.myWords = myWords;
@@ -7311,8 +7438,49 @@
       row.addEventListener('click', () => openDetail(id, 'home'));
       errorListEl.appendChild(row);
     });
+    renderTrashList();
     if (!batchState.running) document.getElementById('batchProgress').hidden = true;
     document.getElementById('btnBatchStop').hidden = !batchState.running;
+  }
+
+  function renderTrashList() {
+    const list = (data.trash || []).slice().sort((a, b) => (a.deletedAt < b.deletedAt ? 1 : -1));
+    document.getElementById('trashCount').textContent = list.length;
+    document.getElementById('trashEmptyMsg').hidden = list.length > 0;
+    const el = document.getElementById('trashList');
+    el.innerHTML = '';
+    list.forEach((n) => {
+      const row = document.createElement('div');
+      row.className = 'detailLinkItem';
+      const inner = document.createElement('div');
+      inner.className = 'detailLinkRow';
+      const left = document.createElement('div');
+      const t = document.createElement('div');
+      t.className = 'lText';
+      t.textContent = noteSnippet(n.text || n.myWords, 60);
+      left.appendChild(t);
+      const sEl = document.createElement('div');
+      sEl.className = 'lSource';
+      sEl.textContent = (n.source ? n.source + ' ・ ' : '') + '消した日 ' + formatDateTime(n.deletedAt).slice(0, 10).replace(/\//g, '.');
+      left.appendChild(sEl);
+      inner.appendChild(left);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'secondaryBtn';
+      btn.textContent = '復元';
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const restored = restoreNoteById(n.id);
+        if (!restored) return;
+        saveData(data);
+        document.getElementById('trashStatus').textContent = '「' + noteSnippet(restored.text, 20) + '」を一覧に戻しました';
+        document.getElementById('statNoteCount').textContent = data.notes.length;
+        renderTrashList();
+      });
+      inner.appendChild(btn);
+      row.appendChild(inner);
+      el.appendChild(row);
+    });
   }
 
   document.getElementById('backFromSettings').addEventListener('click', goHome);
