@@ -658,26 +658,43 @@
 
   /* --- v3.6: 網 = 遠い対立 (concentric cards, no physics) ----------- */
   .graphTitle { font-size: 13px; color: var(--text-dim); flex: 1; }
+  .graphControls { display: flex; gap: 8px; flex-wrap: wrap; flex-shrink: 0; padding: 6px 0 8px; }
   .graphViewport { flex: 1; min-height: 44vh; overflow: auto; -webkit-overflow-scrolling: touch; position: relative; border-radius: 12px; background: #0b0b0b; }
   .graphStage { position: relative; }
   .graphSvg { position: absolute; left: 0; top: 0; pointer-events: none; }
   .graphCard {
-    position: absolute; width: 108px; box-sizing: border-box;
+    position: absolute; width: 104px; box-sizing: border-box;
     background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
     padding: 6px 8px; cursor: pointer; transform: translate(-50%, -50%); user-select: none; -webkit-user-select: none;
   }
   .graphCard.center { border-color: var(--accent); background: #1c2620; }
   .graphCard .gcText { font-size: 12px; line-height: 1.45; }
   .graphCard .gcSource { font-size: 10px; color: var(--text-faint); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* narrow screens: a list instead of the picture */
+  .graphList { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+  .graphListRow {
+    display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start;
+    background: var(--bg-card); border-radius: 10px; padding: 9px 12px; cursor: pointer; user-select: none; -webkit-user-select: none;
+  }
+  .graphListRow.center { border: 1px solid var(--accent); background: #1c2620; grid-template-columns: 1fr; }
+  .graphListRow.hop2 { margin-left: 22px; background: #141414; }
+  .graphListRow .glRel { font-size: 11px; white-space: nowrap; padding-top: 3px; min-width: 2.2em; }
+  .graphListRow .glText { font-size: 14px; line-height: 1.5; }
+  .graphListRow .glSource { font-size: 11px; color: var(--text-faint); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .graphFar { flex-shrink: 0; max-height: 36vh; overflow-y: auto; padding: 10px 0 calc(8px + env(safe-area-inset-bottom)); }
   .graphFarHead { font-size: 11px; color: var(--text-faint); letter-spacing: .06em; margin-bottom: 6px; }
-  .graphFarRow {
-    display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; gap: 6px; align-items: center;
-    background: var(--bg-card); border-radius: 10px; padding: 8px 10px; margin-bottom: 6px;
-    font-size: 12px; line-height: 1.5; cursor: pointer; user-select: none; -webkit-user-select: none;
+  .graphFarGroup { margin-bottom: 10px; }
+  .graphFarGroupHead {
+    font-size: 13px; line-height: 1.6; padding: 6px 4px; cursor: pointer; user-select: none; -webkit-user-select: none;
+    color: var(--text);
   }
-  .graphFarRow .gfRel { font-size: 10px; white-space: nowrap; }
-  .graphFarRow .gfC { color: var(--text); }
+  .graphFarGroupHead .gfCount { font-size: 11px; color: var(--text-faint); margin-left: 6px; }
+  .graphFarRow {
+    display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: start;
+    background: var(--bg-card); border-radius: 10px; padding: 8px 12px; margin-bottom: 4px;
+    font-size: 13px; line-height: 1.5; cursor: pointer; user-select: none; -webkit-user-select: none;
+  }
+  .graphFarRow .gfRel { font-size: 10px; white-space: nowrap; padding-top: 3px; min-width: 2.2em; }
 </style>
 </head>
 <body>
@@ -1275,18 +1292,25 @@
       <div class="graphTitle" id="graphTitle">網</div>
       <button id="btnGraphClose" class="drawIconBtn" type="button">×</button>
     </div>
+    <div class="graphControls">
+      <button type="button" id="btnGraphExpand" class="tagFilterBtn">遠い対立を広げる</button>
+      <button type="button" id="btnGraphMore1" class="tagFilterBtn" hidden>他 0 枚</button>
+    </div>
     <div id="graphViewport" class="graphViewport">
       <div id="graphStage" class="graphStage">
         <svg id="graphSvg" class="graphSvg"></svg>
         <div id="graphCards"></div>
       </div>
     </div>
+    <div id="graphList" class="graphList" hidden></div>
     <div id="graphFar" class="graphFar">
-      <div class="graphFarHead">遠い対立 — 真ん中の言葉を通じて食い違っている2枚</div>
+      <div class="graphFarHead">遠い対立 — 経由する言葉ごと</div>
       <div id="graphFarList"></div>
+      <button type="button" id="btnGraphFarMore" class="linkLikeBtn" hidden>もっと見る</button>
       <p class="emptyMsg" id="graphFarEmpty" hidden>2ホップ先の対立はありません。</p>
     </div>
   </div>
+
 
 
 </div>
@@ -3478,6 +3502,30 @@
   function farOppositionsFrom(center) {
     return graphPathsFrom(center).ring2.filter((p) => (p.rel1 === 'opposite') !== (p.rel2 === 'opposite'));
   }
+  // Push back: A and C already linked directly (then it is not "far"), the
+  // A-C pair already produced a question, neither has ever been delivered.
+  // Pull forward: A or C is in this month's core. Ties keep their random
+  // input order, and the caller draws at random from the top tier anyway.
+  function rankFarTriples(triples) {
+    const core = new Set(topMonthlyPickedNoteIds(5));
+    const asked = new Set();
+    data.journal.forEach((j) => {
+      if (j.kind !== 'question' || !Array.isArray(j.from) || j.from.length < 2) return;
+      asked.add([j.from[0], j.from[1]].sort().join('|'));
+    });
+    const linked = (x, y) => (x.links || []).some((l) => l.id === y.id) || (y.links || []).some((l) => l.id === x.id);
+    const scored = shuffled(triples).map((t) => {
+      let score = 0;
+      if (linked(t.a, t.c)) score -= 3;
+      if (asked.has([t.a.id, t.c.id].sort().join('|'))) score -= 3;
+      if (journalPickStatsForNote(t.a.id).count === 0 && journalPickStatsForNote(t.c.id).count === 0) score -= 1;
+      if (core.has(t.a.id) || core.has(t.c.id)) score += 2;
+      return { t, score };
+    });
+    scored.sort((x, y) => y.score - x.score);
+    return scored.map((x) => x.t);
+  }
+
   function allFarOppositionTriples() {
     const seen = new Set();
     const out = [];
@@ -3561,9 +3609,11 @@
     } else if (mode === 'core') {
       notes = topMonthlyPickedNoteIds(2).map(findNote).filter(Boolean);
     } else if (mode === 'far') {
-      const triples = allFarOppositionTriples();
-      if (!triples.length) return null;
-      const t = triples[Math.floor(Math.random() * triples.length)];
+      const ranked = rankFarTriples(allFarOppositionTriples());
+      if (!ranked.length) return null;
+      // random within the top tier, so the same pair does not come up every time
+      const tier = ranked.slice(0, Math.max(5, Math.ceil(ranked.length * 0.2)));
+      const t = tier[Math.floor(Math.random() * tier.length)];
       return { mode, notes: [t.a, t.c], via: t.via, rel1: t.rel1, rel2: t.rel2 };
     } else {
       const pool = selfSourcedNotes();
@@ -6692,25 +6742,42 @@
     renderUnusedQuestions();
   });
 
-  // --- 網 ("遠い対立", v3.6) ---------------------------------------------
-  // Replaces the force-directed hairball. One note in the middle, its links
-  // on the first ring, and on the second ring only the notes reached by a
-  // path whose relation CHANGES at the middle note - that is where the
-  // material for questions is. Cards, not dots; a fixed concentric layout
-  // inside a scrollable stage, not physics. No filters, no legend: the line
-  // carries its own label.
+  // --- 網 ("遠い対立", v3.6.1) -------------------------------------------
+  // One note in the middle. Opens with only the first ring (capped at 8,
+  // 対立 > 補足 > 似 > 手動); 「遠い対立を広げる」 adds the second ring - only
+  // notes reached by a path whose relation changes at the middle note. On
+  // narrow screens the picture is replaced by a list (iPhone reads, PC
+  // looks). Below either: the far oppositions grouped by the note they go
+  // through.
   const GRAPH_RELATION_COLOR = { similar: '#8fb39b', opposite: '#d1837a', supplement: '#86a9c9', manual: '#6f6a60' };
-  const graphState = { centerId: null };
-  const GRAPH_CARD_W = 108, GRAPH_CARD_H = 52;
+  const GRAPH_REL_ORDER = { opposite: 0, supplement: 1, similar: 2, manual: 3 };
+  const GRAPH_RING1_CAP = 8;
+  const GRAPH_FAR_GROUPS = 3;
+  const GRAPH_NARROW_PX = 600;
+  const GRAPH_CARD_W = 104;
+  const graphState = { centerId: null, expanded: false, showAll1: false, farAll: false };
 
-  function graphSnippet(n) { return noteSnippet(n.text || n.myWords || '', 20); }
+  function graphSnippet(n, max) { return noteSnippet(n.text || n.myWords || '', max || 15); }
+  function graphIsNarrow() { return window.innerWidth < GRAPH_NARROW_PX; }
+
+  // What this screen shows for its center, after the cap: ring1 (sorted,
+  // maybe capped), the hidden count, and the ring2 paths whose via is shown.
+  function graphModel(center) {
+    const { ring1: all1, ring2: all2 } = graphPathsFrom(center);
+    const sorted1 = all1.slice().sort((a, b) => GRAPH_REL_ORDER[a.rel] - GRAPH_REL_ORDER[b.rel]);
+    const ring1 = graphState.showAll1 ? sorted1 : sorted1.slice(0, GRAPH_RING1_CAP);
+    const shown1 = new Set(ring1.map((r) => r.note.id));
+    const ring2 = all2.filter((p) => shown1.has(p.via.id));
+    const ring2Unique = new Set(all2.map((p) => p.note.id)).size;
+    return { ring1, hidden1: sorted1.length - ring1.length, ring2, ring2Unique };
+  }
 
   function graphCardEl(note, cls) {
     const el = document.createElement('div');
     el.className = 'graphCard' + (cls ? ' ' + cls : '');
     const t = document.createElement('div');
     t.className = 'gcText';
-    t.textContent = graphSnippet(note);
+    t.textContent = graphSnippet(note, 15);
     el.appendChild(t);
     const sEl = document.createElement('div');
     sEl.className = 'gcSource';
@@ -6725,26 +6792,28 @@
     Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
     return el;
   }
-  function svgEdge(svg, x1, y1, x2, y2, rel) {
+  // 似 is drawn thin and faint until the second ring is opened - the point
+  // of the picture is 対立 and 補足; 似 only matters once it is a step on a
+  // path to a far opposition.
+  function svgEdge(svg, x1, y1, x2, y2, rel, faint) {
     const color = GRAPH_RELATION_COLOR[rel] || GRAPH_RELATION_COLOR.manual;
-    svg.appendChild(svgEl('line', { x1, y1, x2, y2, stroke: color, 'stroke-width': rel === 'opposite' ? 2 : 1.2, 'stroke-opacity': 0.85 }));
+    svg.appendChild(svgEl('line', { x1, y1, x2, y2, stroke: color, 'stroke-width': faint ? 0.8 : rel === 'opposite' ? 2.2 : 1.4, 'stroke-opacity': faint ? 0.35 : 0.9 }));
     const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
-    const label = svgEl('text', { x: mx, y: my, fill: color, 'font-size': 11, 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'paint-order': 'stroke', stroke: '#0b0b0b', 'stroke-width': 4 });
+    const label = svgEl('text', { x: mx, y: my, fill: color, 'fill-opacity': faint ? 0.55 : 1, 'font-size': 11, 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'paint-order': 'stroke', stroke: '#0b0b0b', 'stroke-width': 4 });
     label.textContent = relationShort(rel);
     svg.appendChild(label);
   }
 
-  function renderGraph(center) {
-    const { ring1, ring2 } = graphPathsFrom(center);
-    // ring2 nodes are unique; every path still gets its own edge
+  function renderGraphStage(center, model) {
+    const { ring1, ring2 } = model;
+    const showRing2 = graphState.expanded;
     const ring2Nodes = new Map();
-    ring2.forEach((p) => { if (!ring2Nodes.has(p.note.id)) ring2Nodes.set(p.note.id, { note: p.note, via: p.via }); });
+    if (showRing2) ring2.forEach((p) => { if (!ring2Nodes.has(p.note.id)) ring2Nodes.set(p.note.id, { note: p.note, via: p.via }); });
     const n1 = ring1.length;
     const childrenOf = new Map();
     ring2Nodes.forEach((v) => { const arr = childrenOf.get(v.via.id) || []; arr.push(v.note); childrenOf.set(v.via.id, arr); });
-    const maxKids = Math.max(1, ...[...childrenOf.values()].map((a) => a.length));
-    const r1 = Math.max(190, (n1 * GRAPH_CARD_W * 1.25) / (2 * Math.PI));
-    const r2 = r1 + Math.max(175, (ring2Nodes.size * GRAPH_CARD_W * 1.15) / (2 * Math.PI) - r1 + 120);
+    const r1 = Math.max(170, (n1 * GRAPH_CARD_W * 1.25) / (2 * Math.PI));
+    const r2 = showRing2 ? r1 + Math.max(170, (ring2Nodes.size * GRAPH_CARD_W * 1.15) / (2 * Math.PI) - r1 + 120) : r1;
     const half = r2 + GRAPH_CARD_W;
     const size = half * 2;
     const stage = document.getElementById('graphStage');
@@ -6763,7 +6832,6 @@
       const th = -Math.PI / 2 + (2 * Math.PI * i) / Math.max(n1, 1);
       pos.set(r.note.id, { x: cx + r1 * Math.cos(th), y: cy + r1 * Math.sin(th), th });
     });
-    // second ring: each middle note's children fan out within its own arc
     ring1.forEach((r) => {
       const kids = childrenOf.get(r.note.id) || [];
       const arc = (2 * Math.PI) / Math.max(n1, 1);
@@ -6773,40 +6841,116 @@
         pos.set(c.id, { x: cx + r2 * Math.cos(th0 + t), y: cy + r2 * Math.sin(th0 + t) });
       });
     });
-    ring1.forEach((r) => { const p = pos.get(r.note.id); svgEdge(svg, cx, cy, p.x, p.y, r.rel); });
-    ring2.forEach((p) => { const a = pos.get(p.via.id), b = pos.get(p.note.id); if (a && b) svgEdge(svg, a.x, a.y, b.x, b.y, p.rel2); });
+    ring1.forEach((r) => { const p = pos.get(r.note.id); svgEdge(svg, cx, cy, p.x, p.y, r.rel, r.rel === 'similar' && !showRing2); });
+    if (showRing2) ring2.forEach((p) => { const a = pos.get(p.via.id), b = pos.get(p.note.id); if (a && b) svgEdge(svg, a.x, a.y, b.x, b.y, p.rel2, false); });
     const place = (note, cls) => { const p = pos.get(note.id); const el = graphCardEl(note, cls); el.style.left = p.x + 'px'; el.style.top = p.y + 'px'; cards.appendChild(el); };
     place(center, 'center');
     ring1.forEach((r) => place(r.note, ''));
     ring2Nodes.forEach((v) => place(v.note, ''));
     const vp = document.getElementById('graphViewport');
     requestAnimationFrame(() => { vp.scrollLeft = cx - vp.clientWidth / 2; vp.scrollTop = cy - vp.clientHeight / 2; });
-
-    document.getElementById('graphTitle').textContent = '網 ・ ' + graphSnippet(center) + ' ・ ' + n1 + '枚 → ' + ring2Nodes.size + '枚';
-    renderGraphFarList(center);
   }
 
-  function renderGraphFarList(center) {
-    const list = document.getElementById('graphFarList');
+  function graphListRow(note, rel, cls) {
+    const row = document.createElement('div');
+    row.className = 'graphListRow' + (cls ? ' ' + cls : '');
+    if (rel) {
+      const r = document.createElement('div');
+      r.className = 'glRel';
+      r.style.color = GRAPH_RELATION_COLOR[rel];
+      r.textContent = relationShort(rel);
+      row.appendChild(r);
+    }
+    const body = document.createElement('div');
+    const t = document.createElement('div');
+    t.className = 'glText';
+    t.textContent = noteSnippet(note.text || note.myWords || '', 40);
+    body.appendChild(t);
+    const sEl = document.createElement('div');
+    sEl.className = 'glSource';
+    sEl.textContent = note.source || '';
+    body.appendChild(sEl);
+    row.appendChild(body);
+    attachLongPress(row, () => { closeGraph(); openDetail(note.id, 'list'); }, () => { if (note.id !== graphState.centerId) openGraph(note.id); });
+    return row;
+  }
+
+  function renderGraphList(center, model) {
+    const list = document.getElementById('graphList');
     list.innerHTML = '';
-    const far = farOppositionsFrom(center);
-    document.getElementById('graphFarEmpty').hidden = far.length > 0;
-    far.forEach((p) => {
-      const row = document.createElement('div');
-      row.className = 'graphFarRow';
-      const cell = (text, cls) => { const d = document.createElement('div'); if (cls) d.className = cls; d.textContent = text; return d; };
-      row.appendChild(cell(graphSnippet(center), ''));
-      const r1 = cell(relationShort(p.rel1), 'gfRel'); r1.style.color = GRAPH_RELATION_COLOR[p.rel1]; row.appendChild(r1);
-      row.appendChild(cell(graphSnippet(p.via), ''));
-      const r2 = cell(relationShort(p.rel2), 'gfRel'); r2.style.color = GRAPH_RELATION_COLOR[p.rel2]; row.appendChild(r2);
-      row.appendChild(cell(graphSnippet(p.note), 'gfC'));
-      attachLongPress(row, () => { closeGraph(); openDetail(p.note.id, 'list'); }, () => openGraph(p.note.id));
-      list.appendChild(row);
+    list.appendChild(graphListRow(center, '', 'center'));
+    const kids = new Map();
+    if (graphState.expanded) model.ring2.forEach((p) => { const arr = kids.get(p.via.id) || []; if (!arr.some((k) => k.note.id === p.note.id)) arr.push({ note: p.note, rel: p.rel2 }); kids.set(p.via.id, arr); });
+    model.ring1.forEach((r) => {
+      list.appendChild(graphListRow(r.note, r.rel, ''));
+      (kids.get(r.note.id) || []).forEach((k) => list.appendChild(graphListRow(k.note, k.rel, 'hop2')));
     });
   }
 
-  // No center given (the list's 網 button): start on a note that actually
-  // has a far opposition, so the screen opens on something to look at.
+  // Far oppositions grouped by the note they pass through, biggest group
+  // first; the group head recenters on B, a row recenters on C.
+  function renderGraphFarList(center) {
+    const list = document.getElementById('graphFarList');
+    list.innerHTML = '';
+    const groups = new Map();
+    farOppositionsFrom(center).forEach((p) => {
+      if (!groups.has(p.via.id)) groups.set(p.via.id, { via: p.via, items: new Map() });
+      const g = groups.get(p.via.id);
+      if (!g.items.has(p.note.id)) g.items.set(p.note.id, { note: p.note, rel: p.rel2 });
+    });
+    const sorted = [...groups.values()].sort((a, b) => b.items.size - a.items.size);
+    document.getElementById('graphFarEmpty').hidden = sorted.length > 0;
+    const shown = graphState.farAll ? sorted : sorted.slice(0, GRAPH_FAR_GROUPS);
+    const moreBtn = document.getElementById('btnGraphFarMore');
+    moreBtn.hidden = sorted.length <= shown.length;
+    moreBtn.textContent = 'もっと見る（あと ' + (sorted.length - shown.length) + ' 組）';
+    shown.forEach((g) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'graphFarGroup';
+      const head = document.createElement('div');
+      head.className = 'graphFarGroupHead';
+      head.textContent = '「' + graphSnippet(g.via, 24) + '」を通じて食い違う言葉';
+      const cnt = document.createElement('span');
+      cnt.className = 'gfCount';
+      cnt.textContent = g.items.size + '枚';
+      head.appendChild(cnt);
+      attachLongPress(head, () => { closeGraph(); openDetail(g.via.id, 'list'); }, () => openGraph(g.via.id));
+      wrap.appendChild(head);
+      g.items.forEach((it) => {
+        const row = document.createElement('div');
+        row.className = 'graphFarRow';
+        const r = document.createElement('div');
+        r.className = 'gfRel';
+        r.style.color = GRAPH_RELATION_COLOR[it.rel];
+        r.textContent = relationShort(it.rel);
+        row.appendChild(r);
+        const t = document.createElement('div');
+        t.textContent = graphSnippet(it.note, 40);
+        row.appendChild(t);
+        attachLongPress(row, () => { closeGraph(); openDetail(it.note.id, 'list'); }, () => openGraph(it.note.id));
+        wrap.appendChild(row);
+      });
+      list.appendChild(wrap);
+    });
+  }
+
+  function renderGraph(center) {
+    const model = graphModel(center);
+    const narrow = graphIsNarrow();
+    document.getElementById('graphViewport').hidden = narrow;
+    document.getElementById('graphList').hidden = !narrow;
+    if (narrow) renderGraphList(center, model); else renderGraphStage(center, model);
+    const more1 = document.getElementById('btnGraphMore1');
+    more1.hidden = model.hidden1 <= 0;
+    more1.textContent = '他 ' + model.hidden1 + ' 枚';
+    const expand = document.getElementById('btnGraphExpand');
+    expand.hidden = model.ring2Unique === 0;
+    expand.textContent = graphState.expanded ? '遠い対立をたたむ' : '遠い対立を広げる（' + model.ring2Unique + '枚）';
+    expand.classList.toggle('selected', graphState.expanded);
+    document.getElementById('graphTitle').textContent = '網 ・ ' + graphSnippet(center, 20) + ' ・ ' + model.ring1.length + (model.hidden1 ? '+' + model.hidden1 : '') + '枚';
+    renderGraphFarList(center);
+  }
+
   function pickGraphStartNote() {
     const withFar = data.notes.filter((n) => farOppositionsFrom(n).length > 0);
     const pool = withFar.length ? withFar : data.notes;
@@ -6817,6 +6961,9 @@
     const center = (centerNoteId && findNote(centerNoteId)) || pickGraphStartNote();
     if (!center) return;
     graphState.centerId = center.id;
+    graphState.expanded = false;
+    graphState.showAll1 = false;
+    graphState.farAll = false;
     document.getElementById('screen-graph').hidden = false;
     syncBarEl.style.visibility = 'hidden';
     renderGraph(center);
@@ -6827,9 +6974,14 @@
     syncBarEl.style.visibility = '';
   }
 
+  function rerenderGraph() { const c = findNote(graphState.centerId); if (c) renderGraph(c); }
   document.getElementById('btnOpenGraph').addEventListener('click', () => openGraph());
   document.getElementById('btnGraphClose').addEventListener('click', () => closeGraph());
   document.getElementById('btnDetailGraph').addEventListener('click', () => openGraph(nav.detailId));
+  document.getElementById('btnGraphExpand').addEventListener('click', () => { graphState.expanded = !graphState.expanded; rerenderGraph(); });
+  document.getElementById('btnGraphMore1').addEventListener('click', () => { graphState.showAll1 = true; rerenderGraph(); });
+  document.getElementById('btnGraphFarMore').addEventListener('click', () => { graphState.farAll = true; rerenderGraph(); });
+  window.addEventListener('resize', () => { if (!document.getElementById('screen-graph').hidden) rerenderGraph(); });
 
   // --- Editor -----------------------------------------------------------
   const editorState = { tags: [], links: [] };
