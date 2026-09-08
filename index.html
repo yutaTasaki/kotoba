@@ -556,10 +556,18 @@
   .calToolRow { display: flex; justify-content: flex-end; margin: 6px 0 4px; }
   .calToolRow button { width: auto; font-size: 12px; padding: 4px 10px; }
   .calParts { font-size: 9px; line-height: 1.15; color: #e07a5f; max-width: 100%; overflow: hidden; white-space: nowrap; }
-  .trCardioGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 6px 0; }
-  .trCardioGrid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-dim); }
-  .trCardioGrid input { width: 100%; min-width: 0; }
-  .trCardioPace { font-size: 13px; color: var(--accent); margin: 4px 0 6px; }
+  .trCardioTable { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 6px 0 8px; }
+  .trCardioCol { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; }
+  .trCardioLabel { font-size: 11px; color: var(--text-dim); }
+  .trCardioCol input[type=number] { width: 100%; min-width: 0; text-align: center; font-size: 18px; padding: 8px 4px; }
+  .trCardioCol input.trCardioValue { width: 100%; min-width: 0; text-align: center; font-size: 18px; padding: 8px 4px; color: var(--accent); background: none; }
+  .trCardioUnit { font-size: 10px; color: var(--text-faint); }
+  /* day card: the same four columns, numbers large, units small */
+  .trDayCardCardio { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding-left: 12px; margin-top: 2px; }
+  .trDayCardCardio .trCardioCol { align-items: flex-start; gap: 0; }
+  .trDayCardCardio .trCardioNum { font-size: 17px; line-height: 1.2; }
+  .trDayCardCardio .trCardioNum .trCardioUnit { margin-left: 2px; }
+  .trDayCardCardio .trCardioNote { grid-column: 1 / -1; color: var(--text-dim); font-size: 12px; }
   .calCell.today { border-color: var(--accent-dim); }
   .calCell.selected { background: var(--bg-elevated); border-color: var(--accent); }
   .calCell.disabled { background: none; color: #444; border-color: #1e1e1e; cursor: default; }
@@ -5888,6 +5896,17 @@
   function cardioPace(c) { return (c && c.km && c.min) ? c.min / c.km : null; } // min per km
   function fmtPace(p) { if (p === null) return ''; const m = Math.floor(p), sec = Math.round((p - m) * 60); return m + "'" + String(sec).padStart(2, '0') + '"/km'; }
   function fmtMin(min) { if (min === null) return ''; const m = Math.floor(min), sec = Math.round((min - m) * 60); return sec ? m + '分' + sec + '秒' : m + '分'; }
+  // The four cardio columns (距離 / 時間 / 速さ / kcal). Missing -> '-'; pace
+  // only when both distance and time are there.
+  function cardioCells(c) {
+    const pace = cardioPace(c);
+    return [
+      { label: '距離', value: c.km === null ? '-' : fmtKg(c.km), unit: 'km' },
+      { label: '時間', value: c.min === null ? '-' : fmtKg(c.min), unit: 'min' },
+      { label: '速さ', value: pace === null ? '-' : fmtPace(pace).replace('/km', ''), unit: '/km' },
+      { label: 'kcal', value: c.kcal === null ? '-' : String(Math.round(c.kcal)), unit: 'kcal' },
+    ];
+  }
   function fmtCardio(c) {
     const parts = [];
     if (c.km !== null) parts.push(fmtKg(c.km) + 'km');
@@ -6322,31 +6341,40 @@
       prevEl.appendChild(copy);
     } else prevEl.textContent = '前回の記録はありません';
     box.appendChild(prevEl);
-    const grid = document.createElement('div');
-    grid.className = 'trCardioGrid';
-    const field = (key, label, unit, type) => {
-      const lab = document.createElement('label');
-      lab.textContent = label + (unit ? '（' + unit + '）' : '');
-      const input = document.createElement('input');
-      if (type === 'text') { input.type = 'text'; input.autocomplete = 'off'; input.placeholder = '任意'; }
-      else { input.type = 'number'; input.step = key === 'kcal' ? '1' : '0.1'; input.inputMode = 'decimal'; input.min = '0'; }
-      input.value = ex.cardio[key];
-      input.addEventListener('input', () => { ex.cardio[key] = input.value; trScheduleSave(); if (key !== 'note') paceEl.textContent = paceText(); });
-      input.addEventListener('change', () => { trFlush(); });
-      lab.appendChild(input);
-      return lab;
+    const table = document.createElement('div');
+    table.className = 'trCardioTable';
+    let paceVal = null;
+    const paceText = () => { const c = normalizeCardio({ km: ex.cardio.km, min: ex.cardio.min }); const pace = cardioPace(c); return pace !== null ? fmtPace(pace).replace('/km', '') : '-'; };
+    const col = (key, label, unit) => {
+      const cell = document.createElement('div');
+      cell.className = 'trCardioCol';
+      const lab = document.createElement('div'); lab.className = 'trCardioLabel'; lab.textContent = label; cell.appendChild(lab);
+      if (key === 'pace') {
+        paceVal = document.createElement('input'); paceVal.type = 'text'; paceVal.readOnly = true; paceVal.tabIndex = -1; paceVal.className = 'trCardioValue'; paceVal.value = paceText(); cell.appendChild(paceVal);
+      } else {
+        const input = document.createElement('input');
+        input.type = 'number'; input.step = key === 'kcal' ? '1' : '0.1'; input.inputMode = 'decimal'; input.min = '0'; input.placeholder = '-';
+        input.value = ex.cardio[key];
+        input.addEventListener('input', () => { ex.cardio[key] = input.value; trScheduleSave(); paceVal.value = paceText(); });
+        input.addEventListener('change', () => { trFlush(); });
+        cell.appendChild(input);
+      }
+      const u = document.createElement('div'); u.className = 'trCardioUnit'; u.textContent = unit; cell.appendChild(u);
+      return cell;
     };
-    grid.appendChild(field('km', '距離', 'km'));
-    grid.appendChild(field('min', '時間', 'min'));
-    grid.appendChild(field('kcal', 'カロリー', 'kcal'));
-    const noteLab = field('note', 'メモ', '', 'text'); noteLab.style.gridColumn = '1 / -1';
-    grid.appendChild(noteLab);
-    box.appendChild(grid);
-    const paceEl = document.createElement('div');
-    paceEl.className = 'trCardioPace';
-    const paceText = () => { const c = normalizeCardio({ km: ex.cardio.km, min: ex.cardio.min }); const pace = cardioPace(c); return pace !== null ? '速さ ' + fmtPace(pace) : ''; };
-    paceEl.textContent = paceText();
-    box.appendChild(paceEl);
+    table.appendChild(col('km', '距離', 'km'));
+    table.appendChild(col('min', '時間', 'min'));
+    table.appendChild(col('pace', '速さ', '/km'));
+    table.appendChild(col('kcal', 'kcal', 'kcal'));
+    box.appendChild(table);
+    const noteRow = document.createElement('div');
+    noteRow.className = 'trSetNoteRow';
+    const nIn = document.createElement('input');
+    nIn.type = 'text'; nIn.placeholder = 'メモ（任意）'; nIn.autocomplete = 'off'; nIn.maxLength = 120; nIn.value = ex.cardio.note || '';
+    nIn.addEventListener('input', () => { ex.cardio.note = nIn.value; trScheduleSave(); });
+    nIn.addEventListener('change', () => { trFlush(); });
+    noteRow.appendChild(nIn);
+    box.appendChild(noteRow);
     return box;
   }
 
@@ -6496,10 +6524,7 @@
     return day.parts.map((p) => ({
       part: p.part,
       rows: p.exercises.map((e) => {
-        if (e.cardio) {
-          const bits = []; if (e.cardio.km !== null) bits.push(fmtKg(e.cardio.km) + 'km'); if (e.cardio.min !== null) bits.push(fmtMin(e.cardio.min));
-          return { name: e.name, sets: [], cardio: bits.join(' ・ ') || '記録のみ', rm: null, isNewMax: false, allMax: null };
-        }
+        if (e.cardio) return { name: e.name, sets: [], cardio: cardioCells(e.cardio), rm: null, isNewMax: false, allMax: null };
         const b = bestSet(e.sets);
         const v = b ? est1RM(b) : null;
         const prevMax = exerciseMax(e.name, day.date).max;
@@ -6550,54 +6575,58 @@
         }
         y += nameF * 1.6;
         const hair = (yy) => { if (!dry) { ctx.fillStyle = '#1f4d1a'; ctx.fillRect(x0, yy, colW, 2); } };
-        if (r.cardio) {
-          if (!dry) { ctx.fillStyle = TR_GREEN; ctx.font = F(setF); ctx.textAlign = 'left'; ctx.fillText(r.cardio, x0 + 16 * scale, y); }
+        if (r.cardio && compact) {
+          if (!dry) { ctx.fillStyle = TR_GREEN; ctx.font = F(setF); ctx.textAlign = 'left'; ctx.fillText(r.cardio.map((c) => c.value + (c.value === '-' ? '' : c.unit)).join('  '), x0 + 16 * scale, y); }
           hair(y + rowH - 6 * scale);
           y += rowH;
+        } else if (r.cardio) {
+          // 距離 / 時間 / 速さ / kcal: number big, unit small, label above
+          const fr = [0, 0.24, 0.48, 0.76], wf = [0.24, 0.24, 0.28, 0.24];
+          r.cardio.forEach((c, i) => {
+            const cx = x0 + colW * fr[i] + 8 * scale, cw = colW * wf[i] - 12 * scale;
+            ctx.font = F(setF); const vw = ctx.measureText(c.value).width;
+            ctx.font = F(smallF); const uw = c.value === '-' ? 0 : ctx.measureText(c.unit).width + 6 * scale;
+            if (vw + uw > cw) overflow = true;
+            if (!dry) {
+              ctx.textAlign = 'left'; ctx.fillStyle = TR_GREEN; ctx.font = F(smallF * 0.85);
+              ctx.fillText(c.label, cx, y);
+              ctx.font = F(setF); ctx.fillText(c.value, cx, y + smallF * 1.2);
+              if (c.value !== '-') { ctx.fillStyle = TR_DIM; ctx.font = F(smallF); ctx.fillText(c.unit, cx + vw + 6 * scale, y + smallF * 1.2 + setF - smallF); }
+            }
+          });
+          hair(y + rowH + smallF * 1.2 - 6 * scale);
+          y += rowH + smallF * 1.2;
         } else if (compact) {
           // last resort: '65×5, 65×5, 62.5×6' wrapped
           ctx.font = F(setF);
-          const words = fmtSetsCompact(r.sets).split(', ');
+          const words = fmtSetsCompact(r.sets).replace(/ ↓/g, ' drop ').split(', ');
           let line = '';
           const flush = () => { if (!dry) { ctx.fillStyle = TR_GREEN; ctx.textAlign = 'left'; ctx.fillText(line, x0 + 16 * scale, y); } y += rowH; };
           words.forEach((w) => { const t = line ? line + ', ' + w : w; if (ctx.measureText(t).width > colW - 20 * scale && line) { flush(); line = w; } else line = t; });
           if (line) flush();
           hair(y - 6 * scale);
         } else {
-          // an exercise with drop sets pulls the columns left to make room for the chain
-          const hasDrops = r.sets.some((st) => st.drops && st.drops.length);
-          const wR = hasDrops ? 0.36 : 0.46, xX = hasDrops ? 0.45 : 0.575, rX = hasDrops ? 0.51 : 0.65;
-          r.sets.forEach((st, i) => {
-            if (st.drops && st.drops.length) {
-              ctx.font = F(setF); const rw0 = ctx.measureText(String(st.r)).width; ctx.font = F(smallF);
-              const room = colW - (colW * rX + rw0 + 8 * scale + ctx.measureText('回').width + 14 * scale);
-              ctx.font = F(setF * 0.62);
-              if (ctx.measureText(st.drops.map((d) => '↓' + fmtKg(d.w) + '×' + d.r).join(' ')).width > room) overflow = true;
-            }
+          const wR = 0.46, xX = 0.575, rX = 0.65;
+          const setLine = (label, labelF, w, rr) => {
             if (!dry) {
-              ctx.textAlign = 'left'; ctx.fillStyle = TR_GREEN; ctx.font = F(smallF);
-              ctx.fillText('SET ' + (i + 1), x0 + 8 * scale, y + (setF - smallF) * 0.5 + 4 * scale);
-              const wt = st.w === null ? '自重' : fmtKg(st.w);
+              ctx.textAlign = 'left'; ctx.fillStyle = TR_GREEN; ctx.font = F(labelF);
+              ctx.fillText(label, x0 + 8 * scale, y + (setF - labelF) * 0.5 + 4 * scale);
+              const wt = w === null ? '自重' : fmtKg(w);
               ctx.font = F(setF); ctx.textAlign = 'right'; ctx.fillText(wt, x0 + colW * wR, y);
               ctx.textAlign = 'left'; ctx.fillStyle = TR_DIM; ctx.font = F(smallF);
-              if (st.w !== null) ctx.fillText('kg', x0 + colW * wR + 10 * scale, y + setF - smallF);
+              if (w !== null) ctx.fillText('kg', x0 + colW * wR + 10 * scale, y + setF - smallF);
               ctx.font = F(36 * scale); ctx.fillText('×', x0 + colW * xX, y + (setF - 36 * scale) * 0.5);
-              ctx.fillStyle = TR_GREEN; ctx.font = F(setF); ctx.fillText(String(st.r), x0 + colW * rX, y);
-              const rw = ctx.measureText(String(st.r)).width;
+              ctx.fillStyle = TR_GREEN; ctx.font = F(setF); ctx.fillText(String(rr), x0 + colW * rX, y);
+              const rw = ctx.measureText(String(rr)).width;
               ctx.fillStyle = TR_DIM; ctx.font = F(smallF); ctx.fillText('回', x0 + colW * rX + rw + 8 * scale, y + setF - smallF);
-              if (st.drops && st.drops.length) {
-                // '↓55×6 ↓40×8' after the reps, on the same line; shrink then ellipsize
-                const dx = x0 + colW * rX + rw + 8 * scale + ctx.measureText('回').width + 14 * scale;
-                const room = x0 + colW - dx;
-                let df = setF * 0.62, txt = st.drops.map((d) => '↓' + fmtKg(d.w) + '×' + d.r).join(' ');
-                ctx.font = F(df);
-                while (ctx.measureText(txt).width > room && df > setF * 0.4) { df -= 2 * scale; ctx.font = F(df); }
-                while (ctx.measureText(txt).width > room && txt.length > 3) { txt = txt.slice(0, -2) + '…'; }
-                ctx.fillStyle = TR_GREEN; ctx.fillText(txt, dx, y + setF - df - 4 * scale);
-              }
             }
             hair(y + rowH - 6 * scale);
             y += rowH;
+          };
+          r.sets.forEach((st, i) => {
+            setLine('SET ' + (i + 1), smallF, st.w, st.r);
+            // drop sets continue under their set, 'drop' in the SET column, same kg / 回 columns
+            (st.drops || []).forEach((d) => setLine('drop', smallF * 0.85, d.w, d.r));
           });
         }
         y += 24 * scale;
@@ -6733,9 +6762,17 @@
       const nm = document.createElement('span'); nm.textContent = e.name; head.appendChild(nm);
       if (e.cardio) {
         row.appendChild(head);
-        const line = document.createElement('div'); line.className = 'trDayCardSet';
-        const t = document.createElement('span'); t.className = 'trDayCardSets'; t.textContent = fmtCardio(e.cardio); line.appendChild(t);
-        row.appendChild(line);
+        const tbl = document.createElement('div'); tbl.className = 'trDayCardCardio';
+        cardioCells(e.cardio).forEach((c) => {
+          const cell = document.createElement('div'); cell.className = 'trCardioCol';
+          const lab = document.createElement('div'); lab.className = 'trCardioLabel'; lab.textContent = c.label; cell.appendChild(lab);
+          const num = document.createElement('div'); num.className = 'trCardioNum'; num.textContent = c.value;
+          if (c.value !== '-') { const u = document.createElement('span'); u.className = 'trCardioUnit'; u.textContent = c.unit; num.appendChild(u); }
+          cell.appendChild(num);
+          tbl.appendChild(cell);
+        });
+        if (e.cardio.note) { const n = document.createElement('div'); n.className = 'trCardioNote'; n.textContent = e.cardio.note; tbl.appendChild(n); }
+        row.appendChild(tbl);
         item.appendChild(row);
         return;
       }
