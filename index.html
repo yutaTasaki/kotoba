@@ -1022,6 +1022,13 @@
         <div class="statRow"><span>最終同期エラー</span><span id="statLastSyncError"></span></div>
         <div class="statRow"><span>データ量</span><span id="statDataSize"></span></div>
         <p class="fieldNote" id="statDataSizeNote"></p>
+        <div class="statRow"><span>記録の保存方式</span><span id="statJournalMode"></span></div>
+        <p class="fieldNote">「月ファイル」は記録（朝・相談・引く・問い）を kotoba-data の journal/YYYY-MM.json に月ごとに分けて置く方式です。移行の前に kotoba-data のバックアップを取ってください。戻すこともできます。</p>
+        <button id="btnJournalMigrate" class="secondaryBtn">記録を月ファイル方式に移行</button>
+        <button id="btnJournalRevert" class="secondaryBtn">記録を data.json 方式に戻す</button>
+        <p class="fieldNote" id="journalMigrateStatus"></p>
+        <button id="btnClearLegacyStorage" class="secondaryBtn">古い保存形式のコピーを消す（localStorage）</button>
+        <p class="fieldNote">v6 からデータは端末の IndexedDB に保存されます。localStorage に残った古いコピーは旧バージョンへ戻すときの保険です。容量が気になるときだけ消してください。</p>
         <button id="btnSyncNow" class="secondaryBtn">今すぐ同期</button>
       </div>
       <hr>
@@ -1473,7 +1480,7 @@
 
 </div>
 <script>
-(() => {
+(async () => {
   const STORAGE_KEY = 'kotoba_data';
   const BACKUP_KEY = 'kotoba_data_backup';
   const GH_TOKEN_KEY = 'kotoba_ghToken';
@@ -1723,13 +1730,78 @@
         : [],
       usage: (parsed.usage && typeof parsed.usage === 'object') ? parsed.usage : {},
       trash: Array.isArray(parsed.trash) ? parsed.trash.filter((n) => n && n.id).map(normalizeTrashNote) : [],
+      // v6.0: 'monthly' = the journal lives in journal/YYYY-MM.json files
+      journalMode: parsed.journalMode === 'monthly' ? 'monthly' : 'legacy',
+      journalModeAt: typeof parsed.journalModeAt === 'string' ? parsed.journalModeAt : '',
     };
   }
+
+  // --- v6.0 storage: IndexedDB key-value (localStorage only as a fallback) ---
+  // localStorage is ~5 MB on iPhone; IndexedDB is hundreds of MB. Everything
+  // that grows (notes, journal months, walk, training) lives here now; the
+  // small settings (token, API key, flags) stay in localStorage. The old
+  // localStorage copies are read once as the migration source and then left
+  // untouched, so an older build of the app still boots from them.
+  const KV_DB_NAME = 'kotoba', KV_STORE = 'kv', KV_LS_PREFIX = 'kotoba_kv_';
+  const kv = { db: null, mode: 'idb' };
+  function kvOpen() {
+    return new Promise((resolve) => {
+      try {
+        if (!window.indexedDB) { kv.mode = 'ls'; resolve(); return; }
+        const req = indexedDB.open(KV_DB_NAME, 1);
+        req.onupgradeneeded = () => { req.result.createObjectStore(KV_STORE); };
+        req.onsuccess = () => { kv.db = req.result; resolve(); };
+        req.onerror = () => { kv.mode = 'ls'; resolve(); };
+        req.onblocked = () => { kv.mode = 'ls'; resolve(); };
+      } catch (e) { kv.mode = 'ls'; resolve(); }
+    });
+  }
+  function kvReq(mode, fn) {
+    return new Promise((resolve, reject) => {
+      try { const tx = kv.db.transaction(KV_STORE, mode); const req = fn(tx.objectStore(KV_STORE)); req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error); }
+      catch (e) { reject(e); }
+    });
+  }
+  async function kvGet(key) {
+    if (kv.mode === 'idb' && kv.db) { const v = await kvReq('readonly', (st) => st.get(key)); return v === undefined ? null : v; }
+    return localStorage.getItem(KV_LS_PREFIX + key);
+  }
+  async function kvSet(key, value) {
+    if (kv.mode === 'idb' && kv.db) { await kvReq('readwrite', (st) => st.put(value, key)); return; }
+    localStorage.setItem(KV_LS_PREFIX + key, value);
+  }
+  async function kvDel(key) {
+    if (kv.mode === 'idb' && kv.db) { await kvReq('readwrite', (st) => st.delete(key)); return; }
+    localStorage.removeItem(KV_LS_PREFIX + key);
+  }
+  async function kvKeys(prefix) {
+    if (kv.mode === 'idb' && kv.db) { const ks = await kvReq('readonly', (st) => st.getAllKeys()); return ks.map(String).filter((k) => k.startsWith(prefix)); }
+    const out = [];
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k.startsWith(KV_LS_PREFIX + prefix)) out.push(k.slice(KV_LS_PREFIX.length)); }
+    return out;
+  }
+  function monthOfDate(d) { return String(d).slice(0, 7); }
+  // the months the app always keeps in memory and in sync: this one and the
+  // previous one (every 30-day statistic fits inside them)
+  function liveJournalMonths() { const t = todayStr(); const a = monthOfDate(addDays(t, -30)), b = monthOfDate(t); return a === b ? [b] : [a, b]; }
+  await kvOpen();
+  const bootKV = { months: {} };
+  for (const k of ['data', 'dataBackup', 'walk', 'walkBackup', 'training', 'journalIndex', 'journalDirty']) { try { bootKV[k] = await kvGet(k); } catch (e) { bootKV[k] = null; } }
+  for (const m of liveJournalMonths()) { try { bootKV.months[m] = await kvGet('journal:' + m); } catch (e) { bootKV.months[m] = null; } }
 
   // Primary key holds the live copy; the backup key is only overwritten right
   // after a confirmed-successful sync, so a corrupt primary can be recovered
   // from a known-good, previously-synced snapshot instead of losing data.
   function loadData() {
+    // v6.0: IndexedDB first
+    try { if (bootKV.data) { const p = normalizeData(JSON.parse(bootKV.data)); if (p) return p; } } catch (e) {}
+    try { if (bootKV.dataBackup) { const p = normalizeData(JSON.parse(bootKV.dataBackup)); if (p) { persistLocal(p); return p; } } } catch (e) {}
+    // older builds kept it in localStorage: read it once and carry it over
+    const legacy = loadDataLegacyLocalStorage();
+    if (legacy) { persistLocal(legacy); return legacy; }
+    return defaultData();
+  }
+  function loadDataLegacyLocalStorage() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
@@ -1741,13 +1813,10 @@
       const rawBackup = localStorage.getItem(BACKUP_KEY);
       if (rawBackup) {
         const parsedBackup = normalizeData(JSON.parse(rawBackup));
-        if (parsedBackup) {
-          persistLocal(parsedBackup);
-          return parsedBackup;
-        }
+        if (parsedBackup) return parsedBackup;
       }
     } catch (e) {}
-    return defaultData();
+    return null;
   }
 
   // v6.0: a full localStorage must never swallow a change. The write is
@@ -1756,16 +1825,24 @@
   const BACKUP_MAX_CHARS = 1000000;
   let localSaveError = '';
   function persistLocal(d) {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); localSaveError = ''; }
-    catch (e) { localSaveError = '端末の保存容量を超えました（クラウドには同期します）'; recordSyncError(LAST_SYNC_ERROR_KEY, localSaveError); try { localStorage.removeItem(BACKUP_KEY); } catch (e2) {} }
+    let json;
+    try { json = JSON.stringify(dataForStorage(d)); } catch (e) { return; }
+    kvSet('data', json).then(() => { localSaveError = ''; }).catch(() => {
+      localSaveError = '端末の保存に失敗しました（クラウドには同期します）';
+      recordSyncError(LAST_SYNC_ERROR_KEY, localSaveError);
+      renderSyncBar();
+    });
   }
+  // In monthly journal mode the journal is not part of data.json / the
+  // 'data' record: months live in their own files (see 記録の月ファイル).
+  function dataForStorage(d) { return (d && d.journalMode === 'monthly') ? Object.assign({}, d, { journal: [], deletedJournalIds: [] }) : d; }
   // The second copy is a safety net against a corrupt primary; once the
   // data is big it costs more (half the quota) than it protects, so it is
   // only kept below BACKUP_MAX_CHARS - the repo is the backup after that.
   function backupData(d) {
     try {
-      const json = JSON.stringify(d);
-      if (json.length < BACKUP_MAX_CHARS) localStorage.setItem(BACKUP_KEY, json); else localStorage.removeItem(BACKUP_KEY);
+      const json = JSON.stringify(dataForStorage(d));
+      (json.length < BACKUP_MAX_CHARS ? kvSet('dataBackup', json) : kvDel('dataBackup')).catch(() => {});
     } catch (e) {}
   }
 
@@ -1887,6 +1964,27 @@
   // explicit tombstone for it that is at least as new as that note's
   // updatedAt - "missing" alone never means "deleted" (it might just be a
   // note the other device hasn't synced yet).
+  // per-entry union: later updatedAt wins; a tombstone beats an entry only
+  // if it is newer than that entry's last edit
+  function mergeJournalSets(entriesA, deletedA, entriesB, deletedB) {
+    const journalA = new Map(entriesA.map((j) => [j.id, j]));
+    const journalB = new Map(entriesB.map((j) => [j.id, j]));
+    const jDelA = new Map(deletedA.map((d) => [d.id, d.deletedAt]));
+    const jDelB = new Map(deletedB.map((d) => [d.id, d.deletedAt]));
+    const merged = new Map();
+    new Set([...journalA.keys(), ...journalB.keys()]).forEach((id) => {
+      const ja = journalA.get(id), jb = journalB.get(id);
+      let winner;
+      if (ja && jb) winner = new Date(ja.updatedAt) >= new Date(jb.updatedAt) ? ja : jb;
+      else { const only = ja || jb; const tombstoneAt = ja ? jDelB.get(id) : jDelA.get(id); winner = (tombstoneAt && new Date(tombstoneAt) >= new Date(only.updatedAt)) ? null : only; }
+      if (winner) merged.set(id, { ...winner, picks: (winner.picks || []).map((p) => ({ ...p })) });
+    });
+    const deleted = new Map();
+    jDelA.forEach((at, id) => deleted.set(id, at));
+    jDelB.forEach((at, id) => { const cur = deleted.get(id); if (!cur || new Date(at) > new Date(cur)) deleted.set(id, at); });
+    merged.forEach((_, id) => deleted.delete(id));
+    return { entries: [...merged.values()], deleted: [...deleted.entries()].map(([id, deletedAt]) => ({ id, deletedAt })) };
+  }
   function mergeData(a, b) {
     const notesA = new Map(a.notes.map((n) => [n.id, n]));
     const notesB = new Map(b.notes.map((n) => [n.id, n]));
@@ -1939,33 +2037,11 @@
     });
     mergedNotes.forEach((_, id) => mergedTrash.delete(id));
 
-    // journal: same per-entry union + tombstone approach as notes above.
-    const journalA = new Map((a.journal || []).map((j) => [j.id, j]));
-    const journalB = new Map((b.journal || []).map((j) => [j.id, j]));
-    const jDelA = new Map((a.deletedJournalIds || []).map((d) => [d.id, d.deletedAt]));
-    const jDelB = new Map((b.deletedJournalIds || []).map((d) => [d.id, d.deletedAt]));
-    const allJIds = new Set([...journalA.keys(), ...journalB.keys()]);
-    const mergedJournal = new Map();
-    allJIds.forEach((id) => {
-      const ja = journalA.get(id);
-      const jb = journalB.get(id);
-      let winner;
-      if (ja && jb) {
-        winner = new Date(ja.updatedAt) >= new Date(jb.updatedAt) ? ja : jb;
-      } else {
-        const only = ja || jb;
-        const tombstoneAt = ja ? jDelB.get(id) : jDelA.get(id);
-        winner = (tombstoneAt && new Date(tombstoneAt) >= new Date(only.updatedAt)) ? null : only;
-      }
-      if (winner) mergedJournal.set(id, { ...winner, picks: (winner.picks || []).map((p) => ({ ...p })) });
-    });
-    const mergedJDeleted = new Map();
-    jDelA.forEach((at, id) => mergedJDeleted.set(id, at));
-    jDelB.forEach((at, id) => {
-      const cur = mergedJDeleted.get(id);
-      if (!cur || new Date(at) > new Date(cur)) mergedJDeleted.set(id, at);
-    });
-    mergedJournal.forEach((_, id) => mergedJDeleted.delete(id));
+    // journal: same per-entry union + tombstone approach as notes above
+    // (shared with the month files, see mergeJournalSets).
+    const jm0 = mergeJournalSets(a.journal || [], a.deletedJournalIds || [], b.journal || [], b.deletedJournalIds || []);
+    const mergedJournal = new Map(jm0.entries.map((j) => [j.id, j]));
+    const mergedJDeleted = new Map(jm0.deleted.map((t) => [t.id, t.deletedAt]));
 
     // drafts: same per-entry union + tombstone approach again.
     const draftsA = new Map((a.drafts || []).map((d) => [d.id, d]));
@@ -2008,6 +2084,10 @@
       usage: mergeUsageData(a.usage, b.usage),
       trash: [...mergedTrash.values()],
     };
+    // the later mode switch wins (so a rollback on one device is not undone by another)
+    const modeA = { mode: a.journalMode || 'legacy', at: a.journalModeAt || '' }, modeB = { mode: b.journalMode || 'legacy', at: b.journalModeAt || '' };
+    const modeW = modeB.at > modeA.at ? modeB : modeA;
+    merged.journalMode = modeW.mode; merged.journalModeAt = modeW.at;
     pruneDanglingLinks(merged);
     return merged;
   }
@@ -2061,7 +2141,7 @@
   async function ghPutFile(token, newData, sha) {
     const body = {
       message: `kotoba: ${newData.notes.length} notes`,
-      content: utf8ToBase64(JSON.stringify(newData, null, 2)),
+      content: utf8ToBase64(JSON.stringify(dataForStorage(newData), null, 2)),
     };
     if (sha) body.sha = sha;
     const res = await fetch(
@@ -2204,6 +2284,7 @@
       const localHadNoNotes = data.notes.length === 0;
       const remote = await ghGetFile(token); // throws on failure -> no push is attempted below
       data = mergeData(data, remote.data || emptyRemoteData());
+      adoptJournalMonths();
       persistLocal(data);
       backupData(data);
       refreshCurrentScreen();
@@ -2213,6 +2294,7 @@
         await pushWithConflictRetry(token, remote.sha);
         backupData(data);
       }
+      if (journalMonthly()) await journalSyncNow(token);
       localStorage.setItem(LAST_SYNC_KEY, nowIso());
       pendingChangeCount = 0;
       clearSyncError(LAST_SYNC_ERROR_KEY);
@@ -2272,25 +2354,16 @@
   }
 
   function loadWalkData() {
-    try {
-      const raw = localStorage.getItem(WALK_STORAGE_KEY);
-      if (raw) {
-        const parsed = normalizeWalkData(JSON.parse(raw));
-        if (parsed) return parsed;
-      }
-    } catch (e) {}
-    try {
-      const rawBackup = localStorage.getItem(WALK_BACKUP_KEY);
-      if (rawBackup) {
-        const parsedBackup = normalizeWalkData(JSON.parse(rawBackup));
-        if (parsedBackup) { persistWalkLocal(parsedBackup); return parsedBackup; }
-      }
-    } catch (e) {}
+    const tryParse = (raw) => { try { if (raw) { const p = normalizeWalkData(JSON.parse(raw)); if (p) return p; } } catch (e) {} return null; };
+    let p = tryParse(bootKV.walk) || tryParse(bootKV.walkBackup);
+    if (p) return p;
+    p = tryParse(localStorage.getItem(WALK_STORAGE_KEY)) || tryParse(localStorage.getItem(WALK_BACKUP_KEY)); // older builds
+    if (p) { persistWalkLocal(p); return p; }
     return walkDefaultData();
   }
 
-  function persistWalkLocal(d) { localStorage.setItem(WALK_STORAGE_KEY, JSON.stringify(d)); }
-  function backupWalkData(d) { try { localStorage.setItem(WALK_BACKUP_KEY, JSON.stringify(d)); } catch (e) {} }
+  function persistWalkLocal(d) { kvSet('walk', JSON.stringify(d)).catch(() => { recordSyncError(WALK_LAST_SYNC_ERROR_KEY, '端末の保存に失敗しました'); renderSyncBar(); }); }
+  function backupWalkData(d) { kvSet('walkBackup', JSON.stringify(d)).catch(() => {}); }
 
   let walkData = loadWalkData();
   let trainingData = loadTrainingData();
@@ -2844,21 +2917,283 @@
     entry.updatedAt = nowIso();
     const idx = data.journal.findIndex((j) => j.id === entry.id);
     if (idx === -1) data.journal.push(entry); else data.journal[idx] = entry;
-    saveData(data);
+    if (journalMonthly()) journalMonthChanged(monthOfDate(entry.date)); else saveData(data);
     return entry;
   }
 
   function deleteJournalEntry(id) {
+    const entry = data.journal.find((j) => j.id === id);
     data.journal = data.journal.filter((j) => j.id !== id);
+    const at = nowIso();
+    if (journalMonthly()) {
+      const m = entry ? monthOfDate(entry.date) : (monthOfJournalId(id) || monthOfDate(todayStr()));
+      if (!jm.tombs.has(m)) jm.tombs.set(m, new Map());
+      jm.tombs.get(m).set(id, at);
+      journalMonthChanged(m);
+      return;
+    }
     if (!Array.isArray(data.deletedJournalIds)) data.deletedJournalIds = [];
     data.deletedJournalIds = data.deletedJournalIds.filter((d) => d.id !== id);
-    data.deletedJournalIds.push({ id, deletedAt: nowIso() });
+    data.deletedJournalIds.push({ id, deletedAt: at });
     saveData(data);
+  }
+
+  // --- 記録の月ファイル (v6.0) ------------------------------------------------
+  // Legacy mode: the journal is an array inside data.json (as before v6).
+  // Monthly mode: journal/YYYY-MM.json per month in kotoba-data, plus
+  // journal/index.json with per-month, per-note counts so all-time numbers
+  // (届いた・刺さった・問いに使われた) never need every month loaded.
+  // data.journal holds only the LOADED months: this month + last month
+  // always; older months on demand (records tab, ★ history), cached in kv.
+  const JOURNAL_INDEX_PATH = 'journal/index.json';
+  const journalMonthPath = (m) => 'journal/' + m + '.json';
+  const jm = { loaded: new Set(), tombs: new Map(), index: null, dirty: new Set(), loading: new Map(), stamps: {}, busy: false };
+  function journalMonthly() { return data.journalMode === 'monthly'; }
+  function monthOfJournalId(id) { const m = /^j_(\d{4})(\d{2})\d{2}_/.exec(String(id)); return m ? m[1] + '-' + m[2] : null; }
+  function emptyJournalIndex() { return { version: 1, updatedAt: '', months: {} }; }
+  function normalizeJournalIndex(raw) {
+    const out = emptyJournalIndex();
+    if (!raw || typeof raw !== 'object' || !raw.months || typeof raw.months !== 'object') return out;
+    out.updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : '';
+    Object.entries(raw.months).forEach(([m, v]) => {
+      if (!/^\d{4}-\d{2}$/.test(m) || !v || typeof v !== 'object') return;
+      const noteStats = {};
+      Object.entries(v.noteStats || {}).forEach(([id, st]) => { if (st && typeof st === 'object') noteStats[id] = { p: Number(st.p) || 0, h: Number(st.h) || 0, q: Number(st.q) || 0, last: st.last || '', lastHit: st.lastHit || '' }; });
+      out.months[m] = { updatedAt: typeof v.updatedAt === 'string' ? v.updatedAt : '', count: Number(v.count) || 0, noteStats };
+    });
+    return out;
+  }
+  function emptyMonthDoc(m) { return { version: 1, month: m, updatedAt: '', entries: [], deletedIds: [] }; }
+  function normalizeMonthDoc(raw, m) {
+    const out = emptyMonthDoc(m);
+    if (!raw || typeof raw !== 'object') return out;
+    out.updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : '';
+    out.entries = (Array.isArray(raw.entries) ? raw.entries : []).map(normalizeJournalEntry).filter((j) => j && monthOfDate(j.date) === m);
+    out.deletedIds = (Array.isArray(raw.deletedIds) ? raw.deletedIds : []).filter((t) => t && t.id).map((t) => ({ id: String(t.id), deletedAt: t.deletedAt || nowIso() }));
+    return out;
+  }
+  function journalEntriesOfMonth(m) { return data.journal.filter((j) => monthOfDate(j.date) === m); }
+  function journalMonthDoc(m) {
+    return { version: 1, month: m, updatedAt: nowIso(), entries: journalEntriesOfMonth(m), deletedIds: [...(jm.tombs.get(m) || new Map()).entries()].map(([id, deletedAt]) => ({ id, deletedAt })) };
+  }
+  function applyMonthToMemory(m, doc) {
+    data.journal = data.journal.filter((j) => monthOfDate(j.date) !== m).concat(doc.entries);
+    jm.tombs.set(m, new Map(doc.deletedIds.map((t) => [t.id, t.deletedAt])));
+    jm.loaded.add(m);
+  }
+  // per-month, per-note counts: p = appeared in picks (any kind), h = ★,
+  // q = stood under a question; last/lastHit = latest dates
+  function indexEntryForMonth(m) {
+    const noteStats = {};
+    const st = (id) => noteStats[id] || (noteStats[id] = { p: 0, h: 0, q: 0, last: '', lastHit: '' });
+    const entries = journalEntriesOfMonth(m);
+    entries.forEach((j) => {
+      (j.picks || []).forEach((p) => { const x = st(p.id); x.p++; if (j.date > x.last) x.last = j.date; if (p.hit) { x.h++; if (j.date > x.lastHit) x.lastHit = j.date; } });
+      if (j.kind === 'question') (j.from || []).forEach((id) => { const x = st(id); x.q++; if (j.date > x.last) x.last = j.date; });
+    });
+    // keep the old stamp when nothing changed, so an untouched month does not look edited to other devices
+    const prev = jm.index && jm.index.months[m];
+    if (prev && prev.count === entries.length && JSON.stringify(prev.noteStats) === JSON.stringify(noteStats)) return prev;
+    return { updatedAt: nowIso(), count: entries.length, noteStats };
+  }
+  function persistMonth(m) { return kvSet('journal:' + m, JSON.stringify(journalMonthDoc(m))).catch(() => { localSaveError = '端末の保存に失敗しました（クラウドには同期します）'; recordSyncError(LAST_SYNC_ERROR_KEY, localSaveError); renderSyncBar(); }); }
+  function persistIndex() { return kvSet('journalIndex', JSON.stringify(jm.index)).catch(() => {}); }
+  function persistDirty() { return kvSet('journalDirty', JSON.stringify([...jm.dirty])).catch(() => {}); }
+  function updateIndexMonth(m) {
+    if (!jm.index) jm.index = emptyJournalIndex();
+    jm.index.months[m] = indexEntryForMonth(m);
+    jm.index.updatedAt = nowIso();
+    persistIndex();
+  }
+  // a loaded month changed locally: store it, refresh its index row, queue a sync
+  function journalMonthChanged(m) {
+    jm.loaded.add(m);
+    persistMonth(m);
+    updateIndexMonth(m);
+    jm.dirty.add(m); persistDirty();
+    pendingChangeCount++;
+    scheduleSync();
+  }
+  // entries that reached data.journal without going through a month doc
+  // (a merge from a device still in legacy mode, an import, the migration
+  // itself): claim their months so they get written and synced
+  function adoptJournalMonths() {
+    if (!journalMonthly()) return;
+    if (!jm.index) jm.index = emptyJournalIndex();
+    const months = new Set(data.journal.map((j) => monthOfDate(j.date)));
+    (data.deletedJournalIds || []).forEach((t) => { const m = monthOfJournalId(t.id) || monthOfDate(todayStr()); months.add(m); if (!jm.tombs.has(m)) jm.tombs.set(m, new Map()); if (!jm.tombs.get(m).has(t.id)) jm.tombs.get(m).set(t.id, t.deletedAt); });
+    data.deletedJournalIds = [];
+    months.forEach((m) => { if (!jm.loaded.has(m) || !jm.dirty.has(m)) { jm.loaded.add(m); persistMonth(m); updateIndexMonth(m); jm.dirty.add(m); } });
+    if (months.size) persistDirty();
+  }
+  function journalBoot() {
+    if (!journalMonthly()) return;
+    try { jm.index = normalizeJournalIndex(JSON.parse(bootKV.journalIndex || 'null')); } catch (e) { jm.index = emptyJournalIndex(); }
+    try { JSON.parse(bootKV.journalDirty || '[]').forEach((m) => jm.dirty.add(m)); } catch (e) {}
+    // whatever data.json still carried (a not-yet-adopted legacy journal) is kept, then the cached live months are laid over it
+    const stray = data.journal.slice();
+    data.journal = [];
+    liveJournalMonths().forEach((m) => { let doc = null; try { doc = bootKV.months[m] ? normalizeMonthDoc(JSON.parse(bootKV.months[m]), m) : null; } catch (e) {} applyMonthToMemory(m, doc || emptyMonthDoc(m)); });
+    if (stray.length) { const merged = mergeJournalSets(data.journal, [], stray, []); data.journal = merged.entries; adoptJournalMonths(); }
+  }
+  // load a month into memory: kv cache first, then (online) the repo
+  function loadJournalMonth(m) {
+    if (jm.loaded.has(m) && !jm.loading.has(m)) return Promise.resolve();
+    if (jm.loading.has(m)) return jm.loading.get(m);
+    const p = (async () => {
+      let doc = null;
+      try { const raw = await kvGet('journal:' + m); if (raw) doc = normalizeMonthDoc(JSON.parse(raw), m); } catch (e) {}
+      if (!jm.loaded.has(m)) applyMonthToMemory(m, doc || emptyMonthDoc(m));
+      const token = getGhToken();
+      if (token && navigator.onLine) { try { await syncJournalMonth(token, m); } catch (e) { recordSyncError(LAST_SYNC_ERROR_KEY, repoErrorMessage('記録（' + journalMonthPath(m) + '）', e)); renderSyncBar(); } }
+    })().finally(() => jm.loading.delete(m));
+    jm.loading.set(m, p);
+    return p;
+  }
+  async function ensureJournalMonths(months) {
+    if (!journalMonthly()) return;
+    await Promise.all(months.filter((m) => !jm.loaded.has(m)).map((m) => loadJournalMonth(m)));
+  }
+  function monthSignature(doc) { return doc.entries.map((j) => j.id + ':' + j.updatedAt).sort().join('|') + '#' + doc.deletedIds.map((t) => t.id + ':' + t.deletedAt).sort().join('|'); }
+  async function ghPutJson(path, obj, sha, message) {
+    const body = { message, content: utf8ToBase64(JSON.stringify(obj, null, 1)) };
+    if (sha) body.sha = sha;
+    const res = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${path}`, { method: 'PUT', headers: ghHeaders(getGhToken()), body: JSON.stringify(body) });
+    if (!res.ok) { const err = new Error('GitHub PUT failed: ' + res.status); err.status = res.status; throw err; }
+    return res.json();
+  }
+  // one month: pull, merge, push if anything differs (409 -> once more)
+  async function syncJournalMonth(token, m, attempt) {
+    const remote = await ghGetContents(GITHUB_REPO, journalMonthPath(m), token);
+    let rdoc = emptyMonthDoc(m);
+    try { if (remote.text) rdoc = normalizeMonthDoc(JSON.parse(remote.text), m); } catch (e) {}
+    const local = journalMonthDoc(m);
+    const mergedSets = mergeJournalSets(local.entries, local.deletedIds, rdoc.entries, rdoc.deletedIds);
+    const merged = { version: 1, month: m, updatedAt: nowIso(), entries: mergedSets.entries, deletedIds: mergedSets.deleted };
+    applyMonthToMemory(m, merged);
+    await persistMonth(m);
+    updateIndexMonth(m);
+    const isEmpty = !merged.entries.length && !merged.deletedIds.length;
+    if ((!remote.text && !isEmpty) || (remote.text && monthSignature(rdoc) !== monthSignature(merged))) {
+      try { await ghPutJson(journalMonthPath(m), merged, remote.sha, `journal ${m}: ${merged.entries.length} entries`); }
+      catch (e) { if (e.status === 409 && !attempt) return syncJournalMonth(token, m, 1); throw e; }
+    }
+    jm.dirty.delete(m); persistDirty();
+    jm.stamps[m] = jm.index.months[m].updatedAt;
+  }
+  function mergeJournalIndex(a, b) {
+    const out = emptyJournalIndex();
+    new Set([...Object.keys(a.months), ...Object.keys(b.months)]).forEach((m) => { const x = a.months[m], y = b.months[m]; out.months[m] = (x && y) ? ((y.updatedAt > x.updatedAt) ? y : x) : (x || y); });
+    out.updatedAt = a.updatedAt > b.updatedAt ? a.updatedAt : b.updatedAt;
+    return out;
+  }
+  async function journalSyncNow(token) {
+    if (jm.busy) return;
+    jm.busy = true;
+    try {
+      if (!jm.index) jm.index = emptyJournalIndex();
+      const ri = await ghGetContents(GITHUB_REPO, JOURNAL_INDEX_PATH, token);
+      let remoteIndex = emptyJournalIndex();
+      try { if (ri.text) remoteIndex = normalizeJournalIndex(JSON.parse(ri.text)); } catch (e) {}
+      // which months to touch: the live ones, anything edited locally, and
+      // loaded months another device has changed since we last saw them
+      const months = new Set([...liveJournalMonths(), ...jm.dirty]);
+      jm.loaded.forEach((m) => { const r = remoteIndex.months[m]; if (r && r.updatedAt !== (jm.stamps[m] || '')) months.add(m); });
+      jm.index = mergeJournalIndex(jm.index, remoteIndex);
+      for (const m of [...months].sort()) { if (!jm.loaded.has(m)) await loadJournalMonth(m); else await syncJournalMonth(token, m); }
+      // the index: ours now carries fresh rows for every month we touched
+      const indexSig = (ix) => JSON.stringify(Object.keys(ix.months).sort().map((m) => [m, ix.months[m].updatedAt]));
+      if (indexSig(jm.index) !== indexSig(remoteIndex)) {
+        try { await ghPutJson(JOURNAL_INDEX_PATH, jm.index, ri.sha, 'journal index'); }
+        catch (e) { if (e.status !== 409) throw e; const ri2 = await ghGetContents(GITHUB_REPO, JOURNAL_INDEX_PATH, token); let r2 = emptyJournalIndex(); try { if (ri2.text) r2 = normalizeJournalIndex(JSON.parse(ri2.text)); } catch (e2) {} jm.index = mergeJournalIndex(jm.index, r2); await ghPutJson(JOURNAL_INDEX_PATH, jm.index, ri2.sha, 'journal index'); }
+      }
+      persistIndex();
+    } finally { jm.busy = false; }
+  }
+  // all-time numbers from the index (monthly mode) or the array (legacy)
+  function indexStatsForNote(noteId) {
+    const out = { p: 0, h: 0, q: 0, last: '', lastHit: '', hitMonths: [] };
+    if (!jm.index) return out;
+    Object.entries(jm.index.months).forEach(([m, row]) => { const st = row.noteStats[noteId]; if (!st) return; out.p += st.p; out.h += st.h; out.q += st.q; if (st.last > out.last) out.last = st.last; if (st.lastHit > out.lastHit) out.lastHit = st.lastHit; if (st.h) out.hitMonths.push(m); });
+    return out;
+  }
+  // ---- 移行 / 戻し (settings) ----
+  function journalMigrationStatus(text) { const el = document.getElementById('journalMigrateStatus'); if (el) el.textContent = text; }
+  async function migrateJournalToMonthly() {
+    const token = getGhToken();
+    if (!token) { alert('同期トークンが必要です'); return; }
+    if (!navigator.onLine) { alert('オンラインで実行してください'); return; }
+    if (journalMonthly()) { alert('すでに月ファイル方式です'); return; }
+    if (!confirm('記録（journal）を月ごとのファイルに移します。先に kotoba-data のバックアップを取りましたか？')) return;
+    if (!confirm('移行を始めます。完了まで画面を閉じないでください。')) return;
+    try {
+      journalMigrationStatus('最新の状態を取得中…');
+      await syncNow();
+      if (noteSyncState === 'error') throw new Error('同期に失敗したため中止しました');
+      const months = new Set(data.journal.map((j) => monthOfDate(j.date)));
+      (data.deletedJournalIds || []).forEach((t) => months.add(monthOfJournalId(t.id) || monthOfDate(todayStr())));
+      jm.index = emptyJournalIndex(); jm.tombs = new Map(); jm.loaded = new Set(); jm.dirty = new Set();
+      (data.deletedJournalIds || []).forEach((t) => { const m = monthOfJournalId(t.id) || monthOfDate(todayStr()); if (!jm.tombs.has(m)) jm.tombs.set(m, new Map()); jm.tombs.get(m).set(t.id, t.deletedAt); });
+      const list = [...months].sort();
+      let i = 0;
+      for (const m of list) {
+        i++;
+        journalMigrationStatus(`月ファイルを書き込み中 ${i}/${list.length}（${m}）`);
+        jm.loaded.add(m);
+        await persistMonth(m);
+        updateIndexMonth(m);
+        const remote = await ghGetContents(GITHUB_REPO, journalMonthPath(m), token);
+        const doc = journalMonthDoc(m);
+        if (remote.text) { let rdoc = emptyMonthDoc(m); try { rdoc = normalizeMonthDoc(JSON.parse(remote.text), m); } catch (e) {} const ms = mergeJournalSets(doc.entries, doc.deletedIds, rdoc.entries, rdoc.deletedIds); doc.entries = ms.entries; doc.deletedIds = ms.deleted; applyMonthToMemory(m, doc); await persistMonth(m); updateIndexMonth(m); }
+        await ghPutJson(journalMonthPath(m), doc, remote.sha, `journal ${m}: migrated`);
+        jm.stamps[m] = jm.index.months[m].updatedAt;
+      }
+      journalMigrationStatus('索引を書き込み中…');
+      const ri = await ghGetContents(GITHUB_REPO, JOURNAL_INDEX_PATH, token);
+      await ghPutJson(JOURNAL_INDEX_PATH, jm.index, ri.sha, 'journal index (migrated)');
+      await persistIndex();
+      data.journalMode = 'monthly'; data.journalModeAt = nowIso(); data.deletedJournalIds = [];
+      persistLocal(data);
+      journalMigrationStatus('data.json を更新中…');
+      await hardPushCurrentData();
+      journalMigrationStatus('移行が完了しました（' + list.length + ' か月）');
+      openSettings();
+    } catch (e) {
+      journalMigrationStatus('移行に失敗しました: ' + (e.message || e) + '。data.json は変更していないので、そのまま使えます。');
+    }
+  }
+  async function revertJournalToLegacy() {
+    const token = getGhToken();
+    if (!token) { alert('同期トークンが必要です'); return; }
+    if (!navigator.onLine) { alert('オンラインで実行してください'); return; }
+    if (!journalMonthly()) { alert('すでに data.json 方式です'); return; }
+    if (!confirm('記録をすべて data.json に書き戻し、月ファイル方式をやめます。よろしいですか？')) return;
+    try {
+      journalMigrationStatus('索引を取得中…');
+      const ri = await ghGetContents(GITHUB_REPO, JOURNAL_INDEX_PATH, token);
+      let remoteIndex = emptyJournalIndex(); try { if (ri.text) remoteIndex = normalizeJournalIndex(JSON.parse(ri.text)); } catch (e) {}
+      jm.index = mergeJournalIndex(jm.index || emptyJournalIndex(), remoteIndex);
+      const months = new Set([...Object.keys(jm.index.months), ...jm.loaded, ...liveJournalMonths()]);
+      let i = 0;
+      for (const m of [...months].sort()) { i++; journalMigrationStatus(`月ファイルを読み込み中 ${i}/${months.size}（${m}）`); if (!jm.loaded.has(m)) await loadJournalMonth(m); else await syncJournalMonth(token, m); }
+      const deleted = [];
+      jm.tombs.forEach((mp) => mp.forEach((at, id) => deleted.push({ id, deletedAt: at })));
+      data.deletedJournalIds = deleted;
+      data.journalMode = 'legacy'; data.journalModeAt = nowIso();
+      persistLocal(data);
+      journalMigrationStatus('data.json に書き戻し中…');
+      await hardPushCurrentData();
+      journalMigrationStatus('data.json 方式に戻しました（記録 ' + data.journal.length + ' 件）。月ファイルは残っていますが使われません。');
+      openSettings();
+    } catch (e) {
+      journalMigrationStatus('戻しに失敗しました: ' + (e.message || e));
+    }
   }
 
   // How many times a note has appeared in any journal entry's picks, and the
   // most recent date - used by the detail screen's "届いた回数" line.
   function journalPickStatsForNote(noteId) {
+    if (journalMonthly()) { const s0 = indexStatsForNote(noteId); return { count: s0.p, lastDate: s0.last }; }
     let count = 0, lastDate = '';
     data.journal.forEach((j) => {
       if (j.picks.some((p) => p.id === noteId)) {
@@ -2903,7 +3238,8 @@
       if (p) entries.push({ id: j.id, date: j.date, kind: j.kind, mood: j.mood, text: j.text || '', why: p.why || '', hitAt: p.hitAt || '' });
     });
     entries.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
-    return { count: entries.length, lastDate: entries.length ? entries[0].date : '', entries };
+    if (journalMonthly()) { const s0 = indexStatsForNote(noteId); return { count: s0.h, lastDate: s0.lastHit, entries, pendingMonths: s0.hitMonths.filter((m) => !jm.loaded.has(m)) }; }
+    return { count: entries.length, lastDate: entries.length ? entries[0].date : '', entries, pendingMonths: [] };
   }
   function hitDecay(dateStr) {
     const age = Math.max(0, (parseDateStr(todayStr()) - parseDateStr(dateStr)) / 86400000);
@@ -2941,6 +3277,7 @@
   }
   function everHitIds() {
     const ids = new Set();
+    if (journalMonthly() && jm.index) { Object.values(jm.index.months).forEach((row) => Object.entries(row.noteStats).forEach(([id, st]) => { if (st.h) ids.add(id); })); return ids; }
     data.journal.forEach((j) => j.picks.forEach((p) => { if (p.hit) ids.add(p.id); }));
     return ids;
   }
@@ -2969,6 +3306,7 @@
     return sortedQuestionEntriesDesc().filter((j) => !j.used).slice(0, limit);
   }
   function questionUseStatsForNote(noteId) {
+    if (journalMonthly()) { const s0 = indexStatsForNote(noteId); return { count: s0.q, lastDate: s0.last }; }
     let count = 0, lastDate = '';
     questionEntries().forEach((j) => {
       if ((j.from || []).includes(noteId)) {
@@ -5868,6 +6206,7 @@
     const hitStats = journalHitStatsForNote(note.id);
     if (pickStats.count > 0) pickStatsEl.textContent = `届いた回数: ${pickStats.count}回（直近 ${dotDate(pickStats.lastDate)}）` + (hitStats.count ? `　刺さった: ${hitStats.count}回` : '');
     renderDetailHitList(hitStats);
+    if (hitStats.pendingMonths && hitStats.pendingMonths.length) ensureJournalMonths(hitStats.pendingMonths).then(() => { if (nav.screen === 'detail' && nav.detailId === note.id) renderDetailHitList(journalHitStatsForNote(note.id)); });
 
     const qStats = questionUseStatsForNote(note.id);
     const qStatsEl = document.getElementById('detailQuestionStats');
@@ -5982,6 +6321,7 @@
     document.getElementById('detailCopyStatus').textContent = '';
     if (note.video) {
       const q = note.video.questionId ? findJournalEntry(note.video.questionId) : null;
+      if (!q && note.video.questionId && journalMonthly()) { const qm = monthOfJournalId(note.video.questionId); if (qm && !jm.loaded.has(qm)) ensureJournalMonths([qm]).then(() => { if (nav.screen === 'detail' && nav.detailId === note.id) renderDetail(); }); }
       document.getElementById('detailVideoOfTitle').textContent =
         '動画：' + videoTitleLabel(note.video) + (note.video.filmedAt ? '（撮影 ' + dotDate(note.video.filmedAt) + '）' : '') + (q ? '　／　問い：' + noteSnippet(q.text, 40) : '　／　問いなし');
       const list = document.getElementById('detailVideoOfList');
@@ -6157,13 +6497,14 @@
     };
   }
   function loadTrainingData() {
-    try {
-      const raw = localStorage.getItem(TRAINING_STORAGE_KEY);
-      if (raw) { const p = normalizeTrainingData(JSON.parse(raw)); if (p) return p; }
-    } catch (e) {}
+    const tryParse = (raw) => { try { if (raw) { const p = normalizeTrainingData(JSON.parse(raw)); if (p) return p; } } catch (e) {} return null; };
+    let p = tryParse(bootKV.training);
+    if (p) return p;
+    p = tryParse(localStorage.getItem(TRAINING_STORAGE_KEY)); // older builds
+    if (p) { persistTrainingLocal(p); return p; }
     return trainingDefaultData();
   }
-  function persistTrainingLocal(d) { localStorage.setItem(TRAINING_STORAGE_KEY, JSON.stringify(d)); }
+  function persistTrainingLocal(d) { kvSet('training', JSON.stringify(d)).catch(() => { recordSyncError(TRAINING_LAST_SYNC_ERROR_KEY, '端末の保存に失敗しました'); renderSyncBar(); }); }
   function saveTrainingData(d) {
     d.updatedAt = nowIso();
     persistTrainingLocal(d);
@@ -7510,6 +7851,21 @@
     renderRecordsCalendar();
     renderDayDetail();
     renderMonthSummary();
+    ensureCalendarMonthLoaded();
+  }
+  function calendarMonthKey() { return `${calYear}-${String(calMonth + 1).padStart(2, '0')}`; }
+  // monthly journal: the month on screen may not be in memory yet - fetch it
+  // (kv cache, then the repo) and redraw once it is
+  function ensureCalendarMonthLoaded() {
+    if (!journalMonthly()) return;
+    const key = calendarMonthKey();
+    if (jm.loaded.has(key)) return;
+    const label = document.getElementById('calMonthLabel');
+    label.textContent = label.textContent + '（読み込み中）';
+    ensureJournalMonths([key]).then(() => {
+      if (nav.screen !== 'records' || calendarMonthKey() !== key) return;
+      renderRecordsCalendar(); renderDayDetail(); renderMonthSummary();
+    });
   }
 
   // Earliest month with any record at all (journal entries or walked days) -
@@ -7517,6 +7873,7 @@
   // calendar-first records view should be bounded by actual activity.
   function earliestRecordMonthKey() {
     let min = null;
+    if (journalMonthly() && jm.index) Object.keys(jm.index.months).forEach((m) => { const d = m + '-01'; if (!min || d < min) min = d; });
     data.journal.forEach((j) => { if (!min || j.date < min) min = j.date; });
     walkData.walkedDates.forEach((d) => { if (!min || d < min) min = d; });
     return min ? min.slice(0, 7) : todayStr().slice(0, 7);
@@ -8043,6 +8400,7 @@
     renderRecordsCalendar();
     renderDayDetail();
     renderMonthSummary();
+    ensureCalendarMonthLoaded();
   });
   document.getElementById('calNext').addEventListener('click', () => {
     calMonth++; if (calMonth > 11) { calMonth = 0; calYear++; }
@@ -8050,6 +8408,7 @@
     renderRecordsCalendar();
     renderDayDetail();
     renderMonthSummary();
+    ensureCalendarMonthLoaded();
   });
 
   document.getElementById('navRecords').addEventListener('click', openRecords);
@@ -9247,8 +9606,8 @@
     const quota = 5 * 1048576;
     const pct = Math.round(localBytes / quota * 100);
     return {
-      line: `言葉 ${fmtBytes(notesB)}（${data.notes.length}枚）／記録 ${fmtBytes(journalB)}（${data.journal.length}件）／筋トレ ${fmtBytes(trainingB)}／散歩 ${fmtBytes(walkB)}`,
-      note: `端末の保存領域: 約 ${fmtBytes(localBytes)} 使用（iPhone の目安 5 MB の ${pct}%）` + (localSaveError ? '　⚠ ' + localSaveError : ''),
+      line: `言葉 ${fmtBytes(notesB)}（${data.notes.length}枚）／記録 ${fmtBytes(journalB)}（${data.journal.length}件` + (journalMonthly() ? '・読み込み中の月のみ' : '') + `）／筋トレ ${fmtBytes(trainingB)}／散歩 ${fmtBytes(walkB)}`,
+      note: (kv.mode === 'idb' ? 'データは IndexedDB に保存（localStorage の 5 MB 制限の外）。' : '⚠ IndexedDB が使えないため localStorage に保存しています。') + `localStorage 使用 約 ${fmtBytes(localBytes)}（${pct}%）` + (localSaveError ? '　⚠ ' + localSaveError : ''),
       pct,
     };
   }
@@ -9313,6 +9672,10 @@
     const latestSync = [lastSync, lastWalkSync].filter(Boolean).sort().pop();
     document.getElementById('statLastSync').textContent = latestSync ? formatDateTime(latestSync) : '-';
     { const r = dataSizeReport(); document.getElementById('statDataSize').textContent = r.line; document.getElementById('statDataSizeNote').textContent = r.note; }
+    document.getElementById('statJournalMode').textContent = journalMonthly() ? `月ファイル（${jm.index ? Object.keys(jm.index.months).length : 0} か月、読み込み中 ${jm.loaded.size} か月）` : 'data.json（旧方式）';
+    document.getElementById('btnJournalMigrate').hidden = journalMonthly();
+    document.getElementById('btnJournalRevert').hidden = !journalMonthly();
+    if (navigator.storage && navigator.storage.estimate) navigator.storage.estimate().then((est) => { const el = document.getElementById('statDataSizeNote'); if (el && est && est.usage != null) el.textContent = el.textContent + `　／　IndexedDB 使用量 約 ${fmtBytes(est.usage)}` + (est.quota ? `（上限の目安 ${fmtBytes(est.quota)}）` : ''); }).catch(() => {});
     const noteErr = getSyncError(LAST_SYNC_ERROR_KEY);
     const walkErr = getSyncError(WALK_LAST_SYNC_ERROR_KEY);
     const errParts = [];
@@ -9539,6 +9902,13 @@
     }
   });
 
+  document.getElementById('btnJournalMigrate').addEventListener('click', () => migrateJournalToMonthly());
+  document.getElementById('btnJournalRevert').addEventListener('click', () => revertJournalToLegacy());
+  document.getElementById('btnClearLegacyStorage').addEventListener('click', () => {
+    if (!confirm('localStorage に残っている古い形式のコピー（言葉・散歩・筋トレ）を消します。IndexedDB のデータはそのままです。よろしいですか？')) return;
+    [STORAGE_KEY, BACKUP_KEY, WALK_STORAGE_KEY, WALK_BACKUP_KEY, TRAINING_STORAGE_KEY].forEach((k) => { try { localStorage.removeItem(k); } catch (e) {} });
+    openSettings();
+  });
   document.getElementById('btnSyncNow').addEventListener('click', () => {
     syncAllNow().then(() => openSettings());
   });
@@ -9603,6 +9973,7 @@
       if (!parsed) throw new Error('invalid shape');
       if (!confirm('現在のデータを、読み込んだ内容で上書きします。よろしいですか？')) return;
       data = parsed;
+      adoptJournalMonths();
       persistLocal(data);
       await hardPushCurrentData();
       openSettings();
@@ -9613,6 +9984,7 @@
   });
 
   // --- boot ---------------------------------------------------------------
+  journalBoot();
   goHome();
   syncAllNow();
   if (document.fonts && document.fonts.ready) {
