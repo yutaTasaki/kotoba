@@ -513,6 +513,7 @@
   .calDot.dotWalk { background: var(--accent); }
   .calDot.dotConsult { background: #86a9c9; }
   .calDot.dotDraw { background: #a98fd0; }
+  .calDot.dotQuestion { background: #d3b16a; }
   .calCell.today { border-color: var(--accent-dim); }
   .calCell.selected { background: var(--bg-elevated); border-color: var(--accent); }
   .calCell.disabled { background: none; color: #444; border-color: #1e1e1e; cursor: default; }
@@ -563,7 +564,6 @@
     min-height: 40vh;
     cursor: pointer;
   }
-  .drawTapHint { color: var(--text-faint); font-size: 14px; }
   .drawShuffleText { font-size: 22px; line-height: 1.8; padding: 0 12px; white-space: pre-wrap; }
   .drawResult {
     display: flex;
@@ -593,6 +593,59 @@
     gap: 8px;
   }
   .drawLinkItem.shown { opacity: 1; transform: translateY(0); }
+
+  /* --- v3.3: 問いを引く ---------------------------------------------- */
+  .drawChoice { display: flex; flex-direction: column; align-items: center; gap: 18px; width: 100%; }
+  .drawChoiceRow { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .drawChoiceBtn {
+    background: var(--bg-card);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px 24px;
+    font-family: inherit;
+    font-size: 17px;
+    cursor: pointer;
+    transition: transform .15s ease;
+  }
+  .drawChoiceBtn:active { transform: scale(.97); }
+  .questionResult {
+    display: flex; flex-direction: column; gap: 18px; align-items: center; width: 100%;
+    transform: scale(1); transition: transform .25s ease;
+  }
+  .questionResult.pop { transform: scale(1.05); }
+  .questionText { font-size: 23px; line-height: 1.95; white-space: pre-wrap; padding: 0 8px; }
+  .questionTension { font-size: 13px; color: var(--text-dim); line-height: 1.75; padding: 0 12px; }
+  .questionWhyNow { font-size: 14px; color: var(--accent); line-height: 1.8; white-space: pre-wrap; padding: 0 12px; }
+  .questionFooter { flex-shrink: 0; padding-top: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .questionFromCard {
+    background: var(--bg-card);
+    border-radius: 12px;
+    padding: 14px;
+    cursor: pointer;
+    text-align: left;
+  }
+  .questionFromText { font-size: 15px; line-height: 1.7; }
+  .questionFromSource { font-size: 12px; color: var(--text-dim); }
+  .questionFromMyWords { font-size: 12px; color: var(--text-faint); line-height: 1.7; margin-top: 4px; }
+  .questionUsedNote { font-size: 12px; color: var(--accent); text-align: center; }
+  .unusedQuestionList { width: 100%; display: flex; flex-direction: column; gap: 6px; padding-top: 4px; }
+  .unusedQuestionHead { font-size: 11px; color: var(--text-faint); text-align: center; }
+  .unusedQuestionItem {
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--text-dim);
+    background: var(--bg-card);
+    border: none;
+    border-radius: 10px;
+    padding: 9px 12px;
+    text-align: left;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .unusedQuestionAge { color: var(--text-faint); }
+  .questionRecordText { font-size: 15px; line-height: 1.8; }
+  .questionRecordMeta { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
 
   .graphFilterBar { display: flex; gap: 8px; flex: 1; flex-wrap: wrap; }
   .graphFilterSelect {
@@ -759,6 +812,7 @@
       <div class="detailField"><span class="fieldLabel">自分の言葉での一言</span><div id="detailMyWords"></div></div>
       <div class="detailTags" id="detailTags"></div>
       <p class="fieldNote" id="detailPickStats" hidden></p>
+      <p class="fieldNote" id="detailQuestionStats" hidden></p>
       <div class="detailLinksSection">
         <h3>関連ノート</h3>
         <p class="fieldNote" id="detailLinkingStatus" hidden>関連を探しています…</p>
@@ -859,6 +913,9 @@
         <input id="claudeModelAutoLinkInput" type="text" placeholder="claude-haiku-4-5" autocomplete="off" spellcheck="false">
         <span class="fieldLabel">朝の言葉・相談のモデル</span>
         <input id="claudeModelChatInput" type="text" placeholder="claude-sonnet-5" autocomplete="off" spellcheck="false">
+        <span class="fieldLabel">問いのモデル</span>
+        <p class="fieldNote">「問いを引く」に使うモデルです。空欄にすると「朝の言葉・相談のモデル」と同じになります。</p>
+        <input id="claudeModelQuestionInput" type="text" placeholder="claude-sonnet-5" autocomplete="off" spellcheck="false">
         <span class="fieldLabel">月の上限（USD）</span>
         <p class="fieldNote">今月の概算費用がこの割合（50% / 80% / 100%）に達すると朝タブに知らせます。100%を超えると自動関連づけと朝の言葉を自動で止めます（相談は確認のうえ続行できます）。</p>
         <input id="usageBudgetInput" type="text" inputmode="decimal" placeholder="2.00" autocomplete="off">
@@ -971,6 +1028,7 @@
         <div class="statRow"><span>相談</span><span id="statUsageMonthConsult"></span></div>
         <div class="statRow"><span>探し直し</span><span id="statUsageMonthSearchAgain"></span></div>
         <div class="statRow"><span>一括入力</span><span id="statUsageMonthBulk"></span></div>
+        <div class="statRow"><span>問い</span><span id="statUsageMonthQuestion"></span></div>
         <div class="statRow"><span>今月・合計</span><span id="statUsageMonthTotal"></span></div>
         <div id="statUsagePerDevice"></div>
       </div>
@@ -1010,6 +1068,7 @@
         <div class="statRow"><span>散歩日数</span><span id="summaryWalkDays"></span></div>
         <div class="statRow"><span>朝の言葉を受け取った日数</span><span id="summaryMorningDays"></span></div>
         <div class="statRow"><span>相談した回数</span><span id="summaryConsultCount"></span></div>
+        <div class="statRow"><span>生成した問い</span><span id="summaryQuestionCount"></span></div>
         <div class="field">
           <span class="fieldLabel">その月に最も多く届いた言葉</span>
           <div id="summaryTopNotes" class="listItems"></div>
@@ -1125,27 +1184,47 @@
 
   <div id="screen-draw" class="drawOverlay" hidden>
     <div class="drawTopBar">
-      <div id="drawModeRow" class="tagFilterRow drawModeRow">
-        <button type="button" class="tagFilterBtn" data-mode="all">すべてから</button>
-        <button type="button" class="tagFilterBtn" data-mode="monthly">今月よく届いた言葉から</button>
-      </div>
+      <div style="flex:1;"></div>
       <div class="topbarBtnGroup">
         <button id="btnDrawToGraph" class="drawIconBtn" type="button" hidden>網で見る</button>
-        <button id="btnDrawAgain" class="drawIconBtn" type="button">もう一度</button>
+        <button id="btnDrawAgain" class="drawIconBtn" type="button" hidden>もう一度</button>
+        <button id="btnQuestionAgain" class="drawIconBtn" type="button" hidden>もう一つ</button>
         <button id="btnDrawClose" class="drawIconBtn" type="button">×</button>
       </div>
     </div>
     <div id="drawStage" class="drawStage">
-      <div id="drawTapHint" class="drawTapHint">画面をタップ</div>
+      <div id="drawChoice" class="drawChoice">
+        <div class="drawChoiceRow">
+          <button type="button" id="btnDrawWord" class="drawChoiceBtn">言葉を引く</button>
+          <button type="button" id="btnDrawQuestion" class="drawChoiceBtn">問いを引く</button>
+        </div>
+        <div id="drawModeRow" class="tagFilterRow drawModeRow">
+          <button type="button" class="tagFilterBtn" data-mode="all">すべてから</button>
+          <button type="button" class="tagFilterBtn" data-mode="monthly">今月よく届いた言葉から</button>
+        </div>
+        <p class="fieldNote warn" id="drawChoiceHint" hidden></p>
+        <div id="unusedQuestions" class="unusedQuestionList" hidden></div>
+      </div>
       <div id="drawShuffleText" class="drawShuffleText" hidden></div>
+      <div id="questionSearching" class="drawShuffleText" hidden>問いを探しています…</div>
       <div id="drawResult" class="drawResult" hidden>
         <div class="drawResultText" id="drawResultText"></div>
         <div class="drawResultSource" id="drawResultSource"></div>
         <div class="drawResultMyWords" id="drawResultMyWords"></div>
       </div>
+      <div id="questionResult" class="questionResult" hidden>
+        <div class="questionText" id="questionText"></div>
+        <div class="questionTension" id="questionTension" hidden></div>
+        <div class="questionWhyNow" id="questionWhyNow" hidden></div>
+      </div>
       <div id="drawEmpty" class="emptyMsg" hidden>まだノートがありません。</div>
     </div>
     <div id="drawLinks" class="drawLinks"></div>
+    <div id="questionFooter" class="questionFooter" hidden>
+      <div id="questionFrom" class="drawLinks"></div>
+      <button type="button" id="btnQuestionUse" class="primaryBtn">この問いで話す</button>
+      <p class="questionUsedNote" id="questionUsedNote" hidden></p>
+    </div>
   </div>
 
   <div id="screen-graph" class="drawOverlay" hidden>
@@ -1220,12 +1299,15 @@
     };
   }
 
-  // journal entries: kind 'morning' (今朝の言葉), 'consult' (相談の記録), or
-  // 'draw' (引く). One per API response / per 引く landing. Entry-level
-  // merge/tombstone, same pattern as notes.
+  const QUESTION_MODES = ['opposite', 'core', 'self'];
+
+  // journal entries: kind 'morning' (今朝の言葉), 'consult' (相談の記録),
+  // 'draw' (引く), or 'question' (問いを引く, v3.3). One per API response /
+  // per 引く landing. Entry-level merge/tombstone, same pattern as notes.
+  const JOURNAL_KINDS = ['morning', 'consult', 'draw', 'question'];
   function normalizeJournalEntry(j) {
     if (!j || !j.id) return null;
-    const kind = j.kind === 'consult' ? 'consult' : j.kind === 'draw' ? 'draw' : 'morning';
+    const kind = JOURNAL_KINDS.includes(j.kind) ? j.kind : 'morning';
     const out = {
       id: String(j.id),
       date: j.date || todayStr(),
@@ -1243,6 +1325,17 @@
     // (spec: consecutive same-day draws collapse into one card). Optional -
     // older synced entries without it just render as their own singleton group.
     if (kind === 'draw' && typeof j.sessionId === 'string' && j.sessionId) out.sessionId = j.sessionId;
+    // v3.3 問い: the question itself lives in `text`; `from` is deliberately
+    // separate from `picks` so a question never counts toward a note's
+    // "届いた回数" (which is about words delivered TO the user, not words a
+    // question happens to stand on).
+    if (kind === 'question') {
+      out.from = Array.isArray(j.from) ? j.from.filter(Boolean).map(String).slice(0, 4) : [];
+      out.why_now = typeof j.why_now === 'string' ? j.why_now : '';
+      out.tension = typeof j.tension === 'string' ? j.tension : '';
+      out.source_mode = QUESTION_MODES.includes(j.source_mode) ? j.source_mode : 'self';
+      out.used = j.used === true;
+    }
     return out;
   }
 
@@ -2428,6 +2521,29 @@
       .map(([id]) => id);
   }
 
+  // --- 問い (v3.3): journal-side helpers ---------------------------------
+  function questionEntries() {
+    return data.journal.filter((j) => j.kind === 'question');
+  }
+  function sortedQuestionEntriesDesc() {
+    return questionEntries().sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  }
+  // Spec: the 引く entry screen lists the still-unused questions, newest
+  // first - a question that has sat there for weeks is itself information.
+  function unusedQuestionEntries(limit) {
+    return sortedQuestionEntriesDesc().filter((j) => !j.used).slice(0, limit);
+  }
+  function questionUseStatsForNote(noteId) {
+    let count = 0, lastDate = '';
+    questionEntries().forEach((j) => {
+      if ((j.from || []).includes(noteId)) {
+        count++;
+        if (j.date > lastDate) lastDate = j.date;
+      }
+    });
+    return { count, lastDate };
+  }
+
   // --- drafts (v3.2): entry-level CRUD, same pattern as journal ------------
   function findDraft(id) { return data.drafts.find((d) => d.id === id) || null; }
 
@@ -2512,6 +2628,7 @@
   const CLAUDE_MODEL_KEY = 'kotoba_claudeModel'; // v3.x legacy single-model key, read once for migration only
   const CLAUDE_MODEL_AUTOLINK_KEY = 'kotoba_claudeModelAutoLink';
   const CLAUDE_MODEL_CHAT_KEY = 'kotoba_claudeModelChat';
+  const CLAUDE_MODEL_QUESTION_KEY = 'kotoba_claudeModelQuestion';
   const AUTO_LINK_ENABLED_KEY = 'kotoba_autoLinkEnabled';
   const MORNING_ENABLED_KEY = 'kotoba_morningEnabled';
   const COMPRESS_THRESHOLD_KEY = 'kotoba_compressThreshold';
@@ -2544,6 +2661,9 @@
 
   function getClaudeAutoLinkModel() { return localStorage.getItem(CLAUDE_MODEL_AUTOLINK_KEY) || DEFAULT_AUTOLINK_MODEL; }
   function getClaudeChatModel() { return localStorage.getItem(CLAUDE_MODEL_CHAT_KEY) || DEFAULT_CHAT_MODEL; }
+  // v3.3: falls back to the chat model rather than to a constant, so leaving
+  // the field blank keeps 問い on whatever the 朝/相談 model is set to.
+  function getClaudeQuestionModel() { return localStorage.getItem(CLAUDE_MODEL_QUESTION_KEY) || getClaudeChatModel(); }
 
   function getAutoLinkEnabled() {
     const v = localStorage.getItem(AUTO_LINK_ENABLED_KEY);
@@ -2572,7 +2692,7 @@
   // {calls,input,output,cacheWrite,cacheRead} } } } - each device only ever
   // writes its own subtree (see mergeUsageData), so PC and iPhone combine
   // under sync while still keeping a per-device breakdown.
-  const USAGE_KINDS = ['autolink', 'morning', 'consult', 'searchAgain', 'bulk'];
+  const USAGE_KINDS = ['autolink', 'morning', 'consult', 'searchAgain', 'bulk', 'question'];
 
   function getDeviceId() {
     let id = localStorage.getItem(DEVICE_ID_KEY);
@@ -2662,7 +2782,9 @@
     }).filter((d) => d.hasData);
   }
   function modelForUsageKind(kind) {
-    return (kind === 'autolink' || kind === 'searchAgain') ? getClaudeAutoLinkModel() : getClaudeChatModel();
+    if (kind === 'autolink' || kind === 'searchAgain') return getClaudeAutoLinkModel();
+    if (kind === 'question') return getClaudeQuestionModel();
+    return getClaudeChatModel();
   }
   function totalCostForKindStats(kindStats) {
     return USAGE_KINDS.reduce((sum, k) => sum + estimateCostUsd(kindStats[k], modelForUsageKind(k)), 0);
@@ -3086,6 +3208,254 @@
     batchState.running = false;
     updateBatchProgressUI(processed, pending.length, true);
     refreshCurrentScreen();
+  }
+
+  // --- 問いを引く: 材料の選び方 + API (v3.3) -------------------------------
+  // The whole point is that a question can only come from THIS person's
+  // material, so the browser picks the material first (one of three fixed
+  // angles) and the API is called exactly once, with those few notes sent
+  // uncompressed. No cached note-list block here on purpose: the payload is
+  // a handful of notes, and it changes every call anyway.
+  const QUESTION_MODE_LABEL = { opposite: '対立から', core: '今月の核から', self: '自分の言葉から' };
+  const LAST_QUESTION_MODE_KEY = 'kotoba_lastQuestionMode';
+  const QUESTION_MODE_NOTE = {
+    opposite: 'この最初の2枚は、本人自身が「反対」としてつないだ組である。残りはそれぞれにつながる言葉。どちらかに軍配を上げず、その対立が本人の中で今どう起きているかを問いにする。',
+    core: 'これらは直近1ヶ月で本人に最も多く届いた言葉である。同じ言葉が繰り返し届いていること自体が何かを示している。届き続けているのに動いていないことを疑う。',
+    self: '最初の1枚は本人が自分の言葉として書いたものである。残りはそれにつながる言葉。本人の言い切りが、つながる言葉やこの1ヶ月の記録とどうずれているかを見る。',
+  };
+
+  function shuffled(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  // Unordered opposite pairs (links are bidirectional, so each pair shows up
+  // twice in the raw link data).
+  function oppositeNotePairs() {
+    const seen = new Set();
+    const pairs = [];
+    data.notes.forEach((n) => {
+      (n.links || []).forEach((l) => {
+        if (l.relation !== 'opposite') return;
+        const other = findNote(l.id);
+        if (!other) return;
+        const key = dupPairKey(n.id, other.id);
+        if (seen.has(key)) return;
+        seen.add(key);
+        pairs.push([n, other]);
+      });
+    });
+    return pairs;
+  }
+
+  function selfSourcedNotes() {
+    return data.notes.filter((n) => (n.source || '').startsWith('自分'));
+  }
+
+  function linkedNotesOf(note, relation, taken, limit) {
+    const links = shuffled((note.links || []).filter((l) => (!relation || l.relation === relation) && !taken.has(l.id)));
+    const out = [];
+    for (const l of links) {
+      const t = findNote(l.id);
+      if (!t) continue;
+      out.push(t);
+      taken.add(t.id);
+      if (out.length >= limit) break;
+    }
+    return out;
+  }
+
+  function buildQuestionMaterialsForMode(mode) {
+    const taken = new Set();
+    let notes = [];
+    if (mode === 'opposite') {
+      const pairs = oppositeNotePairs();
+      if (!pairs.length) return null;
+      const [a, b] = pairs[Math.floor(Math.random() * pairs.length)];
+      taken.add(a.id); taken.add(b.id);
+      notes.push(a, b);
+      // one 「似ている」 neighbour each, so the opposition has some ground under it
+      notes = notes.concat(linkedNotesOf(a, 'similar', taken, 1), linkedNotesOf(b, 'similar', taken, 1));
+    } else if (mode === 'core') {
+      const core = topMonthlyPickedNoteIds(3).map(findNote).filter(Boolean);
+      if (!core.length) return null;
+      core.forEach((n) => { taken.add(n.id); notes.push(n); });
+      for (const n of shuffled(core)) {
+        const extra = linkedNotesOf(n, null, taken, 1);
+        if (extra.length) { notes = notes.concat(extra); break; }
+      }
+    } else {
+      const pool = selfSourcedNotes();
+      if (!pool.length) return null;
+      const own = pool[Math.floor(Math.random() * pool.length)];
+      taken.add(own.id);
+      notes.push(own);
+      notes = notes.concat(linkedNotesOf(own, null, taken, 3));
+    }
+    notes = notes.filter(Boolean).slice(0, 4);
+    return notes.length >= 3 ? { mode, notes } : null;
+  }
+
+  // Tries the available angles in random order, never repeating the previous
+  // call's angle while another one is usable, and skipping any angle that
+  // can't reach 3 notes with the current data. Returns null when none can.
+  function pickQuestionMaterials() {
+    const last = localStorage.getItem(LAST_QUESTION_MODE_KEY);
+    const all = shuffled(QUESTION_MODES);
+    const ordered = [...all.filter((m) => m !== last), ...all.filter((m) => m === last)];
+    for (const mode of ordered) {
+      const built = buildQuestionMaterialsForMode(mode);
+      if (built) return built;
+    }
+    return null;
+  }
+
+  // Body text only, newest first, per spec (max 10 entries, 80 chars each).
+  // The date rides along because 「なぜ今か」 is worth little without it.
+  function recentJournalTextsFor(kind, limit) {
+    const cutoff = addDays(todayStr(), -30);
+    return data.journal
+      .filter((j) => j.kind === kind && j.date >= cutoff && j.text && j.text.trim())
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+      .slice(0, limit)
+      .map((j) => ({ date: j.date.slice(5), text: j.text.trim().slice(0, 80) }));
+  }
+
+  function buildQuestionSystemBlocks() {
+    const text =
+      'あなたは、この人が集めた言葉と、この人自身の言葉だけを材料に、この人が今日ひとりで話すための「問い」を1つ作る。\n\n' +
+      '渡される材料：\n' +
+      '- 言葉（本や偉人の言葉、または本人が自分で書いた言葉）と、その言葉に本人が書いた解釈（myWords）\n' +
+      '- 本人がこの1ヶ月の朝に書いた一言と、相談で書いたこと\n' +
+      '- 最近この人に出した問い\n\n' +
+      '手順：\n' +
+      '1. まず材料の中の「食い違い」を1つ見つける。次のどれかである。\n' +
+      '   - 2つの言葉が反対のことを言っている\n' +
+      '   - 言葉そのものと、その言葉に本人が書いた解釈がずれている（自分の都合に引き寄せている、言葉より強く言い切っている、逆に弱めている）\n' +
+      '   - 本人の解釈どうしが噛み合っていない（別の言葉のところで逆のことを言っている）\n' +
+      '   - 本人が言い切っていることと、この1ヶ月の記録に書かれた実際の状態が食い違っている\n' +
+      '2. その食い違いを、どちらが正しいかを決めずに、そのまま問いの中心に置く。\n' +
+      '3. 問いを1文で書く。\n\n' +
+      '厳守すること：\n' +
+      '- 材料の中の特徴的な言い回し（本人の解釈 myWords の語句、または言葉そのものの表現）を、少なくとも1つ、そのままの形で問いに入れる。言い換えない、要約しない。\n' +
+      '- 材料を読んでいない他人には半分しか意味が取れないくらい、この人に固有の問いにする。\n' +
+      '- 「〜とは何か」「〜はなぜ大切か」「どうすれば〜できるか」「〜と〜のバランスをどう取るか」のような、材料がなくても立てられる形にしない。\n' +
+      '- 「人は」「人間は」「私たちは」で始まる一般論にしない。この人が自分に向けて考える形にする。\n' +
+      '- 人生訓・道徳・励まし・助言・材料の要約を書かない。\n' +
+      '- 答えが1つに決まる問い、はい/いいえで終わる問いにしない。話しながら考えが動く問いにする。\n' +
+      '- 問いは30〜80字程度の1文にする。\n' +
+      '- tension は「「◯◯」と書いているのに「△△」では〜になっている」の形で、材料の言葉そのものを引いて1行で書く。抽象語でまとめない。\n' +
+      '- question・tension・why_now に id（n_ で始まる記号）を書かない。人が読む文にする。\n' +
+      '- why_now は、この1ヶ月の朝の一言・相談に具体的な接点があるときだけ書く。その記録の言葉を引いて2行以内で書く。接点がなければ空文字にする。ないものを作らない。\n' +
+      '- 最近この人に出した問い（渡したもの）と、同じ切り口・同じ言葉の組み合わせを使わない。\n' +
+      '- from には、その問いが立っている材料の id を2〜4個入れる。渡された id 以外は書かない。\n' +
+      '- question・why_now・tension には改行を使わない。\n\n' +
+      '返答は JSON のみ。前置きも説明も書かない：\n' +
+      '{"question":"...","from":["id","id"],"why_now":"...","tension":"..."}';
+    return [{ type: 'text', text }];
+  }
+
+  function buildQuestionUserPrompt(materials) {
+    const lines = (arr) => (arr.length ? arr.map((r) => '- ' + r.date + ' ' + r.text).join('\n') : '（記録なし）');
+    const recentQuestions = sortedQuestionEntriesDesc().slice(0, 5).map((j) => '- ' + j.text);
+    const notesJson = materials.notes.map((n) => ({
+      id: n.id,
+      text: n.text || '',
+      source: n.source || '',
+      myWords: n.myWords || '',
+      tags: n.tags || [],
+    }));
+    return '材料の選び方: ' + QUESTION_MODE_LABEL[materials.mode] + '\n' +
+      QUESTION_MODE_NOTE[materials.mode] + '\n\n' +
+      '材料の言葉：\n' + JSON.stringify(notesJson, null, 1) + '\n\n' +
+      'この1ヶ月の朝に書いた一言：\n' + lines(recentJournalTextsFor('morning', 10)) + '\n\n' +
+      'この1ヶ月の相談で書いたこと：\n' + lines(recentJournalTextsFor('consult', 10)) + '\n\n' +
+      '最近この人に出した問い（同じ切り口を避けるため）：\n' +
+      (recentQuestions.length ? recentQuestions.join('\n') : '（まだない）');
+  }
+
+  // Same loose-parse posture as the other calls: try clean JSON, then fall
+  // back to the outermost {...} in case the model wrapped it in prose.
+  function parseQuestionResponseLoose(text) {
+    const cleaned = text.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+    try {
+      const p = JSON.parse(cleaned);
+      if (p && typeof p === 'object' && typeof p.question === 'string') return p;
+    } catch (e) {}
+    const start = cleaned.indexOf('{');
+    const end = cleaned.lastIndexOf('}');
+    if (start === -1 || end === -1 || end < start) return null;
+    try {
+      const p = JSON.parse(cleaned.slice(start, end + 1));
+      return (p && typeof p === 'object' && typeof p.question === 'string') ? p : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async function callQuestionApi(materials, is429Retry, isParseRetry) {
+    const apiKey = getClaudeApiKey();
+    if (!apiKey) { const e = new Error('no-api-key'); e.noKey = true; throw e; }
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: getClaudeQuestionModel(),
+        // Sonnet 5 / Opus 5 run adaptive thinking by default, and those
+        // thinking tokens come out of max_tokens. Observed runs spend
+        // 400-1000+ tokens finding the 食い違い before writing anything, so a
+        // 1024 budget silently returned an empty text block (stop_reason
+        // max_tokens) about half the time. The JSON itself is ~250 tokens;
+        // the rest of this is headroom for the thinking pass, which is
+        // exactly the part that makes the question specific.
+        max_tokens: 4096,
+        system: buildQuestionSystemBlocks(),
+        messages: [{ role: 'user', content: buildQuestionUserPrompt(materials) }],
+      }),
+    });
+    if (res.status === 429 && !is429Retry) {
+      await sleep(2000);
+      return callQuestionApi(materials, true, isParseRetry);
+    }
+    if (!res.ok) {
+      const err = new Error('Claude API failed: ' + res.status);
+      err.status = res.status;
+      throw err;
+    }
+    const json = await res.json();
+    recordApiUsage('question', json.usage);
+    const textOut = (json.content || []).map((b) => b.text || '').join('');
+    const parsed = parseQuestionResponseLoose(textOut);
+    if (!parsed || !parsed.question.trim()) {
+      if (!isParseRetry) return callQuestionApi(materials, is429Retry, true);
+      throw new Error('invalid response shape');
+    }
+    const materialIds = materials.notes.map((n) => n.id);
+    const allowed = new Set(materialIds);
+    let from = (Array.isArray(parsed.from) ? parsed.from : []).map(String).filter((id) => allowed.has(id));
+    from = [...new Set(from)].slice(0, 4);
+    // A question always stands on at least two of the notes it was built
+    // from; if the model named fewer, fall back to the material order rather
+    // than showing a lone card under it.
+    for (const id of materialIds) {
+      if (from.length >= 2) break;
+      if (!from.includes(id)) from.push(id);
+    }
+    return {
+      question: parsed.question.trim().replace(/\s+/g, ' ').slice(0, 200),
+      from,
+      why_now: (typeof parsed.why_now === 'string' ? parsed.why_now : '').trim().slice(0, 160),
+      tension: (typeof parsed.tension === 'string' ? parsed.tension : '').trim().replace(/\s+/g, ' ').slice(0, 160),
+    };
   }
 
   // --- Consult screen (v2.1) -------------------------------------------------
@@ -4665,6 +5035,11 @@
     pickStatsEl.hidden = pickStats.count === 0;
     if (pickStats.count > 0) pickStatsEl.textContent = `届いた回数: ${pickStats.count}回（直近 ${dotDate(pickStats.lastDate)}）`;
 
+    const qStats = questionUseStatsForNote(note.id);
+    const qStatsEl = document.getElementById('detailQuestionStats');
+    qStatsEl.hidden = qStats.count === 0;
+    if (qStats.count > 0) qStatsEl.textContent = `問いに使われた回数: ${qStats.count}回（直近 ${dotDate(qStats.lastDate)}）`;
+
     document.getElementById('detailLinkingStatus').hidden = !autoLinkInFlight.has(note.id);
 
     const linksEl = document.getElementById('detailLinks');
@@ -4836,6 +5211,7 @@
       const morning = data.journal.find((j) => j.kind === 'morning' && j.date === dateStr);
       const hasConsult = data.journal.some((j) => j.kind === 'consult' && j.date === dateStr);
       const hasDraw = data.journal.some((j) => j.kind === 'draw' && j.date === dateStr);
+      const hasQuestion = data.journal.some((j) => j.kind === 'question' && j.date === dateStr);
       const walked = walkedSet.has(dateStr);
 
       const el = document.createElement('button');
@@ -4861,6 +5237,7 @@
       if (walked) { const d = document.createElement('span'); d.className = 'calDot dotWalk'; dots.appendChild(d); }
       if (hasConsult) { const d = document.createElement('span'); d.className = 'calDot dotConsult'; dots.appendChild(d); }
       if (hasDraw) { const d = document.createElement('span'); d.className = 'calDot dotDraw'; dots.appendChild(d); }
+      if (hasQuestion) { const d = document.createElement('span'); d.className = 'calDot dotQuestion'; dots.appendChild(d); }
       el.appendChild(dots);
 
       if (disabled) {
@@ -5090,6 +5467,65 @@
     return item;
   }
 
+  // v3.3: one card per generated question, with the 材料 it stands on listed
+  // under it and a mark on the ones the user actually talked with.
+  function renderDayQuestionCard(entries) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'dayDrawGroups';
+    entries.slice().sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1)).forEach((j) => {
+      const item = document.createElement('div');
+      item.className = 'recordEntry';
+      const top = document.createElement('div');
+      top.className = 'recordEntryTop';
+      const label = document.createElement('span');
+      label.className = 'recordEntryDate';
+      label.textContent = j.used ? '問い ・ 話した' : '問い';
+      top.appendChild(label);
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'recordEntryDelete';
+      del.textContent = '消す';
+      del.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!confirm(dotDate(j.date) + 'の問い（「' + noteSnippet(j.text, 20) + '」）を消しますか？')) return;
+        deleteJournalEntry(j.id);
+        refreshAfterDayRecordChange();
+      });
+      top.appendChild(del);
+      item.appendChild(top);
+
+      const textEl = document.createElement('div');
+      textEl.className = 'questionRecordText';
+      textEl.textContent = j.text;
+      item.appendChild(textEl);
+
+      const metaParts = [QUESTION_MODE_LABEL[j.source_mode] || ''];
+      if (j.tension) metaParts.push(j.tension);
+      const meta = document.createElement('div');
+      meta.className = 'questionRecordMeta';
+      meta.textContent = metaParts.filter(Boolean).join(' ・ ');
+      item.appendChild(meta);
+      if (j.why_now) {
+        const why = document.createElement('div');
+        why.className = 'questionRecordMeta';
+        why.textContent = j.why_now;
+        item.appendChild(why);
+      }
+
+      (j.from || []).forEach((id) => {
+        const note = findNote(id);
+        if (!note) return;
+        const row = document.createElement('div');
+        row.className = 'journalCardMini drawGroupSub';
+        row.textContent = noteSnippet(note.text, 36) + (note.source ? ' ・ ' + note.source : '');
+        row.addEventListener('click', () => openDetail(note.id, 'records'));
+        item.appendChild(row);
+      });
+      wrapper.appendChild(item);
+    });
+    return wrapper;
+  }
+
   function renderDayDetail() {
     const view = document.getElementById('dayDetailView');
     if (!recordsSelectedDate) { view.hidden = true; return; }
@@ -5110,6 +5546,9 @@
       .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
       .forEach((j) => { any = true; body.appendChild(renderDayConsultCard(j)); });
 
+    const questionEntriesToday = data.journal.filter((j) => j.kind === 'question' && j.date === dateStr);
+    if (questionEntriesToday.length) { any = true; body.appendChild(renderDayQuestionCard(questionEntriesToday)); }
+
     const drawEntries = data.journal.filter((j) => j.kind === 'draw' && j.date === dateStr);
     if (drawEntries.length) { any = true; body.appendChild(renderDayDrawCard(drawEntries)); }
 
@@ -5127,6 +5566,10 @@
 
     const consultCount = data.journal.filter((j) => j.kind === 'consult' && inMonth(j.date)).length;
     document.getElementById('summaryConsultCount').textContent = `${consultCount}回`;
+
+    const monthQuestions = data.journal.filter((j) => j.kind === 'question' && inMonth(j.date));
+    const usedQuestions = monthQuestions.filter((j) => j.used).length;
+    document.getElementById('summaryQuestionCount').textContent = `${monthQuestions.length}件 / 使った ${usedQuestions}件`;
 
     // "届いた言葉" mirrors topMonthlyPickedNoteIds's own scope: morning +
     // consult picks only - 引く is something the user pulls themselves, not
@@ -5292,14 +5735,21 @@
     drawState.current = null;
     drawState.shuffling = false;
     drawState.sessionId = null;
-    document.getElementById('drawTapHint').hidden = data.notes.length === 0;
-    document.getElementById('drawModeRow').hidden = data.notes.length === 0;
+    questionState.entry = null;
+    document.getElementById('drawChoice').hidden = data.notes.length === 0;
     document.getElementById('drawShuffleText').hidden = true;
+    document.getElementById('questionSearching').hidden = true;
     document.getElementById('drawResult').hidden = true;
+    document.getElementById('questionResult').hidden = true;
+    document.getElementById('questionFooter').hidden = true;
     document.getElementById('drawLinks').innerHTML = '';
     document.getElementById('drawEmpty').hidden = data.notes.length > 0;
     document.getElementById('btnDrawToGraph').hidden = true;
+    document.getElementById('btnDrawAgain').hidden = true;
+    document.getElementById('btnQuestionAgain').hidden = true;
+    setDrawChoiceHint('');
     renderDrawModeRow();
+    renderUnusedQuestions();
   }
 
   function openDraw(centerNoteId) {
@@ -5307,8 +5757,7 @@
     syncBarEl.style.visibility = 'hidden';
     resetDrawStage();
     if (centerNoteId && findNote(centerNoteId)) {
-      document.getElementById('drawTapHint').hidden = true;
-      document.getElementById('drawModeRow').hidden = true;
+      document.getElementById('drawChoice').hidden = true;
       showDrawnNote(findNote(centerNoteId), { pop: true, record: false });
     }
   }
@@ -5326,20 +5775,15 @@
       // 'monthly' mode with nothing picked in the last 30 days yet.
       setDrawMode('all');
       renderDrawModeRow();
-      const shuffleEl = document.getElementById('drawShuffleText');
-      document.getElementById('drawTapHint').hidden = true;
-      shuffleEl.hidden = false;
-      shuffleEl.textContent = 'まだ今月の言葉がありません';
-      setTimeout(() => {
-        shuffleEl.hidden = true;
-        document.getElementById('drawTapHint').hidden = false;
-      }, 1600);
+      setDrawChoiceHint('まだ今月の言葉がありません');
+      setTimeout(() => setDrawChoiceHint(''), 1600);
       return;
     }
     drawState.shuffling = true;
     drawState.sessionId = 'ds_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-    document.getElementById('drawTapHint').hidden = true;
-    document.getElementById('drawModeRow').hidden = true;
+    document.getElementById('drawChoice').hidden = true;
+    document.getElementById('questionResult').hidden = true;
+    document.getElementById('questionFooter').hidden = true;
     document.getElementById('drawResult').hidden = true;
     document.getElementById('drawLinks').innerHTML = '';
     const shuffleEl = document.getElementById('drawShuffleText');
@@ -5373,6 +5817,7 @@
     document.getElementById('drawLinks').innerHTML = '';
     resultEl.hidden = false;
     document.getElementById('btnDrawToGraph').hidden = false;
+    document.getElementById('btnDrawAgain').hidden = false;
     if (opts.pop) {
       resultEl.classList.remove('pop');
       // eslint-disable-next-line no-unused-expressions
@@ -5421,8 +5866,13 @@
   }
 
   document.getElementById('btnOpenDraw').addEventListener('click', () => openDraw());
-  document.getElementById('drawStage').addEventListener('click', () => {
-    if (!drawState.current && !drawState.shuffling) startDrawShuffle();
+  document.getElementById('btnDrawWord').addEventListener('click', (e) => {
+    e.stopPropagation();
+    startDrawShuffle();
+  });
+  document.getElementById('btnDrawQuestion').addEventListener('click', (e) => {
+    e.stopPropagation();
+    startQuestionDraw();
   });
   attachLongPress(document.getElementById('drawResult'), () => {
     if (drawState.current) { const id = drawState.current.id; closeDraw(); openDetail(id, 'list'); }
@@ -5442,6 +5892,190 @@
     const id = drawState.current.id;
     closeDraw();
     openGraph(id);
+  });
+
+
+  // --- 問いを引く: 画面 (v3.3) --------------------------------------------
+  // Shares the 引く overlay (same black fullscreen), but with no shuffle
+  // animation - per spec a question is searched for, not dealt.
+  const questionState = { entry: null, busy: false };
+
+  function setDrawChoiceHint(msg) {
+    const el = document.getElementById('drawChoiceHint');
+    el.textContent = msg || '';
+    el.hidden = !msg;
+  }
+
+  function daysSinceDate(dateStr) {
+    return Math.round((parseDateStr(todayStr()) - parseDateStr(dateStr)) / 86400000);
+  }
+
+  // Spec: the entry screen keeps the still-unused questions in view. A
+  // question that has been sitting there for weeks is the point, so the age
+  // is shown rather than hidden.
+  function renderUnusedQuestions() {
+    const el = document.getElementById('unusedQuestions');
+    el.innerHTML = '';
+    const list = unusedQuestionEntries(5);
+    el.hidden = list.length === 0;
+    if (!list.length) return;
+    const head = document.createElement('div');
+    head.className = 'unusedQuestionHead';
+    head.textContent = 'まだ使っていない問い';
+    el.appendChild(head);
+    list.forEach((j) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'unusedQuestionItem';
+      btn.textContent = noteSnippet(j.text, 44);
+      const age = daysSinceDate(j.date);
+      const ageEl = document.createElement('span');
+      ageEl.className = 'unusedQuestionAge';
+      ageEl.textContent = age <= 0 ? '　今日' : '　' + age + '日前';
+      btn.appendChild(ageEl);
+      btn.addEventListener('click', (e) => { e.stopPropagation(); showQuestion(j, { pop: true }); });
+      el.appendChild(btn);
+    });
+  }
+
+  function renderQuestionFromCards(entry) {
+    const container = document.getElementById('questionFrom');
+    container.innerHTML = '';
+    (entry.from || []).forEach((id) => {
+      const note = findNote(id);
+      if (!note) return;
+      const card = document.createElement('div');
+      card.className = 'questionFromCard';
+      const t = document.createElement('div');
+      t.className = 'questionFromText';
+      t.textContent = note.text;
+      card.appendChild(t);
+      if (note.source) {
+        const src = document.createElement('div');
+        src.className = 'questionFromSource';
+        src.textContent = note.source;
+        card.appendChild(src);
+      }
+      if (note.myWords) {
+        const mw = document.createElement('div');
+        mw.className = 'questionFromMyWords';
+        mw.textContent = noteSnippet(note.myWords, 70);
+        card.appendChild(mw);
+      }
+      card.addEventListener('click', () => { closeDraw(); openDetail(note.id, 'list'); });
+      container.appendChild(card);
+    });
+  }
+
+  function renderQuestionUseButton(entry) {
+    const btn = document.getElementById('btnQuestionUse');
+    const note = document.getElementById('questionUsedNote');
+    btn.textContent = entry.used ? 'この問いで話した ✓' : 'この問いで話す';
+    note.hidden = !entry.used;
+    note.textContent = entry.used ? '記録に印がつきました。もう一度押すと戻せます。' : '';
+  }
+
+  function showQuestion(entry, opts) {
+    opts = opts || {};
+    clearDrawTimers();
+    drawState.current = null;
+    questionState.entry = entry;
+    document.getElementById('drawChoice').hidden = true;
+    document.getElementById('drawShuffleText').hidden = true;
+    document.getElementById('questionSearching').hidden = true;
+    document.getElementById('drawResult').hidden = true;
+    document.getElementById('drawLinks').innerHTML = '';
+    document.getElementById('btnDrawAgain').hidden = true;
+    document.getElementById('btnDrawToGraph').hidden = true;
+    document.getElementById('btnQuestionAgain').hidden = false;
+    document.getElementById('questionText').textContent = entry.text;
+    const tensionEl = document.getElementById('questionTension');
+    tensionEl.textContent = entry.tension || '';
+    tensionEl.hidden = !entry.tension;
+    const whyEl = document.getElementById('questionWhyNow');
+    whyEl.textContent = entry.why_now || '';
+    whyEl.hidden = !entry.why_now;
+    const resultEl = document.getElementById('questionResult');
+    resultEl.hidden = false;
+    if (opts.pop) {
+      resultEl.classList.remove('pop');
+      // eslint-disable-next-line no-unused-expressions
+      resultEl.offsetHeight; // force reflow so the transition re-triggers
+      resultEl.classList.add('pop');
+      setTimeout(() => resultEl.classList.remove('pop'), 260);
+    }
+    renderQuestionFromCards(entry);
+    renderQuestionUseButton(entry);
+    document.getElementById('questionFooter').hidden = false;
+  }
+
+  async function startQuestionDraw() {
+    if (questionState.busy || !data.notes.length) return;
+    if (!getClaudeApiKey()) {
+      document.getElementById('drawChoice').hidden = false;
+      setDrawChoiceHint('設定画面でClaude APIキーを入力してください。');
+      return;
+    }
+    if (isUsageOverBudget() && !confirm('上限を超えています。続けますか？')) return;
+    const materials = pickQuestionMaterials();
+    if (!materials) {
+      document.getElementById('drawChoice').hidden = false;
+      setDrawChoiceHint('問いを立てるための材料がまだ足りません。「言葉を引く」から言葉を集めてください。');
+      return;
+    }
+    questionState.busy = true;
+    setDrawChoiceHint('');
+    document.getElementById('drawChoice').hidden = true;
+    document.getElementById('drawResult').hidden = true;
+    document.getElementById('questionResult').hidden = true;
+    document.getElementById('questionFooter').hidden = true;
+    document.getElementById('drawLinks').innerHTML = '';
+    document.getElementById('btnDrawAgain').hidden = true;
+    document.getElementById('btnQuestionAgain').hidden = true;
+    document.getElementById('btnDrawToGraph').hidden = true;
+    document.getElementById('questionSearching').hidden = false;
+    try {
+      const result = await callQuestionApi(materials);
+      localStorage.setItem(LAST_QUESTION_MODE_KEY, materials.mode);
+      const iso = nowIso();
+      const entry = {
+        id: generateJournalId(), date: todayStr(), kind: 'question',
+        text: result.question, picks: [], closing: '',
+        from: result.from, why_now: result.why_now, tension: result.tension,
+        source_mode: materials.mode, used: false,
+        createdAt: iso, updatedAt: iso,
+      };
+      saveJournalEntry(entry);
+      document.getElementById('questionSearching').hidden = true;
+      showQuestion(entry, { pop: true });
+    } catch (e) {
+      document.getElementById('questionSearching').hidden = true;
+      document.getElementById('drawChoice').hidden = false;
+      setDrawChoiceHint(e && e.noKey
+        ? '設定画面でClaude APIキーを入力してください。'
+        : '問いを作れませんでした。もう一度お試しください。');
+    } finally {
+      questionState.busy = false;
+    }
+  }
+
+  document.getElementById('btnQuestionAgain').addEventListener('click', (e) => {
+    e.stopPropagation();
+    startQuestionDraw();
+  });
+
+  // Toggle rather than one-way: the mark is the user's own record of what
+  // they actually talked about, so a mis-tap has to be undoable.
+  document.getElementById('btnQuestionUse').addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!questionState.entry) return;
+    const entry = findJournalEntry(questionState.entry.id);
+    if (!entry) return;
+    entry.used = !entry.used;
+    saveJournalEntry(entry);
+    questionState.entry = entry;
+    renderQuestionUseButton(entry);
+    renderUnusedQuestions();
   });
 
   // --- Graph ("網", v3.1) -------------------------------------------------
@@ -6199,6 +6833,7 @@
     document.getElementById('claudeApiKeyInput').value = getClaudeApiKey();
     document.getElementById('claudeModelAutoLinkInput').value = getClaudeAutoLinkModel();
     document.getElementById('claudeModelChatInput').value = getClaudeChatModel();
+    document.getElementById('claudeModelQuestionInput').value = localStorage.getItem(CLAUDE_MODEL_QUESTION_KEY) || '';
     document.getElementById('usageBudgetInput').value = getUsageBudget().toFixed(2);
     document.getElementById('deviceLabelInput').value = getDeviceLabel();
     document.getElementById('autoLinkToggle').checked = getAutoLinkEnabled();
@@ -6221,6 +6856,7 @@
     document.getElementById('statUsageMonthConsult').textContent = formatUsageRow(monthUsage.consult, modelForUsageKind('consult'));
     document.getElementById('statUsageMonthSearchAgain').textContent = formatUsageRow(monthUsage.searchAgain, modelForUsageKind('searchAgain'));
     document.getElementById('statUsageMonthBulk').textContent = formatUsageRow(monthUsage.bulk, modelForUsageKind('bulk'));
+    document.getElementById('statUsageMonthQuestion').textContent = formatUsageRow(monthUsage.question, modelForUsageKind('question'));
     const monthCost = totalCostForKindStats(monthUsage);
     const budget = getUsageBudget();
     document.getElementById('statUsageMonthTotal').textContent = `約$${monthCost.toFixed(3)}（上限 $${budget.toFixed(2)} の${Math.round((monthCost / budget) * 100)}%）`;
@@ -6292,9 +6928,12 @@
     const key = document.getElementById('claudeApiKeyInput').value.trim();
     const autoLinkModel = document.getElementById('claudeModelAutoLinkInput').value.trim();
     const chatModel = document.getElementById('claudeModelChatInput').value.trim();
+    const questionModel = document.getElementById('claudeModelQuestionInput').value.trim();
     if (key) localStorage.setItem(CLAUDE_API_KEY_KEY, key); else localStorage.removeItem(CLAUDE_API_KEY_KEY);
     localStorage.setItem(CLAUDE_MODEL_AUTOLINK_KEY, autoLinkModel || DEFAULT_AUTOLINK_MODEL);
     localStorage.setItem(CLAUDE_MODEL_CHAT_KEY, chatModel || DEFAULT_CHAT_MODEL);
+    if (questionModel) localStorage.setItem(CLAUDE_MODEL_QUESTION_KEY, questionModel);
+    else localStorage.removeItem(CLAUDE_MODEL_QUESTION_KEY);
     const budget = parseFloat(document.getElementById('usageBudgetInput').value);
     localStorage.setItem(USAGE_BUDGET_KEY, String(Number.isFinite(budget) && budget > 0 ? budget : DEFAULT_USAGE_BUDGET_USD));
     setDeviceLabel(document.getElementById('deviceLabelInput').value.trim() || getDeviceLabel());
