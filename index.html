@@ -437,6 +437,8 @@
   .detailHitText { margin-top: 3px; line-height: 1.5; }
   .detailHitWhy { margin-top: 3px; color: var(--accent); font-size: 12px; }
   .drawResultHit { color: #f0c04a; font-size: 13px; margin-top: 6px; }
+  .drawResultStar { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
+  .drawResultStar .hitBtn { position: static; padding: 4px 6px; }
   .consultWhy {
     font-size: 13px;
     color: var(--accent);
@@ -1061,6 +1063,11 @@
         <button id="btnJournalMigrate" class="secondaryBtn">記録を月ファイル方式に移行</button>
         <button id="btnJournalRevert" class="secondaryBtn">記録を data.json 方式に戻す</button>
         <p class="fieldNote" id="journalMigrateStatus"></p>
+        <div class="statRow"><span>言葉の保存方式</span><span id="statNotesMode"></span></div>
+        <p class="fieldNote">「年ファイル」は言葉（ノート）を作成年ごとに kotoba-data の notes/YYYY.json に分けて置く方式です。端末には全件を持つので網・相談は変わりません。同期で送るのは触った年の分だけになります。</p>
+        <button id="btnNotesMigrate" class="secondaryBtn">言葉を年ファイル方式に移行</button>
+        <button id="btnNotesRevert" class="secondaryBtn">言葉を data.json 方式に戻す</button>
+        <p class="fieldNote" id="notesMigrateStatus"></p>
         <button id="btnClearLegacyStorage" class="secondaryBtn">古い保存形式のコピーを消す（localStorage）</button>
         <p class="fieldNote">v6 からデータは端末の IndexedDB に保存されます。localStorage に残った古いコピーは旧バージョンへ戻すときの保険です。容量が気になるときだけ消してください。</p>
         <button id="btnSyncNow" class="secondaryBtn">今すぐ同期</button>
@@ -1467,6 +1474,7 @@
         <div class="drawResultSource" id="drawResultSource"></div>
         <div class="drawResultMyWords" id="drawResultMyWords"></div>
         <div class="drawResultHit" id="drawResultHit" hidden></div>
+        <div class="drawResultStar" id="drawResultStar"></div>
       </div>
       <div id="questionResult" class="questionResult" hidden>
         <div class="questionText" id="questionText"></div>
@@ -1820,6 +1828,9 @@
       // v6.0: 'monthly' = the journal lives in journal/YYYY-MM.json files
       journalMode: parsed.journalMode === 'monthly' ? 'monthly' : 'legacy',
       journalModeAt: typeof parsed.journalModeAt === 'string' ? parsed.journalModeAt : '',
+      // v7.2: 'yearly' = notes live in notes/YYYY.json files (by creation year)
+      notesMode: parsed.notesMode === 'yearly' ? 'yearly' : 'legacy',
+      notesModeAt: typeof parsed.notesModeAt === 'string' ? parsed.notesModeAt : '',
     };
   }
 
@@ -1875,6 +1886,186 @@
   const bootKV = { months: {} };
   for (const k of ['data', 'dataBackup', 'walk', 'walkBackup', 'training', 'journalIndex', 'journalDirty']) { try { bootKV[k] = await kvGet(k); } catch (e) { bootKV[k] = null; } }
   for (const m of liveJournalMonths()) { try { bootKV.months[m] = await kvGet('journal:' + m); } catch (e) { bootKV.months[m] = null; } }
+  bootKV.noteYears = {};
+  try { for (const k of await kvKeys('notes:')) bootKV.noteYears[k.slice(6)] = await kvGet(k); } catch (e) {}
+  for (const k of ['notesDirty', 'notesStamps']) { try { bootKV[k] = await kvGet(k); } catch (e) { bootKV[k] = null; } }
+
+  // --- 言葉の年ファイル (v7.2) ------------------------------------------------
+  // Legacy mode: notes are an array inside data.json. Yearly mode:
+  // notes/YYYY.json per creation year (+ notes/index.json with one row per
+  // year) in kotoba-data. The device keeps EVERY year in kv (`notes:YYYY`)
+  // and in memory (data.notes), so 網・相談 keep their whole-set view; only
+  // the years touched since the last sync are written back.
+  const NOTES_INDEX_PATH = 'notes/index.json';
+  const notesYearPath = (y) => 'notes/' + y + '.json';
+  const nm = { dirty: new Set(), stamps: {}, yearJson: {}, busy: false };
+  function notesYearly() { return data.notesMode === 'yearly'; }
+  function yearOfNote(n) { const c = (n && n.createdAt) || ''; if (/^\d{4}/.test(c)) return c.slice(0, 4); return yearOfNoteId(n && n.id) || todayStr().slice(0, 4); }
+  function yearOfNoteId(id) { const m = /^n_(\d{4})\d{4}_/.exec(String(id || '')); return m ? m[1] : null; }
+  function emptyNotesIndex() { return { version: 1, updatedAt: '', years: {} }; }
+  function normalizeNotesIndex(raw) {
+    const out = emptyNotesIndex();
+    if (!raw || typeof raw !== 'object' || !raw.years || typeof raw.years !== 'object') return out;
+    out.updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : '';
+    Object.entries(raw.years).forEach(([y, v]) => { if (/^\d{4}$/.test(y) && v && typeof v === 'object') out.years[y] = { updatedAt: typeof v.updatedAt === 'string' ? v.updatedAt : '', count: Number(v.count) || 0 }; });
+    return out;
+  }
+  function emptyYearDoc(y) { return { version: 1, year: y, updatedAt: '', notes: [], deletedIds: [] }; }
+  function normalizeYearDoc(raw, y) {
+    const out = emptyYearDoc(y);
+    if (!raw || typeof raw !== 'object') return out;
+    out.updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : '';
+    out.notes = (Array.isArray(raw.notes) ? raw.notes : []).filter((n) => n && n.id).map(normalizeNote);
+    out.deletedIds = (Array.isArray(raw.deletedIds) ? raw.deletedIds : []).filter((t) => t && t.id).map((t) => ({ id: String(t.id), deletedAt: t.deletedAt || nowIso() }));
+    return out;
+  }
+  function notesYearDoc(d, y) {
+    return { version: 1, year: y, updatedAt: nowIso(), notes: d.notes.filter((n) => yearOfNote(n) === y), deletedIds: (d.deletedIds || []).filter((t) => (yearOfNoteId(t.id) || todayStr().slice(0, 4)) === y) };
+  }
+  function yearDocBody(doc) { return JSON.stringify({ notes: doc.notes, deletedIds: doc.deletedIds }); }
+  function notesYearsOf(d) { const ys = new Set(); d.notes.forEach((n) => ys.add(yearOfNote(n))); (d.deletedIds || []).forEach((t) => ys.add(yearOfNoteId(t.id) || todayStr().slice(0, 4))); Object.keys(nm.yearJson).forEach((y) => ys.add(y)); return [...ys].sort(); }
+  function persistNotesDirty() { return kvSet('notesDirty', JSON.stringify([...nm.dirty])).catch(() => {}); }
+  function persistNotesStamps() { return kvSet('notesStamps', JSON.stringify(nm.stamps)).catch(() => {}); }
+  // write every year whose content differs from what is in kv (cheap diff on the JSON), and mark it for sync
+  function persistNoteYears(d) {
+    let changed = false;
+    notesYearsOf(d).forEach((y) => {
+      const doc = notesYearDoc(d, y);
+      const body = yearDocBody(doc);
+      if (nm.yearJson[y] === body) return;
+      nm.yearJson[y] = body;
+      kvSet('notes:' + y, JSON.stringify(doc)).catch(() => { localSaveError = '端末の保存に失敗しました（クラウドには同期します）'; recordSyncError(LAST_SYNC_ERROR_KEY, localSaveError); });
+      nm.dirty.add(y); changed = true;
+    });
+    if (changed) persistNotesDirty();
+  }
+  // boot: lay the cached year files over whatever data.json still carried
+  function notesBoot() {
+    if (!notesYearly()) return;
+    try { JSON.parse(bootKV.notesDirty || '[]').forEach((y) => nm.dirty.add(y)); } catch (e) {}
+    try { nm.stamps = JSON.parse(bootKV.notesStamps || '{}') || {}; } catch (e) { nm.stamps = {}; }
+    let notes = [], deleted = [];
+    Object.entries(bootKV.noteYears || {}).forEach(([y, raw]) => { try { const doc = normalizeYearDoc(JSON.parse(raw), y); notes = notes.concat(doc.notes); deleted = deleted.concat(doc.deletedIds); nm.yearJson[y] = yearDocBody(doc); } catch (e) {} });
+    const stray = mergeNoteSets(notes, deleted, data.notes, data.deletedIds || []);
+    data.notes = stray.notes; data.deletedIds = stray.deleted;
+    persistNoteYears(data);   // anything data.json carried beyond the year files becomes dirty here
+  }
+  function yearSignature(doc) { return doc.notes.map((n) => n.id + ':' + n.updatedAt).sort().join('|') + '#' + doc.deletedIds.map((t) => t.id + ':' + t.deletedAt).sort().join('|'); }
+  async function syncNotesYear(token, y, attempt) {
+    const remote = await ghGetContents(GITHUB_REPO, notesYearPath(y), token);
+    let rdoc = emptyYearDoc(y);
+    try { if (remote.text) rdoc = normalizeYearDoc(JSON.parse(remote.text), y); } catch (e) {}
+    const local = notesYearDoc(data, y);
+    const ms = mergeNoteSets(local.notes, local.deletedIds, rdoc.notes, rdoc.deletedIds);
+    const merged = { version: 1, year: y, updatedAt: nowIso(), notes: ms.notes, deletedIds: ms.deleted };
+    // put the merged year back into memory (other years untouched)
+    const alive = new Set(merged.notes.map((n) => n.id));
+    data.notes = data.notes.filter((n) => yearOfNote(n) !== y).concat(merged.notes);
+    data.deletedIds = (data.deletedIds || []).filter((t) => (yearOfNoteId(t.id) || todayStr().slice(0, 4)) !== y).concat(merged.deletedIds);
+    data.trash = (data.trash || []).filter((n) => !alive.has(n.id));
+    nm.yearJson[y] = yearDocBody(merged);
+    await kvSet('notes:' + y, JSON.stringify(merged)).catch(() => {});
+    const isEmpty = !merged.notes.length && !merged.deletedIds.length;
+    if ((!remote.text && !isEmpty) || (remote.text && yearSignature(rdoc) !== yearSignature(merged))) {
+      try { await ghPutJson(notesYearPath(y), merged, remote.sha, `notes ${y}: ${merged.notes.length} notes`); }
+      catch (e) { if (e.status === 409 && !attempt) return syncNotesYear(token, y, 1); throw e; }
+    }
+    nm.dirty.delete(y);
+    return { changed: yearSignature(rdoc) !== yearSignature(merged), count: merged.notes.length };
+  }
+  function mergeNotesIndex(a, b) {
+    const out = emptyNotesIndex();
+    new Set([...Object.keys(a.years), ...Object.keys(b.years)]).forEach((y) => { const x = a.years[y], z = b.years[y]; out.years[y] = (x && z) ? ((z.updatedAt > x.updatedAt) ? z : x) : (x || z); });
+    out.updatedAt = a.updatedAt > b.updatedAt ? a.updatedAt : b.updatedAt;
+    return out;
+  }
+  async function notesSyncNow(token) {
+    if (nm.busy) return;
+    nm.busy = true;
+    try {
+      const ri = await ghGetContents(GITHUB_REPO, NOTES_INDEX_PATH, token);
+      let remoteIndex = emptyNotesIndex();
+      try { if (ri.text) remoteIndex = normalizeNotesIndex(JSON.parse(ri.text)); } catch (e) {}
+      const localIndex = emptyNotesIndex();
+      Object.keys(nm.yearJson).forEach((y) => { localIndex.years[y] = { updatedAt: nm.stamps[y] || '', count: data.notes.filter((n) => yearOfNote(n) === y).length }; });
+      // years to touch: edited here, unknown here, or changed elsewhere since last seen
+      const years = new Set([...nm.dirty]);
+      Object.entries(remoteIndex.years).forEach(([y, row]) => { if (!(y in nm.yearJson) || row.updatedAt !== (nm.stamps[y] || '')) years.add(y); });
+      let indexChanged = false;
+      const index = mergeNotesIndex(localIndex, remoteIndex);
+      for (const y of [...years].sort()) {
+        const r = await syncNotesYear(token, y);
+        const prev = index.years[y];
+        if (r.changed || !prev) { index.years[y] = { updatedAt: nowIso(), count: r.count }; indexChanged = true; }
+        nm.stamps[y] = index.years[y].updatedAt;
+      }
+      persistNotesDirty(); persistNotesStamps();
+      if (years.size) refreshCurrentScreen();
+      const sig = (ix) => JSON.stringify(Object.keys(ix.years).sort().map((y) => [y, ix.years[y].updatedAt]));
+      if (indexChanged || sig(index) !== sig(remoteIndex)) {
+        index.updatedAt = nowIso();
+        try { await ghPutJson(NOTES_INDEX_PATH, index, ri.sha, 'notes index'); }
+        catch (e) { if (e.status !== 409) throw e; const ri2 = await ghGetContents(GITHUB_REPO, NOTES_INDEX_PATH, token); let r2 = emptyNotesIndex(); try { if (ri2.text) r2 = normalizeNotesIndex(JSON.parse(ri2.text)); } catch (e2) {} await ghPutJson(NOTES_INDEX_PATH, mergeNotesIndex(index, r2), ri2.sha, 'notes index'); }
+      }
+    } finally { nm.busy = false; }
+  }
+  function notesMigrationStatus(text) { const el = document.getElementById('notesMigrateStatus'); if (el) el.textContent = text; }
+  async function migrateNotesToYearly() {
+    const token = getGhToken();
+    if (!token) { alert('同期トークンが必要です'); return; }
+    if (!navigator.onLine) { alert('オンラインで実行してください'); return; }
+    if (notesYearly()) { alert('すでに年ファイル方式です'); return; }
+    if (!confirm('言葉（ノート）を作成年ごとのファイルに移します。先に kotoba-data のバックアップを取りましたか？')) return;
+    if (!confirm('移行を始めます。完了まで画面を閉じないでください。')) return;
+    try {
+      notesMigrationStatus('最新の状態を取得中…');
+      await syncNow();
+      if (noteSyncState === 'error') throw new Error('同期に失敗したため中止しました');
+      nm.dirty = new Set(); nm.stamps = {}; nm.yearJson = {};
+      const years = notesYearsOf(data);
+      const index = emptyNotesIndex();
+      let i = 0;
+      for (const y of years) {
+        i++;
+        notesMigrationStatus(`年ファイルを書き込み中 ${i}/${years.length}（${y}）`);
+        const r = await syncNotesYear(token, y);
+        index.years[y] = { updatedAt: nowIso(), count: r.count };
+        nm.stamps[y] = index.years[y].updatedAt;
+      }
+      notesMigrationStatus('索引を書き込み中…');
+      index.updatedAt = nowIso();
+      const ri = await ghGetContents(GITHUB_REPO, NOTES_INDEX_PATH, token);
+      await ghPutJson(NOTES_INDEX_PATH, index, ri.sha, 'notes index (migrated)');
+      await persistNotesStamps(); await persistNotesDirty();
+      data.notesMode = 'yearly'; data.notesModeAt = nowIso();
+      persistLocal(data);
+      notesMigrationStatus('data.json を更新中…');
+      await hardPushCurrentData();
+      notesMigrationStatus('移行が完了しました（' + years.length + ' 年分）');
+      openSettings();
+    } catch (e) {
+      notesMigrationStatus('移行に失敗しました: ' + (e.message || e) + '。data.json は変更していないので、そのまま使えます。');
+    }
+  }
+  async function revertNotesToLegacy() {
+    const token = getGhToken();
+    if (!token) { alert('同期トークンが必要です'); return; }
+    if (!navigator.onLine) { alert('オンラインで実行してください'); return; }
+    if (!notesYearly()) { alert('すでに data.json 方式です'); return; }
+    if (!confirm('言葉をすべて data.json に書き戻し、年ファイル方式をやめます。よろしいですか？')) return;
+    try {
+      notesMigrationStatus('年ファイルを取得中…');
+      await notesSyncNow(token);   // pulls every year listed in the index into memory
+      data.notesMode = 'legacy'; data.notesModeAt = nowIso();
+      persistLocal(data);
+      notesMigrationStatus('data.json に書き戻し中…');
+      await hardPushCurrentData();
+      notesMigrationStatus('data.json 方式に戻しました（言葉 ' + data.notes.length + ' 枚）。年ファイルは残っていますが使われません。');
+      openSettings();
+    } catch (e) {
+      notesMigrationStatus('戻しに失敗しました: ' + (e.message || e));
+    }
+  }
 
   // Primary key holds the live copy; the backup key is only overwritten right
   // after a confirmed-successful sync, so a corrupt primary can be recovered
@@ -1912,6 +2103,7 @@
   const BACKUP_MAX_CHARS = 1000000;
   let localSaveError = '';
   function persistLocal(d) {
+    if (d && d.notesMode === 'yearly') persistNoteYears(d);
     let json;
     try { json = JSON.stringify(dataForStorage(d)); } catch (e) { return; }
     kvSet('data', json).then(() => { localSaveError = ''; }).catch(() => {
@@ -1922,7 +2114,13 @@
   }
   // In monthly journal mode the journal is not part of data.json / the
   // 'data' record: months live in their own files (see 記録の月ファイル).
-  function dataForStorage(d) { return (d && d.journalMode === 'monthly') ? Object.assign({}, d, { journal: [], deletedJournalIds: [] }) : d; }
+  function dataForStorage(d) {
+    if (!d) return d;
+    let out = d;
+    if (d.journalMode === 'monthly') out = Object.assign({}, out, { journal: [], deletedJournalIds: [] });
+    if (d.notesMode === 'yearly') out = Object.assign({}, out, { notes: [], deletedIds: [] });
+    return out;
+  }
   // The second copy is a safety net against a corrupt primary; once the
   // data is big it costs more (half the quota) than it protects, so it is
   // only kept below BACKUP_MAX_CHARS - the repo is the backup after that.
@@ -2072,43 +2270,29 @@
     merged.forEach((_, id) => deleted.delete(id));
     return { entries: [...merged.values()], deleted: [...deleted.entries()].map(([id, deletedAt]) => ({ id, deletedAt })) };
   }
-  function mergeData(a, b) {
-    const notesA = new Map(a.notes.map((n) => [n.id, n]));
-    const notesB = new Map(b.notes.map((n) => [n.id, n]));
-    const delA = new Map((a.deletedIds || []).map((d) => [d.id, d.deletedAt]));
-    const delB = new Map((b.deletedIds || []).map((d) => [d.id, d.deletedAt]));
-
-    const allIds = new Set([...notesA.keys(), ...notesB.keys()]);
-    const mergedNotes = new Map();
-
-    allIds.forEach((id) => {
-      const na = notesA.get(id);
-      const nb = notesB.get(id);
+  // per-note union: later updatedAt wins; a tombstone beats a note only if
+  // it is newer than the note's last edit (shared with the year files)
+  function mergeNoteSets(notesA, deletedA, notesB, deletedB) {
+    const mA = new Map(notesA.map((n) => [n.id, n])), mB = new Map(notesB.map((n) => [n.id, n]));
+    const delA = new Map(deletedA.map((d) => [d.id, d.deletedAt])), delB = new Map(deletedB.map((d) => [d.id, d.deletedAt]));
+    const merged = new Map();
+    new Set([...mA.keys(), ...mB.keys()]).forEach((id) => {
+      const na = mA.get(id), nb = mB.get(id);
       let winner;
-      if (na && nb) {
-        winner = new Date(na.updatedAt) >= new Date(nb.updatedAt) ? na : nb;
-      } else {
-        const only = na || nb;
-        const tombstoneAt = na ? delB.get(id) : delA.get(id);
-        winner = (tombstoneAt && new Date(tombstoneAt) >= new Date(only.updatedAt)) ? null : only;
-      }
-      if (winner) {
-        mergedNotes.set(id, {
-          ...winner,
-          tags: [...winner.tags],
-          links: winner.links.map((l) => ({ ...l })),
-          rejectedLinks: [...(winner.rejectedLinks || [])],
-        });
-      }
+      if (na && nb) winner = new Date(na.updatedAt) >= new Date(nb.updatedAt) ? na : nb;
+      else { const only = na || nb; const tombstoneAt = na ? delB.get(id) : delA.get(id); winner = (tombstoneAt && new Date(tombstoneAt) >= new Date(only.updatedAt)) ? null : only; }
+      if (winner) merged.set(id, { ...winner, tags: [...winner.tags], links: winner.links.map((l) => ({ ...l })), rejectedLinks: [...(winner.rejectedLinks || [])] });
     });
-
-    const mergedDeleted = new Map();
-    delA.forEach((at, id) => mergedDeleted.set(id, at));
-    delB.forEach((at, id) => {
-      const cur = mergedDeleted.get(id);
-      if (!cur || new Date(at) > new Date(cur)) mergedDeleted.set(id, at);
-    });
-    mergedNotes.forEach((_, id) => mergedDeleted.delete(id));
+    const deleted = new Map();
+    delA.forEach((at, id) => deleted.set(id, at));
+    delB.forEach((at, id) => { const cur = deleted.get(id); if (!cur || new Date(at) > new Date(cur)) deleted.set(id, at); });
+    merged.forEach((_, id) => deleted.delete(id));
+    return { notes: [...merged.values()], deleted: [...deleted.entries()].map(([id, deletedAt]) => ({ id, deletedAt })) };
+  }
+  function mergeData(a, b) {
+    const ns = mergeNoteSets(a.notes, a.deletedIds || [], b.notes, b.deletedIds || []);
+    const mergedNotes = new Map(ns.notes.map((n) => [n.id, n]));
+    const mergedDeleted = new Map(ns.deleted.map((d) => [d.id, d.deletedAt]));
 
     // trash (v3.5): union by id, the later deletedAt wins. A note that is
     // alive in the merged notes was restored somewhere and so is not trash;
@@ -2175,6 +2359,9 @@
     const modeA = { mode: a.journalMode || 'legacy', at: a.journalModeAt || '' }, modeB = { mode: b.journalMode || 'legacy', at: b.journalModeAt || '' };
     const modeW = modeB.at > modeA.at ? modeB : modeA;
     merged.journalMode = modeW.mode; merged.journalModeAt = modeW.at;
+    const nA = { mode: a.notesMode || 'legacy', at: a.notesModeAt || '' }, nB = { mode: b.notesMode || 'legacy', at: b.notesModeAt || '' };
+    const nW = nB.at > nA.at ? nB : nA;
+    merged.notesMode = nW.mode; merged.notesModeAt = nW.at;
     pruneDanglingLinks(merged);
     return merged;
   }
@@ -2204,17 +2391,28 @@
   function utf8ToBase64(str) { return btoa(unescape(encodeURIComponent(str))); }
   function base64ToUtf8(b64) { return decodeURIComponent(escape(atob(b64.replace(/\n/g, '')))); }
   function ghHeaders(token) { return { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' }; }
+  // Every GitHub call goes through here so a stalled mobile connection turns
+  // into an error (and a retry on the next sync) instead of a sync bar stuck
+  // on 同期中… for minutes.
+  const GH_TIMEOUT_MS = 30000;
+  async function ghFetch(url, opts) {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), GH_TIMEOUT_MS);
+    try { return await fetch(url, Object.assign({}, opts || {}, { signal: ctl.signal })); }
+    catch (e) { if (e && e.name === 'AbortError') { const err = new Error('GitHub timeout'); err.status = 0; throw err; } throw e; }
+    finally { clearTimeout(t); }
+  }
   // GET of one file as text + sha. The Contents API only inlines files up to
   // 1 MB; beyond that the object form still carries the sha and the raw
   // media type carries the bytes (up to 100 MB), so this reads both ways.
   async function ghGetContents(repo, path, token) {
     const url = `https://api.github.com/repos/${GITHUB_OWNER}/${repo}/contents/${path}`;
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.object+json' }, cache: 'no-store' });
+    const res = await ghFetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.object+json' }, cache: 'no-store' });
     if (res.status === 404) return { text: null, sha: null, size: 0 };
     if (!res.ok) { const err = new Error('GitHub GET failed: ' + res.status); err.status = res.status; throw err; }
     const json = await res.json();
     if (json.content && json.encoding === 'base64') return { text: base64ToUtf8(json.content), sha: json.sha, size: json.size || 0 };
-    const raw = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.raw+json' }, cache: 'no-store' });
+    const raw = await ghFetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.raw+json' }, cache: 'no-store' });
     if (!raw.ok) { const err = new Error('GitHub GET(raw) failed: ' + raw.status); err.status = raw.status; throw err; }
     return { text: await raw.text(), sha: json.sha, size: json.size || 0 };
   }
@@ -2231,7 +2429,7 @@
       content: utf8ToBase64(JSON.stringify(dataForStorage(newData), null, 2)),
     };
     if (sha) body.sha = sha;
-    const res = await fetch(
+    const res = await ghFetch(
       `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_PATH}`,
       { method: 'PUT', headers: ghHeaders(token), body: JSON.stringify(body) }
     );
@@ -2381,6 +2579,7 @@
         await pushWithConflictRetry(token, remote.sha);
         backupData(data);
       }
+      if (notesYearly()) await notesSyncNow(token);
       if (journalMonthly()) await journalSyncNow(token);
       localStorage.setItem(LAST_SYNC_KEY, nowIso());
       pendingChangeCount = 0;
@@ -2474,7 +2673,7 @@
       content: utf8ToBase64(JSON.stringify(newData, null, 2)),
     };
     if (sha) body.sha = sha;
-    const res = await fetch(
+    const res = await ghFetch(
       `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO_WALK}/contents/${GITHUB_PATH}`,
       { method: 'PUT', headers: ghHeaders(token), body: JSON.stringify(body) }
     );
@@ -3145,7 +3344,7 @@
   async function ghPutJson(path, obj, sha, message) {
     const body = { message, content: utf8ToBase64(JSON.stringify(obj, null, 1)) };
     if (sha) body.sha = sha;
-    const res = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${path}`, { method: 'PUT', headers: ghHeaders(getGhToken()), body: JSON.stringify(body) });
+    const res = await ghFetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${path}`, { method: 'PUT', headers: ghHeaders(getGhToken()), body: JSON.stringify(body) });
     if (!res.ok) { const err = new Error('GitHub PUT failed: ' + res.status); err.status = res.status; throw err; }
     return res.json();
   }
@@ -3338,15 +3537,16 @@
     const cutoff = addDays(todayStr(), -HIT_TUNING.windowDays);
     const picks = new Map(), hits = new Map();
     data.journal.forEach((j) => {
-      if ((j.kind !== 'morning' && j.kind !== 'consult') || j.date < cutoff) return;
+      if (j.date < cutoff) return;
+      const delivered = j.kind === 'morning' || j.kind === 'consult';
       const d = hitDecay(j.date);
       j.picks.forEach((p) => {
-        picks.set(p.id, (picks.get(p.id) || 0) + d);
-        if (p.hit) hits.set(p.id, (hits.get(p.id) || 0) + d);
+        if (delivered) picks.set(p.id, (picks.get(p.id) || 0) + d);
+        if (p.hit) hits.set(p.id, (hits.get(p.id) || 0) + d);   // a ★ on 引く counts too
       });
     });
     const out = new Map();
-    picks.forEach((v, id) => { if (findNote(id)) out.set(id, v + HIT_TUNING.hitVsPick * Math.log2(1 + (hits.get(id) || 0))); });
+    new Set([...picks.keys(), ...hits.keys()]).forEach((id) => { if (findNote(id)) out.set(id, (picks.get(id) || 0) + HIT_TUNING.hitVsPick * Math.log2(1 + (hits.get(id) || 0))); });
     return out;
   }
   function noteWeight(noteId) { return noteWeightsInWindow().get(noteId) || 0; }
@@ -6471,7 +6671,7 @@
       row.className = 'detailHitRow';
       const head = document.createElement('div');
       head.className = 'detailHitHead';
-      head.textContent = dotDate(e.date) + '　' + (e.kind === 'morning' ? '朝' + (e.mood != null ? ' ' + MOOD_EMOJI[e.mood] : '') : e.kind === 'consult' ? '相談' : e.kind);
+      head.textContent = dotDate(e.date) + '　' + (e.kind === 'morning' ? '朝' + (e.mood != null ? ' ' + MOOD_EMOJI[e.mood] : '') : e.kind === 'consult' ? '相談' : e.kind === 'draw' ? '引く' : e.kind === 'question' ? '問い' : e.kind);
       row.appendChild(head);
       if (e.text) { const t = document.createElement('div'); t.className = 'detailHitText'; t.textContent = noteSnippet(e.text, 80); row.appendChild(t); }
       if (e.why) { const w = document.createElement('div'); w.className = 'detailHitWhy'; w.textContent = e.why; row.appendChild(w); }
@@ -6858,7 +7058,7 @@
   async function ghPutTrainingFile(token, newData, sha) {
     const body = { message: `training: ${newData.days.length} days`, content: utf8ToBase64(JSON.stringify(newData, null, 2)) };
     if (sha) body.sha = sha;
-    const res = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${TRAINING_PATH}`, { method: 'PUT', headers: ghHeaders(token), body: JSON.stringify(body) });
+    const res = await ghFetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${TRAINING_PATH}`, { method: 'PUT', headers: ghHeaders(token), body: JSON.stringify(body) });
     if (!res.ok) { const err = new Error('GitHub PUT failed: ' + res.status); err.status = res.status; throw err; }
     return res.json();
   }
@@ -8791,10 +8991,12 @@
 
   function recordDrawPick(note) {
     const iso = nowIso();
-    saveJournalEntry({
+    drawState.lastJournalId = null;
+    const entry = saveJournalEntry({
       id: generateJournalId(), date: todayStr(), kind: 'draw', text: '', picks: [{ id: note.id }], closing: '',
       createdAt: iso, updatedAt: iso, sessionId: drawState.sessionId,
     });
+    drawState.lastJournalId = entry.id;
   }
 
   function clearDrawTimers() {
@@ -8900,6 +9102,9 @@
       setTimeout(() => resultEl.classList.remove('pop'), 260);
     }
     if (opts.record) recordDrawPick(note);
+    // ★ for this draw (only when the draw itself was recorded)
+    { const row = document.getElementById('drawResultStar'); row.innerHTML = ''; const jid = drawState.lastJournalId; const j = jid ? findJournalEntry(jid) : null;
+      if (j && j.picks.some((p) => p.id === note.id)) { row.appendChild(makeHitButton(jid, note.id, () => { const hs = journalHitStatsForNote(note.id); const el = document.getElementById('drawResultHit'); el.hidden = !hs.count; if (hs.count) el.textContent = '★ 刺さった ' + hs.count + '回（直近 ' + dotDate(hs.lastDate) + '）'; })); const lab = document.createElement('span'); lab.className = 'fieldNote'; lab.textContent = '刺さった'; row.appendChild(lab); } }
     drawState.revealTimer = setTimeout(() => revealDrawLinks(note), 2000);
   }
 
@@ -10044,6 +10249,9 @@
     document.getElementById('statJournalMode').textContent = journalMonthly() ? `月ファイル（${jm.index ? Object.keys(jm.index.months).length : 0} か月、読み込み中 ${jm.loaded.size} か月）` : 'data.json（旧方式）';
     document.getElementById('btnJournalMigrate').hidden = journalMonthly();
     document.getElementById('btnJournalRevert').hidden = !journalMonthly();
+    document.getElementById('statNotesMode').textContent = notesYearly() ? `年ファイル（${Object.keys(nm.yearJson).length} 年分、未同期 ${nm.dirty.size}）` : 'data.json（旧方式）';
+    document.getElementById('btnNotesMigrate').hidden = notesYearly();
+    document.getElementById('btnNotesRevert').hidden = !notesYearly();
     if (navigator.storage && navigator.storage.estimate) navigator.storage.estimate().then((est) => { const el = document.getElementById('statDataSizeNote'); if (el && est && est.usage != null) el.textContent = el.textContent + `　／　IndexedDB 使用量 約 ${fmtBytes(est.usage)}` + (est.quota ? `（上限の目安 ${fmtBytes(est.quota)}）` : ''); }).catch(() => {});
     const noteErr = getSyncError(LAST_SYNC_ERROR_KEY);
     const walkErr = getSyncError(WALK_LAST_SYNC_ERROR_KEY);
@@ -10272,6 +10480,8 @@
   });
 
   document.getElementById('btnJournalMigrate').addEventListener('click', () => migrateJournalToMonthly());
+  document.getElementById('btnNotesMigrate').addEventListener('click', () => migrateNotesToYearly());
+  document.getElementById('btnNotesRevert').addEventListener('click', () => revertNotesToLegacy());
   document.getElementById('btnJournalRevert').addEventListener('click', () => revertJournalToLegacy());
   document.getElementById('btnClearLegacyStorage').addEventListener('click', () => {
     if (!confirm('localStorage に残っている古い形式のコピー（言葉・散歩・筋トレ）を消します。IndexedDB のデータはそのままです。よろしいですか？')) return;
@@ -10353,6 +10563,7 @@
   });
 
   // --- boot ---------------------------------------------------------------
+  notesBoot();
   journalBoot();
   goHome();
   syncAllNow();
