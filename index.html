@@ -656,11 +656,15 @@
   .questionRecordText { font-size: 15px; line-height: 1.8; }
   .questionRecordMeta { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
 
-  /* --- v3.6: 網 = 遠い対立 (concentric cards, no physics) ----------- */
+  /* --- v3.6: 網 = 遠い対立 (concentric cards, pan + pinch, no physics) -- */
   .graphTitle { font-size: 13px; color: var(--text-dim); flex: 1; }
   .graphControls { display: flex; gap: 8px; flex-wrap: wrap; flex-shrink: 0; padding: 6px 0 8px; }
-  .graphViewport { flex: 1; min-height: 44vh; overflow: auto; -webkit-overflow-scrolling: touch; position: relative; border-radius: 12px; background: #0b0b0b; }
-  .graphStage { position: relative; }
+  .graphViewport {
+    flex: 1; min-height: 44vh; position: relative; overflow: hidden; border-radius: 12px; background: #0b0b0b;
+    touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab;
+  }
+  .graphViewport.dragging { cursor: grabbing; }
+  .graphStage { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
   .graphSvg { position: absolute; left: 0; top: 0; pointer-events: none; }
   .graphCard {
     position: absolute; width: 104px; box-sizing: border-box;
@@ -670,18 +674,8 @@
   .graphCard.center { border-color: var(--accent); background: #1c2620; }
   .graphCard .gcText { font-size: 12px; line-height: 1.45; }
   .graphCard .gcSource { font-size: 10px; color: var(--text-faint); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  /* narrow screens: a list instead of the picture */
-  .graphList { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
-  .graphListRow {
-    display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start;
-    background: var(--bg-card); border-radius: 10px; padding: 9px 12px; cursor: pointer; user-select: none; -webkit-user-select: none;
-  }
-  .graphListRow.center { border: 1px solid var(--accent); background: #1c2620; grid-template-columns: 1fr; }
-  .graphListRow.hop2 { margin-left: 22px; background: #141414; }
-  .graphListRow .glRel { font-size: 11px; white-space: nowrap; padding-top: 3px; min-width: 2.2em; }
-  .graphListRow .glText { font-size: 14px; line-height: 1.5; }
-  .graphListRow .glSource { font-size: 11px; color: var(--text-faint); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .graphFar { flex-shrink: 0; max-height: 36vh; overflow-y: auto; padding: 10px 0 calc(8px + env(safe-area-inset-bottom)); }
+  .graphHint { position: absolute; right: 10px; bottom: 8px; font-size: 10px; color: var(--text-faint); pointer-events: none; }
+  .graphFar { flex-shrink: 0; padding: 10px 0 calc(8px + env(safe-area-inset-bottom)); }
   .graphFarHead { font-size: 11px; color: var(--text-faint); letter-spacing: .06em; margin-bottom: 6px; }
   .graphFarGroup { margin-bottom: 10px; }
   .graphFarGroupHead {
@@ -695,11 +689,9 @@
     font-size: 13px; line-height: 1.5; cursor: pointer; user-select: none; -webkit-user-select: none;
   }
   .graphFarRow .gfRel { font-size: 10px; white-space: nowrap; padding-top: 3px; min-width: 2.2em; }
-  /* phones: no nested scroll areas - iOS Safari collapses a flex:1 + overflow:auto child
-     inside a fixed flex column unreliably. The overlay itself scrolls as one page. */
+  /* phones: the picture takes ~60% of the screen, everything else is one page scroll */
   @media (max-width: 599px) {
-    .graphList { flex: none; overflow: visible; min-height: 0; }
-    .graphFar { max-height: none; overflow: visible; }
+    .graphViewport { flex: none; height: 60vh; min-height: 0; }
     .graphFarGroupHead { font-size: 12px; }
   }
 </style>
@@ -1308,8 +1300,8 @@
         <svg id="graphSvg" class="graphSvg"></svg>
         <div id="graphCards"></div>
       </div>
+      <div class="graphHint">ドラッグで移動 ・ ピンチ／ホイールで拡大</div>
     </div>
-    <div id="graphList" class="graphList" hidden></div>
     <div id="graphFar" class="graphFar">
       <div class="graphFarHead">遠い対立 — 経由する言葉ごと</div>
       <div id="graphFarList"></div>
@@ -6750,30 +6742,34 @@
     renderUnusedQuestions();
   });
 
-  // --- 網 ("遠い対立", v3.6.1) -------------------------------------------
-  // One note in the middle. Opens with only the first ring (capped at 8,
-  // 対立 > 補足 > 似 > 手動); 「遠い対立を広げる」 adds the second ring - only
-  // notes reached by a path whose relation changes at the middle note. On
-  // narrow screens the picture is replaced by a list (iPhone reads, PC
-  // looks). Below either: the far oppositions grouped by the note they go
-  // through.
+  // --- 網 ("遠い対立", v3.6.2) -------------------------------------------
+  // One picture on every width. Cards keep their size; the stage is what
+  // moves: a translate+scale transform driven by one-finger/mouse pan,
+  // two-finger pinch, and the wheel. Opening fits the first ring into view
+  // (down to a floor - past that the center wins and the rest is panned
+  // to); expanding keeps the center where it is and lets the outer ring
+  // grow past the edge. Below the picture the page scrolls normally.
   const GRAPH_RELATION_COLOR = { similar: '#8fb39b', opposite: '#d1837a', supplement: '#86a9c9', manual: '#6f6a60' };
   const GRAPH_REL_ORDER = { opposite: 0, supplement: 1, similar: 2, manual: 3 };
-  const GRAPH_RING1_CAP = 8;
   const GRAPH_FAR_GROUPS = 3;
   const GRAPH_NARROW_PX = 600;
   const GRAPH_CARD_W = 104;
+  // FIT_FLOOR: opening never shrinks the picture below this - cards stay readable
+  // and whatever does not fit is panned to.
+  const GRAPH_SCALE_MIN = 0.35, GRAPH_SCALE_MAX = 2.5, GRAPH_FIT_FLOOR = 0.8;
+  const GRAPH_TAP_SLOP = 8; // screen px a pointer may move and still count as a tap
   const graphState = { centerId: null, expanded: false, showAll1: false, farAll: false };
+  const graphView = { s: 1, tx: 0, ty: 0, half: 0 };
 
   function graphSnippet(n, max) { return noteSnippet(n.text || n.myWords || '', max || 15); }
   function graphIsNarrow() { return window.innerWidth < GRAPH_NARROW_PX; }
+  function graphRing1Cap() { return graphIsNarrow() ? 6 : 8; }
 
-  // What this screen shows for its center, after the cap: ring1 (sorted,
-  // maybe capped), the hidden count, and the ring2 paths whose via is shown.
   function graphModel(center) {
     const { ring1: all1, ring2: all2 } = graphPathsFrom(center);
     const sorted1 = all1.slice().sort((a, b) => GRAPH_REL_ORDER[a.rel] - GRAPH_REL_ORDER[b.rel]);
-    const ring1 = graphState.showAll1 ? sorted1 : sorted1.slice(0, GRAPH_RING1_CAP);
+    const cap = graphRing1Cap();
+    const ring1 = graphState.showAll1 ? sorted1 : sorted1.slice(0, cap);
     const shown1 = new Set(ring1.map((r) => r.note.id));
     const ring2 = all2.filter((p) => shown1.has(p.via.id));
     const ring2Unique = new Set(all2.map((p) => p.note.id)).size;
@@ -6783,6 +6779,7 @@
   function graphCardEl(note, cls) {
     const el = document.createElement('div');
     el.className = 'graphCard' + (cls ? ' ' + cls : '');
+    el.dataset.noteId = note.id;
     const t = document.createElement('div');
     t.className = 'gcText';
     t.textContent = graphSnippet(note, 15);
@@ -6791,7 +6788,6 @@
     sEl.className = 'gcSource';
     sEl.textContent = note.source || '';
     el.appendChild(sEl);
-    attachLongPress(el, () => { closeGraph(); openDetail(note.id, 'list'); }, () => { if (note.id !== graphState.centerId) openGraph(note.id); });
     return el;
   }
 
@@ -6800,9 +6796,6 @@
     Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
     return el;
   }
-  // 似 is drawn thin and faint until the second ring is opened - the point
-  // of the picture is 対立 and 補足; 似 only matters once it is a step on a
-  // path to a far opposition.
   function svgEdge(svg, x1, y1, x2, y2, rel, faint) {
     const color = GRAPH_RELATION_COLOR[rel] || GRAPH_RELATION_COLOR.manual;
     svg.appendChild(svgEl('line', { x1, y1, x2, y2, stroke: color, 'stroke-width': faint ? 0.8 : rel === 'opposite' ? 2.2 : 1.4, 'stroke-opacity': faint ? 0.35 : 0.9 }));
@@ -6812,6 +6805,31 @@
     svg.appendChild(label);
   }
 
+  // --- view transform ---------------------------------------------------
+  function graphApplyView() {
+    document.getElementById('graphStage').style.transform = 'translate(' + graphView.tx + 'px,' + graphView.ty + 'px) scale(' + graphView.s + ')';
+  }
+  function graphViewportSize() {
+    const vp = document.getElementById('graphViewport');
+    return { w: vp.clientWidth || window.innerWidth, h: vp.clientHeight || Math.round(window.innerHeight * 0.6) };
+  }
+  // Put the stage's center (half, half) at a given viewport point.
+  function graphCenterAt(px, py) {
+    graphView.tx = px - graphView.half * graphView.s;
+    graphView.ty = py - graphView.half * graphView.s;
+    graphApplyView();
+  }
+  function graphZoomAround(px, py, ratio) {
+    const ns = Math.min(GRAPH_SCALE_MAX, Math.max(GRAPH_SCALE_MIN, graphView.s * ratio));
+    const r = ns / graphView.s;
+    graphView.tx = px - (px - graphView.tx) * r;
+    graphView.ty = py - (py - graphView.ty) * r;
+    graphView.s = ns;
+    graphApplyView();
+  }
+
+  // Lays the rings out at full card size and returns the geometry; the
+  // caller decides where the view goes.
   function renderGraphStage(center, model) {
     const { ring1, ring2 } = model;
     const showRing2 = graphState.expanded;
@@ -6820,7 +6838,7 @@
     const n1 = ring1.length;
     const childrenOf = new Map();
     ring2Nodes.forEach((v) => { const arr = childrenOf.get(v.via.id) || []; arr.push(v.note); childrenOf.set(v.via.id, arr); });
-    const r1 = Math.max(170, (n1 * GRAPH_CARD_W * 1.25) / (2 * Math.PI));
+    const r1 = Math.max(graphIsNarrow() ? 150 : 170, (n1 * GRAPH_CARD_W * 1.25) / (2 * Math.PI));
     const r2 = showRing2 ? r1 + Math.max(170, (ring2Nodes.size * GRAPH_CARD_W * 1.15) / (2 * Math.PI) - r1 + 120) : r1;
     const half = r2 + GRAPH_CARD_W;
     const size = half * 2;
@@ -6855,48 +6873,9 @@
     place(center, 'center');
     ring1.forEach((r) => place(r.note, ''));
     ring2Nodes.forEach((v) => place(v.note, ''));
-    const vp = document.getElementById('graphViewport');
-    requestAnimationFrame(() => { vp.scrollLeft = cx - vp.clientWidth / 2; vp.scrollTop = cy - vp.clientHeight / 2; });
+    return { half, r1 };
   }
 
-  function graphListRow(note, rel, cls) {
-    const row = document.createElement('div');
-    row.className = 'graphListRow' + (cls ? ' ' + cls : '');
-    if (rel) {
-      const r = document.createElement('div');
-      r.className = 'glRel';
-      r.style.color = GRAPH_RELATION_COLOR[rel];
-      r.textContent = relationShort(rel);
-      row.appendChild(r);
-    }
-    const body = document.createElement('div');
-    const t = document.createElement('div');
-    t.className = 'glText';
-    t.textContent = noteSnippet(note.text || note.myWords || '', 40);
-    body.appendChild(t);
-    const sEl = document.createElement('div');
-    sEl.className = 'glSource';
-    sEl.textContent = note.source || '';
-    body.appendChild(sEl);
-    row.appendChild(body);
-    attachLongPress(row, () => { closeGraph(); openDetail(note.id, 'list'); }, () => { if (note.id !== graphState.centerId) openGraph(note.id); });
-    return row;
-  }
-
-  function renderGraphList(center, model) {
-    const list = document.getElementById('graphList');
-    list.innerHTML = '';
-    list.appendChild(graphListRow(center, '', 'center'));
-    const kids = new Map();
-    if (graphState.expanded) model.ring2.forEach((p) => { const arr = kids.get(p.via.id) || []; if (!arr.some((k) => k.note.id === p.note.id)) arr.push({ note: p.note, rel: p.rel2 }); kids.set(p.via.id, arr); });
-    model.ring1.forEach((r) => {
-      list.appendChild(graphListRow(r.note, r.rel, ''));
-      (kids.get(r.note.id) || []).forEach((k) => list.appendChild(graphListRow(k.note, k.rel, 'hop2')));
-    });
-  }
-
-  // Far oppositions grouped by the note they pass through, biggest group
-  // first; the group head recenters on B, a row recenters on C.
   function renderGraphFarList(center) {
     const list = document.getElementById('graphFarList');
     list.innerHTML = '';
@@ -6942,12 +6921,23 @@
     });
   }
 
-  function renderGraph(center) {
+  // mode: 'fit' (fresh open: fit ring 1, floor at GRAPH_FIT_FLOOR, center
+  // in the middle) or 'keep' (re-render: same scale, center stays put).
+  function renderGraph(center, mode) {
     const model = graphModel(center);
-    const narrow = graphIsNarrow();
-    document.getElementById('graphViewport').hidden = narrow;
-    document.getElementById('graphList').hidden = !narrow;
-    if (narrow) renderGraphList(center, model); else renderGraphStage(center, model);
+    // the far list below changes the viewport's flex height - lay it out first
+    renderGraphFarList(center);
+    const vp = graphViewportSize();
+    const prevCenterScreen = mode === 'keep' && graphView.half
+      ? { x: graphView.tx + graphView.half * graphView.s, y: graphView.ty + graphView.half * graphView.s }
+      : { x: vp.w / 2, y: vp.h / 2 };
+    const geo = renderGraphStage(center, model);
+    graphView.half = geo.half;
+    if (mode !== 'keep') {
+      const need = 2 * geo.r1 + GRAPH_CARD_W + 48;
+      graphView.s = Math.min(1, Math.max(GRAPH_FIT_FLOOR, Math.min(vp.w, vp.h) / need));
+    }
+    graphCenterAt(prevCenterScreen.x, prevCenterScreen.y);
     const more1 = document.getElementById('btnGraphMore1');
     more1.hidden = model.hidden1 <= 0;
     more1.textContent = '他 ' + model.hidden1 + ' 枚';
@@ -6956,7 +6946,6 @@
     expand.textContent = graphState.expanded ? '遠い対立をたたむ' : '遠い対立を広げる（' + model.ring2Unique + '枚）';
     expand.classList.toggle('selected', graphState.expanded);
     document.getElementById('graphTitle').textContent = '網 ・ ' + graphSnippet(center, 20) + ' ・ ' + model.ring1.length + (model.hidden1 ? '+' + model.hidden1 : '') + '枚';
-    renderGraphFarList(center);
   }
 
   function pickGraphStartNote() {
@@ -6974,7 +6963,7 @@
     graphState.farAll = false;
     document.getElementById('screen-graph').hidden = false;
     syncBarEl.style.visibility = 'hidden';
-    renderGraph(center);
+    renderGraph(center, 'fit');
   }
 
   function closeGraph() {
@@ -6982,7 +6971,7 @@
     syncBarEl.style.visibility = '';
   }
 
-  function rerenderGraph() { const c = findNote(graphState.centerId); if (c) renderGraph(c); }
+  function rerenderGraph() { const c = findNote(graphState.centerId); if (c) renderGraph(c, 'keep'); }
   document.getElementById('btnOpenGraph').addEventListener('click', () => openGraph());
   document.getElementById('btnGraphClose').addEventListener('click', () => closeGraph());
   document.getElementById('btnDetailGraph').addEventListener('click', () => openGraph(nav.detailId));
@@ -6990,6 +6979,70 @@
   document.getElementById('btnGraphMore1').addEventListener('click', () => { graphState.showAll1 = true; rerenderGraph(); });
   document.getElementById('btnGraphFarMore').addEventListener('click', () => { graphState.farAll = true; rerenderGraph(); });
   window.addEventListener('resize', () => { if (!document.getElementById('screen-graph').hidden) rerenderGraph(); });
+
+  // --- gestures on the viewport ------------------------------------------
+  // All pointer handling lives here, not on the cards, so a tap, a hold and
+  // a pan are decided from the same measurements: a pointer that moves more
+  // than GRAPH_TAP_SLOP is a pan (no tap, no hold); a second pointer turns
+  // the gesture into a pinch (no tap, no hold); a hold fires only if the
+  // pointer has not moved; pointercancel (iOS starting a scroll) ends it all.
+  (function setupGraphGestures() {
+    const vp = document.getElementById('graphViewport');
+    const pointers = new Map(); // id -> {x, y}
+    let cardId = null, startX = 0, startY = 0, moved = false, holdTimer = null, holdFired = false, pinchDist = 0;
+    const clearHold = () => { if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; } };
+    const local = (e) => { const r = vp.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+    vp.addEventListener('pointerdown', (e) => {
+      if (e.button !== undefined && e.button !== 0 && e.pointerType === 'mouse') return;
+      try { vp.setPointerCapture(e.pointerId); } catch (err) {} // capture keeps moves coming after the pointer leaves the card
+      pointers.set(e.pointerId, local(e));
+      if (pointers.size === 1) {
+        const card = e.target.closest ? e.target.closest('.graphCard') : null;
+        cardId = card ? card.dataset.noteId : null;
+        startX = e.clientX; startY = e.clientY; moved = false; holdFired = false;
+        clearHold();
+        if (cardId) holdTimer = setTimeout(() => { holdTimer = null; if (!moved && pointers.size === 1) { holdFired = true; const id = cardId; closeGraph(); openDetail(id, 'list'); } }, 600);
+        vp.classList.add('dragging');
+      } else if (pointers.size === 2) {
+        clearHold(); moved = true; cardId = null;
+        const [a, b] = [...pointers.values()];
+        pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
+      }
+    });
+    vp.addEventListener('pointermove', (e) => {
+      if (!pointers.has(e.pointerId)) return;
+      const prev = pointers.get(e.pointerId);
+      const cur = local(e);
+      pointers.set(e.pointerId, cur);
+      if (pointers.size === 1) {
+        if (!moved && Math.hypot(e.clientX - startX, e.clientY - startY) > GRAPH_TAP_SLOP) { moved = true; clearHold(); }
+        if (moved) { graphView.tx += cur.x - prev.x; graphView.ty += cur.y - prev.y; graphApplyView(); }
+      } else if (pointers.size === 2) {
+        const [a, b] = [...pointers.values()];
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        if (pinchDist > 0 && d > 0) graphZoomAround((a.x + b.x) / 2, (a.y + b.y) / 2, d / pinchDist);
+        pinchDist = d;
+      }
+    });
+    const end = (e, cancelled) => {
+      if (!pointers.has(e.pointerId)) return;
+      pointers.delete(e.pointerId);
+      if (pointers.size === 0) {
+        clearHold();
+        vp.classList.remove('dragging');
+        if (!cancelled && !moved && !holdFired && cardId && cardId !== graphState.centerId) openGraph(cardId);
+        cardId = null; moved = false; holdFired = false;
+      } else { moved = true; clearHold(); pinchDist = 0; }
+      try { vp.releasePointerCapture(e.pointerId); } catch (err) {}
+    };
+    vp.addEventListener('pointerup', (e) => end(e, false));
+    vp.addEventListener('pointercancel', (e) => end(e, true));
+    vp.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const p = local(e);
+      graphZoomAround(p.x, p.y, Math.exp(-e.deltaY * 0.0015));
+    }, { passive: false });
+  })();
 
   // --- Editor -----------------------------------------------------------
   const editorState = { tags: [], links: [] };
