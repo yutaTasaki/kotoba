@@ -695,6 +695,13 @@
     font-size: 13px; line-height: 1.5; cursor: pointer; user-select: none; -webkit-user-select: none;
   }
   .graphFarRow .gfRel { font-size: 10px; white-space: nowrap; padding-top: 3px; min-width: 2.2em; }
+  /* phones: no nested scroll areas - iOS Safari collapses a flex:1 + overflow:auto child
+     inside a fixed flex column unreliably. The overlay itself scrolls as one page. */
+  @media (max-width: 599px) {
+    .graphList { flex: none; overflow: visible; min-height: 0; }
+    .graphFar { max-height: none; overflow: visible; }
+    .graphFarGroupHead { font-size: 12px; }
+  }
 </style>
 </head>
 <body>
@@ -6491,6 +6498,7 @@
       if (!fired && onShortTap) onShortTap();
     });
     el.addEventListener('pointerleave', () => clearTimeout(timer));
+    el.addEventListener('pointercancel', () => { clearTimeout(timer); fired = true; }); // a scroll is neither a tap nor a hold
   }
 
   document.getElementById('btnOpenDraw').addEventListener('click', () => openDraw());
