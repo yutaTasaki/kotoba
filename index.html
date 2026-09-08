@@ -629,6 +629,9 @@
   .questionFromSource { font-size: 12px; color: var(--text-dim); }
   .questionFromMyWords { font-size: 12px; color: var(--text-faint); line-height: 1.7; margin-top: 4px; }
   .questionUsedNote { font-size: 12px; color: var(--accent); text-align: center; }
+  .questionNone { display: flex; flex-direction: column; gap: 14px; align-items: center; }
+  .questionNoneText { font-size: 18px; color: var(--text-dim); line-height: 1.8; }
+  .drawChoiceHintDim { font-size: 12px; color: var(--text-faint); }
   .unusedQuestionList { width: 100%; display: flex; flex-direction: column; gap: 6px; padding-top: 4px; }
   .unusedQuestionHead { font-size: 11px; color: var(--text-faint); text-align: center; }
   .unusedQuestionItem {
@@ -1216,6 +1219,11 @@
         <div class="questionText" id="questionText"></div>
         <div class="questionTension" id="questionTension" hidden></div>
         <div class="questionWhyNow" id="questionWhyNow" hidden></div>
+      </div>
+      <div id="questionNone" class="questionNone" hidden>
+        <div class="questionNoneText">この組み合わせでは問いが立ちませんでした</div>
+        <div class="questionTension" id="questionNoneReason" hidden></div>
+        <div class="drawChoiceHintDim">右上の「もう一つ」で、別の組み合わせを試せます</div>
       </div>
       <div id="drawEmpty" class="emptyMsg" hidden>まだノートがありません。</div>
     </div>
@@ -3261,9 +3269,9 @@
   const QUESTION_MODE_LABEL = { opposite: '対立から', core: '今月の核から', self: '自分の言葉から' };
   const LAST_QUESTION_MODE_KEY = 'kotoba_lastQuestionMode';
   const QUESTION_MODE_NOTE = {
-    opposite: 'この最初の2枚は、本人自身が「反対」としてつないだ組である。残りはそれぞれにつながる言葉。どちらかに軍配を上げず、その対立が本人の中で今どう起きているかを問いにする。',
-    core: 'これらは直近1ヶ月で本人に最も多く届いた言葉である。同じ言葉が繰り返し届いていること自体が何かを示している。届き続けているのに動いていないことを疑う。',
-    self: '最初の1枚は本人が自分の言葉として書いたものである。残りはそれにつながる言葉。本人の言い切りが、つながる言葉やこの1ヶ月の記録とどうずれているかを見る。',
+    opposite: 'この2枚は、本人自身が「反対」としてつないだ組である。どちらかを軸に決め、もう片方をその軸から照らす。どちらが正しいかは決めない。',
+    core: 'この2枚は直近1ヶ月で本人に最も多く届いた言葉である。届き続けていること自体が何かを示している。片方を軸に、もう片方か1ヶ月の記録を照らす。',
+    self: '1枚目は本人が自分の言葉として書いたもの、2枚目はそれに最も近い言葉。本人の言い切り（1枚目）を軸にして、2枚目か1ヶ月の記録をその軸から照らす。',
   };
 
   function shuffled(arr) {
@@ -3298,53 +3306,55 @@
     return data.notes.filter((n) => (n.source || '').startsWith('自分'));
   }
 
-  function linkedNotesOf(note, relation, taken, limit) {
-    const links = shuffled((note.links || []).filter((l) => (!relation || l.relation === relation) && !taken.has(l.id)));
-    const out = [];
-    for (const l of links) {
+  // "最も関連の強いリンク先": links carry no strength of their own, so this
+  // scores them the way the app already ranks relevance (compressCandidates):
+  // shared tags count most, shared vocabulary a little, and a link the user
+  // tied by hand outranks an automatic one. Array order breaks ties - auto
+  // links were returned 関連の強い順 when they were made.
+  function strongestLinkedNote(note) {
+    const noteTags = new Set(note.tags || []);
+    const noteWords = new Set(((note.text || '') + (note.myWords || '')).toLowerCase().match(/[\p{L}\p{N}]+/gu) || []);
+    let best = null, bestScore = -Infinity;
+    (note.links || []).forEach((l, idx) => {
       const t = findNote(l.id);
-      if (!t) continue;
-      out.push(t);
-      taken.add(t.id);
-      if (out.length >= limit) break;
-    }
-    return out;
+      if (!t) return;
+      let score = 0;
+      (t.tags || []).forEach((tag) => { if (noteTags.has(tag)) score += 3; });
+      const tWords = ((t.text || '') + (t.myWords || '')).toLowerCase();
+      noteWords.forEach((w) => { if (w.length >= 2 && tWords.includes(w)) score += 1; });
+      if (l.kind === 'manual') score += 3;
+      score -= idx * 0.01;
+      if (score > bestScore) { bestScore = score; best = t; }
+    });
+    return best;
   }
 
+  // v3.3.1: fewer notes on purpose. Four notes from two unrelated threads
+  // produced questions that welded the threads into one unreadable sentence
+  // (「…焦りなのか、それとも…だけなのか」). Two notes - one axis, one thing
+  // to shine it on - is what the prompt can actually turn into a question.
+  // Three is the hard ceiling; nothing below reaches it today.
   function buildQuestionMaterialsForMode(mode) {
-    const taken = new Set();
     let notes = [];
     if (mode === 'opposite') {
       const pairs = oppositeNotePairs();
       if (!pairs.length) return null;
-      const [a, b] = pairs[Math.floor(Math.random() * pairs.length)];
-      taken.add(a.id); taken.add(b.id);
-      notes.push(a, b);
-      // one 「似ている」 neighbour each, so the opposition has some ground under it
-      notes = notes.concat(linkedNotesOf(a, 'similar', taken, 1), linkedNotesOf(b, 'similar', taken, 1));
+      notes = pairs[Math.floor(Math.random() * pairs.length)];
     } else if (mode === 'core') {
-      const core = topMonthlyPickedNoteIds(3).map(findNote).filter(Boolean);
-      if (!core.length) return null;
-      core.forEach((n) => { taken.add(n.id); notes.push(n); });
-      for (const n of shuffled(core)) {
-        const extra = linkedNotesOf(n, null, taken, 1);
-        if (extra.length) { notes = notes.concat(extra); break; }
-      }
+      notes = topMonthlyPickedNoteIds(2).map(findNote).filter(Boolean);
     } else {
       const pool = selfSourcedNotes();
       if (!pool.length) return null;
       const own = pool[Math.floor(Math.random() * pool.length)];
-      taken.add(own.id);
-      notes.push(own);
-      notes = notes.concat(linkedNotesOf(own, null, taken, 3));
+      notes = [own, strongestLinkedNote(own)];
     }
-    notes = notes.filter(Boolean).slice(0, 4);
-    return notes.length >= 3 ? { mode, notes } : null;
+    notes = notes.filter(Boolean).slice(0, 3);
+    return notes.length >= 2 ? { mode, notes } : null;
   }
 
   // Tries the available angles in random order, never repeating the previous
   // call's angle while another one is usable, and skipping any angle that
-  // can't reach 3 notes with the current data. Returns null when none can.
+  // can't reach 2 notes with the current data. Returns null when none can.
   function pickQuestionMaterials() {
     const last = localStorage.getItem(LAST_QUESTION_MODE_KEY);
     const all = shuffled(QUESTION_MODES);
@@ -3381,7 +3391,9 @@
       '   - 本人の解釈どうしが噛み合っていない（別の言葉のところで逆のことを言っている）\n' +
       '   - 本人が言い切っていることと、この1ヶ月の記録に書かれた実際の状態が食い違っている\n' +
       '2. その食い違いを、どちらが正しいかを決めずに、そのまま問いの中心に置く。\n' +
-      '3. 問いを1文で書く。\n\n' +
+      '3. 材料の1枚を「軸」に決める。問いは、その軸の言葉に対して、もう1枚（または本人の1ヶ月の記録）をその軸から照らす形にする。材料を横に並べて選ばせる形にしない。\n' +
+      '4. 問いを1文で書く。書いたら、材料を知らない人が一読して意味が取れるかを確かめる。取れなければ書き直す。\n' +
+      '5. 材料の間に本当の食い違いや引っかかりが見つからない場合、または2枚が別の話で一本の問いにならない場合は、無理に問いを作らない。{"question": null, "reason": "…"} を返す（reason は1行、なぜ立たなかったか）。無理に作った問いより、立たなかったと言うほうが良い。\n\n' +
       '厳守すること：\n' +
       '- 材料の中の特徴的な言い回し（本人の解釈 myWords の語句、または言葉そのものの表現）を、少なくとも1つ、そのままの形で問いに入れる。言い換えない、要約しない。\n' +
       '- 材料を読んでいない他人には半分しか意味が取れないくらい、この人に固有の問いにする。\n' +
@@ -3389,15 +3401,22 @@
       '- 「人は」「人間は」「私たちは」で始まる一般論にしない。この人が自分に向けて考える形にする。\n' +
       '- 人生訓・道徳・励まし・助言・材料の要約を書かない。\n' +
       '- 答えが1つに決まる問い、はい/いいえで終わる問いにしない。話しながら考えが動く問いにする。\n' +
+      '- 一読して意味が取れることを最優先にする。鋭くても、読んで一度止まる問いは失敗である。\n' +
+      '- 「AなのかBなのか」「Xなのか、それともYなのか」のように、材料同士を横に並べてどちらの話かを選ばせる二択の形にしない。軸は必ず1枚だけ。\n' +
+      '  良い例：「『心を守れ』と書いた自分は、今朝の靄がかかった心を、守れなかった状態と見るか、それとも別の何かと見るか」（軸は「心を守れ」の1枚。もう一方の「今朝の靄」を、その軸から見ている。「それとも」があっても、選ばせているのは軸から見た見え方であって、材料のどちらかではない）\n' +
+      '  悪い例：「結果が出るのかと苦しくなるのは、成長し続けない人ほど飽きやすいという焦りなのか、それともプライドを手放せていないだけなのか」（別の話の2枚を横に並べ、どちらの話かを選ばせている。軸がない）\n' +
+      '- 良い例の文の形（「〜と見るか、それとも〜と見るか」）を毎回そのまま使わない。軸から照らす形であれば、文末は問いに合わせて変えてよい（例：「〜の物差しをどこから引っ張り出しているのか」「〜の中に〜が紛れ込んでいないか」）。\n' +
       '- 問いは30〜80字程度の1文にする。\n' +
       '- tension は「「◯◯」と書いているのに「△△」では〜になっている」の形で、材料の言葉そのものを引いて1行で書く。抽象語でまとめない。\n' +
-      '- question・tension・why_now に id（n_ で始まる記号）を書かない。人が読む文にする。\n' +
+      '- question・tension・why_now・reason の中で、材料を id や番号（n_20260907_014 も 014 も）で指さない。必ずその言葉を引く。\n' +
       '- why_now は、この1ヶ月の朝の一言・相談に具体的な接点があるときだけ書く。その記録の言葉を引いて2行以内で書く。接点がなければ空文字にする。ないものを作らない。\n' +
       '- 最近この人に出した問い（渡したもの）と、同じ切り口・同じ言葉の組み合わせを使わない。\n' +
-      '- from には、その問いが立っている材料の id を2〜4個入れる。渡された id 以外は書かない。\n' +
-      '- question・why_now・tension には改行を使わない。\n\n' +
+      '- from には、その問いが立っている材料の id を入れる（軸の1枚を先頭に）。渡された id 以外は書かない。\n' +
+      '- question・why_now・tension・reason には改行を使わない。\n\n' +
       '返答は JSON のみ。前置きも説明も書かない：\n' +
-      '{"question":"...","from":["id","id"],"why_now":"...","tension":"..."}';
+      '{"question":"...","from":["id","id"],"why_now":"...","tension":"..."}\n' +
+      '問いが立たなかったとき：\n' +
+      '{"question":null,"reason":"..."}';
     return [{ type: 'text', text }];
   }
 
@@ -3424,16 +3443,19 @@
   // back to the outermost {...} in case the model wrapped it in prose.
   function parseQuestionResponseLoose(text) {
     const cleaned = text.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+    // question: null is a legitimate answer ("no question stands on these"),
+    // so the shape check is "has a question key", not "has a string there".
+    const ok = (p) => p && typeof p === 'object' && (typeof p.question === 'string' || p.question === null);
     try {
       const p = JSON.parse(cleaned);
-      if (p && typeof p === 'object' && typeof p.question === 'string') return p;
+      if (ok(p)) return p;
     } catch (e) {}
     const start = cleaned.indexOf('{');
     const end = cleaned.lastIndexOf('}');
     if (start === -1 || end === -1 || end < start) return null;
     try {
       const p = JSON.parse(cleaned.slice(start, end + 1));
-      return (p && typeof p === 'object' && typeof p.question === 'string') ? p : null;
+      return ok(p) ? p : null;
     } catch (e) {
       return null;
     }
@@ -3477,15 +3499,20 @@
     recordApiUsage('question', json.usage);
     const textOut = (json.content || []).map((b) => b.text || '').join('');
     const parsed = parseQuestionResponseLoose(textOut);
-    if (!parsed || !parsed.question.trim()) {
+    if (!parsed || (parsed.question !== null && !parsed.question.trim())) {
       if (isTruncated(json)) throw truncatedResponseError();
       if (!isParseRetry) return callQuestionApi(materials, is429Retry, true);
       throw new Error('invalid response shape');
     }
+    // v3.3.1: the model may decline. That is a result, not an error - the
+    // caller shows it and offers 「もう一つ」; nothing is saved.
+    if (parsed.question === null) {
+      return { question: null, reason: (typeof parsed.reason === 'string' ? parsed.reason : '').trim().replace(/\s+/g, ' ').slice(0, 160) };
+    }
     const materialIds = materials.notes.map((n) => n.id);
     const allowed = new Set(materialIds);
     let from = (Array.isArray(parsed.from) ? parsed.from : []).map(String).filter((id) => allowed.has(id));
-    from = [...new Set(from)].slice(0, 4);
+    from = [...new Set(from)].slice(0, 3);
     // A question always stands on at least two of the notes it was built
     // from; if the model named fewer, fall back to the material order rather
     // than showing a lone card under it.
@@ -5811,6 +5838,7 @@
     document.getElementById('questionSearching').hidden = true;
     document.getElementById('drawResult').hidden = true;
     document.getElementById('questionResult').hidden = true;
+    document.getElementById('questionNone').hidden = true;
     document.getElementById('questionFooter').hidden = true;
     document.getElementById('drawLinks').innerHTML = '';
     document.getElementById('drawEmpty').hidden = data.notes.length > 0;
@@ -5853,6 +5881,7 @@
     drawState.sessionId = 'ds_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     document.getElementById('drawChoice').hidden = true;
     document.getElementById('questionResult').hidden = true;
+    document.getElementById('questionNone').hidden = true;
     document.getElementById('questionFooter').hidden = true;
     document.getElementById('drawResult').hidden = true;
     document.getElementById('drawLinks').innerHTML = '';
@@ -6053,6 +6082,7 @@
     document.getElementById('drawChoice').hidden = true;
     document.getElementById('drawShuffleText').hidden = true;
     document.getElementById('questionSearching').hidden = true;
+    document.getElementById('questionNone').hidden = true;
     document.getElementById('drawResult').hidden = true;
     document.getElementById('drawLinks').innerHTML = '';
     document.getElementById('btnDrawAgain').hidden = true;
@@ -6098,6 +6128,7 @@
     document.getElementById('drawChoice').hidden = true;
     document.getElementById('drawResult').hidden = true;
     document.getElementById('questionResult').hidden = true;
+    document.getElementById('questionNone').hidden = true;
     document.getElementById('questionFooter').hidden = true;
     document.getElementById('drawLinks').innerHTML = '';
     document.getElementById('btnDrawAgain').hidden = true;
@@ -6107,6 +6138,18 @@
     try {
       const result = await callQuestionApi(materials);
       localStorage.setItem(LAST_QUESTION_MODE_KEY, materials.mode);
+      if (result.question === null) {
+        // Declined: nothing to save. Show why (if the model said) and hand
+        // the user 「もう一つ」, which rotates to a different angle.
+        questionState.entry = null;
+        document.getElementById('questionSearching').hidden = true;
+        const reasonEl = document.getElementById('questionNoneReason');
+        reasonEl.textContent = result.reason || '';
+        reasonEl.hidden = !result.reason;
+        document.getElementById('questionNone').hidden = false;
+        document.getElementById('btnQuestionAgain').hidden = false;
+        return;
+      }
       const iso = nowIso();
       const entry = {
         id: generateJournalId(), date: todayStr(), kind: 'question',
