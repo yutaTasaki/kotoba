@@ -819,6 +819,17 @@
       <div class="detailTags" id="detailTags"></div>
       <p class="fieldNote" id="detailPickStats" hidden></p>
       <p class="fieldNote" id="detailQuestionStats" hidden></p>
+      <div class="detailLinksSection" id="detailVideoOf" hidden>
+        <h3>この動画で生まれた言葉</h3>
+        <p class="fieldNote" id="detailVideoOfTitle"></p>
+        <div id="detailVideoOfList" class="detailLinksList"></div>
+        <button type="button" id="btnDetailCopyDescription" class="secondaryBtn">概要欄をコピー</button>
+        <p class="fieldNote" id="detailCopyStatus"></p>
+      </div>
+      <div class="detailLinksSection" id="detailVideosFrom" hidden>
+        <h3>この言葉から生まれた動画</h3>
+        <div id="detailVideosFromList" class="detailLinksList"></div>
+      </div>
       <div class="detailLinksSection">
         <h3>関連ノート</h3>
         <p class="fieldNote" id="detailLinkingStatus" hidden>関連を探しています…</p>
@@ -1115,6 +1126,12 @@
         <span class="fieldLabel">動画タイトル（任意）</span>
         <input id="bulkTitleInput" type="text" placeholder="空なら「自分（動画）」として保存されます" autocomplete="off">
       </div>
+      <div class="field" id="bulkQuestionField" hidden>
+        <span class="fieldLabel">この動画の問い</span>
+        <p class="fieldNote">「この問いで話す」を押した問いのうち、直近48時間のものを候補にしています。この動画から出た言葉が、その問いと元の言葉につながります。</p>
+        <div id="bulkQuestionChips" class="tagFilterRow"></div>
+        <p class="fieldNote" id="bulkQuestionPicked"></p>
+      </div>
       <div class="field">
         <div class="bulkTextHeaderRow">
           <span class="fieldLabel">テキスト<span class="fieldNote inlineNote">（最大20,000字）</span></span>
@@ -1177,6 +1194,14 @@
         <button id="btnDraftDiscard" class="dangerBtn">捨てる</button>
       </div>
       <div id="draftEmpty" class="emptyMsg" hidden>下書きはありません。</div>
+      <div class="field" id="draftDescriptionField" hidden>
+        <span class="fieldLabel">動画の概要欄</span>
+        <p class="fieldNote" id="draftDescriptionNote"></p>
+        <button type="button" id="btnDraftCopyDescription" class="secondaryBtn">概要欄をコピー</button>
+        <button type="button" id="btnDraftShowDescription" class="linkLikeBtn">内容を見る</button>
+        <textarea id="draftDescriptionBox" rows="10" readonly hidden></textarea>
+        <p class="fieldNote" id="draftDescriptionStatus"></p>
+      </div>
     </div>
   </section>
 
@@ -1370,6 +1395,8 @@
       updatedAt: d.updatedAt || d.createdAt || nowIso(),
     };
     if (d.batchDup === true) out.batchDup = true;
+    const video = normalizeVideoRef(d.video);
+    if (video) out.video = video;
     return out;
   }
 
@@ -1398,7 +1425,7 @@
       const norm = normalizeLink(raw);
       if (norm && !linksById.has(norm.id)) linksById.set(norm.id, norm);
     });
-    return {
+    const out = {
       id: String(n.id),
       text: n.text || '',
       source: n.source || '',
@@ -1409,6 +1436,21 @@
       autoLinkedAt: n.autoLinkedAt || null,
       createdAt: n.createdAt || nowIso(),
       updatedAt: n.updatedAt || n.createdAt || nowIso(),
+    };
+    // v3.4: notes that came out of a video transcript remember which batch
+    // (= which video) and which 問い that video was spoken from. Optional -
+    // every note that predates this simply has no `video` key.
+    const video = normalizeVideoRef(n.video);
+    if (video) out.video = video;
+    return out;
+  }
+
+  function normalizeVideoRef(v) {
+    if (!v || typeof v !== 'object' || !v.batchId) return null;
+    return {
+      batchId: String(v.batchId),
+      title: typeof v.title === 'string' ? v.title : '',
+      questionId: typeof v.questionId === 'string' ? v.questionId : '',
     };
   }
 
@@ -4769,6 +4811,8 @@
 
   function openBulk() {
     bulkState.kind = 'book';
+    bulkState.questionId = null; // null = not chosen yet -> default to the latest candidate
+    bulkState.showAllQuestions = false;
     document.getElementById('bulkSourceInput').value = '';
     document.getElementById('bulkTitleInput').value = '';
     document.getElementById('bulkTextInput').value = '';
@@ -4785,6 +4829,50 @@
     });
     document.getElementById('bulkSourceField').hidden = bulkState.kind !== 'book';
     document.getElementById('bulkTitleField').hidden = bulkState.kind !== 'transcript';
+    document.getElementById('bulkQuestionField').hidden = bulkState.kind !== 'transcript';
+    if (bulkState.kind === 'transcript') renderBulkQuestionChips();
+  }
+
+  // v3.4: which 問い was this video spoken from. Candidates are the questions
+  // marked 「この問いで話した」 in the last 48 hours, newest first; the newest
+  // is pre-selected so the common case is zero taps. 「なし」 is always
+  // available, and 「他の問いから」 opens the last ten used questions of any
+  // date for the film-on-Monday-transcribe-on-Thursday case.
+  const VIDEO_QUESTION_WINDOW_MS = 48 * 60 * 60 * 1000;
+  function usedQuestionsDesc() {
+    return data.journal.filter((j) => j.kind === 'question' && j.used).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  }
+  function recentUsedQuestions() {
+    const cutoff = Date.now() - VIDEO_QUESTION_WINDOW_MS;
+    return usedQuestionsDesc().filter((j) => new Date(j.createdAt).getTime() >= cutoff);
+  }
+  function questionChipLabel(j) {
+    return dotDate(j.date).slice(5) + ' ' + noteSnippet(j.text, 22);
+  }
+  function renderBulkQuestionChips() {
+    const row = document.getElementById('bulkQuestionChips');
+    const picked = document.getElementById('bulkQuestionPicked');
+    row.innerHTML = '';
+    const recent = recentUsedQuestions();
+    if (bulkState.questionId === null) bulkState.questionId = recent.length ? recent[0].id : '';
+    const shown = bulkState.showAllQuestions ? usedQuestionsDesc().slice(0, 10) : recent.slice(0, 5);
+    const mk = (label, selected, onClick) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'tagFilterBtn' + (selected ? ' selected' : '');
+      b.textContent = label;
+      b.addEventListener('click', onClick);
+      row.appendChild(b);
+    };
+    shown.forEach((j) => mk(questionChipLabel(j), bulkState.questionId === j.id, () => { bulkState.questionId = j.id; renderBulkQuestionChips(); }));
+    mk('なし', bulkState.questionId === '', () => { bulkState.questionId = ''; renderBulkQuestionChips(); });
+    if (!bulkState.showAllQuestions && usedQuestionsDesc().length > shown.length) {
+      mk('他の問いから…', false, () => { bulkState.showAllQuestions = true; renderBulkQuestionChips(); });
+    }
+    const cur = bulkState.questionId ? findJournalEntry(bulkState.questionId) : null;
+    picked.textContent = cur
+      ? '選択中：' + cur.text
+      : (recent.length ? '問いを紐づけません' : '直近48時間に「この問いで話した」問いはありません。「他の問いから…」で選ぶか、なしで進めます。');
   }
   document.querySelectorAll('#bulkKindRow button').forEach((b) => {
     b.addEventListener('click', () => { bulkState.kind = b.dataset.kind; renderBulkKindRow(); });
@@ -4849,10 +4937,20 @@
       // against earlier ones in the batch, so the first occurrence of a
       // similar pair stays unmarked and later ones are flagged.
       const batchDupFlags = items.map((item, i) => items.slice(0, i).some((prev) => textSimilarity(item.text, prev.text) >= DRAFT_SIMILARITY_THRESHOLD));
+      // v3.4: a transcript batch is one video. Every draft (and later every
+      // note) from it carries the same batchId, the title, and the 問い it
+      // was spoken from ('' when none) - that is what links a video's words
+      // back to the words the question stood on.
+      const video = bulkState.kind === 'transcript'
+        ? { batchId: 'vb_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+            title: document.getElementById('bulkTitleInput').value.trim(),
+            questionId: bulkState.questionId || '' }
+        : null;
       items.forEach((item, i) => {
         const id = generateDraftId();
         const draft = { id, text: item.text, source, tags: item.tags, createdAt: iso, updatedAt: iso };
         if (batchDupFlags[i]) draft.batchDup = true;
+        if (video) draft.video = { ...video };
         data.drafts.push(draft);
       });
       saveData(data);
@@ -4902,10 +5000,12 @@
     document.getElementById('draftMyWordsField').hidden = !has;
     document.getElementById('btnDraftSave').hidden = !has;
     document.getElementById('draftActionsRow').hidden = !has;
+    document.getElementById('draftDescriptionField').hidden = true;
     if (!has) {
       document.getElementById('draftRemainingCount').textContent = '';
       document.getElementById('draftBatchDupHint').hidden = true;
       document.getElementById('draftSimilarPanel').hidden = true;
+      renderDraftDescriptionField();
       return;
     }
 
@@ -5025,6 +5125,79 @@
     renderDraftCard();
   }
 
+  // --- v3.4: a video's words, its question, and the description text -------
+  function notesOfVideoBatch(batchId) {
+    return data.notes.filter((n) => n.video && n.video.batchId === batchId).sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+  }
+  // Most recent video batch that has at least one saved note - what the
+  // 概要欄 button on the draft screen refers to.
+  function latestVideoBatchId() {
+    let best = null, bestAt = '';
+    data.notes.forEach((n) => { if (n.video && n.createdAt > bestAt) { bestAt = n.createdAt; best = n.video.batchId; } });
+    return best;
+  }
+  function videoTitleLabel(video) { return (video && video.title) ? video.title : '（無題の動画）'; }
+  function oneLine(t) { return String(t || '').replace(/\s*\n+\s*/g, ' ').trim(); }
+
+  // Plain text, meant to be pasted into a YouTube description as-is: the
+  // viewer line first (it is the hook), then the two words the question
+  // stood on with the person's own reading, then what came out of the talk.
+  // Sections that have nothing simply do not appear.
+  function buildVideoDescription(batchId) {
+    const notes = notesOfVideoBatch(batchId);
+    if (!notes.length) return '';
+    const video = notes[0].video;
+    const q = video.questionId ? findJournalEntry(video.questionId) : null;
+    const lines = [];
+    if (q && q.for_viewer) { lines.push(oneLine(q.for_viewer), ''); }
+    const fromNotes = q ? (q.from || []).map(findNote).filter(Boolean) : [];
+    if (fromNotes.length) {
+      lines.push('この動画の元になった言葉');
+      fromNotes.forEach((n) => {
+        // an own-words source reads 自分（動画: …） - nested parens in a description; say 自分の言葉 instead
+        const src = !n.source ? '' : /^自分/.test(n.source) ? '（自分の言葉）' : '（' + n.source + '）';
+        lines.push('「' + oneLine(n.text) + '」' + src);
+        if (n.myWords) lines.push('　' + oneLine(n.myWords));
+      });
+      lines.push('');
+    }
+    lines.push('この動画で出た言葉');
+    notes.slice(0, 3).forEach((n) => lines.push('・' + oneLine(n.text)));
+    return lines.join('\n').trim();
+  }
+
+  async function copyToClipboard(text) {
+    try { await navigator.clipboard.writeText(text); return true; } catch (e) { return false; }
+  }
+
+  function renderDraftDescriptionField() {
+    const field = document.getElementById('draftDescriptionField');
+    const batchId = latestVideoBatchId();
+    field.hidden = !batchId;
+    document.getElementById('draftDescriptionBox').hidden = true;
+    document.getElementById('draftDescriptionStatus').textContent = '';
+    if (!batchId) return;
+    const notes = notesOfVideoBatch(batchId);
+    const q = notes[0].video.questionId ? findJournalEntry(notes[0].video.questionId) : null;
+    document.getElementById('draftDescriptionNote').textContent =
+      videoTitleLabel(notes[0].video) + ' ・ 言葉 ' + notes.length + '枚' + (q ? ' ・ 問いあり' : ' ・ 問いなし');
+    field.dataset.batchId = batchId;
+  }
+  document.getElementById('btnDraftCopyDescription').addEventListener('click', async () => {
+    const batchId = document.getElementById('draftDescriptionField').dataset.batchId;
+    const text = buildVideoDescription(batchId);
+    const ok = await copyToClipboard(text);
+    const box = document.getElementById('draftDescriptionBox');
+    if (!ok) { box.value = text; box.hidden = false; }
+    document.getElementById('draftDescriptionStatus').textContent = ok ? 'コピーしました' : 'コピーできなかったので、下の内容を選んでコピーしてください';
+  });
+  document.getElementById('btnDraftShowDescription').addEventListener('click', () => {
+    const batchId = document.getElementById('draftDescriptionField').dataset.batchId;
+    const box = document.getElementById('draftDescriptionBox');
+    box.value = buildVideoDescription(batchId);
+    box.hidden = !box.hidden;
+  });
+
   document.getElementById('btnDraftSave').addEventListener('click', () => {
     const myWords = document.getElementById('draftMyWordsInput').value.trim();
     if (!myWords) { updateDraftSaveButtonState(); return; }
@@ -5037,6 +5210,7 @@
       id, text: draft.text, source: draft.source, myWords, tags: [...draftEditorState.tags],
       links: [], rejectedLinks: [], autoLinkedAt: null, createdAt: iso, updatedAt: iso,
     };
+    if (draft.video) note.video = { ...draft.video };
     data.notes.push(note);
     deleteDraft(draft.id); // saves once, persisting both the new note and the draft's removal
     triggerAutoLinkForNote(id, 'autolink');
@@ -5090,6 +5264,7 @@
     note.text = draft.text;
     note.source = draft.source;
     note.tags = [...draft.tags];
+    if (draft.video) note.video = { ...draft.video }; // it was said in this video too
     note.updatedAt = nowIso();
     deleteDraft(draft.id);
     triggerAutoLinkForNote(note.id, 'autolink');
@@ -5166,6 +5341,7 @@
     const qStatsEl = document.getElementById('detailQuestionStats');
     qStatsEl.hidden = qStats.count === 0;
     if (qStats.count > 0) qStatsEl.textContent = `問いに使われた回数: ${qStats.count}回（直近 ${dotDate(qStats.lastDate)}）`;
+    renderDetailVideoSections(note);
 
     document.getElementById('detailLinkingStatus').hidden = !autoLinkInFlight.has(note.id);
 
@@ -5225,6 +5401,68 @@
       linksEl.appendChild(el);
     });
   }
+
+  // v3.4: a small row for a note inside the video sections (no relation
+  // label, no remove button - these are facts about where words came from,
+  // not links to be curated).
+  function videoNoteRow(target, sub) {
+    const el = document.createElement('div');
+    el.className = 'detailLinkItem';
+    const t = document.createElement('div');
+    t.className = 'lText';
+    t.textContent = noteSnippet(target.text, 60);
+    el.appendChild(t);
+    if (sub) {
+      const sEl = document.createElement('div');
+      sEl.className = 'lSource';
+      sEl.textContent = sub;
+      el.appendChild(sEl);
+    }
+    el.addEventListener('click', () => openDetailChained(target.id));
+    return el;
+  }
+
+  function renderDetailVideoSections(note) {
+    // (a) this note came out of a video: show the video, its question's
+    //     source words, and the other words from the same talk.
+    const ofSection = document.getElementById('detailVideoOf');
+    ofSection.hidden = !note.video;
+    document.getElementById('detailCopyStatus').textContent = '';
+    if (note.video) {
+      const q = note.video.questionId ? findJournalEntry(note.video.questionId) : null;
+      document.getElementById('detailVideoOfTitle').textContent =
+        '動画：' + videoTitleLabel(note.video) + (q ? '　／　問い：' + noteSnippet(q.text, 40) : '　／　問いなし');
+      const list = document.getElementById('detailVideoOfList');
+      list.innerHTML = '';
+      if (q) (q.from || []).map(findNote).filter(Boolean).forEach((n) => list.appendChild(videoNoteRow(n, '元になった言葉' + (n.source ? ' ・ ' + n.source : ''))));
+      notesOfVideoBatch(note.video.batchId).filter((n) => n.id !== note.id).forEach((n) => list.appendChild(videoNoteRow(n, '同じ動画で出た言葉')));
+    }
+    // (b) videos that were spoken from a question this note stood on.
+    const fromSection = document.getElementById('detailVideosFrom');
+    const list2 = document.getElementById('detailVideosFromList');
+    list2.innerHTML = '';
+    const qIds = new Set(data.journal.filter((j) => j.kind === 'question' && (j.from || []).includes(note.id)).map((j) => j.id));
+    const batches = new Map();
+    data.notes.forEach((n) => {
+      if (!n.video || !n.video.questionId || !qIds.has(n.video.questionId) || n.id === note.id) return;
+      if (!batches.has(n.video.batchId)) batches.set(n.video.batchId, { video: n.video, notes: [] });
+      batches.get(n.video.batchId).notes.push(n);
+    });
+    fromSection.hidden = batches.size === 0;
+    batches.forEach(({ video, notes }) => {
+      const head = document.createElement('p');
+      head.className = 'fieldNote';
+      head.textContent = '動画：' + videoTitleLabel(video) + ' ・ 言葉 ' + notes.length + '枚';
+      list2.appendChild(head);
+      notes.sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1)).forEach((n) => list2.appendChild(videoNoteRow(n, '')));
+    });
+  }
+  document.getElementById('btnDetailCopyDescription').addEventListener('click', async () => {
+    const note = findNote(nav.detailId);
+    if (!note || !note.video) return;
+    const ok = await copyToClipboard(buildVideoDescription(note.video.batchId));
+    document.getElementById('detailCopyStatus').textContent = ok ? 'コピーしました' : 'コピーできませんでした（下書き画面の「内容を見る」から選んでコピーできます）';
+  });
 
   document.getElementById('backFromDetail').addEventListener('click', backFromDetail);
   document.getElementById('btnEditNote').addEventListener('click', () => {
