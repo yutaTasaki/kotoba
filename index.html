@@ -3325,7 +3325,7 @@
         addLinkBidirectional(note.id, r.id, { kind: 'auto', relation, reason });
         added++;
       });
-      if (opts.markLinkedAt) note.autoLinkedAt = nowIso();
+      if (opts.markLinkedAt) { note.autoLinkedAt = nowIso(); note.updatedAt = note.autoLinkedAt; } // bump updatedAt so the mark wins a merge
       clearAutoLinkError();
       clearErrorNoteId(note.id);
       return { ok: true, added };
@@ -3386,8 +3386,13 @@
     batchState.stop = false;
     let processed = 0;
     updateBatchProgressUI(processed, pending.length);
-    for (const note of pending) {
+    for (const pendingNote of pending) {
       if (batchState.stop) break;
+      // v3.6: re-resolve by id every time - a checkpoint sync below replaces
+      // data.notes with merged copies, and marking a stale object lost the
+      // autoLinkedAt (the links themselves went through findNote and survived).
+      const note = findNote(pendingNote.id);
+      if (!note) { processed++; continue; }
       await autoLinkNote(note, { markLinkedAt: true, force: true });
       processed++;
       updateBatchProgressUI(processed, pending.length);
