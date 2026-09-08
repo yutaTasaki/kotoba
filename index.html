@@ -489,9 +489,10 @@
   .calNav { display: flex; align-items: center; gap: 8px; }
   .calNav button { width: auto; padding: 10px 14px; font-size: 15px; }
   #calMonthLabel { flex: 1; text-align: center; font-size: 16px; }
-  .calGrid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .calGrid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
   .calWeekday { text-align: center; font-size: 11px; color: var(--text-faint); padding: 2px 0; }
   .calCell {
+    min-width: 0;
     aspect-ratio: 1 / 1;
     display: flex;
     flex-direction: column;
@@ -537,9 +538,20 @@
   .trExFoot { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim); margin-top: 2px; flex-wrap: wrap; }
   .trDelta.up { color: var(--accent); }
   .trDelta.down { color: #d1665a; }
-  .trDayCardEx { font-size: 13px; line-height: 1.6; }
+  .trDayCardEx { font-size: 13px; line-height: 1.6; margin-bottom: 6px; }
+  .trDayCardHead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .trDayCardRm { color: var(--text-dim); white-space: nowrap; font-size: 12px; }
+  .trDayCardRm.isMax { color: #e0785a; }
+  .trDayCardSet { display: flex; gap: 10px; align-items: baseline; padding-left: 12px; }
+  .trDayCardSet .trDayCardIdx { color: var(--text-faint); font-size: 11px; width: 14px; }
+  .trDayCardSet .trDayCardNote { color: var(--text-dim); font-size: 12px; }
   .trDayCardEx .trDayCardSets { color: var(--text-dim); }
   .trDayCardMax { color: #e0785a; }
+  .trSetNoteRow { margin: -2px 0 8px 0; padding-left: 0; }
+  .trSetNoteRow input { width: 100%; font-size: 12px; padding: 5px 10px; color: var(--text-dim); }
+  .calToolRow { display: flex; justify-content: flex-end; margin: 6px 0 4px; }
+  .calToolRow button { width: auto; font-size: 12px; padding: 4px 10px; }
+  .calParts { font-size: 9px; line-height: 1.15; color: #e07a5f; max-width: 100%; overflow: hidden; white-space: nowrap; }
   .trCardioGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 6px 0; }
   .trCardioGrid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-dim); }
   .trCardioGrid input { width: 100%; min-width: 0; }
@@ -1150,6 +1162,7 @@
         <div id="calMonthLabel"></div>
         <button type="button" id="calNext" class="secondaryBtn">翌月 ＞</button>
       </div>
+      <div class="calToolRow"><button type="button" id="btnCalParts" class="tagFilterBtn">部位を表示</button></div>
       <div class="calGrid" id="calGrid"></div>
 
       <div id="dayDetailView" hidden>
@@ -6390,6 +6403,15 @@
       del.addEventListener('click', () => { ex.sets.splice(i, 1); trScheduleSave(); renderTraining(); });
       row.appendChild(del);
       box.appendChild(row);
+      // one small optional line under the set (not on the image)
+      const noteRow = document.createElement('div');
+      noteRow.className = 'trSetNoteRow';
+      const nIn = document.createElement('input');
+      nIn.type = 'text'; nIn.placeholder = 'メモ（任意）'; nIn.autocomplete = 'off'; nIn.maxLength = 80; nIn.value = st.note || '';
+      nIn.addEventListener('input', () => { st.note = nIn.value; trScheduleSave(); });
+      nIn.addEventListener('change', () => { trFlush(); });
+      noteRow.appendChild(nIn);
+      box.appendChild(noteRow);
     });
     const add = document.createElement('button');
     add.type = 'button'; add.className = 'tagFilterBtn'; add.textContent = '＋ セット';
@@ -6428,83 +6450,103 @@
   const TR_IMG_W = 1080, TR_IMG_H = 1920, TR_IMG_MARGIN = 70;
   const TR_GREEN = '#39FF14', TR_RED = '#FF4A3D', TR_DIM = '#8FBF86';
   function trBuildLines(day) {
-    // one part -> { title, rows: [{name, sets, rm, isMax}] }
+    // one part -> { part, rows: [{name, sets:[{w,r}] | cardio:text, rm, isNewMax, allMax}] }
     return day.parts.map((p) => ({
       part: p.part,
       rows: p.exercises.map((e) => {
         if (e.cardio) {
           const bits = []; if (e.cardio.km !== null) bits.push(fmtKg(e.cardio.km) + 'km'); if (e.cardio.min !== null) bits.push(fmtMin(e.cardio.min));
-          return { name: e.name, sets: bits.join(', ') || '記録のみ', rm: null, isNewMax: false, allMax: null, cardio: true };
+          return { name: e.name, sets: [], cardio: bits.join(' ・ ') || '記録のみ', rm: null, isNewMax: false, allMax: null };
         }
         const b = bestSet(e.sets);
         const v = b ? est1RM(b) : null;
         const prevMax = exerciseMax(e.name, day.date).max;
         const allMax = prevMax === null ? v : (v === null ? prevMax : Math.max(prevMax, v));
-        return { name: e.name, sets: fmtSetsCompact(e.sets), rm: v, isNewMax: v !== null && (prevMax === null || v > prevMax), allMax };
+        return { name: e.name, sets: e.sets.map((st) => ({ w: st.w, r: st.r })), cardio: null, rm: v, isNewMax: v !== null && (prevMax === null || v > prevMax), allMax };
       }),
     }));
   }
-  // Height of one block list at a given scale (font sizes are multiplied).
-  function trMeasure(ctx, blocks, scale, colW) {
-    const nameF = 40 * scale, setF = 32 * scale, partF = 34 * scale;
-    let h = 0;
-    blocks.forEach((b) => {
-      h += partF * 1.6 + 10 * scale;
-      b.rows.forEach((r) => {
-        ctx.font = `${setF}px 'DotGothic16'`;
-        const setsW = ctx.measureText(r.sets).width + (r.rm !== null ? 230 * scale : 0); // room for the numbers on the first line
-        const lines = Math.max(1, Math.ceil(setsW / (colW - 20)));
-        h += nameF * 1.35 + lines * setF * 1.3 + 14 * scale;
-      });
-      h += 18 * scale;
-    });
-    return h;
-  }
-  function trDrawBlocks(ctx, blocks, scale, x0, y0, colW) {
-    const nameF = 40 * scale, setF = 32 * scale, partF = 34 * scale, rmF = 26 * scale;
+  // Ruled table: big part title with a double rule, one set per line with
+  // hairlines, numbers larger than names, 1RM right-aligned on the name line
+  // (red + NEW MAX when it beats every earlier day). `compact` puts all sets
+  // of an exercise on one wrapped line and is only used when nothing else fits.
+  // Runs as the measurer (dry) and the painter; returns the height used.
+  function trLayout(ctx, blocks, scale, x0, y0, colW, dry, compact) {
+    const F = (px) => `${px}px 'DotGothic16'`;
+    const partF = 60 * scale, nameF = 34 * scale, setF = (compact ? 40 : 58) * scale, rmF = 44 * scale, smallF = 26 * scale;
+    const rowH = setF * 1.32;
     let y = y0;
     blocks.forEach((b) => {
-      ctx.fillStyle = TR_GREEN; ctx.font = `${partF}px 'DotGothic16'`; ctx.textAlign = 'left';
-      ctx.fillText('■ ' + b.part, x0, y);
-      y += partF * 1.6;
-      ctx.fillStyle = TR_GREEN; ctx.fillRect(x0, y - 6 * scale, colW, 2);
-      y += 10 * scale;
+      if (!dry) {
+        ctx.fillStyle = TR_GREEN; ctx.font = F(partF); ctx.textAlign = 'left';
+        ctx.fillText(b.part, x0, y);
+        ctx.fillRect(x0, y + partF + 10 * scale, colW, 4); ctx.fillRect(x0, y + partF + 20 * scale, colW, 2);
+      }
+      y += partF + 40 * scale;
       b.rows.forEach((r) => {
-        // line 1: the name gets the whole column (shrink, then ellipsize - never overflow)
-        ctx.fillStyle = '#F2EFEA'; ctx.textAlign = 'left';
-        let nf = nameF, name = r.name;
-        ctx.font = `${nf}px 'DotGothic16'`;
-        while (ctx.measureText(name).width > colW && nf > nameF * 0.72) { nf -= 2; ctx.font = `${nf}px 'DotGothic16'`; }
-        while (ctx.measureText(name).width > colW && name.length > 2) { name = name.slice(0, -2) + '…'; }
-        ctx.fillText(name, x0, y + (nameF - nf) * 0.5);
-        y += nameF * 1.35;
-        // line 2+: sets left, numbers right-aligned on the first sets line
-        let numsW = 0;
-        if (r.rm !== null) {
-          ctx.font = `${rmF}px 'DotGothic16'`; ctx.textAlign = 'right';
-          const ny = y + (setF - rmF) * 0.5;
-          const maxTxt = (r.isNewMax ? 'NEW MAX ' : 'MAX ') + fmtKg(r.isNewMax ? r.rm : r.allMax) + 'kg';
-          ctx.fillStyle = TR_RED; ctx.fillText(maxTxt, x0 + colW, ny);
-          numsW = ctx.measureText(maxTxt).width;
-          if (!r.isNewMax) { const t = '1RM ' + fmtKg(r.rm) + 'kg'; ctx.fillStyle = TR_DIM; ctx.fillText(t, x0 + colW - numsW - 14 * scale, ny); numsW += ctx.measureText(t).width + 14 * scale; }
-          ctx.textAlign = 'left';
+        // name line: name left (shrink, then ellipsize), 1RM block right
+        if (!dry) {
+          let rmW = 0;
+          if (r.rm !== null) {
+            ctx.textAlign = 'right';
+            ctx.font = F(rmF); ctx.fillStyle = r.isNewMax ? TR_RED : TR_GREEN;
+            const num = fmtKg(r.rm);
+            ctx.fillText(num, x0 + colW, y - 8 * scale);
+            const nw = ctx.measureText(num).width;
+            ctx.font = F(24 * scale); ctx.fillStyle = r.isNewMax ? TR_RED : TR_DIM;
+            const lab = r.isNewMax ? 'NEW MAX  1RM' : '1RM  (MAX ' + fmtKg(r.allMax) + ')';
+            ctx.fillText(lab, x0 + colW - nw - 16 * scale, y + 12 * scale);
+            rmW = nw + 16 * scale + ctx.measureText(lab).width + 24 * scale;
+          }
+          ctx.textAlign = 'left'; ctx.fillStyle = '#F2EFEA';
+          const maxNameW = colW - rmW;
+          let nf = nameF, name = r.name;
+          ctx.font = F(nf);
+          while (ctx.measureText(name).width > maxNameW && nf > nameF * 0.72) { nf -= 2; ctx.font = F(nf); }
+          while (ctx.measureText(name).width > maxNameW && name.length > 2) { name = name.slice(0, -2) + '…'; }
+          ctx.fillText(name, x0, y + (nameF - nf) * 0.5);
         }
-        ctx.fillStyle = TR_GREEN; ctx.font = `${setF}px 'DotGothic16'`;
-        const words = r.sets.split(', ');
-        let line = '', first = true;
-        const maxW = () => (first ? colW - 16 * scale - numsW - (numsW ? 18 * scale : 0) : colW - 16 * scale);
-        words.forEach((w) => {
-          const t = line ? line + ', ' + w : w;
-          if (ctx.measureText(t).width > maxW() && line) { ctx.fillText(line, x0 + 16 * scale, y); y += setF * 1.3; first = false; line = w; }
-          else line = t;
-        });
-        if (line) { ctx.fillText(line, x0 + 16 * scale, y); y += setF * 1.3; }
-        y += 14 * scale;
+        y += nameF * 1.6;
+        const hair = (yy) => { if (!dry) { ctx.fillStyle = '#1f4d1a'; ctx.fillRect(x0, yy, colW, 2); } };
+        if (r.cardio) {
+          if (!dry) { ctx.fillStyle = TR_GREEN; ctx.font = F(setF); ctx.textAlign = 'left'; ctx.fillText(r.cardio, x0 + 16 * scale, y); }
+          hair(y + rowH - 6 * scale);
+          y += rowH;
+        } else if (compact) {
+          // last resort: '65×5, 65×5, 62.5×6' wrapped
+          ctx.font = F(setF);
+          const words = fmtSetsCompact(r.sets).split(', ');
+          let line = '';
+          const flush = () => { if (!dry) { ctx.fillStyle = TR_GREEN; ctx.textAlign = 'left'; ctx.fillText(line, x0 + 16 * scale, y); } y += rowH; };
+          words.forEach((w) => { const t = line ? line + ', ' + w : w; if (ctx.measureText(t).width > colW - 20 * scale && line) { flush(); line = w; } else line = t; });
+          if (line) flush();
+          hair(y - 6 * scale);
+        } else {
+          r.sets.forEach((st, i) => {
+            if (!dry) {
+              ctx.textAlign = 'left'; ctx.fillStyle = TR_GREEN; ctx.font = F(smallF);
+              ctx.fillText('SET ' + (i + 1), x0 + 8 * scale, y + (setF - smallF) * 0.5 + 4 * scale);
+              const wt = st.w === null ? '自重' : fmtKg(st.w);
+              ctx.font = F(setF); ctx.textAlign = 'right'; ctx.fillText(wt, x0 + colW * 0.46, y);
+              ctx.textAlign = 'left'; ctx.fillStyle = TR_DIM; ctx.font = F(smallF);
+              if (st.w !== null) ctx.fillText('kg', x0 + colW * 0.46 + 10 * scale, y + setF - smallF);
+              ctx.font = F(36 * scale); ctx.fillText('×', x0 + colW * 0.575, y + (setF - 36 * scale) * 0.5);
+              ctx.fillStyle = TR_GREEN; ctx.font = F(setF); ctx.fillText(String(st.r), x0 + colW * 0.65, y);
+              const rw = ctx.measureText(String(st.r)).width;
+              ctx.fillStyle = TR_DIM; ctx.font = F(smallF); ctx.fillText('回', x0 + colW * 0.65 + rw + 8 * scale, y + setF - smallF);
+            }
+            hair(y + rowH - 6 * scale);
+            y += rowH;
+          });
+        }
+        y += 24 * scale;
       });
-      y += 18 * scale;
+      y += 26 * scale;
     });
-    return y;
+    return y - y0;
   }
+  function trMeasure(ctx, blocks, scale, colW, compact) { return trLayout(ctx, blocks, scale, 0, 0, colW, true, compact); }
+  function trDrawBlocks(ctx, blocks, scale, x0, y0, colW, compact) { return trLayout(ctx, blocks, scale, x0, y0, colW, false, compact); }
   function trDrawPage(canvas, day, blocks, pageNo, pageCount) {
     const ctx = canvas.getContext('2d');
     const W = TR_IMG_W, H = TR_IMG_H, M = TR_IMG_MARGIN;
@@ -6519,23 +6561,28 @@
     const right = [day.weight !== null ? '体重 ' + fmtKg(day.weight) + 'kg' : '', pageCount > 1 ? (pageNo + 1) + '/' + pageCount : ''].filter(Boolean).join('　');
     if (right) ctx.fillText(right, W - M, M + 18);
     ctx.fillStyle = TR_GREEN; ctx.fillRect(M, M + 80, W - 2 * M, 3);
-    const top = M + 110, bottom = H - M;
+    const top = M + 110, bottom = H - M - 40;
     const avail = bottom - top;
     const fullW = W - 2 * M;
-    // Try one column and two columns, each shrunk until it fits (floor 0.62),
-    // and draw whichever keeps the type larger. Neither fits -> caller pages.
     const colW2 = (fullW - 40) / 2;
-    const fitScale = (measure) => { let sc = 1; while (sc > 0.62 && measure(sc) > avail) sc -= 0.04; return measure(sc) > avail ? null : sc; };
-    const s1 = fitScale((sc) => trMeasure(ctx, blocks, sc, fullW));
+    // Order of preference: one column that fits at full size (then grown to
+    // fill the height, up to 2x) -> the larger of shrunken one/two columns
+    // (floor 0.62) -> the caller pages by part. Compact rows are the last
+    // resort: only when a single part on its own page still does not fit.
+    const fitScale = (measure, maxSc) => { let sc = maxSc; while (sc > 0.62 && measure(sc) > avail) sc -= 0.04; return measure(sc) > avail ? null : sc; };
+    const s1 = fitScale((sc) => trMeasure(ctx, blocks, sc, fullW, false), 2);
     const split = trSplitColumns(ctx, blocks, 1, colW2);
-    const s2 = blocks.length > 1 ? fitScale((sc) => Math.max(trMeasure(ctx, split[0], sc, colW2), trMeasure(ctx, split[1], sc, colW2))) : null;
-    if (s1 === null && s2 === null) return false; // needs paging
-    if (s2 !== null && (s1 === null || s2 > s1 + 0.001)) {
-      trDrawBlocks(ctx, split[0], s2, M, top, colW2);
-      trDrawBlocks(ctx, split[1], s2, M + colW2 + 40, top, colW2);
-    } else {
-      trDrawBlocks(ctx, blocks, s1, M, top, fullW);
+    const s2 = blocks.length > 1 ? fitScale((sc) => Math.max(trMeasure(ctx, split[0], sc, colW2, false), trMeasure(ctx, split[1], sc, colW2, false)), 1) : null;
+    let drawn = false;
+    if (s1 !== null && (s1 >= 1 || s2 === null || s1 >= s2 - 0.001)) { trDrawBlocks(ctx, blocks, s1, M, top, fullW, false); drawn = true; }
+    else if (s2 !== null) { trDrawBlocks(ctx, split[0], s2, M, top, colW2, false); trDrawBlocks(ctx, split[1], s2, M + colW2 + 40, top, colW2, false); drawn = true; }
+    else if (blocks.length === 1) {
+      const c1 = fitScale((sc) => trMeasure(ctx, blocks, sc, fullW, true), 1);
+      const c2 = blocks.length > 1 ? fitScale((sc) => Math.max(trMeasure(ctx, split[0], sc, colW2, true), trMeasure(ctx, split[1], sc, colW2, true)), 1) : null;
+      if (c1 !== null && (c2 === null || c1 >= c2 - 0.001)) { trDrawBlocks(ctx, blocks, c1, M, top, fullW, true); drawn = true; }
+      else if (c2 !== null) { trDrawBlocks(ctx, split[0], c2, M, top, colW2, true); trDrawBlocks(ctx, split[1], c2, M + colW2 + 40, top, colW2, true); drawn = true; }
     }
+    if (!drawn) return false; // needs paging
     ctx.fillStyle = TR_DIM; ctx.font = "24px 'DotGothic16'"; ctx.textAlign = 'right';
     ctx.fillText('一万日', W - M, H - M + 20);
     return true;
@@ -6620,12 +6667,34 @@
     day.parts.forEach((p) => p.exercises.forEach((e) => {
       const row = document.createElement('div');
       row.className = 'trDayCardEx';
-      if (e.cardio) { row.textContent = e.name + '　'; const cEl = document.createElement('span'); cEl.className = 'trDayCardSets'; cEl.textContent = fmtCardio(e.cardio); row.appendChild(cEl); item.appendChild(row); return; }
+      const head = document.createElement('div');
+      head.className = 'trDayCardHead';
+      const nm = document.createElement('span'); nm.textContent = e.name; head.appendChild(nm);
+      if (e.cardio) {
+        row.appendChild(head);
+        const line = document.createElement('div'); line.className = 'trDayCardSet';
+        const t = document.createElement('span'); t.className = 'trDayCardSets'; t.textContent = fmtCardio(e.cardio); line.appendChild(t);
+        row.appendChild(line);
+        item.appendChild(row);
+        return;
+      }
       const b = bestSet(e.sets); const v = b ? est1RM(b) : null;
       const prevMax = exerciseMax(e.name, day.date).max;
-      row.textContent = e.name + '　';
-      const setsEl = document.createElement('span'); setsEl.className = 'trDayCardSets'; setsEl.textContent = fmtSetsCompact(e.sets); row.appendChild(setsEl);
-      if (v !== null) { const m = document.createElement('span'); m.className = (prevMax === null || v > prevMax) ? 'trDayCardMax' : 'trDayCardSets'; m.textContent = '　1RM ' + fmtKg(v) + ((prevMax === null || v > prevMax) ? ' MAX' : ''); row.appendChild(m); }
+      if (v !== null) {
+        const isMax = prevMax === null || v > prevMax;
+        const rm = document.createElement('span');
+        rm.className = 'trDayCardRm' + (isMax ? ' isMax' : '');
+        rm.textContent = isMax ? '1RM ' + fmtKg(v) + ' NEW MAX' : '1RM ' + fmtKg(v) + ' ／ MAX ' + fmtKg(prevMax);
+        head.appendChild(rm);
+      }
+      row.appendChild(head);
+      e.sets.forEach((st, i) => {
+        const line = document.createElement('div'); line.className = 'trDayCardSet';
+        const idx = document.createElement('span'); idx.className = 'trDayCardIdx'; idx.textContent = String(i + 1); line.appendChild(idx);
+        const t = document.createElement('span'); t.textContent = (st.w === null ? '自重' : fmtKg(st.w) + 'kg') + ' × ' + st.r; line.appendChild(t);
+        if (st.note) { const n = document.createElement('span'); n.className = 'trDayCardNote'; n.textContent = st.note; line.appendChild(n); }
+        row.appendChild(line);
+      });
       item.appendChild(row);
     }));
     const editBtn = document.createElement('button');
@@ -6641,6 +6710,14 @@
   let calYear, calMonth; // calMonth is 0-indexed
   let editingDate = null;
   let recordsSelectedDate = null;
+  const CAL_PARTS_KEY = 'kotoba_calShowParts';
+  let calShowParts = false;
+  try { calShowParts = localStorage.getItem(CAL_PARTS_KEY) === '1'; } catch (e) {}
+  document.getElementById('btnCalParts').addEventListener('click', () => {
+    calShowParts = !calShowParts;
+    try { localStorage.setItem(CAL_PARTS_KEY, calShowParts ? '1' : '0'); } catch (e) {}
+    renderRecordsCalendar();
+  });
 
   function openRecords() {
     showScreen('records');
@@ -6689,6 +6766,7 @@
 
     const today = todayStr();
     const walkedSet = new Set(walkData.walkedDates);
+    const partEls = [];
 
     for (let i = 0; i < leadBlanks; i++) {
       const el = document.createElement('div');
@@ -6702,7 +6780,8 @@
       const hasConsult = data.journal.some((j) => j.kind === 'consult' && j.date === dateStr);
       const hasDraw = data.journal.some((j) => j.kind === 'draw' && j.date === dateStr);
       const hasQuestion = data.journal.some((j) => j.kind === 'question' && j.date === dateStr);
-      const hasTraining = !!findTrainingDay(dateStr);
+      const trainingDay = findTrainingDay(dateStr);
+      const hasTraining = !!trainingDay;
       const walked = walkedSet.has(dateStr);
 
       const el = document.createElement('button');
@@ -6731,6 +6810,14 @@
       if (hasQuestion) { const d = document.createElement('span'); d.className = 'calDot dotQuestion'; dots.appendChild(d); }
       if (hasTraining) { const d = document.createElement('span'); d.className = 'calDot dotTraining'; dots.appendChild(d); }
       el.appendChild(dots);
+      if (calShowParts && trainingDay && trainingDay.parts.length) {
+        const pe = document.createElement('div');
+        pe.className = 'calParts';
+        pe.dataset.parts = trainingDay.parts.map((p) => p.part).join('\u0001');
+        pe.textContent = trainingDay.parts.map((p) => p.part).join('・');
+        el.appendChild(pe);
+        partEls.push(pe);
+      }
 
       if (disabled) {
         el.disabled = true;
@@ -6749,6 +6836,16 @@
       calGrid.appendChild(el);
     }
 
+    // part names that do not fit the cell: first two + '+N', then one + '+N'
+    partEls.forEach((pe) => {
+      const parts = pe.dataset.parts.split('\u0001');
+      if (pe.scrollWidth <= pe.clientWidth) return;
+      for (let keep = Math.min(2, parts.length - 1); keep >= 1; keep--) {
+        pe.textContent = parts.slice(0, keep).join('・') + '+' + (parts.length - keep);
+        if (pe.scrollWidth <= pe.clientWidth) break;
+      }
+    });
+    document.getElementById('btnCalParts').className = 'tagFilterBtn' + (calShowParts ? ' selected' : '');
     const displayedKey = `${calYear}-${String(calMonth + 1).padStart(2, '0')}`;
     document.getElementById('calNext').disabled = displayedKey >= today.slice(0, 7);
     document.getElementById('calPrev').disabled = displayedKey <= earliestRecordMonthKey();
