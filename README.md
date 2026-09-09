@@ -180,7 +180,8 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
   questionId: 元の問いの記録 id（手書きなら ''）, questionText: 問いの写し, from: [材料の言葉 id],
   cards: [{ id: 'c1', kind: 'research'|'fun'|'word'|'record',
             slot: 1〜7（話の型の枠）, stance: 'support'|'break'|''（事実が仮の答えを支持するか壊すか）, gen: 1（貼り込んだカード。引き直しはこれだけを不採用にする）,
-            flow: 直前のカードとの関係（展開の取り込み。撮影表示に小さく出る）,
+            label: 撮影表示に出る手がかりの一行（10〜15字。手書きのみ。AI に書かせない）,
+            flow: 直前のカードとの関係（展開の取り込み。編集画面にだけ出る）,
             fact: 事実の1行, source: 誰がどこで, url, breaks: 仮の答えの何を壊すか,
             tag?: '伝承'|'噂'（わくわくのみ）, belief?: 'yes'|'half'|'fun'（自分が信じているか）,
             noteId?（言葉カード）, order, dropped }],
@@ -189,6 +190,8 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
   answers: [{ text, at, stage: 'first'|'revised'|'after' }]（仮の答えの履歴。1 分以内の編集は同じ行を上書き）,
   status: 'draft'|'shot', shotAt, picks: [], createdAt, updatedAt }
 ```
+**撮影表示（v9.1）**：カンペなので 1 枚 1 行。番号・★（壊すの枠）・`label`・出典の略だけを出す。本文・`breaks`・`flow` は出さない。タップでその 1 枚だけ詳細が開き（本文・出典・種別・信じ度・出典を開く）、長押し（0.5 秒）で話し終えた印として薄くなる。`label` が空のカードは本文の先頭 15 字を暫定表示し、開くときに未記入の枚数を知らせる。ラベルは手書きだけ。要約された言い回しは見た瞬間に読み直しになるので、AI にも取り込み時の自動生成にも作らせない。10 枚分を書く作業そのものが予習になる。編集画面の「ラベルだけ書く」で、番号と色と 1 行入力だけを並べて書ける。
+
 **話の型**：入り → 先出し（仮の答え） → 支え → 寄り道 → 壊す → 言葉 → 言い直し の 7 枠で固定。答えを先に言い、支えて、壊して、言い直す形。カードは枠（`slot`）に割り当てられ、撮影表示は作成順ではなく枠の順に出す。枠の定義は `TALK_SLOTS` の配列 1 か所（名前・説明・受け入れる種類・並び）。枠 1・2・7 はカードを持たない。`slot` はカードに保存されるので、既存の番号の意味を変えないこと（追加は末尾）。第1段のデッキ（`slot` なし）は読み込み時に種類ごとの既定（研究・記録 3／わくわく 4／言葉 6）が入る。
 
 カードは材料であって台本ではない。第1段では AI を通さず、言葉カードは相談の「使う」印から、記録カードはその日の朝の記録から作り、研究・わくわくは手で書く（第2段で web search 付きの生成に置き換える）。
@@ -274,6 +277,7 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
 | 撮るの答えの履歴 | `SHOOT_HISTORY_GAP_MS`（仮の答えの履歴をまとめる間隔） |
 | 撮る（話の型の枠） | `TALK_SLOTS`（枠の定義。ここだけ直せば名前・並び・受け入れる種類が変わる）, `defaultSlotFor`（新しいカードがどの枠に入るか。判断はコード側、モデルは `stance` を返すだけ） |
 | 撮る（デッキの中の相談） | `shootConsultSeed`（相談に投げる文の初期値＝問い＋仮の答え）, `shootConsultAsk`（相談タブと同じ `callChatApi`。★も同じ hit として記録される）。選んだ札はその場で「言葉」の枠のカードになる |
+| 撮影表示（カンペ） | `shootCardLabel`（label、無ければ本文の先頭 15 字）, `shootSourceShort`（出典の略、18 字）, `renderShootStageCards`（1 行表示・タップで 1 枚だけ展開・長押し 0.5 秒で薄く） |
 | 撮る（デッキ・カード・撮影表示） | `SHOOT_SAVE_MS`（自動保存 0.4 秒）, `SHOOT_CARD_LABEL`, `SHOOT_BELIEF_LABEL`, `SHOOT_USED_PICK_DAYS`（「使う」印を拾う日数、30）, `shootSafeUrl`（出典を開くのは http/https だけ）, `normalizeDeckCard` |
 | 振り返る（記録タブの入り口） | `LOOKBACK_SEARCH_DAYS`（記録のない日から近い日を探す範囲、400 日）, `DAY_NOTES_SHOWN`（その日に追加した言葉の表示枚数、5）, `dayPositionLine`（「一万日の N 日目 / 10000 ・ 言葉 ・ 筋トレ ・ 瞑想」の行）, `dayHeadlineNote`（その日の言葉：★ → 朝の最初の言葉） |
 | 入力の退避（未保存の下書き） | `INPUT_DRAFT_KEY`, `captureInputDraftNow`, `restoreInputDraft`（対象外にしたい欄は `INPUT_DRAFT_SKIP`） |

@@ -578,16 +578,15 @@
   .shootHistory div { padding: 2px 0; }
   .shootCardEdit .shootReadonly { font-size: 12px; color: var(--text-faint); line-height: 1.7; padding: 2px 0; }
   .shootHookCandidate { background: var(--bg-card); border-radius: 12px; padding: 12px 14px; margin-top: 8px; font-size: 15px; line-height: 1.7; cursor: pointer; }
-  .shootFlowLine { font-size: 12px; color: #7f8d96; line-height: 1.6; }
   .shootConsultCard { background: var(--bg-card); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 6px; margin-top: 10px; position: relative; }
   .shootConsultCard .cardText { font-size: 15px; line-height: 1.8; padding-right: 34px; }
   .shootConsultCard .cardSource { font-size: 12px; color: var(--text-dim); }
   .shootConsultCard .consultWhy { font-size: 12px; color: var(--accent); line-height: 1.7; }
   .shootConsultUse { align-self: flex-start; font-size: 13px; color: var(--accent); padding: 4px 0; }
   .shootConsultUse:disabled { color: var(--text-faint); }
-  .shootStageSlot { display: flex; flex-direction: column; gap: 12px; }
-  .shootStageSlotHead { font-size: 15px; color: #8f9ba3; letter-spacing: 0.12em; border-bottom: 1px solid #1e262b; padding-bottom: 6px; }
-  .shootStageSlot.s-break .shootStageSlotHead { color: #e0836b; border-bottom-color: #4a2c24; }
+  .shootStageSlot { display: flex; flex-direction: column; gap: 10px; }
+  .shootStageSlotHead { font-size: 11px; color: #5d6a72; letter-spacing: 0.18em; border-top: 1px solid #1a2227; padding-top: 8px; }
+  .shootStageSlot.s-break .shootStageSlotHead { color: #a4614f; border-top-color: #3a241e; }
   .shootHookLine { font-size: 25px; line-height: 1.7; color: #eef3f6; white-space: pre-wrap; }
   .shootAnswerLine { font-size: 17px; line-height: 1.75; color: #9fb0ba; white-space: pre-wrap; margin-top: 10px; }
   .shootRestate { font-size: 19px; color: #c8d2d8; line-height: 1.7; padding: 4px 0 8px; }
@@ -600,19 +599,35 @@
   .shootHead { flex-shrink: 0; padding: 4px 4px 12px; border-bottom: 1px solid #1e262b; }
   .shootHeadQ { font-size: 16px; line-height: 1.8; color: #c8d2d8; white-space: pre-wrap; }
   .shootHeadA { font-size: 13px; line-height: 1.7; color: #7f8d96; margin-top: 6px; white-space: pre-wrap; }
-  .shootCards { display: flex; flex-direction: column; gap: 14px; padding: 16px 0 32px; }
+  .shootCards { display: flex; flex-direction: column; gap: 18px; padding: 16px 0 32px; }
   .shootEmpty { color: #7f8d96; font-size: 14px; padding: 24px 4px; }
-  .shootCard { background: #101418; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px; cursor: pointer; border-left: 4px solid #2b3439; transition: opacity .2s ease; }
+  .shootCard { background: #101418; border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; cursor: pointer; border-left: 4px solid #2b3439; transition: opacity .2s ease; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   .shootCard.k-research { border-left-color: #86a9c9; }
   .shootCard.k-fun { border-left-color: #d3b16a; }
   .shootCard.k-word { border-left-color: #a98fd0; }
   .shootCard.k-record { border-left-color: #5aa89a; }
   .shootCard.said { opacity: 0.3; }
   .shootCardNo { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #7f8d96; font-variant-numeric: tabular-nums; flex-wrap: wrap; }
+  /* v9.1: the stage is a prompt sheet, not a script - one line per card */
+  .shootLine { display: flex; align-items: baseline; gap: 10px; }
+  .shootNo { font-size: 13px; color: #6d7a83; font-variant-numeric: tabular-nums; min-width: 1.2em; }
+  .shootStar { color: #e0836b; font-size: 14px; }
+  .shootLabel { font-size: 22px; line-height: 1.5; color: #e7edf1; flex: 1; word-break: break-word; }
+  .shootSrc { font-size: 12px; color: #6d7a83; white-space: nowrap; }
+  .shootDetail { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #222c32; }
+  .shootLabelMissing { font-size: 11px; color: #8a6a4a; }
+  .shootStageNote { font-size: 12px; color: #7f8d96; padding: 6px 2px 0; }
+  .labelRow { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .labelRow .labelNo { font-size: 12px; color: var(--text-dim); min-width: 1.4em; font-variant-numeric: tabular-nums; }
+  .labelRow .labelBar { width: 4px; align-self: stretch; border-radius: 2px; background: var(--border); }
+  .labelRow.k-research .labelBar { background: #86a9c9; }
+  .labelRow.k-fun .labelBar { background: #d3b16a; }
+  .labelRow.k-word .labelBar { background: #a98fd0; }
+  .labelRow.k-record .labelBar { background: #5aa89a; }
+  .labelRow input { flex: 1; }
   .shootBelief { font-size: 11px; color: #d3b16a; }
   .shootFact { font-size: 21px; line-height: 1.8; color: #e7edf1; white-space: pre-wrap; word-break: break-word; }
   .shootSource { font-size: 13px; color: #93a2ab; word-break: break-word; }
-  .shootBreaks { font-size: 14px; color: #d9b45a; line-height: 1.7; }
   .shootUrlBtn { align-self: flex-start; border: 1px solid #35414a; border-radius: 999px; padding: 9px 18px; color: #c8d2d8; font-size: 13px; }
   @media (prefers-reduced-motion: reduce) { .shootCard { transition: none; } }
   /* 瞑想 (v8.0) */
@@ -1641,9 +1656,12 @@
         <span class="fieldLabel">カード</span>
         <div class="medRow">
           <button type="button" id="btnShootAddWord" class="tagFilterBtn">言葉から</button>
-          <button type="button" id="btnShootAddRecord" class="tagFilterBtn">今日の記録</button>
           <button type="button" id="btnShootAddResearch" class="tagFilterBtn">研究を手で</button>
           <button type="button" id="btnShootAddFun" class="tagFilterBtn">わくわくを手で</button>
+          <button type="button" id="btnShootAddRecord" class="tagFilterBtn">今日の記録</button>
+        </div>
+        <div class="medRow" style="margin-top:6px;">
+          <button type="button" id="btnShootLabelMode" class="tagFilterBtn">ラベルだけ書く</button>
         </div>
         <p class="fieldNote">カードはチャットで作ります。プロンプトをコピーして Claude に貼り、返ってきた JSON をここに貼り戻します。</p>
         <div class="medRow">
@@ -3748,6 +3766,9 @@
     if (kind === 'word' && typeof c.noteId === 'string') out.noteId = c.noteId;
     if (c.gen) out.gen = 1;   // came from a pasted batch - a re-roll only touches these
     if (typeof c.flow === 'string' && c.flow.trim()) out.flow = c.flow.trim().slice(0, 60);   // v9.0 展開: relation to the card before it
+    // v9.1 撮影表示に出る唯一の文字。手書きだけ - 要約された言い回しは、見た
+    // 瞬間に読み直しになって思い出す手がかりにならない
+    if (typeof c.label === 'string' && c.label.trim()) out.label = c.label.trim().slice(0, 40);
     return out;
   }
   function saveJournalEntry(entry) {
@@ -12216,7 +12237,7 @@
   const SHOOT_CARD_LABEL = { research: '研究', fun: 'わくわく', word: '言葉', record: '記録' };
   const SHOOT_BELIEF_LABEL = { yes: '信じている', half: '半信半疑', fun: 'エンタメだと思う' };
   const SHOOT_USED_PICK_DAYS = 30;
-  const shootState = { deckId: null, filledFor: null, saveTimer: null, pickerOpen: false, said: new Set(), consultOpen: false, consultBusy: false, consultFilledFor: null, consult: null, hookCandidates: [] };
+  const shootState = { deckId: null, filledFor: null, saveTimer: null, pickerOpen: false, said: new Set(), consultOpen: false, consultBusy: false, consultFilledFor: null, consult: null, hookCandidates: [], labelMode: false };
   let shootWakeLock = null;
 
   // a card's URL is observed content (typed here, generated by the model in
@@ -12275,7 +12296,7 @@
   }
   function openDeck(id) {
     if (!findDeck(id)) return;
-    if (shootState.deckId !== id) { shootState.consult = null; shootState.consultOpen = false; shootState.consultFilledFor = null; shootState.hookCandidates = []; }
+    if (shootState.deckId !== id) { shootState.consult = null; shootState.consultOpen = false; shootState.consultFilledFor = null; shootState.hookCandidates = []; shootState.labelMode = false; }
     shootState.deckId = id; shootState.filledFor = null; shootState.pickerOpen = false;
     if (nav.screen !== 'shoot') showScreen('shoot');
     renderShoot();
@@ -12456,9 +12477,30 @@
   }
   // Each kind shows only the fields it has: a 記録 card has no URL and
   // nothing to break, a 言葉 card carries its own line from the note.
+  // 10 labels are 10 one-line inputs; writing them is the rehearsal, so there
+  // is no generate button here - only a thumb-friendly place to type them
+  function renderShootLabelList(deck, wrap) {
+    const list = deckCardsBySlot(deck).filter((c) => !c.dropped);
+    if (!list.length) { const p = document.createElement('p'); p.className = 'emptyMsg'; p.textContent = 'まだカードがありません。'; wrap.appendChild(p); return; }
+    list.forEach((c, i) => {
+      const row = document.createElement('div');
+      row.className = 'labelRow k-' + c.kind;
+      const no = document.createElement('span'); no.className = 'labelNo'; no.textContent = String(i + 1); row.appendChild(no);
+      const bar = document.createElement('span'); bar.className = 'labelBar'; row.appendChild(bar);
+      const el = document.createElement('input');
+      el.type = 'text'; el.autocomplete = 'off';
+      el.value = c.label || '';
+      el.placeholder = noteSnippet(c.fact || '', 18);
+      el.addEventListener('input', () => { c.label = el.value; shootScheduleSave(); });
+      row.appendChild(el);
+      wrap.appendChild(row);
+    });
+  }
   function renderShootCards(deck) {
     const wrap = document.getElementById('shootCardList');
     wrap.innerHTML = '';
+    document.getElementById('btnShootLabelMode').classList.toggle('selected', !!shootState.labelMode);
+    if (shootState.labelMode) { renderShootLabelList(deck, wrap); return; }
     const list = deckCardsBySlot(deck);
     if (!list.length) { const p = document.createElement('p'); p.className = 'emptyMsg'; p.textContent = 'まだカードがありません。'; wrap.appendChild(p); return; }
     list.forEach((c, i) => {
@@ -12493,6 +12535,7 @@
         box.appendChild(el);
       };
       const readonly = (text) => { const d1 = document.createElement('div'); d1.className = 'shootReadonly'; d1.textContent = text; box.appendChild(d1); };
+      const readonlyWarn = (text) => { const d1 = document.createElement('div'); d1.className = 'shootReadonly shootLabelMissing'; d1.textContent = text; box.appendChild(d1); };
       const chipRow = (label, options, current, onPick) => {
         if (label) { const l = document.createElement('span'); l.className = 'fieldLabel'; l.textContent = label; box.appendChild(l); }
         const row = document.createElement('div'); row.className = 'tagFilterRow';
@@ -12506,6 +12549,8 @@
         box.appendChild(row);
       };
 
+      field('ラベル（撮影表示に出る手がかり。10〜15字）', c.label, 0, (v) => { c.label = v.trim() ? v : ''; });
+      if (!(c.label || '').trim()) readonlyWarn('ラベル未記入 ・ 撮影表示では本文の先頭が出ます');
       if (c.kind === 'record') {
         field('事実', c.fact, 2, (v) => { c.fact = v; });
         field('日付', c.source, 0, (v) => { c.source = v; });
@@ -12925,6 +12970,9 @@
     wrap.innerHTML = '';
     const live = deckLiveCards(deck);
     if (!live.length) { const p = document.createElement('div'); p.className = 'shootEmpty'; p.textContent = 'カードがありません。'; wrap.appendChild(p); return; }
+    const missing = live.filter((c) => !(c.label || '').trim()).length;
+    if (missing) { const note = document.createElement('div'); note.className = 'shootStageNote'; note.textContent = 'ラベル未記入 ' + missing + '枚（本文の先頭を出しています）'; wrap.appendChild(note); }
+    let shown = 0;
     TALK_SLOTS.filter((sl) => sl.n >= 3).forEach((sl) => {
       const cards = deckSlotCards(deck, sl.n);
       if (sl.key === 'restate') {
@@ -12939,39 +12987,72 @@
       const sec = document.createElement('div');
       sec.className = 'shootStageSlot s-' + sl.key;
       const h = document.createElement('div'); h.className = 'shootStageSlotHead'; h.textContent = sl.n + ' ' + sl.name; sec.appendChild(h);
-      renderShootStageCards(sec, cards, sl);
+      renderShootStageCards(sec, cards, sl, shown);
+      shown += cards.length;
       wrap.appendChild(sec);
     });
   }
-  function renderShootStageCards(wrap, list, sl) {
+  function shootCardLabel(c) { return (c.label || '').trim() || noteSnippet(c.fact || '', 15); }
+  function shootSourceShort(c) {
+    const t = String(c.source || '').replace(/\s+/g, ' ').trim();
+    if (!t) return '';
+    return t.length > 18 ? t.slice(0, 18) + '…' : t;
+  }
+  // One line per card: number, ★ if this is the 壊す frame, the hand-written
+  // label, the source in short. Tap opens the detail (one at a time), a long
+  // press marks it as said. Nothing else is on screen while shooting.
+  function renderShootStageCards(wrap, list, sl, from) {
     list.forEach((c, i) => {
       const box = document.createElement('div');
       box.className = 'shootCard k-' + c.kind + ' s-' + sl.key + (shootState.said.has(c.id) ? ' said' : '');
-      const head = document.createElement('div');
-      head.className = 'shootCardNo';
-      const n = document.createElement('span'); n.textContent = String(i + 1); head.appendChild(n);
-      const k = document.createElement('span'); k.className = 'shootCardKind k-' + c.kind; k.textContent = SHOOT_CARD_LABEL[c.kind] || c.kind; head.appendChild(k);
-      if (c.tag) { const t = document.createElement('span'); t.className = 'shootCardKind'; t.textContent = c.tag; head.appendChild(t); }
-      if (c.belief) { const b = document.createElement('span'); b.className = 'shootBelief'; b.textContent = SHOOT_BELIEF_LABEL[c.belief]; head.appendChild(b); }
-      box.appendChild(head);
-      if (c.flow) { const fl = document.createElement('div'); fl.className = 'shootFlowLine'; fl.textContent = c.flow; box.appendChild(fl); }
-      const fact = document.createElement('div'); fact.className = 'shootFact'; fact.textContent = c.fact || '（空）'; box.appendChild(fact);
-      // 言葉: the reader's own line belongs next to the words, and it is read
-      // live from the note so an edit to the note shows up here
-      if (c.kind === 'word' && c.noteId) { const note = findNote(c.noteId); if (note && note.myWords) { const my = document.createElement('div'); my.className = 'shootWordMy'; my.textContent = note.myWords; box.appendChild(my); } }
-      if (c.source) { const s = document.createElement('div'); s.className = 'shootSource'; s.textContent = c.source; box.appendChild(s); }
-      if (c.breaks) { const br = document.createElement('div'); br.className = 'shootBreaks'; br.textContent = '壊すもの ・ ' + c.breaks; box.appendChild(br); }
+
+      const line = document.createElement('div');
+      line.className = 'shootLine';
+      const n = document.createElement('span'); n.className = 'shootNo'; n.textContent = String((from || 0) + i + 1); line.appendChild(n);
+      if (sl.key === 'break') { const st = document.createElement('span'); st.className = 'shootStar'; st.textContent = '★'; line.appendChild(st); }
+      const lb = document.createElement('span'); lb.className = 'shootLabel'; lb.textContent = shootCardLabel(c); line.appendChild(lb);
+      const src = shootSourceShort(c);
+      if (src) { const sc = document.createElement('span'); sc.className = 'shootSrc'; sc.textContent = src; line.appendChild(sc); }
+      box.appendChild(line);
+
+      const detail = document.createElement('div');
+      detail.className = 'shootDetail';
+      detail.hidden = true;
+      const fact = document.createElement('div'); fact.className = 'shootFact'; fact.textContent = c.fact || '（空）'; detail.appendChild(fact);
+      if (c.kind === 'word' && c.noteId) { const note = findNote(c.noteId); if (note && note.myWords) { const my = document.createElement('div'); my.className = 'shootWordMy'; my.textContent = note.myWords; detail.appendChild(my); } }
+      const meta = [c.source, c.tag, c.belief ? SHOOT_BELIEF_LABEL[c.belief] : ''].filter(Boolean).join(' ・ ');
+      if (meta) { const m = document.createElement('div'); m.className = 'shootSource'; m.textContent = meta; detail.appendChild(m); }
       const safeUrl = shootSafeUrl(c.url);
       if (safeUrl) {
         const u = document.createElement('button');
         u.type = 'button'; u.className = 'shootUrlBtn'; u.textContent = '出典をひらく';
         u.addEventListener('click', (e) => { e.stopPropagation(); try { window.open(safeUrl, '_blank', 'noopener'); } catch (err) {} });
-        box.appendChild(u);
+        detail.appendChild(u);
       }
-      box.addEventListener('click', () => {
-        if (shootState.said.has(c.id)) shootState.said.delete(c.id); else shootState.said.add(c.id);
-        box.classList.toggle('said');
+      box.appendChild(detail);
+
+      let pressTimer = null, longPressed = false;
+      const cancel = () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } };
+      box.addEventListener('pointerdown', () => {
+        longPressed = false;
+        cancel();
+        pressTimer = setTimeout(() => {
+          pressTimer = null; longPressed = true;
+          if (shootState.said.has(c.id)) shootState.said.delete(c.id); else shootState.said.add(c.id);
+          box.classList.toggle('said');
+        }, 500);
       });
+      box.addEventListener('pointerup', () => {
+        cancel();
+        if (longPressed) return;
+        const open = !detail.hidden;
+        // only one card is ever open, so the sheet never turns into a wall
+        wrap.closest('#shootStageCards').querySelectorAll('.shootDetail').forEach((el) => { el.hidden = true; });
+        detail.hidden = open;
+      });
+      box.addEventListener('pointerleave', cancel);
+      box.addEventListener('pointercancel', cancel);
+      box.addEventListener('contextmenu', (e) => e.preventDefault());
       wrap.appendChild(box);
     });
   }
@@ -13024,6 +13105,12 @@
     renderShootConsult(deck);
   });
   document.getElementById('btnShootConsultAsk').addEventListener('click', shootConsultAsk);
+  document.getElementById('btnShootLabelMode').addEventListener('click', () => {
+    shootFlush();
+    const deck = findDeck(shootState.deckId); if (!deck) return;
+    shootState.labelMode = !shootState.labelMode;
+    renderShootCards(deck);
+  });
   const promptBtn = (id, build, statusId) => document.getElementById(id).addEventListener('click', () => {
     shootFlush();
     const deck = findDeck(shootState.deckId); if (!deck) return;
