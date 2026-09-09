@@ -138,6 +138,8 @@ iPhone: 設定 → Safari → 詳細 → Web サイトデータ → yutatasaki.g
 | 記録（朝・相談・引く・問い） | `journal:YYYY-MM`（月ごと）、索引 `journalIndex`、未同期の月 `journalDirty` | `kotoba-data` の `journal/YYYY-MM.json` と `journal/index.json` | 月ファイル方式のとき。旧方式では `data.json` の `journal` |
 | 筋トレ | `training` | `kotoba-data` の `training.json` | |
 | 瞑想 | `meditation:YYYY`（年ごと。全年を端末に持つ）、未同期の年 `meditationDirty`、最後に見た索引 `meditationStamps` | `kotoba-data` の `meditation/YYYY.json` と `meditation/index.json` | v8.0。最初から年ファイル |
+| 世界（出来事） | `world:YYYY-MM`（eventDate の月ごと。**全月は持たない**）、索引 `worldIndex`、未同期の月 `worldDirty`、最後に見た索引 `worldStamps` | `kotoba-data` の `world/YYYY-MM.json` と `world/index.json` | v10。端末に読むのは「今月・先月」＋「索引が未読ありと言う月」 |
+| 世界（概念・ソース） | `worldConcepts` / `worldSources`（どちらも全件） | `kotoba-data` の `world/concepts.json` と `world/sources.json` | 署名が変わったときだけ書く |
 | 散歩 | `walk`（予備 `walkBackup`） | `walk10000-data` の `data.json` | walk10000 と同じ形 |
 | 設定（トークン・APIキー・モデル名・各種フラグ） | localStorage `kotoba_*` | 置かない | 端末ごと |
 
@@ -206,6 +208,38 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
 **話の型**：入り → 先出し（仮の答え） → 支え → 寄り道 → 壊す → 言葉 → 言い直し の 7 枠で固定。答えを先に言い、支えて、壊して、言い直す形。カードは枠（`slot`）に割り当てられ、撮影表示は作成順ではなく枠の順に出す。枠の定義は `TALK_SLOTS` の配列 1 か所（名前・説明・受け入れる種類・並び）。枠 1・2・7 はカードを持たない。`slot` はカードに保存されるので、既存の番号の意味を変えないこと（追加は末尾）。第1段のデッキ（`slot` なし）は読み込み時に種類ごとの既定（研究・記録 3／わくわく 4／言葉 6）が入る。
 
 カードは材料であって台本ではない。第1段では AI を通さず、言葉カードは相談の「使う」印から、記録カードはその日の朝の記録から作り、研究・わくわくは手で書く（第2段で web search 付きの生成に置き換える）。
+
+**出来事 1 件（世界。`world/YYYY-MM.json` の `events`）**
+```
+{ id: 'w_YYYYMMDD_連番'（日付の部分は eventDate。ここから月ファイルが引ける）,
+  eventDate: 実際に動いた日, readDate: 出した日（空 = 未読キュー）, field: 'finance'|'geo',
+  fact: 何が起きたか（1文・40字）, why: なぜ今動いたか（1〜2文）,
+  premise: { kind: 'new'|'relation',
+             name/aka（new のとき。aka は別名・訳語・英語名）, a/b（relation のとき。既知の概念2つ）,
+             line: 概念（または関係）の説明1文 },
+  detail: 数字・背景, source: 媒体と発表日, url: 出典（空の出来事は取り込まない）,
+  concepts: [触れている概念名], related: [premise の概念とつながる概念名],
+  prediction: { text, days: 30|90|180, writtenDate, dueDate, setAt, history: [{text, at}],
+                result: ''|'hit'|'miss'|'hold', judgedAt, judgeNote },
+  batchId, order（その取り込みの中での並び）, createdAt（取り込んだ時刻）, updatedAt }
+```
+**索引 `world/index.json`**: `{ version:1, updatedAt, months: {'YYYY-MM': {updatedAt, count, unread}}, due: {'YYYY-MM-DD': [出来事id]}, concepts: {updatedAt,count}, sources: {updatedAt,count} }`
+`due` は期限の来た予測を全月走査せずに拾うためだけにある。id から月が引けるので、そこから該当月だけを読む。合わなくなったら設定の「予測の索引を作り直す」で組み直す。
+
+**概念ノート（`world/concepts.json`）**
+```
+{ version:1, updatedAt,
+  concepts: [{ id:'wc_YYYYMMDD_連番', name, aka: [別名], line, field,
+               eventIds: [出た出来事], related: [つながる概念id], firstEventId,
+               createdAt, updatedAt, lastUsedAt（プロンプトに差し込む400件を切る順序） }],
+  dismissedPairs: [{a, b, at}]（「別のもの」と答えた組。二度と聞かない） }
+```
+**ソース（`world/sources.json`）**: `{ version:1, updatedAt, sources: [{id, name, url, field:'finance'|'geo'|'both', role:'primary'|'analysis', note, updatedAt}] }`
+`role` の `primary`（中銀・政府・国際機関・統計）は出来事・日付・数字の出所。`analysis`（シンクタンク）は why を書くための補助で、**それだけを根拠に出来事を立てさせない**。プロンプトでは2つの一覧を分けて差し込み、使い分けを明記してある。一度も保存されていないときだけ初期リスト22件が入る。
+
+**世界の作り**：生成はアプリの中でやらない（撮る v9.0 と同じ）。分野ごとに2本のプロンプト（金融・経済／地政学・政治）をコピーしてチャットに貼り、返ってきた JSON を貼り戻す。**取り込みは追記のみ**で、置き換えを一切しないので、読んだ出来事と書いた予測が取り込みで消える経路が無い。重複は `eventDate ±3日` の窓で `fact` のバイグラム類似（0.70）と URL 一致を見る（窓が月境を越えるので隣接月も読む）。`url` が空・日付が不正・未来の日付は落として、理由ごとに件数を出す。
+一覧は **fact の1行だけ**で、`why` と `premise` はタップの向こう、数字・出典・URL はさらにその奥。1日に出るのは3件（`WORLD_PER_DAY`）で、**朝のステップか「今日の3件をひらく」を押すまで1件も消費されない**。読まない日があってよく、14日を過ぎた未読は「古い」印が付いてまとめて捨てられる（自動では消さない）。
+概念の表記ゆれは、(1) 正規化（中黒・長音・空白・全角半角）して完全一致するものを取り込み時に自動で吸収、(2) 近い名前を候補として出して1タップで統合、(3) 概念一覧から手で名前を直す（**既にある名前にすると統合になる**。タグの名前変更と同じ）。**バイグラムは「イールドカーブ」と「利回り曲線」のように文字が重ならない言い換えを拾えない**ので、本命は生成に `aka`（別名・訳語・英語名）を書かせて突き合わせることと、手での統合。
 
 **月ファイル `journal/YYYY-MM.json`**: `{ version: 1, month, updatedAt, entries: [...], deletedIds: [] }`
 **索引 `journal/index.json`**: `{ version: 1, updatedAt, months: { 'YYYY-MM': { updatedAt, count, noteStats: { ノートid: { p: 届いた回数, h: ★の回数, q: 問いに使われた回数, last, lastHit } } } } }`

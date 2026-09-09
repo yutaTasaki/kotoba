@@ -971,6 +971,76 @@
     .graphViewport { flex: none; height: 60vh; min-height: 0; }
     .graphFarGroupHead { font-size: 12px; }
   }
+
+  /* --- v10 世界 ---------------------------------------------------------- */
+  /* The entry row that moved out of the 記録 topbar (a 4th button did not fit
+     at 390px). Wraps instead of shrinking, so a 5th one later still works. */
+  .subEntryRow { display: flex; flex-wrap: wrap; gap: 8px; }
+  .subEntryRow .tagFilterBtn { flex: 1 1 auto; min-width: 4.5em; text-align: center; }
+
+  /* One event = one line. fact only; everything else is behind a tap. */
+  .worldRow {
+    display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: baseline;
+    padding: 9px 0; border-top: 1px solid var(--border);
+    cursor: pointer; user-select: none; -webkit-user-select: none;
+  }
+  .worldRow:first-child { border-top: none; }
+  .worldRow .wDate { font-size: 11px; color: var(--text-faint); white-space: nowrap; }
+  .worldRow .wFact { font-size: 14px; line-height: 1.5; }
+  .worldRow.unreadRow .wFact { color: var(--text); }
+  .worldRow .wTag {
+    font-size: 10px; white-space: nowrap; padding: 2px 6px; border-radius: 999px;
+    border: 1px solid var(--border); color: var(--text-faint);
+  }
+  .worldRow .wTag.isNew { color: var(--accent); border-color: var(--accent-dim); }
+  .worldRow .wMark { font-size: 10px; color: var(--accent); white-space: nowrap; }
+  .worldDetail { padding: 2px 0 14px; border-top: 1px dashed var(--border); }
+  .worldDetail .wWhy { font-size: 14px; line-height: 1.75; margin: 10px 0 0; }
+  .worldPremise {
+    margin-top: 12px; padding: 10px 12px; background: var(--bg-card); border-radius: 10px;
+    font-size: 13px; line-height: 1.7;
+  }
+  .worldPremise .wpName { color: var(--accent); font-size: 13px; }
+  .worldPremise .wpName.known { color: var(--text-dim); }
+  .worldDeep { margin-top: 10px; font-size: 13px; line-height: 1.7; color: var(--text-dim); }
+  .worldDeep a { color: var(--accent); word-break: break-all; }
+  .worldRowBtns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .worldRowBtns .tagFilterBtn { padding: 5px 10px; font-size: 12px; }
+  .worldPredBox { margin-top: 12px; }
+  .worldPredBox textarea { margin-bottom: 6px; }
+  .worldPredDue { font-size: 11px; color: var(--text-faint); }
+  .worldHistory { margin-top: 8px; font-size: 11px; color: var(--text-faint); line-height: 1.7; }
+
+  .worldStale {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    background: var(--bg-card); border-radius: 10px; padding: 8px 12px;
+    font-size: 12px; color: var(--text-dim);
+  }
+  .worldSectionHead {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+    font-size: 12px; color: var(--text-faint); margin-top: 4px;
+  }
+  .worldMergeRow {
+    background: var(--bg-card); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px;
+    font-size: 13px; line-height: 1.6;
+  }
+  .worldMergeRow .wmPair { margin-bottom: 6px; }
+  .worldMergeRow .wmArrow { color: var(--text-faint); margin: 0 6px; }
+  .worldConceptRow {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+    padding: 8px 0; border-top: 1px solid var(--border);
+    cursor: pointer; user-select: none; -webkit-user-select: none; font-size: 14px;
+  }
+  .worldConceptRow:first-child { border-top: none; }
+  .worldConceptRow .wcCount { font-size: 11px; color: var(--text-faint); white-space: nowrap; }
+  .worldSourceRow {
+    display: grid; grid-template-columns: 1fr auto; gap: 6px 8px; align-items: center;
+    padding: 8px 0; border-top: 1px solid var(--border); font-size: 13px;
+  }
+  .worldSourceRow .wsName { line-height: 1.4; }
+  .worldSourceRow .wsUrl { font-size: 11px; color: var(--text-faint); word-break: break-all; }
+  .worldSourceRow .tagFilterRow { flex: 0 0 auto; }
+  .worldSourceRow .tagFilterBtn { padding: 3px 7px; font-size: 11px; }
 </style>
 </head>
 <body>
@@ -1034,6 +1104,15 @@
         </div>
         <button id="btnWalkShare" class="primaryBtn">Xで投稿</button>
         <div id="walkShareStatus"></div>
+      </div>
+
+      <!-- v10: 朝の流れの一番最後。歩く一連の作業の途中に別の話を挟まない。
+           開かなければ今日の3件は確定しない（読まない日があってよい）。 -->
+      <button type="button" id="worldCollapsedRow" class="homeStepCollapsed" hidden></button>
+      <div id="worldStage" class="morningStage" hidden>
+        <div id="homeWorldList"></div>
+        <p class="emptyMsg" id="homeWorldEmpty" hidden>新しい分がありません。</p>
+        <button type="button" id="btnHomeWorldOpen" class="linkLikeBtn">世界をひらく</button>
       </div>
     </div>
 
@@ -1391,8 +1470,29 @@
         <button id="btnReloadFromRemote" class="dangerBtn">リモートから読み込み直す（両方・ローカルを破棄）</button>
       </div>
       <hr>
+      <div class="field">
+        <h3>6. 世界</h3>
+        <span class="fieldLabel">ソース</span>
+        <p class="fieldNote">生成プロンプトに差し込む出所です。「一次」は出来事・日付・数字の出所（中銀・政府・国際機関・統計）。「解釈」はなぜ動いたかを書くための補助（シンクタンク）。解釈だけを根拠に出来事を立てさせません。</p>
+        <div id="worldSourceList"></div>
+        <p class="emptyMsg" id="worldSourceEmpty" hidden>ソースがありません。</p>
+      </div>
+      <div class="field">
+        <span class="fieldLabel">ソースを足す</span>
+        <input type="text" id="worldSourceNameInput" placeholder="名前（例：日本銀行）" autocomplete="off">
+        <input type="text" id="worldSourceUrlInput" placeholder="https://www.boj.or.jp/" autocomplete="off">
+        <button id="btnWorldSourceAdd" class="secondaryBtn">足す</button>
+        <p class="fieldNote" id="worldSourceStatus"></p>
+      </div>
+      <div class="field">
+        <span class="fieldLabel">予測の索引を作り直す</span>
+        <p class="fieldNote">答え合わせの期限一覧が合わなくなったときに使います。全部の月を読み直して組み直すので少し時間がかかります。</p>
+        <button id="btnWorldRebuildDue" class="secondaryBtn">作り直す</button>
+        <p class="fieldNote" id="worldRebuildStatus"></p>
+      </div>
+      <hr>
       <div class="field statsField">
-        <h3>6. 統計</h3>
+        <h3>7. 統計</h3>
         <div class="statRow"><span>ノート総数</span><span id="statNoteCount"></span></div>
         <div class="statRow"><span>タグ数</span><span id="statTagCount"></span></div>
         <div class="statRow"><span>自動リンク数</span><span id="statAutoLinkCount"></span></div>
@@ -1464,12 +1564,16 @@
     <header class="topbar">
       <button class="backBtn" id="backFromRecords">← 戻る</button>
       <div class="topbar-title">記録</div>
-      <div class="topbarBtnGroup">
-        <button id="btnOpenShoot" class="iconBtn">撮る</button>
-        <button id="btnOpenMeditation" class="iconBtn">瞑想</button>
-        <button id="btnOpenTraining" class="iconBtn">筋トレ</button>
-      </div>
     </header>
+
+    <!-- v10: moved out of the topbar. A 4th button did not fit at 390px, and
+         the row wraps instead of shrinking when a 5th is added. -->
+    <div class="subEntryRow">
+      <button type="button" id="btnOpenShoot" class="tagFilterBtn">撮る</button>
+      <button type="button" id="btnOpenMeditation" class="tagFilterBtn">瞑想</button>
+      <button type="button" id="btnOpenTraining" class="tagFilterBtn">筋トレ</button>
+      <button type="button" id="btnOpenWorld" class="tagFilterBtn">世界</button>
+    </div>
 
     <div id="recordsCalendarView">
       <div class="lookbackRow" id="lookbackRow">
@@ -1506,6 +1610,7 @@
         <div class="statRow"><span>生成した問い</span><span id="summaryQuestionCount"></span></div>
         <div class="statRow"><span>筋トレ日数</span><span id="summaryTrainingDays"></span></div>
         <div class="statRow"><span>瞑想</span><span id="summaryMeditation"></span></div>
+        <div class="statRow"><span>世界の出来事</span><span id="summaryWorld"></span></div>
         <div class="field">
           <span class="fieldLabel">その月に最も多く届いた言葉</span>
           <div id="summaryTopNotes" class="listItems"></div>
@@ -1759,6 +1864,97 @@
           <button type="button" id="btnShootDelete" class="dangerBtn" style="width:auto;">このデッキを消す</button>
         </div>
         <p class="fieldNote" id="shootMeta"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- v10 世界: 出来事は生成しない。プロンプトを写して、返ってきた JSON を貼る。 -->
+  <section id="screen-world" class="screen" hidden>
+    <header class="topbar">
+      <button class="backBtn" id="backFromWorld">← 戻る</button>
+      <div class="topbar-title">世界</div>
+      <div class="topbarBtnGroup">
+        <button id="btnWorldImportOpen" class="iconBtn">取り込む</button>
+      </div>
+    </header>
+
+    <div class="editorBody" id="worldMainView">
+      <div class="worldStale" id="worldStaleBar" hidden>
+        <span id="worldStaleText"></span>
+        <button type="button" id="btnWorldDropStale" class="tagFilterBtn">まとめて捨てる</button>
+      </div>
+
+      <div class="field" id="worldTodayField">
+        <span class="fieldLabel">今日の3件</span>
+        <div id="worldTodayList"></div>
+        <p class="emptyMsg" id="worldTodayEmpty" hidden>新しい分がありません。右上の「取り込む」から入れます。</p>
+        <button type="button" id="btnWorldOpenToday" class="secondaryBtn" hidden>今日の3件をひらく</button>
+      </div>
+
+      <div class="tagFilterRow" id="worldTabRow">
+        <button type="button" class="tagFilterBtn" data-wtab="events">出来事</button>
+        <button type="button" class="tagFilterBtn" data-wtab="concepts">概念</button>
+        <button type="button" class="tagFilterBtn" data-wtab="predictions">予測</button>
+      </div>
+
+      <div id="worldTabBody"></div>
+    </div>
+
+    <div class="editorBody" id="worldImportView" hidden>
+      <div class="field">
+        <span class="fieldLabel">1 プロンプトをコピー</span>
+        <p class="fieldNote">分野を2本に分けています。1本ずつチャットに貼り、返ってきた JSON をこの下に貼り戻します。何回貼っても足されるだけで、読んだ分や書いた予測は消えません。</p>
+        <div class="medRow">
+          <button type="button" id="btnWorldPromptFinance" class="tagFilterBtn">金融・経済（A）</button>
+          <button type="button" id="btnWorldPromptGeo" class="tagFilterBtn">地政学・政治（B）</button>
+        </div>
+        <p class="fieldNote" id="worldPromptStatus"></p>
+      </div>
+      <div class="field">
+        <span class="fieldLabel">2 返ってきた JSON を貼る</span>
+        <textarea id="worldImportPaste" rows="4" placeholder='{"events":[...]} をここに貼る' autocomplete="off"></textarea>
+        <button type="button" id="btnWorldImport" class="secondaryBtn">取り込む</button>
+        <p class="fieldNote" id="worldImportStatus"></p>
+      </div>
+      <div class="field" id="worldMergeField" hidden>
+        <span class="fieldLabel">3 近い名前の概念</span>
+        <p class="fieldNote">同じものなら1つにまとめます。別のものだと答えた組は二度と聞きません。</p>
+        <div id="worldMergeList"></div>
+      </div>
+      <div class="field">
+        <button type="button" id="btnWorldImportBack" class="secondaryBtn">戻る</button>
+      </div>
+    </div>
+
+    <div class="editorBody" id="worldConceptView" hidden>
+      <h3 id="worldConceptName"></h3>
+      <p class="fieldNote" id="worldConceptAka" hidden></p>
+      <p id="worldConceptLine" style="line-height:1.8;"></p>
+      <div class="field">
+        <span class="fieldLabel">つながる概念</span>
+        <div id="worldConceptRelated"></div>
+        <p class="emptyMsg" id="worldConceptRelatedEmpty" hidden>まだありません。</p>
+      </div>
+      <div class="field">
+        <span class="fieldLabel">この概念が出た出来事</span>
+        <div id="worldConceptEvents"></div>
+      </div>
+      <div class="field">
+        <div class="medRow">
+          <button type="button" id="btnWorldConceptCopy" class="tagFilterBtn">Claude に聞く</button>
+          <button type="button" id="btnWorldConceptRename" class="tagFilterBtn">名前を直す・まとめる</button>
+        </div>
+        <p class="fieldNote" id="worldConceptStatus"></p>
+        <div id="worldConceptRenamePanel" hidden>
+          <input type="text" id="worldConceptRenameInput" placeholder="新しい名前（既にある名前にするとまとまります）" autocomplete="off">
+          <div class="medRow">
+            <button type="button" id="btnWorldConceptRenameOk" class="secondaryBtn">決定</button>
+            <button type="button" id="btnWorldConceptRenameCancel" class="secondaryBtn">やめる</button>
+          </div>
+        </div>
+      </div>
+      <div class="field">
+        <button type="button" id="btnWorldConceptBack" class="secondaryBtn">戻る</button>
       </div>
     </div>
   </section>
@@ -2448,6 +2644,14 @@
   for (const k of ['notesDirty', 'notesStamps', 'meditationDirty', 'meditationStamps']) { try { bootKV[k] = await kvGet(k); } catch (e) { bootKV[k] = null; } }
   bootKV.medDocs = {};
   try { (await kvGetAllPrefix('meditation:')).forEach((v, k) => { bootKV.medDocs[k.slice(11)] = v; }); } catch (e) {}
+  // v10 世界: 全月は読まない。今月・先月と、索引が「未読が残っている」と言う月だけ。
+  for (const k of ['worldIndex', 'worldDirty', 'worldStamps', 'worldConcepts', 'worldSources']) { try { bootKV[k] = await kvGet(k); } catch (e) { bootKV[k] = null; } }
+  bootKV.worldDocs = {};
+  {
+    let wix = null;
+    try { wix = normalizeWorldIndex(JSON.parse(bootKV.worldIndex || 'null')); } catch (e) { wix = null; }
+    for (const m of worldBootMonths(wix)) { try { bootKV.worldDocs[m] = await kvGet('world:' + m); } catch (e) { bootKV.worldDocs[m] = null; } }
+  }
 
   // --- 言葉の月ファイル (v7.4; v7.2 was per year) ---------------------------------
   // Legacy mode: notes are an array inside data.json. Monthly mode:
@@ -3167,6 +3371,7 @@
       }
       if (notesSplit()) await notesSyncNow(token);
       if (journalMonthly()) await journalSyncNow(token);
+      await worldSyncNow(token);
       localStorage.setItem(LAST_SYNC_KEY, nowIso());
       pendingChangeCount = 0;
       clearSyncError(LAST_SYNC_ERROR_KEY);
@@ -5780,7 +5985,7 @@
     if (nav.screen !== name) captureInputDraftNow();
     if (nav.screen === 'training' && name !== 'training') trFlush();
     if (nav.screen === 'shoot' && name !== 'shoot') shootFlush();
-    ['home', 'list', 'consult', 'detail', 'editor', 'settings', 'records', 'bulk', 'draftreview', 'training', 'meditation', 'shoot'].forEach((s) => {
+    ['home', 'list', 'consult', 'detail', 'editor', 'settings', 'records', 'bulk', 'draftreview', 'training', 'meditation', 'shoot', 'world'].forEach((s) => {
       document.getElementById('screen-' + s).hidden = s !== name;
     });
     nav.screen = name;
@@ -5790,7 +5995,7 @@
     // mechanism that already hid it before this nav became position:fixed.
     document.getElementById('globalBottomNav').hidden = false;
     document.querySelectorAll('#globalBottomNav .navBtn').forEach((b) => b.classList.remove('selected'));
-    const activeBtn = { home: 'navHome', list: 'navList', consult: 'navConsult', records: 'navRecords', settings: 'navSettings', training: 'navRecords', meditation: 'navRecords', shoot: 'navRecords' }[name];
+    const activeBtn = { home: 'navHome', list: 'navList', consult: 'navConsult', records: 'navRecords', settings: 'navSettings', training: 'navRecords', meditation: 'navRecords', shoot: 'navRecords', world: 'navRecords' }[name];
     if (activeBtn) document.getElementById(activeBtn).classList.add('selected');
     // a kept draft older than the jump window is put back the moment you open
     // that screen yourself (applyInputDraftFields only acts on a match)
@@ -5812,6 +6017,7 @@
     if (nav.screen === 'training') { renderTraining(); return; }
     if (nav.screen === 'meditation') { renderMeditation(); return; }
     if (nav.screen === 'shoot') { renderShoot(); return; }
+    if (nav.screen === 'world') { renderWorld(); return; }
     if (nav.screen === 'home') renderHome();
     else if (nav.screen === 'list') renderList();
     else if (nav.screen === 'detail') renderDetail();
@@ -6112,6 +6318,11 @@
         }
       }
     }
+
+    // v10: 世界は流れの一番最後。歩く一連の作業の途中に別の話を挟まない。
+    // 畳んだ1行はいつでも出るが、開くまで今日の3件は確定しない。
+    renderHomeWorldStep();
+    order.push(...homeStepRowIds('world', homeWorldCollapsedLabel(), 'worldStage', 'worldCollapsedRow'));
 
     const stepsContainer = document.getElementById('homeStepsContainer');
     order.forEach((id) => {
@@ -9534,8 +9745,17 @@
   // monthly journal: the month on screen may not be in memory yet - fetch it
   // (kv cache, then the repo) and redraw once it is
   function ensureCalendarMonthLoaded() {
-    if (!journalMonthly()) return;
     const key = calendarMonthKey();
+    // v10: 世界の出来事は eventDate 基準の月ファイルなので、その月に「読んだ」
+    // ものは少し前の月のファイルに入っている。数か月ぶん引いておく。
+    const worldMonths = worldMonthsForDay(key + '-15').filter((m) => !wd.loaded.has(m));
+    if (worldMonths.length) {
+      ensureWorldMonths(worldMonths).then(() => {
+        if (nav.screen !== 'records' || calendarMonthKey() !== key) return;
+        renderDayDetail(); renderMonthSummary();
+      });
+    }
+    if (!journalMonthly()) return;
     if (jm.loaded.has(key)) return;
     const label = document.getElementById('calMonthLabel');
     label.textContent = label.textContent + '（読み込み中）';
@@ -10126,6 +10346,9 @@
     const deckEntriesToday = data.journal.filter((j) => j.kind === 'deck' && j.date === dateStr);
     if (deckEntriesToday.length) { any = true; body.appendChild(renderDayDeckCard(deckEntriesToday)); }
 
+    const worldCard = renderDayWorldCard(dateStr);
+    if (worldCard) { any = true; body.appendChild(worldCard); }
+
     const added = notesAddedOn(dateStr);
     if (added.length) { any = true; body.appendChild(renderDayNotesCard(added)); }
 
@@ -10149,6 +10372,11 @@
     document.getElementById('summaryQuestionCount').textContent = `${monthQuestions.length}件 / 使った ${usedQuestions}件`;
     document.getElementById('summaryTrainingDays').textContent = `${trainingData.days.filter((d) => inMonth(d.date)).length}日`;
     { const ms = medData.sessions.filter((x) => inMonth(x.date)); document.getElementById('summaryMeditation').textContent = ms.length ? `${new Set(ms.map((x) => x.date)).size}日 ／ ${ms.length}回 ${medSum(ms)}分` : '0日'; }
+    {
+      const read = worldEvents.filter((e) => inMonth(e.readDate));
+      const wrote = worldEvents.filter((e) => inMonth(e.prediction.writtenDate));
+      document.getElementById('summaryWorld').textContent = `読んだ ${read.length}件 / 予測 ${wrote.length}件`;
+    }
 
     // "届いた言葉" mirrors topMonthlyPickedNoteIds's own scope: morning +
     // consult picks only - 引く is something the user pulls themselves, not
@@ -11559,6 +11787,8 @@
     document.getElementById('morningEnabledToggle').checked = getMorningEnabled();
     document.getElementById('compressThresholdInput').value = getCompressThreshold();
     renderSourceKindList();
+    renderWorldSources();
+    document.getElementById('worldRebuildStatus').textContent = '';
     document.getElementById('morningQuoteHeadingInput').value = getMorningQuoteHeading();
     document.getElementById('statNoteCount').textContent = data.notes.length;
     document.getElementById('statTagCount').textContent = allTags().length;
@@ -13488,6 +13718,1533 @@
   window.addEventListener('pagehide', () => shootFlush());
 
 
+  // =========================================================================
+  // v10 世界 — 金融・地政学を体系として持つ
+  // =========================================================================
+  // 出来事はアプリの中で作らない。プロンプトを写してチャットに貼り、返って
+  // きた JSON を貼り戻す（撮る v9.0 と同じ姿勢）。API は一切使わない。
+  // kotoba の言葉（data.notes）は読まないし書かない。journal にも混ぜない。
+  //
+  // 「量ではなく消化」を構造で守る：一覧は fact の1行だけ、1日に出るのは
+  // WORLD_PER_DAY 件だけ、朝のステップを開かない限り1件も消費されない。
+
+  const WORLD_PER_DAY         = 3;              // 1日の件数
+  const WORLD_PREDICT_CHOICES = [30, 90, 180];  // 予測期限の選択肢（日）
+  const WORLD_PREDICT_DAYS    = 90;             // 既定
+  const WORLD_STALE_DAYS      = 14;             // 未読が「古い」になるまで
+  const WORLD_KNOWN_MAX       = 400;            // プロンプトに差し込む既知概念の上限
+  const WORLD_QUEUE_WARN      = 30;             // 未読が溜まりすぎの警告
+  const WORLD_FACT_MAX        = 40;             // fact の字数
+  const WORLD_DUP_SIM         = 0.70;           // 出来事の重複しきい値
+  const WORLD_DUP_WINDOW_DAYS = 3;              // 重複を見る eventDate の窓（前後）
+  const WORLD_CONCEPT_SIM     = 0.60;           // 概念名の近さしきい値
+  const WORLD_CONCEPT_MIN_LEN = 3;              // 「片方が片方を含む」を使う最短の長さ
+  const WORLD_PROMPT_COUNT    = 10;             // 1本あたりに求める件数
+  const WORLD_OLD_EVENT_DAYS  = 90;             // これより古い eventDate は数だけ知らせる
+  const WORLD_DAY_LOOKBACK_MONTHS = 4;          // 記録の日詳細で読む月の数（後述）
+  const WORLD_FIELDS      = ['finance', 'geo'];
+  const WORLD_FIELD_LABEL = { finance: '金融', geo: '地政学' };
+  const WORLD_ROLES       = ['primary', 'analysis'];
+  const WORLD_ROLE_LABEL  = { primary: '一次', analysis: '解釈' };
+
+  const WORLD_INDEX_PATH    = 'world/index.json';
+  const WORLD_CONCEPTS_PATH = 'world/concepts.json';
+  const WORLD_SOURCES_PATH  = 'world/sources.json';
+  const worldMonthPath = (m) => 'world/' + m + '.json';
+
+  // 一度も保存されていないときだけ入れる初期値。一度でも編集したら入れ直さない。
+  // URL は実測（apex が HTTPS を返さないものは www. を付けてある）。
+  const WORLD_DEFAULT_SOURCES = [
+    { name: '日本銀行', url: 'https://www.boj.or.jp/', field: 'finance', role: 'primary' },
+    { name: 'FRB（米連邦準備制度）', url: 'https://www.federalreserve.gov/', field: 'finance', role: 'primary' },
+    { name: 'ECB（欧州中央銀行）', url: 'https://www.ecb.europa.eu/', field: 'finance', role: 'primary' },
+    { name: 'BIS（国際決済銀行）', url: 'https://www.bis.org/', field: 'finance', role: 'primary' },
+    { name: 'IMF', url: 'https://www.imf.org/', field: 'finance', role: 'primary' },
+    { name: '財務省', url: 'https://www.mof.go.jp/', field: 'finance', role: 'primary' },
+    { name: '内閣府 経済社会総合研究所', url: 'https://www.esri.cao.go.jp/', field: 'finance', role: 'primary' },
+    { name: '総務省統計局', url: 'https://www.stat.go.jp/', field: 'finance', role: 'primary' },
+    { name: 'IEA（国際エネルギー機関）', url: 'https://www.iea.org/', field: 'finance', role: 'primary' },
+    { name: 'EIA（米エネルギー情報局）', url: 'https://www.eia.gov/', field: 'finance', role: 'primary' },
+    { name: 'Bruegel', url: 'https://www.bruegel.org/', field: 'finance', role: 'analysis' },
+    { name: 'PIIE（ピーターソン国際経済研究所）', url: 'https://www.piie.com/', field: 'finance', role: 'analysis' },
+    { name: '外務省', url: 'https://www.mofa.go.jp/', field: 'geo', role: 'primary' },
+    { name: 'NATO', url: 'https://www.nato.int/', field: 'geo', role: 'primary' },
+    { name: '国連', url: 'https://www.un.org/', field: 'geo', role: 'primary' },
+    { name: 'WTO', url: 'https://www.wto.org/', field: 'geo', role: 'primary' },
+    { name: 'SIPRI（ストックホルム国際平和研究所）', url: 'https://www.sipri.org/', field: 'geo', role: 'primary' },
+    { name: 'CSIS', url: 'https://www.csis.org/', field: 'geo', role: 'analysis' },
+    { name: 'Carnegie Endowment', url: 'https://carnegieendowment.org/', field: 'geo', role: 'analysis' },
+    { name: 'Chatham House', url: 'https://www.chathamhouse.org/', field: 'geo', role: 'analysis' },
+    { name: 'IISS', url: 'https://www.iiss.org/', field: 'geo', role: 'analysis' },
+    { name: 'アジア経済研究所（IDE-JETRO）', url: 'https://www.ide.go.jp/', field: 'geo', role: 'analysis' },
+  ];
+
+  // ---- 形をそろえる --------------------------------------------------------
+  // 関数宣言にしてあるのは、起動時の bootKV 読み込み（この定義より前に走る）
+  // から normalizeWorldIndex を呼ぶため。const の矢印関数だと TDZ で落ちる。
+  function worldStr(v, max) { return typeof v === 'string' ? v.trim().slice(0, max) : ''; }
+  function isDateStr(s) { return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(parseDateStr(s)); }
+  function monthOfWorldId(id) { const m = /^w_(\d{4})(\d{2})\d{2}_/.exec(String(id || '')); return m ? m[1] + '-' + m[2] : null; }
+
+  function normalizeWorldPremise(p) {
+    const out = { kind: (p && p.kind === 'relation') ? 'relation' : 'new', name: '', aka: [], a: '', b: '', line: '' };
+    if (!p || typeof p !== 'object') return out;
+    out.line = worldStr(p.line, 200);
+    if (out.kind === 'relation') { out.a = worldStr(p.a, 80); out.b = worldStr(p.b, 80); }
+    else {
+      out.name = worldStr(p.name, 80);
+      out.aka = (Array.isArray(p.aka) ? p.aka : []).map((x) => worldStr(x, 80)).filter(Boolean).slice(0, 5);
+    }
+    return out;
+  }
+  // 予測は段階1で最終形にしてある（段階2で移行しない）。
+  // setAt = 今の文が置かれた時刻。1分以内の書き直しは history に行を作らない。
+  function normalizeWorldPrediction(p) {
+    const src = (p && typeof p === 'object') ? p : {};
+    const days = WORLD_PREDICT_CHOICES.includes(Number(src.days)) ? Number(src.days) : WORLD_PREDICT_DAYS;
+    return {
+      text: worldStr(src.text, 600),
+      days,
+      writtenDate: isDateStr(src.writtenDate) ? src.writtenDate : '',
+      dueDate: isDateStr(src.dueDate) ? src.dueDate : '',
+      setAt: typeof src.setAt === 'string' ? src.setAt : '',
+      history: (Array.isArray(src.history) ? src.history : [])
+        .filter((h) => h && typeof h.text === 'string' && h.text.trim())
+        .map((h) => ({ text: h.text.slice(0, 600), at: typeof h.at === 'string' ? h.at : '' })).slice(-40),
+      result: ['hit', 'miss', 'hold'].includes(src.result) ? src.result : '',
+      judgedAt: typeof src.judgedAt === 'string' ? src.judgedAt : '',
+      judgeNote: worldStr(src.judgeNote, 600),
+    };
+  }
+  function normalizeWorldEvent(e) {
+    if (!e || !e.id || !isDateStr(e.eventDate)) return null;
+    return {
+      id: String(e.id),
+      eventDate: e.eventDate,
+      readDate: isDateStr(e.readDate) ? e.readDate : '',
+      field: WORLD_FIELDS.includes(e.field) ? e.field : 'finance',
+      fact: worldStr(e.fact, WORLD_FACT_MAX),
+      why: worldStr(e.why, 200),
+      premise: normalizeWorldPremise(e.premise),
+      detail: worldStr(e.detail, 600),
+      source: worldStr(e.source, 120),
+      url: typeof e.url === 'string' ? (shootSafeUrl(e.url.trim()) || '') : '',
+      concepts: (Array.isArray(e.concepts) ? e.concepts : []).map((x) => worldStr(x, 80)).filter(Boolean).slice(0, 8),
+      related: (Array.isArray(e.related) ? e.related : []).map((x) => worldStr(x, 80)).filter(Boolean).slice(0, 5),
+      prediction: normalizeWorldPrediction(e.prediction),
+      batchId: worldStr(e.batchId, 40),
+      order: Number.isFinite(e.order) ? e.order : 0,
+      createdAt: e.createdAt || nowIso(),
+      updatedAt: e.updatedAt || e.createdAt || nowIso(),
+    };
+  }
+  function normalizeWorldConcept(c) {
+    if (!c || !c.id || !c.name) return null;
+    return {
+      id: String(c.id),
+      name: worldStr(c.name, 80),
+      aka: (Array.isArray(c.aka) ? c.aka : []).map((x) => worldStr(x, 80)).filter(Boolean).slice(0, 12),
+      line: worldStr(c.line, 200),
+      field: WORLD_FIELDS.includes(c.field) ? c.field : '',
+      eventIds: (Array.isArray(c.eventIds) ? c.eventIds : []).map(String).slice(0, 500),
+      related: (Array.isArray(c.related) ? c.related : []).map(String).slice(0, 40),
+      firstEventId: typeof c.firstEventId === 'string' ? c.firstEventId : '',
+      createdAt: c.createdAt || nowIso(),
+      updatedAt: c.updatedAt || c.createdAt || nowIso(),
+      lastUsedAt: c.lastUsedAt || c.updatedAt || c.createdAt || nowIso(),
+    };
+  }
+  function normalizeWorldSource(s) {
+    if (!s || !s.id || !s.name) return null;
+    return {
+      id: String(s.id),
+      name: worldStr(s.name, 120),
+      url: (typeof s.url === 'string' ? (shootSafeUrl(s.url.trim()) || '') : ''),
+      field: (s.field === 'geo' || s.field === 'both') ? s.field : 'finance',
+      role: WORLD_ROLES.includes(s.role) ? s.role : 'primary',
+      note: worldStr(s.note, 200),
+      updatedAt: s.updatedAt || nowIso(),
+    };
+  }
+  function emptyWorldMonthDoc(m) { return { version: 1, month: m, updatedAt: '', events: [], deletedIds: [] }; }
+  function normalizeWorldMonthDoc(raw, m) {
+    const out = emptyWorldMonthDoc(m);
+    if (!raw || typeof raw !== 'object') return out;
+    out.updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : '';
+    out.events = (Array.isArray(raw.events) ? raw.events : []).map(normalizeWorldEvent).filter((e) => e && monthOfDate(e.eventDate) === m);
+    out.deletedIds = (Array.isArray(raw.deletedIds) ? raw.deletedIds : []).filter((t) => t && t.id).map((t) => ({ id: String(t.id), deletedAt: t.deletedAt || nowIso() }));
+    return out;
+  }
+  function emptyWorldIndex() { return { version: 1, updatedAt: '', months: {}, due: {}, concepts: { updatedAt: '', count: 0 }, sources: { updatedAt: '', count: 0 } }; }
+  function normalizeWorldIndex(raw) {
+    const out = emptyWorldIndex();
+    if (!raw || typeof raw !== 'object') return out;
+    out.updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : '';
+    Object.entries(raw.months || {}).forEach(([m, v]) => {
+      if (!/^\d{4}-\d{2}$/.test(m) || !v || typeof v !== 'object') return;
+      out.months[m] = { updatedAt: typeof v.updatedAt === 'string' ? v.updatedAt : '', count: Number(v.count) || 0, unread: Number(v.unread) || 0 };
+    });
+    Object.entries(raw.due || {}).forEach(([d, ids]) => { if (isDateStr(d) && Array.isArray(ids)) out.due[d] = ids.map(String).slice(0, 50); });
+    ['concepts', 'sources'].forEach((k) => {
+      const v = raw[k];
+      if (v && typeof v === 'object') out[k] = { updatedAt: typeof v.updatedAt === 'string' ? v.updatedAt : '', count: Number(v.count) || 0 };
+    });
+    return out;
+  }
+  function emptyWorldConceptsDoc() { return { version: 1, updatedAt: '', concepts: [], dismissedPairs: [] }; }
+  function normalizeWorldConceptsDoc(raw) {
+    const out = emptyWorldConceptsDoc();
+    if (!raw || typeof raw !== 'object') return out;
+    out.updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : '';
+    out.concepts = (Array.isArray(raw.concepts) ? raw.concepts : []).map(normalizeWorldConcept).filter(Boolean);
+    out.dismissedPairs = (Array.isArray(raw.dismissedPairs) ? raw.dismissedPairs : [])
+      .filter((p) => p && p.a && p.b).map((p) => ({ a: String(p.a), b: String(p.b), at: p.at || nowIso() })).slice(0, 2000);
+    return out;
+  }
+  function emptyWorldSourcesDoc() { return { version: 1, updatedAt: '', sources: [] }; }
+  function normalizeWorldSourcesDoc(raw) {
+    const out = emptyWorldSourcesDoc();
+    if (!raw || typeof raw !== 'object') return out;
+    out.updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : '';
+    out.sources = (Array.isArray(raw.sources) ? raw.sources : []).map(normalizeWorldSource).filter(Boolean);
+    return out;
+  }
+
+  // ---- 端末に置く ----------------------------------------------------------
+  // 出来事は data.journal と同じ持ち方（読み込んだ月だけを平らな配列に持ち、
+  // 墓標は月ごとの Map）。全件は持たない。
+  let worldEvents = [];
+  const wd = {
+    loaded: new Set(), loading: new Map(), tombs: new Map(),
+    index: null, dirty: new Set(), stamps: {},
+    concepts: emptyWorldConceptsDoc(), sources: emptyWorldSourcesDoc(),
+    conceptsDirty: false, sourcesDirty: false, busy: false,
+  };
+  function liveWorldMonths() { const t = todayStr(); const a = monthOfDate(addDays(t, -30)), b = monthOfDate(t); return a === b ? [b] : [a, b]; }
+  // 起動時に読む月：今月・先月に加えて「未読が残っている月」。月ファイルは
+  // eventDate 基準なので、8/30 の出来事を読まないまま10月になると、これが
+  // 無いとキューから静かに消える。
+  function worldBootMonths(index) {
+    const months = new Set(liveWorldMonths());
+    if (index && index.months) Object.entries(index.months).forEach(([m, v]) => { if (v && Number(v.unread) > 0) months.add(m); });
+    return [...months].sort();
+  }
+  function worldEventsOfMonth(m) { return worldEvents.filter((e) => monthOfDate(e.eventDate) === m); }
+  function worldMonthDoc(m) {
+    return { version: 1, month: m, updatedAt: nowIso(), events: worldEventsOfMonth(m), deletedIds: [...(wd.tombs.get(m) || new Map()).entries()].map(([id, deletedAt]) => ({ id, deletedAt })) };
+  }
+  function applyWorldMonthToMemory(m, doc) {
+    worldEvents = worldEvents.filter((e) => monthOfDate(e.eventDate) !== m).concat(doc.events);
+    wd.tombs.set(m, new Map(doc.deletedIds.map((t) => [t.id, t.deletedAt])));
+    wd.loaded.add(m);
+  }
+  function worldMonthSignature(doc) {
+    return doc.events.map((e) => e.id + ':' + e.updatedAt).sort().join('|') + '#' + doc.deletedIds.map((t) => t.id + ':' + t.deletedAt).sort().join('|');
+  }
+  function persistWorldMonth(m) {
+    return kvSet('world:' + m, JSON.stringify(worldMonthDoc(m))).catch(() => {
+      localSaveError = '端末に保存できませんでした（クラウドには同期します）';
+      recordSyncError(LAST_SYNC_ERROR_KEY, localSaveError); renderSyncBar();
+    });
+  }
+  function persistWorldIndex() { return kvSet('worldIndex', JSON.stringify(wd.index)).catch(() => {}); }
+  function persistWorldDirty() { return kvSet('worldDirty', JSON.stringify([...wd.dirty])).catch(() => {}); }
+  function persistWorldStamps() { return kvSet('worldStamps', JSON.stringify(wd.stamps)).catch(() => {}); }
+  function persistWorldConcepts() {
+    wd.concepts.updatedAt = nowIso();
+    return kvSet('worldConcepts', JSON.stringify(wd.concepts)).catch(() => {});
+  }
+  function persistWorldSources() {
+    wd.sources.updatedAt = nowIso();
+    return kvSet('worldSources', JSON.stringify(wd.sources)).catch(() => {});
+  }
+  // その月の索引の行を作り直す。due（期限の索引）もこの月の分だけ入れ替える
+  // ので、読み込んだ月については放っておいても自己修復する。
+  function updateWorldIndexMonth(m) {
+    if (!wd.index) wd.index = emptyWorldIndex();
+    const events = worldEventsOfMonth(m);
+    const prev = wd.index.months[m];
+    const unread = events.filter((e) => !e.readDate).length;
+    if (!prev || prev.count !== events.length || prev.unread !== unread) {
+      wd.index.months[m] = { updatedAt: nowIso(), count: events.length, unread };
+    }
+    Object.keys(wd.index.due).forEach((d) => {
+      const kept = wd.index.due[d].filter((id) => monthOfWorldId(id) !== m);
+      if (kept.length) wd.index.due[d] = kept; else delete wd.index.due[d];
+    });
+    events.forEach((e) => {
+      const p = e.prediction;
+      if (!p.text || !p.dueDate || p.result) return;
+      (wd.index.due[p.dueDate] = wd.index.due[p.dueDate] || []).push(e.id);
+    });
+    wd.index.updatedAt = nowIso();
+    persistWorldIndex();
+  }
+  function worldMonthChanged(m) {
+    wd.loaded.add(m);
+    persistWorldMonth(m);
+    updateWorldIndexMonth(m);
+    wd.dirty.add(m); persistWorldDirty();
+    pendingChangeCount++;
+    scheduleSync();
+  }
+  function worldTouch(ev) {
+    ev.updatedAt = nowIso();
+    worldMonthChanged(monthOfDate(ev.eventDate));
+  }
+  function worldDeleteEvent(id) {
+    const ev = worldEvents.find((e) => e.id === id);
+    if (!ev) return;
+    const m = monthOfDate(ev.eventDate);
+    worldEvents = worldEvents.filter((e) => e.id !== id);
+    if (!wd.tombs.has(m)) wd.tombs.set(m, new Map());
+    wd.tombs.get(m).set(id, nowIso());
+    worldMonthChanged(m);
+  }
+  function worldBoot() {
+    try { wd.index = normalizeWorldIndex(JSON.parse(bootKV.worldIndex || 'null')); } catch (e) { wd.index = emptyWorldIndex(); }
+    try { JSON.parse(bootKV.worldDirty || '[]').forEach((m) => wd.dirty.add(m)); } catch (e) {}
+    try { wd.stamps = JSON.parse(bootKV.worldStamps || '{}') || {}; } catch (e) { wd.stamps = {}; }
+    try { wd.concepts = normalizeWorldConceptsDoc(JSON.parse(bootKV.worldConcepts || 'null')); } catch (e) { wd.concepts = emptyWorldConceptsDoc(); }
+    try { wd.sources = normalizeWorldSourcesDoc(JSON.parse(bootKV.worldSources || 'null')); } catch (e) { wd.sources = emptyWorldSourcesDoc(); }
+    worldEvents = [];
+    Object.entries(bootKV.worldDocs || {}).forEach(([m, raw]) => {
+      let doc = null;
+      try { doc = raw ? normalizeWorldMonthDoc(JSON.parse(raw), m) : null; } catch (e) {}
+      applyWorldMonthToMemory(m, doc || emptyWorldMonthDoc(m));
+    });
+    liveWorldMonths().forEach((m) => { if (!wd.loaded.has(m)) applyWorldMonthToMemory(m, emptyWorldMonthDoc(m)); });
+    // 初期値は一度も保存されていないときだけ。編集済みなら入れ直さない。
+    if (!wd.sources.sources.length && !wd.sources.updatedAt) {
+      wd.sources.sources = WORLD_DEFAULT_SOURCES.map((s, i) => normalizeWorldSource({
+        id: 'ws_default_' + i, name: s.name, url: s.url, field: s.field, role: s.role, updatedAt: nowIso(),
+      })).filter(Boolean);
+      wd.sourcesDirty = true;
+      persistWorldSources();
+    }
+  }
+  function loadWorldMonth(m) {
+    if (wd.loaded.has(m) && !wd.loading.has(m)) return Promise.resolve();
+    if (wd.loading.has(m)) return wd.loading.get(m);
+    const p = (async () => {
+      let doc = null;
+      try { const raw = await kvGet('world:' + m); if (raw) doc = normalizeWorldMonthDoc(JSON.parse(raw), m); } catch (e) {}
+      if (!wd.loaded.has(m)) applyWorldMonthToMemory(m, doc || emptyWorldMonthDoc(m));
+      const token = getGhToken();
+      if (token && navigator.onLine) {
+        try { await syncWorldMonth(token, m); }
+        catch (e) { recordSyncError(LAST_SYNC_ERROR_KEY, repoErrorMessage('世界（' + worldMonthPath(m) + '）', e)); renderSyncBar(); }
+      }
+    })().finally(() => wd.loading.delete(m));
+    wd.loading.set(m, p);
+    return p;
+  }
+  function ensureWorldMonths(months) {
+    return Promise.all([...new Set(months)].filter((m) => /^\d{4}-\d{2}$/.test(m) && !wd.loaded.has(m)).map((m) => loadWorldMonth(m)));
+  }
+  function monthShift(m, n) { return monthOfDate(addDays(m + '-15', n * 30)); }
+
+  // ---- 突き合わせ ----------------------------------------------------------
+  function mergeWorldSets(a, delA, b, delB) {
+    const mA = new Map(a.map((x) => [x.id, x])), mB = new Map(b.map((x) => [x.id, x]));
+    const dA = new Map(delA.map((t) => [t.id, t.deletedAt])), dB = new Map(delB.map((t) => [t.id, t.deletedAt]));
+    const out = new Map();
+    new Set([...mA.keys(), ...mB.keys()]).forEach((id) => {
+      const x = mA.get(id), y = mB.get(id);
+      let w;
+      if (x && y) w = new Date(x.updatedAt) >= new Date(y.updatedAt) ? x : y;
+      else { const only = x || y; const tomb = x ? dB.get(id) : dA.get(id); w = (tomb && new Date(tomb) >= new Date(only.updatedAt)) ? null : only; }
+      if (w) out.set(id, { ...w, premise: { ...w.premise }, prediction: { ...w.prediction, history: (w.prediction.history || []).map((h) => ({ ...h })) } });
+    });
+    const deleted = new Map();
+    dA.forEach((at, id) => deleted.set(id, at));
+    dB.forEach((at, id) => { const c = deleted.get(id); if (!c || new Date(at) > new Date(c)) deleted.set(id, at); });
+    out.forEach((_, id) => deleted.delete(id));
+    return { events: [...out.values()], deleted: [...deleted.entries()].map(([id, deletedAt]) => ({ id, deletedAt })) };
+  }
+  function mergeWorldIndex(a, b) {
+    const out = emptyWorldIndex();
+    new Set([...Object.keys(a.months), ...Object.keys(b.months)]).forEach((m) => { const x = a.months[m], y = b.months[m]; out.months[m] = (x && y) ? ((y.updatedAt > x.updatedAt) ? y : x) : (x || y); });
+    // due は日付ごとの id の和集合。片方を丸ごと勝たせると、別の端末で書かれた
+    // 「まだ答え合わせしていない予測」が期限の一覧から静かに落ちる。読み込んだ
+    // 月については updateWorldIndexMonth が作り直すので、多い側に倒して困らない。
+    new Set([...Object.keys(a.due), ...Object.keys(b.due)]).forEach((d) => {
+      out.due[d] = [...new Set([...(a.due[d] || []), ...(b.due[d] || [])])].slice(0, 50);
+    });
+    ['concepts', 'sources'].forEach((k) => { out[k] = (a[k].updatedAt >= b[k].updatedAt) ? a[k] : b[k]; });
+    out.updatedAt = a.updatedAt > b.updatedAt ? a.updatedAt : b.updatedAt;
+    return out;
+  }
+  // 概念は id ごとの新しい方が勝つ union。消すのは統合のときだけなので墓標は
+  // 持たず、代わりに「別名に吸われた」ことが aka に残る。
+  function mergeWorldConceptDocs(a, b) {
+    const out = emptyWorldConceptsDoc();
+    const mA = new Map(a.concepts.map((c) => [c.id, c])), mB = new Map(b.concepts.map((c) => [c.id, c]));
+    new Set([...mA.keys(), ...mB.keys()]).forEach((id) => {
+      const x = mA.get(id), y = mB.get(id);
+      const w = (x && y) ? (new Date(x.updatedAt) >= new Date(y.updatedAt) ? x : y) : (x || y);
+      out.concepts.push({ ...w, aka: [...w.aka], eventIds: [...w.eventIds], related: [...w.related] });
+    });
+    const seen = new Set();
+    out.dismissedPairs = [...a.dismissedPairs, ...b.dismissedPairs].filter((p) => {
+      const k = worldPairKey(p.a, p.b); if (seen.has(k)) return false; seen.add(k); return true;
+    }).slice(0, 2000);
+    out.updatedAt = a.updatedAt > b.updatedAt ? a.updatedAt : b.updatedAt;
+    return out;
+  }
+  function mergeWorldSourceDocs(a, b) {
+    const out = emptyWorldSourcesDoc();
+    const mA = new Map(a.sources.map((s) => [s.id, s])), mB = new Map(b.sources.map((s) => [s.id, s]));
+    new Set([...mA.keys(), ...mB.keys()]).forEach((id) => {
+      const x = mA.get(id), y = mB.get(id);
+      out.sources.push((x && y) ? (new Date(x.updatedAt) >= new Date(y.updatedAt) ? x : y) : (x || y));
+    });
+    out.updatedAt = a.updatedAt > b.updatedAt ? a.updatedAt : b.updatedAt;
+    return out;
+  }
+
+  // ---- 同期 ----------------------------------------------------------------
+  async function syncWorldMonth(token, m, attempt) {
+    const remote = await ghGetContents(GITHUB_REPO, worldMonthPath(m), token);
+    let rdoc = emptyWorldMonthDoc(m);
+    try { if (remote.text) rdoc = normalizeWorldMonthDoc(JSON.parse(remote.text), m); } catch (e) {}
+    const local = worldMonthDoc(m);
+    const ms = mergeWorldSets(local.events, local.deletedIds, rdoc.events, rdoc.deletedIds);
+    const merged = { version: 1, month: m, updatedAt: nowIso(), events: ms.events, deletedIds: ms.deleted };
+    applyWorldMonthToMemory(m, merged);
+    await persistWorldMonth(m);
+    updateWorldIndexMonth(m);
+    const isEmpty = !merged.events.length && !merged.deletedIds.length;
+    if ((!remote.text && !isEmpty) || (remote.text && worldMonthSignature(rdoc) !== worldMonthSignature(merged))) {
+      try { await ghPutJson(worldMonthPath(m), merged, remote.sha, `world ${m}: ${merged.events.length} events`); }
+      catch (e) { if (e.status === 409 && !attempt) return syncWorldMonth(token, m, 1); throw e; }
+    }
+    wd.dirty.delete(m); persistWorldDirty();
+    if (wd.index.months[m]) wd.stamps[m] = wd.index.months[m].updatedAt;
+  }
+  // 概念とソースは署名が変わったときだけ書く（毎回の同期で GitHub 呼び出しが
+  // 2つ増えるのを避ける）。
+  function worldConceptsSignature(doc) { return doc.concepts.map((c) => c.id + ':' + c.updatedAt).sort().join('|') + '#' + doc.dismissedPairs.length; }
+  function worldSourcesSignature(doc) { return doc.sources.map((s) => s.id + ':' + s.updatedAt).sort().join('|'); }
+  async function syncWorldConcepts(token, remoteChanged) {
+    if (!wd.conceptsDirty && !remoteChanged) return;
+    const got = await ghGetContents(GITHUB_REPO, WORLD_CONCEPTS_PATH, token);
+    let rdoc = emptyWorldConceptsDoc();
+    try { if (got.text) rdoc = normalizeWorldConceptsDoc(JSON.parse(got.text)); } catch (e) {}
+    const before = worldConceptsSignature(rdoc);
+    wd.concepts = mergeWorldConceptDocs(wd.concepts, rdoc);
+    await persistWorldConcepts();
+    if (worldConceptsSignature(wd.concepts) !== before) {
+      await ghPutJson(WORLD_CONCEPTS_PATH, wd.concepts, got.sha, `world concepts: ${wd.concepts.concepts.length}`);
+    }
+    wd.conceptsDirty = false;
+    wd.index.concepts = { updatedAt: wd.concepts.updatedAt, count: wd.concepts.concepts.length };
+  }
+  async function syncWorldSources(token, remoteChanged) {
+    if (!wd.sourcesDirty && !remoteChanged) return;
+    const got = await ghGetContents(GITHUB_REPO, WORLD_SOURCES_PATH, token);
+    let rdoc = emptyWorldSourcesDoc();
+    try { if (got.text) rdoc = normalizeWorldSourcesDoc(JSON.parse(got.text)); } catch (e) {}
+    const before = worldSourcesSignature(rdoc);
+    wd.sources = mergeWorldSourceDocs(wd.sources, rdoc);
+    await persistWorldSources();
+    if (worldSourcesSignature(wd.sources) !== before) {
+      await ghPutJson(WORLD_SOURCES_PATH, wd.sources, got.sha, `world sources: ${wd.sources.sources.length}`);
+    }
+    wd.sourcesDirty = false;
+    wd.index.sources = { updatedAt: wd.sources.updatedAt, count: wd.sources.sources.length };
+  }
+  async function worldSyncNow(token) {
+    if (wd.busy) return;
+    wd.busy = true;
+    try {
+      if (!wd.index) wd.index = emptyWorldIndex();
+      const ri = await ghGetContents(GITHUB_REPO, WORLD_INDEX_PATH, token);
+      let remoteIndex = emptyWorldIndex();
+      try { if (ri.text) remoteIndex = normalizeWorldIndex(JSON.parse(ri.text)); } catch (e) {}
+      const conceptsChanged = remoteIndex.concepts.updatedAt > (wd.index.concepts.updatedAt || '');
+      const sourcesChanged = remoteIndex.sources.updatedAt > (wd.index.sources.updatedAt || '');
+      const months = new Set([...liveWorldMonths(), ...wd.dirty, ...worldBootMonths(remoteIndex)]);
+      wd.loaded.forEach((m) => { const r = remoteIndex.months[m]; if (r && r.updatedAt !== (wd.stamps[m] || '')) months.add(m); });
+      wd.index = mergeWorldIndex(wd.index, remoteIndex);
+      for (const m of [...months].sort()) { if (!wd.loaded.has(m)) await loadWorldMonth(m); else await syncWorldMonth(token, m); }
+      await syncWorldConcepts(token, conceptsChanged);
+      await syncWorldSources(token, sourcesChanged);
+      const sig = (ix) => JSON.stringify([Object.keys(ix.months).sort().map((m) => [m, ix.months[m].updatedAt, ix.months[m].unread]), ix.concepts.updatedAt, ix.sources.updatedAt, Object.keys(ix.due).sort()]);
+      if (sig(wd.index) !== sig(remoteIndex)) {
+        try { await ghPutJson(WORLD_INDEX_PATH, wd.index, ri.sha, 'world index'); }
+        catch (e) {
+          if (e.status !== 409) throw e;
+          const ri2 = await ghGetContents(GITHUB_REPO, WORLD_INDEX_PATH, token);
+          let r2 = emptyWorldIndex(); try { if (ri2.text) r2 = normalizeWorldIndex(JSON.parse(ri2.text)); } catch (e2) {}
+          wd.index = mergeWorldIndex(wd.index, r2);
+          await ghPutJson(WORLD_INDEX_PATH, wd.index, ri2.sha, 'world index');
+        }
+      }
+      persistWorldIndex(); persistWorldStamps();
+    } finally { wd.busy = false; }
+  }
+
+  // ---- 概念 ----------------------------------------------------------------
+  function worldPairKey(a, b) { return a < b ? a + '|' + b : b + '|' + a; }
+  // 表記ゆれの掃除用。中黒・長音・空白・大小・全角半角を落とす。
+  // 「イールドカーブ」と「イールド・カーブ」は同じになるが、「利回り曲線」は
+  // 文字が1つも重ならないので当たらない（4.5 の限界。aka と手動統合が本命）。
+  function worldNormName(s) {
+    let t = String(s || '').trim();
+    try { t = t.normalize('NFKC'); } catch (e) {}
+    return t.toLowerCase().replace(/[\s　]+/g, '').replace(/[・･.\-‐‑–—ー−_/()（）]/g, '');
+  }
+  function worldConcepts() { return wd.concepts.concepts; }
+  function worldFindConcept(name) {
+    const k = worldNormName(name);
+    if (!k) return null;
+    return worldConcepts().find((c) => worldNormName(c.name) === k || (c.aka || []).some((a) => worldNormName(a) === k)) || null;
+  }
+  function worldConceptById(id) { return worldConcepts().find((c) => c.id === id) || null; }
+  function worldConceptCount(c) { return (c.eventIds || []).length; }
+  function worldGenConceptId() {
+    const t = todayStr().replace(/-/g, '');
+    const taken = new Set(worldConcepts().map((c) => c.id));
+    let n = 1; while (taken.has('wc_' + t + '_' + n)) n++;
+    return 'wc_' + t + '_' + n;
+  }
+  function worldSaveConcepts() { wd.conceptsDirty = true; persistWorldConcepts(); scheduleSync(); }
+  function worldAddConcept(name, line, aka, field, eventId) {
+    const iso = nowIso();
+    const c = normalizeWorldConcept({
+      id: worldGenConceptId(), name, aka: aka || [], line: line || '', field: field || '',
+      eventIds: eventId ? [eventId] : [], related: [], firstEventId: eventId || '',
+      createdAt: iso, updatedAt: iso, lastUsedAt: iso,
+    });
+    if (c) worldConcepts().push(c);
+    return c;
+  }
+  function worldTouchConcept(c, eventId) {
+    if (eventId && !c.eventIds.includes(eventId)) c.eventIds.push(eventId);
+    c.lastUsedAt = nowIso();
+    c.updatedAt = nowIso();
+  }
+  function worldLinkConcepts(a, b) {
+    if (!a || !b || a.id === b.id) return;
+    if (!a.related.includes(b.id)) { a.related.push(b.id); a.updatedAt = nowIso(); }
+    if (!b.related.includes(a.id)) { b.related.push(a.id); b.updatedAt = nowIso(); }
+  }
+  // 近い名前の候補。正規化して完全一致するものは作る時点で吸収済みなので、
+  // ここに出るのは「近いが同じではないかもしれない」ものだけ。
+  function worldMergeCandidates(newIds) {
+    const list = worldConcepts();
+    const dismissed = new Set((wd.concepts.dismissedPairs || []).map((p) => worldPairKey(p.a, p.b)));
+    const out = [];
+    newIds.forEach((id) => {
+      const c = list.find((x) => x.id === id);
+      if (!c) return;
+      const kc = worldNormName(c.name);
+      if (!kc) return;
+      list.forEach((o) => {
+        if (o.id === c.id) return;
+        if (dismissed.has(worldPairKey(c.id, o.id))) return;
+        if (out.some((p) => worldPairKey(p.a, p.b) === worldPairKey(c.id, o.id))) return;
+        const hit = [o.name, ...(o.aka || [])].some((nm) => {
+          const kn = worldNormName(nm);
+          if (!kn) return false;
+          const shorter = Math.min(kn.length, kc.length);
+          if (shorter >= WORLD_CONCEPT_MIN_LEN && (kn.includes(kc) || kc.includes(kn))) return true;
+          return textSimilarity(kn, kc) >= WORLD_CONCEPT_SIM;
+        });
+        if (hit) out.push({ a: c.id, b: o.id });
+      });
+    });
+    return out;
+  }
+  function worldDismissPair(a, b) {
+    const k = worldPairKey(a, b);
+    if (!(wd.concepts.dismissedPairs || []).some((p) => worldPairKey(p.a, p.b) === k)) {
+      wd.concepts.dismissedPairs.push({ a, b, at: nowIso() });
+      worldSaveConcepts();
+    }
+  }
+  // keep に drop を吸わせる。drop の名前と別名は keep の aka に入るので、
+  // 読み込んでいない月に残っている古い綴りも worldFindConcept で当たる。
+  function worldMergeConcepts(keepId, dropId) {
+    const keep = worldConceptById(keepId), drop = worldConceptById(dropId);
+    if (!keep || !drop || keep.id === drop.id) return null;
+    const akas = new Set([...keep.aka, drop.name, ...drop.aka].filter(Boolean));
+    akas.delete(keep.name);
+    keep.aka = [...akas].slice(0, 12);
+    keep.eventIds = [...new Set([...keep.eventIds, ...drop.eventIds])];
+    keep.related = [...new Set([...keep.related, ...drop.related])].filter((x) => x !== keep.id && x !== drop.id);
+    if (!keep.line && drop.line) keep.line = drop.line;
+    if (!keep.field && drop.field) keep.field = drop.field;
+    keep.updatedAt = nowIso();
+    wd.concepts.concepts = worldConcepts().filter((c) => c.id !== drop.id);
+    worldConcepts().forEach((c) => {
+      if (!c.related.includes(drop.id)) return;
+      c.related = [...new Set(c.related.filter((x) => x !== drop.id).concat(c.id === keep.id ? [] : [keep.id]))].filter((x) => x !== c.id);
+      c.updatedAt = nowIso();
+    });
+    // 読み込んでいる月の出来事の綴りだけ寄せる（読み込んでいない月は aka が拾う）
+    const touched = new Set();
+    worldEvents.forEach((e) => {
+      let changed = false;
+      const swap = (s) => { if (worldNormName(s) === worldNormName(drop.name)) { changed = true; return keep.name; } return s; };
+      e.concepts = e.concepts.map(swap);
+      e.related = e.related.map(swap);
+      if (e.premise.kind === 'new') e.premise.name = swap(e.premise.name);
+      else { e.premise.a = swap(e.premise.a); e.premise.b = swap(e.premise.b); }
+      if (changed) { e.updatedAt = nowIso(); touched.add(monthOfDate(e.eventDate)); }
+    });
+    worldSaveConcepts();
+    touched.forEach((m) => worldMonthChanged(m));
+    return keep;
+  }
+  function worldRenameConcept(id, newName) {
+    const c = worldConceptById(id);
+    const name = worldStr(newName, 80);
+    if (!c || !name) return null;
+    const existing = worldFindConcept(name);
+    if (existing && existing.id !== c.id) return worldMergeConcepts(existing.id, c.id);
+    const old = c.name;
+    c.name = name;
+    if (old && worldNormName(old) !== worldNormName(name) && !c.aka.includes(old)) c.aka.unshift(old);
+    c.aka = c.aka.slice(0, 12);
+    c.updatedAt = nowIso();
+    worldSaveConcepts();
+    return c;
+  }
+  // 取り込んだ1件から概念を起こす／既存につなぐ。新しく作った概念の id を返す。
+  function worldApplyConcepts(ev) {
+    const created = [];
+    const touch = (name, line, aka, makeIfMissing) => {
+      if (!name) return null;
+      let c = worldFindConcept(name);
+      if (!c && makeIfMissing) { c = worldAddConcept(name, line, aka, ev.field, ev.id); if (c) created.push(c.id); }
+      if (c) worldTouchConcept(c, ev.id);
+      return c;
+    };
+    let center = null;
+    if (ev.premise.kind === 'new') {
+      center = touch(ev.premise.name, ev.premise.line, ev.premise.aka, true);
+    } else {
+      // 関係の premise は新しい概念を作らない。既知の2つを結ぶだけで、
+      // 関係の説明文は出来事の側にだけ残る。
+      const a = touch(ev.premise.a, '', [], true);
+      const b = touch(ev.premise.b, '', [], true);
+      worldLinkConcepts(a, b);
+      center = a;
+    }
+    ev.concepts.forEach((n) => touch(n, '', [], false));
+    ev.related.forEach((n) => { const c = touch(n, '', [], false); worldLinkConcepts(center, c); });
+    return created;
+  }
+
+  // ---- ソース --------------------------------------------------------------
+  function worldSources() { return wd.sources.sources; }
+  function worldSaveSources() { wd.sourcesDirty = true; persistWorldSources(); scheduleSync(); }
+  function worldAddSource(name, url) {
+    const safe = shootSafeUrl(String(url || '').trim());
+    if (!name || !safe) return null;
+    const s = normalizeWorldSource({ id: 'ws_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, url: safe, field: 'finance', role: 'primary', updatedAt: nowIso() });
+    if (s) { worldSources().push(s); worldSaveSources(); }
+    return s;
+  }
+
+  // ---- キュー --------------------------------------------------------------
+  function worldSortQueue(list) {
+    return list.slice().sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.order - b.order));
+  }
+  function worldUnread() { return worldSortQueue(worldEvents.filter((e) => !e.readDate)); }
+  function worldStaleUnread() {
+    const cut = Date.now() - WORLD_STALE_DAYS * 86400000;
+    return worldUnread().filter((e) => new Date(e.createdAt).getTime() < cut);
+  }
+  function worldReadOn(date) { return worldSortQueue(worldEvents.filter((e) => e.readDate === date)); }
+  // 3件目までに両分野が入るよう、足りない分野の先頭を1つだけ繰り上げる。
+  function worldBalance(queue, need, already) {
+    const out = [];
+    for (const e of queue) { if (out.length >= need) break; out.push(e); }
+    if (out.length === need && need > 0) {
+      const fields = new Set([...already, ...out].map((e) => e.field));
+      if (fields.size === 1) {
+        const other = queue.find((e) => !fields.has(e.field) && !out.includes(e));
+        if (other) out[out.length - 1] = other;
+      }
+    }
+    return out;
+  }
+  // 今日の3件を確定させる。**開いたときにだけ呼ぶ。** 描画からは呼ばない。
+  function worldPickToday() {
+    const t = todayStr();
+    const already = worldReadOn(t);
+    if (already.length >= WORLD_PER_DAY) return already;
+    const chosen = worldBalance(worldUnread(), WORLD_PER_DAY - already.length, already);
+    if (!chosen.length) return already;
+    const months = new Set();
+    chosen.forEach((e) => { e.readDate = t; e.updatedAt = nowIso(); months.add(monthOfDate(e.eventDate)); });
+    months.forEach((m) => worldMonthChanged(m));
+    return worldReadOn(t);
+  }
+
+  // ---- 予測 ----------------------------------------------------------------
+  function worldSetPrediction(ev, text) {
+    const p = ev.prediction;
+    const t = worldStr(text, 600);
+    if (t === p.text) return false;
+    const iso = nowIso();
+    // 1分以内の書き直しは history に行を作らない（撮るの answers と同じ）
+    if (p.text && p.setAt && (Date.now() - new Date(p.setAt).getTime()) >= 60000) p.history.push({ text: p.text, at: p.setAt });
+    p.text = t;
+    p.setAt = iso;
+    if (t) {
+      if (!p.writtenDate) p.writtenDate = todayStr();
+      p.dueDate = addDays(p.writtenDate, p.days);
+    } else { p.dueDate = ''; }
+    worldTouch(ev);
+    return true;
+  }
+  function worldSetPredictionDays(ev, days) {
+    const p = ev.prediction;
+    if (!WORLD_PREDICT_CHOICES.includes(days) || p.days === days) return;
+    p.days = days;
+    if (p.text && p.writtenDate) p.dueDate = addDays(p.writtenDate, days);
+    worldTouch(ev);
+  }
+  function worldDueEvents(onOrBefore) {
+    const out = [];
+    if (!wd.index) return out;
+    Object.entries(wd.index.due).forEach(([d, ids]) => { if (d <= onOrBefore) ids.forEach((id) => out.push({ id, due: d })); });
+    return out.sort((a, b) => (a.due < b.due ? -1 : 1));
+  }
+
+  // ---- プロンプト ----------------------------------------------------------
+  function worldKnownNames(field) {
+    return worldConcepts()
+      .filter((c) => !c.field || c.field === field)
+      .slice().sort((a, b) => (a.lastUsedAt > b.lastUsedAt ? -1 : 1))
+      .slice(0, WORLD_KNOWN_MAX)
+      .map((c) => c.name);
+  }
+  function worldSourceLines(field, role) {
+    return worldSources()
+      .filter((s) => (s.field === field || s.field === 'both') && s.role === role)
+      .map((s) => '- ' + s.name + ' ' + s.url);
+  }
+  function worldFieldBlock(field) {
+    if (field === 'finance') {
+      return '金融・経済。中央銀行、財政、統計、債券・為替・商品の市場構造、規制。\n'
+        + '株価の上下そのものは書かない。値動きの背後にある制度・制約を書く。';
+    }
+    return '地政学・政治・国際情勢。領域と航路、資源とエネルギー、同盟と制裁、\n'
+      + '選挙と政変、軍事配置。\n'
+      + 'どちらが正しいかを書かない。誰が何に縛られているかを書く。';
+  }
+  function worldPromptText(field) {
+    const prim = worldSourceLines(field, 'primary');
+    const anal = worldSourceLines(field, 'analysis');
+    const known = worldKnownNames(field);
+    return SHOOT_PROMPT_HEAD +
+      'あなたは、ある人の世界の見方を少しずつ更新するための材料係です。\n' +
+      '解説記事は書きません。ニュースの要約もしません。\n' +
+      '「これから効き続ける動き」だけを、決められた形で返します。\n\n' +
+      '■ 必ず守ること\n' +
+      '- web 検索を必ず使う。検索せずに書かない。\n' +
+      '- 下の「ソース」に挙げたドメインで確認できた出来事だけを返す。\n' +
+      '- 日付・数字は、出典ページに書かれているものだけを書く。\n' +
+      '  推定値・概算を書くときは detail に「推定」と明記する。\n' +
+      '- URL は実在するページのものだけ。開けるか確かめる。\n' +
+      '  確かめられなければ、その出来事を返さない。\n' +
+      '- 件数が足りなくてよい。埋めるくらいなら少ない方がよい。\n' +
+      '  ' + WORLD_PROMPT_COUNT + '件求めて4件しか確認できなければ4件を返す。\n' +
+      '- 出来事以外の文章を返さない。JSON のみ。\n\n' +
+      '■ 分野\n' + worldFieldBlock(field) + '\n' +
+      WORLD_PROMPT_COUNT + '件を目安に返す（確認できたものだけ）。\n\n' +
+      '■ 期間\n' +
+      '直近7日間に動いたもの。ただし「その日のニュース」ではなく、\n' +
+      'これから数ヶ月〜数年にわたって効き続ける動きを選ぶ。\n' +
+      '発表そのものより、発表が示している力学を選ぶ。\n\n' +
+      '■ ソース：一次（fact・eventDate・detail の数字はここでしか確認できない）\n' +
+      (prim.length ? prim.join('\n') : '（未設定）') + '\n\n' +
+      '■ ソース：解釈（why を書くための補助）\n' +
+      (anal.length ? anal.join('\n') : '（未設定）') + '\n\n' +
+      '■ ソースの使い分け（厳守）\n' +
+      '- fact・eventDate・detail の数字は、一次のソースで確認できたものだけを書く。\n' +
+      '- 解釈のソースだけを根拠に出来事を立ててはいけない。\n' +
+      '  シンクタンクの論考は「出来事」ではない。\n' +
+      '- 解釈のソースは why を書くときにだけ使う。\n' +
+      '  その場合も url と source には、一次のソース（出来事そのものの出所）を書く。\n\n' +
+      '■ すでに知っている概念（説明しなくてよい）\n' +
+      (known.length ? known.join(' / ') : '（まだありません）') + '\n' +
+      '（名前だけ。一覧に無くても、経済・政治の基礎的な用語は説明不要）\n\n' +
+      '■ それぞれの出来事に書くこと\n' +
+      '- fact：何が起きたか。1文・' + WORLD_FACT_MAX + '字以内。数字か固有名詞を必ず含む。\n' +
+      '  聞く人に向けた文にする。専門用語を並べない。\n' +
+      '  良い例：「中銀が国債買い入れの減額幅を縮めた」\n' +
+      '  悪い例：「日銀が国債買入れオペにおける減額ペースの調整方針を公表」\n' +
+      '- why：なぜ今動いたか。1〜2文。\n' +
+      '  誰が何を欲しがり・何を恐れ・何に縛られているかを書く。\n' +
+      '  出来事の言い換えを書かない。評価・感想・助言を書かない。\n' +
+      '- premise：この件を理解するのに最低限必要な概念を 1つだけ。\n' +
+      '  - 上の「すでに知っている概念」で足りるなら、新しい概念を作らない。\n' +
+      '    そのときは kind を "relation" にして、既知の概念2つ（a と b）の\n' +
+      '    関係を line に1文で書く。\n' +
+      '  - 新しい概念が要るときは kind を "new" にして、name と line を書く。\n' +
+      '    aka に別名・日本語訳・英語名を必ず入れる（表記ゆれを防ぐため）。\n' +
+      '  - line は1文。その概念の定義であって、この出来事の説明ではない。\n' +
+      '- detail：数字・当事者・背景。1〜3文。ここには専門用語を書いてよい。\n' +
+      '- source：媒体名と発表日。\n' +
+      '- url：出典ページ。\n' +
+      '- eventDate：出典ページに書かれた発表日または発生日（YYYY-MM-DD）。未来の日付にしない。\n' +
+      '- concepts：この出来事が触れている概念名（既知・新規とも）。\n' +
+      '- related：premise の概念と、つながりの深い概念名（既知の一覧から。最大3つ）。\n\n' +
+      '■ 並べ方\n' +
+      '重要だと思う順に並べる。上から読まれる。\n\n' +
+      '■ 出力形式\n' +
+      '{"events":[{\n' +
+      '  "fact":"...",\n' +
+      '  "why":"...",\n' +
+      '  "premise":{"kind":"new","name":"...","aka":["...","..."],"line":"..."},\n' +
+      '  "detail":"...",\n' +
+      '  "source":"...",\n' +
+      '  "url":"https://...",\n' +
+      '  "eventDate":"YYYY-MM-DD",\n' +
+      '  "concepts":["..."],\n' +
+      '  "related":["..."]\n' +
+      '}]}\n\n' +
+      'kind が "relation" のときの premise：\n' +
+      '  {"kind":"relation","a":"既知の概念1","b":"既知の概念2","line":"..."}';
+  }
+
+  // ---- 取り込み ------------------------------------------------------------
+  // 追記のみ。置き換えを一切しないので、読んだ出来事と書いた予測が取り込みで
+  // 消える経路が構造的に無い。
+  function worldDupOf(item, eventDate) {
+    const lo = addDays(eventDate, -WORLD_DUP_WINDOW_DAYS), hi = addDays(eventDate, WORLD_DUP_WINDOW_DAYS);
+    return worldEvents.find((e) => {
+      if (e.eventDate < lo || e.eventDate > hi) return false;
+      if (item.url && e.url && item.url === e.url) return true;
+      return textSimilarity(item.fact, e.fact) >= WORLD_DUP_SIM;
+    }) || null;
+  }
+  function worldGenEventId(eventDate, taken) {
+    const base = 'w_' + eventDate.replace(/-/g, '') + '_';
+    let n = 1;
+    while (taken.has(base + n)) n++;
+    taken.add(base + n);
+    return base + n;
+  }
+  async function worldImportJson(raw) {
+    const parsed = shootParseJson(raw);
+    const items = parsed ? (Array.isArray(parsed) ? parsed : Array.isArray(parsed.events) ? parsed.events : null) : null;
+    if (!items) return { error: 'JSON として読めませんでした。{"events":[...]} の形で貼ってください。' };
+
+    const today = todayStr();
+    const rejected = { fact: 0, url: 0, date: 0, future: 0, dup: 0 };
+    // 先に月を読み込む。±3日の窓が月境を越えるので隣接月も要る。
+    const months = new Set();
+    items.forEach((it) => {
+      if (!it || typeof it !== 'object' || !isDateStr(it.eventDate)) return;
+      const d = it.eventDate;
+      months.add(monthOfDate(d));
+      months.add(monthOfDate(addDays(d, -WORLD_DUP_WINDOW_DAYS)));
+      months.add(monthOfDate(addDays(d, WORLD_DUP_WINDOW_DAYS)));
+    });
+    await ensureWorldMonths([...months]);
+
+    const taken = new Set(worldEvents.map((e) => e.id));
+    wd.tombs.forEach((mm) => mm.forEach((_, id) => taken.add(id)));
+    const batchId = 'wb_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const iso = nowIso();
+    const added = [];
+    const createdConcepts = [];
+    const touchedMonths = new Set();
+    let old = 0;
+
+    items.forEach((it, i) => {
+      if (!it || typeof it !== 'object') { rejected.fact++; return; }
+      const fact = worldStr(it.fact, WORLD_FACT_MAX);
+      if (!fact) { rejected.fact++; return; }
+      if (!isDateStr(it.eventDate)) { rejected.date++; return; }
+      if (it.eventDate > today) { rejected.future++; return; }
+      const url = typeof it.url === 'string' ? (shootSafeUrl(it.url.trim()) || '') : '';
+      if (!url) { rejected.url++; return; }
+      if (worldDupOf({ fact, url }, it.eventDate)) { rejected.dup++; return; }
+      const ev = normalizeWorldEvent({
+        id: worldGenEventId(it.eventDate, taken),
+        eventDate: it.eventDate,
+        readDate: '',
+        field: WORLD_FIELDS.includes(it.field) ? it.field : (worldImportField || 'finance'),
+        fact, why: it.why, premise: it.premise, detail: it.detail, source: it.source, url,
+        concepts: it.concepts, related: it.related,
+        prediction: null, batchId, order: i,
+        createdAt: iso, updatedAt: iso,
+      });
+      if (!ev) { rejected.date++; return; }
+      worldEvents.push(ev);
+      touchedMonths.add(monthOfDate(ev.eventDate));
+      added.push(ev);
+      if (ev.eventDate < addDays(today, -WORLD_OLD_EVENT_DAYS)) old++;
+      worldApplyConcepts(ev).forEach((id) => createdConcepts.push(id));
+    });
+
+    if (added.length) {
+      worldSaveConcepts();
+      touchedMonths.forEach((m) => worldMonthChanged(m));
+    }
+    return { added: added.length, rejected, old, createdConcepts, candidates: worldMergeCandidates(createdConcepts) };
+  }
+
+  // ---- 画面 ----------------------------------------------------------------
+  const worldState = { view: 'main', tab: 'events', conceptId: null, openId: null, candidates: [], lastResult: '' };
+  let worldImportField = 'finance';   // 最後にコピーしたプロンプトの分野（JSON に field が無いときの既定）
+
+  function worldShortDate(d) { const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(d); return m ? Number(m[1]) + '/' + Number(m[2]) : d; }
+  function worldPremiseTagText(ev) {
+    if (ev.premise.kind === 'relation') return (ev.premise.a || '?') + ' × ' + (ev.premise.b || '?');
+    return ev.premise.name || '';
+  }
+  // 初出＝この出来事で初めて出た概念。既知なら灰色にする。
+  function worldPremiseIsNew(ev) {
+    if (ev.premise.kind === 'relation') return false;
+    const c = worldFindConcept(ev.premise.name);
+    return !!c && c.firstEventId === ev.id;
+  }
+  function worldPredictionSummary(ev) {
+    const p = ev.prediction;
+    if (!p.text) return '';
+    if (p.result) return { hit: '当たり', miss: '外れ', hold: '保留' }[p.result];
+    return '予測';
+  }
+
+  // 一覧は fact の1行だけ。why も premise もタップの向こう側にある。
+  function worldRowEl(ev, container) {
+    const wrap = document.createElement('div');
+    const row = document.createElement('div');
+    row.className = 'worldRow' + (ev.readDate ? '' : ' unreadRow');
+
+    const d = document.createElement('span');
+    d.className = 'wDate';
+    d.textContent = worldShortDate(ev.eventDate);
+    row.appendChild(d);
+
+    const f = document.createElement('span');
+    f.className = 'wFact';
+    f.textContent = ev.fact;
+    row.appendChild(f);
+
+    const right = document.createElement('span');
+    const mark = worldPredictionSummary(ev);
+    if (mark) {
+      const mk = document.createElement('span');
+      mk.className = 'wMark';
+      mk.textContent = mark;
+      right.appendChild(mk);
+    }
+    const tagText = worldPremiseTagText(ev);
+    if (tagText) {
+      const t = document.createElement('span');
+      t.className = 'wTag' + (worldPremiseIsNew(ev) ? ' isNew' : '');
+      t.textContent = tagText;
+      right.appendChild(t);
+    }
+    row.appendChild(right);
+
+    const detail = document.createElement('div');
+    detail.className = 'worldDetail';
+    detail.hidden = true;
+
+    row.addEventListener('click', () => {
+      const open = !detail.hidden;
+      container.querySelectorAll('.worldDetail').forEach((el) => { el.hidden = true; });
+      if (!open) { renderWorldDetail(detail, ev); detail.hidden = false; worldState.openId = ev.id; }
+      else worldState.openId = null;
+    });
+
+    wrap.appendChild(row);
+    wrap.appendChild(detail);
+    return wrap;
+  }
+
+  function renderWorldDetail(box, ev) {
+    box.innerHTML = '';
+
+    const why = document.createElement('p');
+    why.className = 'wWhy';
+    why.textContent = ev.why || '（なぜ今動いたかが書かれていません）';
+    box.appendChild(why);
+
+    const pre = document.createElement('div');
+    pre.className = 'worldPremise';
+    const nameEl = document.createElement('div');
+    nameEl.className = 'wpName' + (worldPremiseIsNew(ev) ? '' : ' known');
+    nameEl.textContent = worldPremiseTagText(ev) || '（前提なし）';
+    pre.appendChild(nameEl);
+    if (ev.premise.line) {
+      const line = document.createElement('div');
+      line.textContent = ev.premise.line;
+      pre.appendChild(line);
+    }
+    if (ev.premise.kind === 'new') {
+      const c = worldFindConcept(ev.premise.name);
+      if (c) {
+        const open = document.createElement('button');
+        open.type = 'button'; open.className = 'linkLikeBtn';
+        open.textContent = 'この概念を見る';
+        open.addEventListener('click', (e) => { e.stopPropagation(); openWorldConcept(c.id); });
+        pre.appendChild(open);
+      }
+    }
+    box.appendChild(pre);
+
+    // 数字・出典・URL は既定で閉じている。ここが「読みに行ってしまう」入口。
+    const deep = document.createElement('div');
+    deep.className = 'worldDeep';
+    deep.hidden = true;
+    if (ev.detail) { const p = document.createElement('div'); p.textContent = ev.detail; deep.appendChild(p); }
+    if (ev.source) { const p = document.createElement('div'); p.textContent = ev.source; deep.appendChild(p); }
+    if (ev.url) {
+      const a = document.createElement('a');
+      a.href = ev.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+      a.textContent = ev.url;
+      a.addEventListener('click', (e) => e.stopPropagation());
+      deep.appendChild(a);
+    }
+
+    const btns = document.createElement('div');
+    btns.className = 'worldRowBtns';
+    const deepBtn = document.createElement('button');
+    deepBtn.type = 'button'; deepBtn.className = 'tagFilterBtn'; deepBtn.textContent = '詳しく';
+    deepBtn.addEventListener('click', (e) => { e.stopPropagation(); deep.hidden = !deep.hidden; deepBtn.classList.toggle('selected', !deep.hidden); });
+    btns.appendChild(deepBtn);
+
+    const predBox = document.createElement('div');
+    predBox.className = 'worldPredBox';
+    predBox.hidden = !ev.prediction.text;
+    const predBtn = document.createElement('button');
+    predBtn.type = 'button'; predBtn.className = 'tagFilterBtn';
+    predBtn.textContent = ev.prediction.text ? '予測を直す' : '予測を書く';
+    predBtn.addEventListener('click', (e) => { e.stopPropagation(); predBox.hidden = !predBox.hidden; });
+    btns.appendChild(predBtn);
+
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button'; copyBtn.className = 'tagFilterBtn'; copyBtn.textContent = 'Claude に聞く';
+    const copyNote = document.createElement('p');
+    copyNote.className = 'fieldNote';
+    copyBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const ok = await copyToClipboard(worldEventCopyText(ev));
+      copyNote.textContent = ok ? 'コピーしました。Claude のチャットに貼ってください。' : 'コピーできませんでした。';
+    });
+    btns.appendChild(copyBtn);
+    box.appendChild(btns);
+    box.appendChild(copyNote);
+    box.appendChild(deep);
+
+    // --- 予測 ---
+    const lab = document.createElement('span');
+    lab.className = 'fieldLabel';
+    lab.textContent = '3ヶ月後どうなっていると思うか（書かなくてよい）';
+    predBox.appendChild(lab);
+    const ta = document.createElement('textarea');
+    ta.rows = 2;
+    ta.value = ev.prediction.text;
+    ta.placeholder = 'ひとこと。あとで答え合わせします';
+    ta.addEventListener('click', (e) => e.stopPropagation());
+    const dueEl = document.createElement('div');
+    dueEl.className = 'worldPredDue';
+    const paintDue = () => {
+      const p = ev.prediction;
+      dueEl.textContent = p.text && p.dueDate ? '期限 ' + dotDate(p.dueDate) : '書くと期限が入ります';
+    };
+    let saveTimer = null;
+    ta.addEventListener('input', () => {
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => { saveTimer = null; worldSetPrediction(ev, ta.value); paintDue(); }, 600);
+    });
+    ta.addEventListener('blur', () => { if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; } worldSetPrediction(ev, ta.value); paintDue(); });
+    predBox.appendChild(ta);
+
+    const daysRow = document.createElement('div');
+    daysRow.className = 'tagFilterRow';
+    const paintDays = () => {
+      daysRow.querySelectorAll('button').forEach((b) => b.classList.toggle('selected', Number(b.dataset.days) === ev.prediction.days));
+    };
+    WORLD_PREDICT_CHOICES.forEach((n) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'tagFilterBtn'; b.dataset.days = n;
+      b.textContent = n === 30 ? '1ヶ月' : n === 90 ? '3ヶ月' : n === 180 ? '6ヶ月' : n + '日';
+      b.addEventListener('click', (e) => { e.stopPropagation(); worldSetPredictionDays(ev, n); paintDays(); paintDue(); });
+      daysRow.appendChild(b);
+    });
+    predBox.appendChild(daysRow);
+    predBox.appendChild(dueEl);
+    paintDays(); paintDue();
+
+    if (ev.prediction.history.length) {
+      const hist = document.createElement('div');
+      hist.className = 'worldHistory';
+      hist.textContent = '前に書いたこと：' + ev.prediction.history.map((h) => (h.at ? dotDate(h.at.slice(0, 10)) + ' ' : '') + h.text).join(' ／ ');
+      predBox.appendChild(hist);
+    }
+    box.appendChild(predBox);
+  }
+
+  function worldEventCopyText(ev) {
+    const p = ev.prediction;
+    const pre = ev.premise.kind === 'relation'
+      ? '【前提】' + ev.premise.a + ' × ' + ev.premise.b + '\n' + ev.premise.line
+      : '【前提】' + ev.premise.name + '\n' + ev.premise.line;
+    return '【出来事】' + ev.eventDate + '\n' + ev.fact + '\n\n'
+      + '【なぜ今動いたか】\n' + (ev.why || '（なし）') + '\n\n'
+      + pre + '\n\n'
+      + (ev.detail ? '【詳細】' + ev.detail + '\n' : '')
+      + (ev.source ? '【出典】' + ev.source + '\n' : '')
+      + (ev.url ? ev.url + '\n' : '')
+      + (p.text ? '\n【自分の予測（' + (p.writtenDate || '') + ' 記入・期限 ' + (p.dueDate || '') + '）】\n' + p.text + '\n' : '')
+      + '\nこの件について、私が見落としている力学を教えてください。\n私は既に上の前提は理解しています。';
+  }
+  function worldConceptCopyText(c) {
+    const events = worldEvents.filter((e) => c.eventIds.includes(e.id)).slice(-5).reverse();
+    return '【概念】' + c.name + (c.aka.length ? '（' + c.aka.join(' / ') + '）' : '') + '\n'
+      + (c.line || '') + '\n\n'
+      + '【つながる概念】' + (c.related.map((id) => { const o = worldConceptById(id); return o ? o.name : null; }).filter(Boolean).join(' ・ ') || '（なし）') + '\n\n'
+      + '【この概念が出た出来事】\n'
+      + (events.length ? events.map((e) => '- ' + worldShortDate(e.eventDate) + ' ' + e.fact).join('\n') : '（読み込んでいる月にはありません）') + '\n\n'
+      + 'この概念について、上の理解の次に来るものを教えてください。';
+  }
+
+  function renderWorldList(container, list, emptyText) {
+    container.innerHTML = '';
+    if (!list.length) {
+      if (!emptyText) return;   // 空文字は「ここには何も出さない」の意味
+      const p = document.createElement('p');
+      p.className = 'emptyMsg';
+      p.textContent = emptyText;
+      container.appendChild(p);
+      return;
+    }
+    list.forEach((ev) => container.appendChild(worldRowEl(ev, container)));
+  }
+
+  // 朝のステップ。ここを開くまで1件も消費されない。
+  function renderHomeWorldStep() {
+    const today = worldReadOn(todayStr());
+    renderWorldList(document.getElementById('homeWorldList'), today, '');
+    document.getElementById('homeWorldEmpty').hidden = !!today.length;
+    document.getElementById('homeWorldEmpty').textContent = worldUnread().length
+      ? '今日の分がまだ出ていません。もう一度この行を押してください。'
+      : '新しい分がありません。';
+  }
+  function homeWorldCollapsedLabel() {
+    const today = worldReadOn(todayStr());
+    if (today.length) return '世界 ・ 読んだ ' + today.length + '件';
+    const unread = worldUnread().length;
+    if (!unread) return '世界 ・ 新しい分がありません';
+    return '世界 ・ 今日の' + Math.min(WORLD_PER_DAY, unread) + '件';
+  }
+
+  function openWorld() {
+    worldState.view = 'main';
+    showScreen('world');
+    renderWorld();
+  }
+  function renderWorld() {
+    document.getElementById('worldMainView').hidden = worldState.view !== 'main';
+    document.getElementById('worldImportView').hidden = worldState.view !== 'import';
+    document.getElementById('worldConceptView').hidden = worldState.view !== 'concept';
+    if (worldState.view === 'main') renderWorldMain();
+    else if (worldState.view === 'concept') renderWorldConcept();
+    else renderWorldImport();
+  }
+  function renderWorldMain() {
+    const stale = worldStaleUnread();
+    const bar = document.getElementById('worldStaleBar');
+    bar.hidden = !stale.length;
+    if (stale.length) document.getElementById('worldStaleText').textContent = '古い未読が ' + stale.length + ' 件あります';
+
+    const todayList = worldReadOn(todayStr());
+    renderWorldList(document.getElementById('worldTodayList'), todayList, '');
+    const unread = worldUnread().length;
+    const emptyEl = document.getElementById('worldTodayEmpty');
+    emptyEl.hidden = !!todayList.length;
+    emptyEl.textContent = unread
+      ? '今日の分はまだ出していません。'
+      : '新しい分がありません。右上の「取り込む」から入れます。';
+    // 消費するのはここを押したときだけ（朝のステップを開くのと同じ扱い）
+    document.getElementById('btnWorldOpenToday').hidden = !!todayList.length || !unread;
+
+    document.querySelectorAll('#worldTabRow .tagFilterBtn').forEach((b) => b.classList.toggle('selected', b.dataset.wtab === worldState.tab));
+    const body = document.getElementById('worldTabBody');
+    body.innerHTML = '';
+    if (worldState.tab === 'events') renderWorldEventsTab(body);
+    else if (worldState.tab === 'concepts') renderWorldConceptsTab(body);
+    else renderWorldPredictionsTab(body);
+  }
+  function renderWorldEventsTab(body) {
+    const byMonth = new Map();
+    worldEvents.slice().sort((a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0)).forEach((e) => {
+      const m = monthOfDate(e.eventDate);
+      if (!byMonth.has(m)) byMonth.set(m, []);
+      byMonth.get(m).push(e);
+    });
+    if (!byMonth.size) {
+      const p = document.createElement('p'); p.className = 'emptyMsg'; p.textContent = 'まだ出来事がありません。';
+      body.appendChild(p); return;
+    }
+    [...byMonth.keys()].sort().reverse().forEach((m) => {
+      const head = document.createElement('div');
+      head.className = 'worldSectionHead';
+      const l = document.createElement('span'); l.textContent = m.replace('-', '.');
+      const r = document.createElement('span'); r.textContent = byMonth.get(m).length + '件';
+      head.appendChild(l); head.appendChild(r);
+      body.appendChild(head);
+      const box = document.createElement('div');
+      renderWorldList(box, byMonth.get(m), '');
+      body.appendChild(box);
+    });
+    const note = document.createElement('p');
+    note.className = 'fieldNote';
+    note.textContent = '端末に読み込んでいる月だけを出しています（今月・先月と、未読が残っている月）。';
+    body.appendChild(note);
+  }
+  function renderWorldConceptsTab(body) {
+    const list = worldConcepts().slice().sort((a, b) => worldConceptCount(b) - worldConceptCount(a) || (a.name > b.name ? 1 : -1));
+    if (!list.length) {
+      const p = document.createElement('p'); p.className = 'emptyMsg'; p.textContent = 'まだ概念がありません。';
+      body.appendChild(p); return;
+    }
+    list.forEach((c) => {
+      const row = document.createElement('div');
+      row.className = 'worldConceptRow';
+      const n = document.createElement('span'); n.textContent = c.name;
+      const cnt = document.createElement('span'); cnt.className = 'wcCount'; cnt.textContent = worldConceptCount(c) + '件';
+      row.appendChild(n); row.appendChild(cnt);
+      row.addEventListener('click', () => openWorldConcept(c.id));
+      body.appendChild(row);
+    });
+  }
+  function renderWorldPredictionsTab(body) {
+    const withPred = worldEvents.filter((e) => e.prediction.text);
+    const waiting = withPred.filter((e) => !e.prediction.result).sort((a, b) => (a.prediction.dueDate < b.prediction.dueDate ? -1 : 1));
+    const done = withPred.filter((e) => e.prediction.result);
+
+    const head = document.createElement('div');
+    head.className = 'worldSectionHead';
+    const l = document.createElement('span'); l.textContent = '答え合わせ待ち';
+    const r = document.createElement('span'); r.textContent = waiting.length + '件';
+    head.appendChild(l); head.appendChild(r);
+    body.appendChild(head);
+    const box = document.createElement('div');
+    renderWorldList(box, waiting, 'まだ予測がありません。');
+    body.appendChild(box);
+
+    const due = worldDueEvents(todayStr());
+    const note = document.createElement('p');
+    note.className = 'fieldNote';
+    note.textContent = due.length
+      ? '期限が来た予測が ' + due.length + ' 件あります。答え合わせは次の段階で入ります。'
+      : '期限が来た予測はまだありません。';
+    body.appendChild(note);
+
+    if (done.length) {
+      const h2 = document.createElement('div');
+      h2.className = 'worldSectionHead';
+      const c = { hit: 0, miss: 0, hold: 0 };
+      done.forEach((e) => { c[e.prediction.result]++; });
+      const l2 = document.createElement('span'); l2.textContent = '済み';
+      const r2 = document.createElement('span'); r2.textContent = `当たり ${c.hit} ・ 外れ ${c.miss} ・ 保留 ${c.hold}`;
+      h2.appendChild(l2); h2.appendChild(r2);
+      body.appendChild(h2);
+      const box2 = document.createElement('div');
+      renderWorldList(box2, done, '');
+      body.appendChild(box2);
+    }
+  }
+
+  function openWorldConcept(id) {
+    worldState.conceptId = id;
+    worldState.view = 'concept';
+    showScreen('world');
+    renderWorld();
+  }
+  function renderWorldConcept() {
+    const c = worldConceptById(worldState.conceptId);
+    if (!c) { worldState.view = 'main'; renderWorld(); return; }
+    document.getElementById('worldConceptName').textContent = c.name;
+    const aka = document.getElementById('worldConceptAka');
+    aka.hidden = !c.aka.length;
+    aka.textContent = c.aka.length ? '別名：' + c.aka.join(' / ') : '';
+    document.getElementById('worldConceptLine').textContent = c.line || '（説明がまだありません）';
+
+    const rel = document.getElementById('worldConceptRelated');
+    rel.innerHTML = '';
+    const related = c.related.map(worldConceptById).filter(Boolean);
+    document.getElementById('worldConceptRelatedEmpty').hidden = !!related.length;
+    related.forEach((o) => {
+      const row = document.createElement('div');
+      row.className = 'worldConceptRow';
+      const n = document.createElement('span'); n.textContent = o.name;
+      const cnt = document.createElement('span'); cnt.className = 'wcCount'; cnt.textContent = worldConceptCount(o) + '件';
+      row.appendChild(n); row.appendChild(cnt);
+      row.addEventListener('click', () => openWorldConcept(o.id));
+      rel.appendChild(row);
+    });
+
+    const evBox = document.getElementById('worldConceptEvents');
+    const events = worldEvents.filter((e) => c.eventIds.includes(e.id)).sort((a, b) => (a.eventDate > b.eventDate ? -1 : 1));
+    renderWorldList(evBox, events, c.eventIds.length ? '出た月が端末に読み込まれていません。' : 'まだありません。');
+
+    document.getElementById('worldConceptStatus').textContent = '';
+    document.getElementById('worldConceptRenamePanel').hidden = true;
+  }
+
+  function renderWorldImport() {
+    document.getElementById('worldImportStatus').textContent = worldState.lastResult;
+    const field = document.getElementById('worldMergeField');
+    const box = document.getElementById('worldMergeList');
+    box.innerHTML = '';
+    field.hidden = !worldState.candidates.length;
+    worldState.candidates.forEach((pair) => {
+      const a = worldConceptById(pair.a), b = worldConceptById(pair.b);
+      if (!a || !b) return;
+      const row = document.createElement('div');
+      row.className = 'worldMergeRow';
+      const p = document.createElement('div');
+      p.className = 'wmPair';
+      p.appendChild(document.createTextNode(a.name));
+      const arrow = document.createElement('span'); arrow.className = 'wmArrow'; arrow.textContent = '↔';
+      p.appendChild(arrow);
+      p.appendChild(document.createTextNode(b.name + '（既存 ' + worldConceptCount(b) + '件）'));
+      row.appendChild(p);
+      const btns = document.createElement('div');
+      btns.className = 'medRow';
+      const ok = document.createElement('button');
+      ok.type = 'button'; ok.className = 'tagFilterBtn'; ok.textContent = '同じ概念にする';
+      ok.addEventListener('click', () => {
+        // 古い方を残す（既存の綴りに寄せる）
+        const keep = new Date(a.createdAt) <= new Date(b.createdAt) ? a : b;
+        const drop = keep === a ? b : a;
+        worldMergeConcepts(keep.id, drop.id);
+        worldState.candidates = worldState.candidates.filter((x) => worldPairKey(x.a, x.b) !== worldPairKey(pair.a, pair.b) && x.a !== drop.id && x.b !== drop.id);
+        renderWorldImport();
+      });
+      const no = document.createElement('button');
+      no.type = 'button'; no.className = 'tagFilterBtn'; no.textContent = '別のもの';
+      no.addEventListener('click', () => {
+        worldDismissPair(pair.a, pair.b);
+        worldState.candidates = worldState.candidates.filter((x) => worldPairKey(x.a, x.b) !== worldPairKey(pair.a, pair.b));
+        renderWorldImport();
+      });
+      btns.appendChild(ok); btns.appendChild(no);
+      row.appendChild(btns);
+      box.appendChild(row);
+    });
+  }
+
+  // ---- 記録カレンダー ------------------------------------------------------
+  // 出来事は eventDate 基準の月ファイルに入っているので、ある日に読んだ分が
+  // どの月にあるかは決まらない。実際には取り込みから14日で「古い」印が付き、
+  // eventDate も普通は直近なので、その日の月から数か月を見れば足りる。
+  // 極端に古い eventDate の出来事はカレンダーに出ないことがある。
+  function worldMonthsForDay(dateStr) {
+    const out = [];
+    for (let i = 0; i < WORLD_DAY_LOOKBACK_MONTHS; i++) out.push(monthShift(monthOfDate(dateStr), -i));
+    return [...new Set(out)];
+  }
+  function renderDayWorldCard(dateStr) {
+    const list = worldReadOn(dateStr);
+    if (!list.length) return null;
+    const item = document.createElement('div');
+    item.className = 'recordEntry';
+    const top = document.createElement('div');
+    top.className = 'recordEntryTop';
+    const label = document.createElement('span');
+    label.className = 'recordEntryDate';
+    label.textContent = '世界 ・ ' + list.length + '件';
+    top.appendChild(label);
+    item.appendChild(top);
+    list.forEach((ev) => {
+      const row = document.createElement('div');
+      row.className = 'listItem'; row.style.cursor = 'pointer';
+      const t = document.createElement('div'); t.className = 'liText'; t.textContent = ev.fact;
+      row.appendChild(t);
+      const marks = [];
+      if (ev.prediction.writtenDate === dateStr) marks.push('予測を書いた');
+      if (ev.prediction.judgedAt && ev.prediction.judgedAt.slice(0, 10) === dateStr) marks.push({ hit: '当たり', miss: '外れ', hold: '保留' }[ev.prediction.result] || '');
+      if (marks.length) {
+        const b = document.createElement('div'); b.className = 'liBottomRow'; b.textContent = marks.filter(Boolean).join(' ・ ');
+        row.appendChild(b);
+      }
+      row.addEventListener('click', () => { worldState.view = 'main'; worldState.tab = 'events'; openWorld(); });
+      item.appendChild(row);
+    });
+    return item;
+  }
+
+  // ---- 設定 ----------------------------------------------------------------
+  function renderWorldSources() {
+    const box = document.getElementById('worldSourceList');
+    if (!box) return;
+    box.innerHTML = '';
+    const list = worldSources();
+    document.getElementById('worldSourceEmpty').hidden = !!list.length;
+    list.forEach((s) => {
+      const row = document.createElement('div');
+      row.className = 'worldSourceRow';
+      const left = document.createElement('div');
+      const nm = document.createElement('div'); nm.className = 'wsName'; nm.textContent = s.name;
+      const u = document.createElement('div'); u.className = 'wsUrl'; u.textContent = s.url;
+      left.appendChild(nm); left.appendChild(u);
+      row.appendChild(left);
+
+      const btns = document.createElement('div');
+      btns.className = 'tagFilterRow';
+      const fieldBtn = document.createElement('button');
+      fieldBtn.type = 'button'; fieldBtn.className = 'tagFilterBtn';
+      const paintField = () => { fieldBtn.textContent = s.field === 'both' ? '両方' : WORLD_FIELD_LABEL[s.field]; };
+      fieldBtn.addEventListener('click', () => {
+        s.field = s.field === 'finance' ? 'geo' : s.field === 'geo' ? 'both' : 'finance';
+        s.updatedAt = nowIso(); worldSaveSources(); paintField();
+      });
+      paintField();
+      const roleBtn = document.createElement('button');
+      roleBtn.type = 'button'; roleBtn.className = 'tagFilterBtn';
+      const paintRole = () => { roleBtn.textContent = WORLD_ROLE_LABEL[s.role]; roleBtn.classList.toggle('selected', s.role === 'primary'); };
+      roleBtn.addEventListener('click', () => {
+        s.role = s.role === 'primary' ? 'analysis' : 'primary';
+        s.updatedAt = nowIso(); worldSaveSources(); paintRole();
+      });
+      paintRole();
+      const del = document.createElement('button');
+      del.type = 'button'; del.className = 'tagFilterBtn'; del.textContent = '消す';
+      del.addEventListener('click', () => {
+        if (!confirm('ソース「' + s.name + '」を消します。よろしいですか？')) return;
+        wd.sources.sources = worldSources().filter((x) => x.id !== s.id);
+        worldSaveSources(); renderWorldSources();
+      });
+      btns.appendChild(fieldBtn); btns.appendChild(roleBtn); btns.appendChild(del);
+      row.appendChild(btns);
+      box.appendChild(row);
+    });
+  }
+  // due（期限の索引）を全部の月から組み直す。索引が合わなくなったときの逃げ道。
+  async function worldRebuildDue() {
+    const el = document.getElementById('worldRebuildStatus');
+    el.textContent = '読み込み中…';
+    try {
+      const months = Object.keys((wd.index && wd.index.months) || {});
+      await ensureWorldMonths(months);
+      wd.index.due = {};
+      [...new Set(worldEvents.map((e) => monthOfDate(e.eventDate)))].forEach((m) => updateWorldIndexMonth(m));
+      const n = Object.values(wd.index.due).reduce((a, x) => a + x.length, 0);
+      el.textContent = months.length + 'か月を読み直して、期限つきの予測 ' + n + '件を並べ直しました。';
+      scheduleSync();
+    } catch (e) {
+      el.textContent = '作り直せませんでした：' + (e && e.message ? e.message : e);
+    }
+  }
+
+  // ---- つなぎ --------------------------------------------------------------
+  document.getElementById('btnOpenWorld').addEventListener('click', openWorld);
+  document.getElementById('backFromWorld').addEventListener('click', () => {
+    if (worldState.view !== 'main') { worldState.view = 'main'; renderWorld(); return; }
+    openRecords();
+  });
+  document.getElementById('btnHomeWorldOpen').addEventListener('click', openWorld);
+  document.getElementById('worldCollapsedRow').addEventListener('click', () => {
+    // 開くときにだけ今日の3件を確定させる（畳んだ行を見ただけでは消費しない）
+    if (!homeExpandOverrides.has('world')) worldPickToday();
+    toggleHomeExpand('world');
+  });
+  document.querySelectorAll('#worldTabRow .tagFilterBtn').forEach((b) => {
+    b.addEventListener('click', () => { worldState.tab = b.dataset.wtab; renderWorldMain(); });
+  });
+  document.getElementById('btnWorldOpenToday').addEventListener('click', () => { worldPickToday(); renderWorldMain(); });
+  document.getElementById('btnWorldImportOpen').addEventListener('click', () => { worldState.view = 'import'; renderWorld(); });
+  document.getElementById('btnWorldImportBack').addEventListener('click', () => { worldState.view = 'main'; renderWorld(); });
+  document.getElementById('btnWorldDropStale').addEventListener('click', () => {
+    const stale = worldStaleUnread();
+    if (!stale.length) return;
+    if (!confirm('古い未読 ' + stale.length + ' 件を捨てます。読んだ分と予測は消えません。よろしいですか？')) return;
+    stale.forEach((e) => worldDeleteEvent(e.id));
+    renderWorldMain();
+  });
+  function worldCopyPrompt(field) {
+    worldImportField = field;
+    const el = document.getElementById('worldPromptStatus');
+    copyToClipboard(worldPromptText(field)).then((ok) => {
+      el.textContent = ok
+        ? WORLD_FIELD_LABEL[field] + 'のプロンプトをコピーしました。Claude のチャットに貼ってください。'
+        : 'コピーできませんでした。下の欄に出したので、選んでコピーしてください。';
+      if (!ok) document.getElementById('worldImportPaste').value = worldPromptText(field);
+    });
+  }
+  document.getElementById('btnWorldPromptFinance').addEventListener('click', () => worldCopyPrompt('finance'));
+  document.getElementById('btnWorldPromptGeo').addEventListener('click', () => worldCopyPrompt('geo'));
+  document.getElementById('btnWorldImport').addEventListener('click', async () => {
+    const box = document.getElementById('worldImportPaste');
+    const status = document.getElementById('worldImportStatus');
+    status.textContent = '取り込み中…';
+    const res = await worldImportJson(box.value);
+    if (res.error) { status.textContent = res.error; worldState.lastResult = res.error; return; }
+    const r = res.rejected;
+    const drops = [];
+    if (r.url) drops.push('URL なし ' + r.url + '件');
+    if (r.date) drops.push('日付が不正 ' + r.date + '件');
+    if (r.future) drops.push('未来の日付 ' + r.future + '件');
+    if (r.fact) drops.push('本文なし ' + r.fact + '件');
+    if (r.dup) drops.push('重複 ' + r.dup + '件');
+    const unread = worldUnread().length;
+    let msg = res.added + '件を入れました。';
+    if (drops.length) msg += '　' + drops.join('／') + ' を落としました。';
+    if (res.createdConcepts.length) msg += '　新しい概念 ' + res.createdConcepts.length + '件。';
+    if (res.old) msg += '　※ 90日より古い出来事が ' + res.old + '件あります。';
+    if (unread > WORLD_QUEUE_WARN) msg += '　未読が ' + unread + '件です。読む速さより入れる速さが上回っています。';
+    if (res.added) box.value = '';
+    worldState.candidates = res.candidates;
+    worldState.lastResult = msg;
+    status.textContent = msg;
+    renderWorldImport();
+  });
+  document.getElementById('btnWorldConceptBack').addEventListener('click', () => { worldState.view = 'main'; renderWorld(); });
+  document.getElementById('btnWorldConceptCopy').addEventListener('click', async () => {
+    const c = worldConceptById(worldState.conceptId);
+    if (!c) return;
+    const ok = await copyToClipboard(worldConceptCopyText(c));
+    document.getElementById('worldConceptStatus').textContent = ok ? 'コピーしました。' : 'コピーできませんでした。';
+  });
+  document.getElementById('btnWorldConceptRename').addEventListener('click', () => {
+    const c = worldConceptById(worldState.conceptId);
+    if (!c) return;
+    document.getElementById('worldConceptRenameInput').value = c.name;
+    document.getElementById('worldConceptRenamePanel').hidden = false;
+  });
+  document.getElementById('btnWorldConceptRenameCancel').addEventListener('click', () => {
+    document.getElementById('worldConceptRenamePanel').hidden = true;
+  });
+  document.getElementById('btnWorldConceptRenameOk').addEventListener('click', () => {
+    const c = worldConceptById(worldState.conceptId);
+    if (!c) return;
+    const name = document.getElementById('worldConceptRenameInput').value.trim();
+    if (!name) return;
+    const existing = worldFindConcept(name);
+    if (existing && existing.id !== c.id && !confirm('「' + existing.name + '」と同じ概念にまとめます。よろしいですか？')) return;
+    const res = worldRenameConcept(c.id, name);
+    if (res) worldState.conceptId = res.id;
+    renderWorldConcept();
+  });
+  document.getElementById('btnWorldSourceAdd').addEventListener('click', () => {
+    const name = document.getElementById('worldSourceNameInput').value.trim();
+    const url = document.getElementById('worldSourceUrlInput').value.trim();
+    const status = document.getElementById('worldSourceStatus');
+    const s = worldAddSource(name, url);
+    if (!s) { status.textContent = '名前と、http(s) で始まる URL を入れてください。'; return; }
+    document.getElementById('worldSourceNameInput').value = '';
+    document.getElementById('worldSourceUrlInput').value = '';
+    status.textContent = '足しました。分野と役割は一覧のボタンで切り替えます。';
+    renderWorldSources();
+  });
+  document.getElementById('btnWorldRebuildDue').addEventListener('click', worldRebuildDue);
+
   const INPUT_DRAFT_KEY = 'kotoba_inputDraft';
   const INPUT_DRAFT_MAX_AGE_MS = 48 * 3600 * 1000;
   const INPUT_DRAFT_NAV_MAX_AGE_MS = 30 * 60 * 1000;   // older than this: refill the fields when you go there, but never jump there on boot
@@ -13589,6 +15346,7 @@
   notesBoot();
   journalBoot();
   meditationBoot();
+  worldBoot();
   goHome();
   restoreInputDraft();
   medResumeTimer();
