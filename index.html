@@ -617,6 +617,7 @@
   .shootDetail { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #222c32; }
   .shootLabelMissing { font-size: 11px; color: #8a6a4a; }
   .shootStageNote { font-size: 12px; color: #7f8d96; padding: 6px 2px 0; }
+  .shootFlowBetween { font-size: 13px; color: #6d7a83; line-height: 1.6; padding: 2px 4px 2px 18px; }
   .labelRow { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
   .labelRow .labelNo { font-size: 12px; color: var(--text-dim); min-width: 1.4em; font-variant-numeric: tabular-nums; }
   .labelRow .labelBar { width: 4px; align-self: stretch; border-radius: 2px; background: var(--border); }
@@ -3769,6 +3770,10 @@
     // v9.1 撮影表示に出る唯一の文字。手書きだけ - 要約された言い回しは、見た
     // 瞬間に読み直しになって思い出す手がかりにならない
     if (typeof c.label === 'string' && c.label.trim()) out.label = c.label.trim().slice(0, 40);
+    // v9.2: fact is the sentence said out loud (short, no author names or
+    // method words); the numbers and the method live in detail, which is only
+    // seen when a card is opened mid-shoot
+    if (typeof c.detail === 'string' && c.detail.trim()) out.detail = c.detail.trim().slice(0, 600);
     return out;
   }
   function saveJournalEntry(entry) {
@@ -5697,6 +5702,9 @@
     document.querySelectorAll('#globalBottomNav .navBtn').forEach((b) => b.classList.remove('selected'));
     const activeBtn = { home: 'navHome', list: 'navList', consult: 'navConsult', records: 'navRecords', settings: 'navSettings', training: 'navRecords', meditation: 'navRecords', shoot: 'navRecords' }[name];
     if (activeBtn) document.getElementById(activeBtn).classList.add('selected');
+    // a kept draft older than the jump window is put back the moment you open
+    // that screen yourself (applyInputDraftFields only acts on a match)
+    applyInputDraftFields();
   }
 
   function refreshCurrentScreen() {
@@ -12560,8 +12568,9 @@
         if (note && note.myWords) readonly('自分の一言 ・ ' + note.myWords);
         else if (c.source) readonly('出典 ・ ' + c.source);
       } else {
-        field('事実', c.fact, 2, (v) => { c.fact = v; });
-        field('出典（誰がどこで）', c.source, 0, (v) => { c.source = v; });
+        field('事実（聞く人に向けた1文・40字まで）', c.fact, 2, (v) => { c.fact = v; });
+        field('詳細（数字・手法。撮影中は開いたときだけ出る）', c.detail, 2, (v) => { c.detail = v; });
+        field('出典（媒体・年・著者）', c.source, 0, (v) => { c.source = v; });
         field('URL', c.url, 0, (v) => { c.url = v; });
         chipRow('仮の答えを', [['support', '支える'], ['break', '壊す']], c.stance, (v) => {
           c.stance = v;
@@ -12703,14 +12712,19 @@
       '- 誰がどこで言っているかを必ず書く（掲示板・個人ブログも可、ただし場所を明記）。\n' +
       '- 種別タグ（伝承／噂）を付ける。\n\n' +
       '共通：\n' +
-      '- fact は1〜3文。\n' +
+      '- label は撮影中に見て思い出すための手がかり。10〜15字。fact をさらに短くしたもの。説明にしない。\n' +
+      '- fact は聞く人に向けた1文。40字以内。著者名・手法の名前・変数名・専門用語を入れない。台本ではないが、口に出したときにそのまま通じる文にする。\n' +
+      '  良い例：「操作できる問題では、見方を変える人ほど落ち込みが増えた」\n' +
+      '  悪い例：「Troyらは成人170名を対象に、認知的再評価の能力と直近のストレッサーの深刻度の交互作用を検討し…」\n' +
+      '- detail は数字・手法・対象人数など。1〜3文。ここには専門用語を書いてよい。\n' +
+      '- 著者名・媒体・年は source にだけ書く。fact と label には入れない。\n' +
       '- stance は support（前提を支持する）か break（前提と衝突する）のどちらか。\n' +
       '- breaks は「前提『…』と衝突」または「前提『…』を支持」の一句のみ。文章にしない。20〜40字。\n' +
       '- 意見・評価・助言・つなぎの言葉・話し方の提案は書かない。\n' +
       '- url は実在するページのものだけを書く。見つからなければそのカードを作らない。\n' +
       '- カード以外の文章を返さない。JSON のみ。\n\n' +
       '出力形式：\n' +
-      '{"cards":[{"kind":"research"|"fun","fact":"...","source":"...","url":"https://...","breaks":"前提『...』と衝突","stance":"support"|"break","tag":"伝承"|"噂"|""}]}';
+      '{"cards":[{"kind":"research"|"fun","label":"...","fact":"...","detail":"...","source":"...","url":"https://...","breaks":"前提『...』と衝突","stance":"support"|"break","tag":"伝承"|"噂"|""}]}';
   }
   function shootBreakPromptText(deck) {
     const cards = deckCards(deck).filter((c) => !c.dropped).map((c) => {
@@ -12742,8 +12756,11 @@
       '決まり：\n' +
       '- 枠の順（支え→寄り道→壊す→言葉）は変えない。並べ替えるのは枠の中だけ。\n' +
       '- カードを増やさない、減らさない。id は上のものだけを使う。\n' +
-      '- flow は「直前のカードとどうつながるか」を15〜30字で1行だけ書く。例：「前の数字を否定する」「同じ話を別の角度から」「ここで一度引く」。\n' +
-      '- 喋る内容・つなぎの台詞・言い回し・助言を書かない。関係だけを書く。\n' +
+      '- flow は「AからBへ」の形で書く。A は前のカードの話題、B はそのカードの話題。15〜30字。\n' +
+      '  良い例：「海の話から、体の内側へ」「数字の話から、体感の話へ」「他人の話から、自分の話へ」\n' +
+      '  悪い例：「入りの海の話を、身体の内側に引き戻す」（撮影中に読むには抽象的すぎる）、「前の数字を否定する」（何から何へ移るのか分からない）\n' +
+      '- 最初のカードには flow を付けない（前がないため）。\n' +
+      '- 喋る内容・つなぎの台詞・言い回し・助言を書かない。移り方だけを書く。\n' +
       '- JSON のみ。\n\n' +
       '出力形式：\n' +
       '{"order":["c3","c1"],"relations":[{"cardId":"c1","flow":"…"}]}';
@@ -12800,6 +12817,8 @@
       if (rawUrl && !url) badUrls++;
       const card = {
         kind, fact, stance, gen: 1, url,
+        label: typeof it.label === 'string' ? it.label.trim().slice(0, 40) : '',
+        detail: typeof it.detail === 'string' ? it.detail.trim().slice(0, 600) : '',
         source: typeof it.source === 'string' ? it.source.trim() : '',
         breaks: typeof it.breaks === 'string' ? it.breaks.trim().replace(/\s+/g, ' ') : '',
         slot: defaultSlotFor(kind, stance),
@@ -13003,6 +13022,9 @@
   // press marks it as said. Nothing else is on screen while shooting.
   function renderShootStageCards(wrap, list, sl, from) {
     list.forEach((c, i) => {
+      // 展開 sits between the cards, because it is the move from the one
+      // before to this one - never inside a card, where it read as noise
+      if (c.flow && ((from || 0) + i) > 0) { const fl = document.createElement('div'); fl.className = 'shootFlowBetween'; fl.textContent = '→ ' + c.flow; wrap.appendChild(fl); }
       const box = document.createElement('div');
       box.className = 'shootCard k-' + c.kind + ' s-' + sl.key + (shootState.said.has(c.id) ? ' said' : '');
 
@@ -13019,6 +13041,7 @@
       detail.className = 'shootDetail';
       detail.hidden = true;
       const fact = document.createElement('div'); fact.className = 'shootFact'; fact.textContent = c.fact || '（空）'; detail.appendChild(fact);
+      if (c.detail) { const dt = document.createElement('div'); dt.className = 'shootSource'; dt.textContent = c.detail; detail.appendChild(dt); }
       if (c.kind === 'word' && c.noteId) { const note = findNote(c.noteId); if (note && note.myWords) { const my = document.createElement('div'); my.className = 'shootWordMy'; my.textContent = note.myWords; detail.appendChild(my); } }
       const meta = [c.source, c.tag, c.belief ? SHOOT_BELIEF_LABEL[c.belief] : ''].filter(Boolean).join(' ・ ');
       if (meta) { const m = document.createElement('div'); m.className = 'shootSource'; m.textContent = meta; detail.appendChild(m); }
@@ -13152,6 +13175,8 @@
 
   const INPUT_DRAFT_KEY = 'kotoba_inputDraft';
   const INPUT_DRAFT_MAX_AGE_MS = 48 * 3600 * 1000;
+  const INPUT_DRAFT_NAV_MAX_AGE_MS = 30 * 60 * 1000;   // older than this: refill the fields when you go there, but never jump there on boot
+  const INPUT_DRAFT_SKIP_SCREENS = new Set(['settings']);
   const INPUT_DRAFT_SKIP = new Set(['trDate', 'trWeight', 'listSearch', 'walkShareTextInput', 'medMemoInput', 'medAlarmCustom', 'shootQuestionText', 'shootHookInput', 'shootAnswerInput', 'shootTitleInput', 'shootConsultInput', 'shootCardsPaste', 'shootBreakPaste', 'shootFlowPaste', 'shootHookPaste']); // medMemoInput autosaves itself   // own persistence / not worth restoring
   let inputDraftTimer = null, inputDraftRestoring = false;
   function readInputDraft() { try { const raw = localStorage.getItem(INPUT_DRAFT_KEY); const d = raw ? JSON.parse(raw) : null; return (d && d.fields && d.ctx) ? d : null; } catch (e) { return null; } }
@@ -13177,6 +13202,7 @@
   }
   function captureInputDraftNow() {
     if (inputDraftRestoring) return;
+    if (INPUT_DRAFT_SKIP_SCREENS.has(nav.screen)) return;
     const sec = document.getElementById('screen-' + nav.screen);
     if (!sec) return;
     const fields = {};
@@ -13213,6 +13239,8 @@
     if (!d) return;
     if (Date.now() - new Date(d.at).getTime() > INPUT_DRAFT_MAX_AGE_MS || !Object.keys(d.fields).length) { clearInputDraft(); return; }
     const c = d.ctx;
+    if (INPUT_DRAFT_SKIP_SCREENS.has(c.screen)) { clearInputDraft(); return; }
+    if (Date.now() - new Date(d.at).getTime() > INPUT_DRAFT_NAV_MAX_AGE_MS) return;   // keep it, but start where the app normally starts
     inputDraftRestoring = true;
     try {
       if (c.screen === 'editor' && c.editor) {
