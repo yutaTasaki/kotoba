@@ -606,6 +606,19 @@
   .trSetNoteRow { margin: -2px 0 8px 0; padding-left: 0; }
   .trSetNoteRow input { width: 100%; font-size: 12px; padding: 5px 10px; color: var(--text-dim); }
   .calToolRow { display: flex; justify-content: flex-end; margin: 6px 0 4px; }
+  /* 振り返る (v8.1) */
+  .lookbackRow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 10px; }
+  .lookbackRow .tagFilterBtn.dim { opacity: 0.45; }
+  .lookbackNote { font-size: 13px; color: var(--text-dim); margin: -4px 0 10px; }
+  .dayNav { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: -4px 0 8px; }
+  .dayNav button { color: var(--accent); font-size: 14px; padding: 6px 0; }
+  .dayNav button:disabled { opacity: 0.35; }
+  .dayPosition { font-size: 13px; color: var(--text-dim); margin: 0 0 12px; line-height: 1.6; }
+  .dayHeadline { background: var(--bg-card); border-left: 3px solid var(--accent); border-radius: 12px; padding: 12px 14px; margin: 0 0 14px; cursor: pointer; }
+  .dayHeadlineLabel { font-size: 12px; color: var(--text-dim); margin-bottom: 6px; letter-spacing: 0.04em; }
+  .dayHeadlineText { font-size: 17px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+  .dayHeadlineSource { font-size: 12px; color: var(--text-dim); margin-top: 6px; }
+  .dayNotesMore { font-size: 13px; color: var(--text-dim); margin-top: 4px; }
   .calToolRow button { width: auto; font-size: 12px; padding: 4px 10px; }
   .calParts { font-size: 9px; line-height: 1.15; color: #e07a5f; max-width: 100%; overflow: hidden; white-space: nowrap; }
   .trCardioTable { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 6px 0 8px; }
@@ -1318,6 +1331,14 @@
     </header>
 
     <div id="recordsCalendarView">
+      <div class="lookbackRow" id="lookbackRow">
+        <span class="fieldNote" style="margin:0;">振り返る</span>
+        <button type="button" class="tagFilterBtn lookbackBtn" data-days="365">1年前</button>
+        <button type="button" class="tagFilterBtn lookbackBtn" data-days="30">1か月前</button>
+        <button type="button" class="tagFilterBtn lookbackBtn" data-days="7">1週間前</button>
+        <button type="button" class="tagFilterBtn" id="btnLookbackRandom">どこかの日</button>
+      </div>
+      <p class="lookbackNote" id="lookbackNote" hidden></p>
       <div class="calNav">
         <button type="button" id="calPrev" class="secondaryBtn">＜ 前月</button>
         <div id="calMonthLabel"></div>
@@ -1328,6 +1349,9 @@
 
       <div id="dayDetailView" hidden>
         <h3 id="dayDetailTitle"></h3>
+        <div class="dayNav"><button type="button" id="btnDayPrev">← 前の日</button><button type="button" id="btnDayNext">次の日 →</button></div>
+        <p class="dayPosition" id="dayPosition"></p>
+        <div class="dayHeadline" id="dayHeadline" hidden></div>
         <div id="dayDetailBody"></div>
         <div id="dayDetailEmpty" class="emptyMsg" hidden>記録なし</div>
       </div>
@@ -8684,6 +8708,7 @@
   function renderRecords() {
     document.getElementById('recordsCalendarView').hidden = false;
     document.getElementById('dayEditorView').hidden = true;
+    renderLookbackRow();
     renderRecordsCalendar();
     renderDayDetail();
     renderMonthSummary();
@@ -8796,6 +8821,7 @@
       } else {
         el.addEventListener('click', () => {
           recordsSelectedDate = recordsSelectedDate === dateStr ? null : dateStr;
+          document.getElementById('lookbackNote').hidden = true;
           renderRecordsCalendar();
           renderDayDetail();
         });
@@ -8828,6 +8854,124 @@
     renderDayDetail();
     renderMonthSummary();
   }
+
+  // --- 振り返る (v8.1) -------------------------------------------------------
+  // Everything is the existing day view; what is new is how you get to a day
+  // (1年前 / 1か月前 / 1週間前 / どこかの日, falling back to the nearest day that
+  // has anything), the ← → day stepping, the "where I was" line and the
+  // day's headline word. No new data, no new files.
+  const LOOKBACK_SEARCH_DAYS = 400;   // how far the fallback looks for a day with records
+  const DAY_NOTES_SHOWN = 5;
+  function localDateOfIso(iso) { const d = new Date(iso); return isNaN(d) ? null : formatDateStr(d); }
+  function notesAddedOn(dateStr) { return data.notes.filter((n) => localDateOfIso(n.createdAt) === dateStr).sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1)); }
+  // days known to hold something (journal months not loaded on this device are the one blind spot)
+  function knownRecordDays() {
+    const set = new Set(walkData.walkedDates);
+    trainingData.days.forEach((d) => set.add(d.date));
+    medData.sessions.forEach((x) => set.add(x.date));
+    data.notes.forEach((n) => { const d = localDateOfIso(n.createdAt); if (d) set.add(d); });
+    data.journal.forEach((j) => set.add(j.date));
+    const today = todayStr();
+    return new Set([...set].filter((d) => d <= today));
+  }
+  function nearestRecordDay(target) {
+    const known = knownRecordDays();
+    if (known.has(target)) return { date: target, offset: 0 };
+    for (let k = 1; k <= LOOKBACK_SEARCH_DAYS; k++) {
+      const before = addDays(target, -k), after = addDays(target, k);
+      if (known.has(before)) return { date: before, offset: -k };
+      if (known.has(after)) return { date: after, offset: k };
+    }
+    return null;
+  }
+  function openRecordsAt(dateStr, note) {
+    const d = parseDateStr(dateStr);
+    calYear = d.getFullYear(); calMonth = d.getMonth();
+    recordsSelectedDate = dateStr;
+    showScreen('records');
+    renderRecords();
+    const el = document.getElementById('lookbackNote');
+    el.textContent = note || ''; el.hidden = !note;
+    const view = document.getElementById('dayDetailView');
+    if (view && view.scrollIntoView) view.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }
+  function lookbackTo(days, label) {
+    const target = addDays(todayStr(), -days);
+    const near = nearestRecordDay(target);
+    if (!near) { openRecordsAt(target, 'まだ記録がありません。'); return; }
+    if (near.offset === 0) { openRecordsAt(target, `${label}の今日（${dotDate(target)}）`); return; }
+    openRecordsAt(near.date, `${label}の今日（${dotDate(target)}）は記録なし → 一番近い ${dotDate(near.date)} を開きました。`);
+  }
+  function lookbackRandom() {
+    const days = [...knownRecordDays()].filter((d) => d !== todayStr());
+    if (!days.length) { openRecordsAt(todayStr(), 'まだ今日の分しかありません。'); return; }
+    const pick = days[Math.floor(Math.random() * days.length)];
+    openRecordsAt(pick, `どこかの日：${dotDate(pick)}`);
+  }
+  function renderLookbackRow() {
+    const known = knownRecordDays();
+    document.querySelectorAll('.lookbackBtn').forEach((b) => { const t = addDays(todayStr(), -Number(b.dataset.days)); b.classList.toggle('dim', !known.has(t)); b.title = known.has(t) ? dotDate(t) : dotDate(t) + ' は記録なし（一番近い日を開きます）'; });
+    document.getElementById('btnLookbackRandom').classList.toggle('dim', known.size <= 1);
+  }
+  function stepDay(delta) {
+    if (!recordsSelectedDate) return;
+    const next = addDays(recordsSelectedDate, delta);
+    if (next > todayStr()) return;
+    const d = parseDateStr(next);
+    calYear = d.getFullYear(); calMonth = d.getMonth();
+    recordsSelectedDate = next;
+    document.getElementById('lookbackNote').hidden = true;
+    renderRecordsCalendar(); renderDayDetail(); renderMonthSummary(); ensureCalendarMonthLoaded();
+  }
+  // "where I was" on that day: totals up to and including it
+  function dayPositionLine(dateStr) {
+    const walk = walkData.walkedDates.filter((d) => d <= dateStr).length;
+    const notes = data.notes.filter((n) => { const d = localDateOfIso(n.createdAt); return d && d <= dateStr; }).length;
+    const tr = trainingData.days.filter((d) => d.date <= dateStr).length;
+    const medMin = medSum(medData.sessions.filter((x) => x.date <= dateStr));
+    const parts = [`一万日の ${walk} 日目`, `言葉 ${notes} 枚`, `散歩 ${walk} 日`, `筋トレ ${tr} 日`, `瞑想 ${medMin >= 60 ? (medMin / 60).toFixed(1) + ' 時間' : medMin + ' 分'}`];
+    return parts.join(' ・ ') + (dateStr < todayStr() ? '（当時）' : '');
+  }
+  // the day's word: what got a ★ that day, else the first word the morning brought
+  function dayHeadlineNote(dateStr) {
+    const entries = data.journal.filter((j) => j.date === dateStr && (j.kind === 'morning' || j.kind === 'consult' || j.kind === 'draw'));
+    let best = null;
+    entries.forEach((j) => (j.picks || []).forEach((p) => { if (p.hit && findNote(p.id) && (!best || (p.hitAt || '') < (best.hitAt || ''))) best = { id: p.id, hitAt: p.hitAt, hit: true }; }));
+    if (best) return { note: findNote(best.id), hit: true };
+    const morning = entries.filter((j) => j.kind === 'morning').sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))[0];
+    const first = morning && (morning.picks || []).map((p) => findNote(p.id)).find(Boolean);
+    return first ? { note: first, hit: false } : null;
+  }
+  function renderDayHeadline(dateStr) {
+    const box = document.getElementById('dayHeadline');
+    const h = dayHeadlineNote(dateStr);
+    box.innerHTML = '';
+    box.hidden = !h;
+    if (!h) return;
+    const label = document.createElement('div'); label.className = 'dayHeadlineLabel'; label.textContent = h.hit ? '★ この日に刺さった言葉' : 'この日に届いた言葉'; box.appendChild(label);
+    const text = document.createElement('div'); text.className = 'dayHeadlineText'; text.textContent = noteSnippet(h.note.text, 160); box.appendChild(text);
+    if (h.note.source) { const src = document.createElement('div'); src.className = 'dayHeadlineSource'; src.textContent = h.note.source; box.appendChild(src); }
+    box.onclick = () => openDetail(h.note.id, 'records');
+  }
+  function renderDayNotesCard(notes) {
+    const item = document.createElement('div'); item.className = 'recordEntry';
+    const top = document.createElement('div'); top.className = 'recordEntryTop';
+    const label = document.createElement('span'); label.className = 'recordEntryDate'; label.textContent = `この日に追加した言葉 ・ ${notes.length} 枚`; top.appendChild(label);
+    item.appendChild(top);
+    notes.slice(0, DAY_NOTES_SHOWN).forEach((n) => {
+      const row = document.createElement('div'); row.className = 'listItem'; row.style.cursor = 'pointer';
+      const t = document.createElement('div'); t.className = 'liText'; t.textContent = noteSnippet(n.text, 60); row.appendChild(t);
+      if (n.source) { const sub = document.createElement('div'); sub.className = 'liBottomRow'; sub.textContent = n.source; row.appendChild(sub); }
+      row.addEventListener('click', () => openDetail(n.id, 'records'));
+      item.appendChild(row);
+    });
+    if (notes.length > DAY_NOTES_SHOWN) { const more = document.createElement('div'); more.className = 'dayNotesMore'; more.textContent = `ほか ${notes.length - DAY_NOTES_SHOWN} 枚（一覧で作成日順に見られます）`; item.appendChild(more); }
+    return item;
+  }
+  document.querySelectorAll('.lookbackBtn').forEach((b) => b.addEventListener('click', () => lookbackTo(Number(b.dataset.days), b.textContent)));
+  document.getElementById('btnLookbackRandom').addEventListener('click', lookbackRandom);
+  document.getElementById('btnDayPrev').addEventListener('click', () => stepDay(-1));
+  document.getElementById('btnDayNext').addEventListener('click', () => stepDay(1));
 
   function renderDayMorningCard(j) {
     const item = document.createElement('div');
@@ -9106,6 +9250,9 @@
     view.hidden = false;
     const dateStr = recordsSelectedDate;
     document.getElementById('dayDetailTitle').textContent = dotDate(dateStr);
+    document.getElementById('btnDayNext').disabled = dateStr >= todayStr();
+    document.getElementById('dayPosition').textContent = dayPositionLine(dateStr);
+    renderDayHeadline(dateStr);
     const body = document.getElementById('dayDetailBody');
     body.innerHTML = '';
     let any = false;
@@ -9129,6 +9276,9 @@
 
     const drawEntries = data.journal.filter((j) => j.kind === 'draw' && j.date === dateStr);
     if (drawEntries.length) { any = true; body.appendChild(renderDayDrawCard(drawEntries)); }
+
+    const added = notesAddedOn(dateStr);
+    if (added.length) { any = true; body.appendChild(renderDayNotesCard(added)); }
 
     document.getElementById('dayDetailEmpty').hidden = any;
   }
