@@ -1704,6 +1704,7 @@
         <div class="questionAsk" id="questionAsk" hidden></div>
         <div class="questionText" id="questionText"></div>
         <div class="questionCore" id="questionCore" hidden></div>
+        <div class="questionCore" id="questionSides" hidden></div>
         <div class="questionTension" id="questionTension" hidden></div>
         <div class="questionWhyNow" id="questionWhyNow" hidden></div>
       </div>
@@ -4956,7 +4957,7 @@
       '- 本人がこの1ヶ月の朝に書いた一言と、相談で書いたこと\n' +
       '- 最近この人に出した問い\n\n' +
       '出力するもの：\n' +
-      '- sides.a / sides.b：食い違いの両側を、その場面で目に見えること（体の動き・起きている事実）として、それぞれ20字以内の話し言葉で書く。a は表に出ている行動（続けている、開いている、書いている、など）、b は同じ場面で同時に起きているもう一つの事実（結果が出ていない、手が止まっている、消している、など）。内面の語（思う、感じる、悩む、切り替える、引きずる、理由探し、など）は使わない。\n' +
+      '- sides.a / sides.b：食い違いの両側を、その場面で目に見えること（体の動き・目に見える物・起きている事実）として、それぞれ20字以内の話し言葉で書く。a は表に出ている行動（日記を開いて座っている、企画書を書き足している、返信を打っている、など）、b は同じ場面で同時に起きているもう一つの事実（一行も書けていない、同じ段落を消している、送らずに閉じている、など）。カメラで撮れることだけを書く。撮れないもの（苦しさ、不安、迷い、焦り、悩み、気持ち、心、疲れ、思う、感じる、考える、抱える、切り替える、引きずる、理由探し）は一語も入れない。\n' +
       '- scene（場面）：a と b の両方が入った一場面。1文。30〜60字。動画の冒頭で口に出す。\n' +
       '- core（芯）：その食い違いが材料のどこから来たかを、材料の言い回しをそのまま使って1文で書く。画面の下に小さく出す控えであり、口には出さない。材料の言葉を使うのはここだけ。30〜80字。\n' +
       '- tension / why_now / from（下の厳守を参照）\n\n' +
@@ -4968,16 +4969,20 @@
       '   - 本人が言い切っていることと、この1ヶ月の記録に書かれた実際の状態が食い違っている\n' +
       '2. その食い違いを、どちらが正しいかを決めずに、そのまま中心に置く。\n' +
       '3. 材料の1枚を「軸」に決める。芯は、その軸の言葉に対して、もう1枚（または本人の1ヶ月の記録）をその軸から照らす形にする。材料を横に並べて選ばせる形にしない。\n' +
-      '4. 食い違いの両側を、日常の場面で「体に起きること」に置き換える → sides.a と sides.b。ここで内面の語が出てきたら、体の動きか目に見える事実に置き換える（「切り替えられない」→「同じ画面をまだ開いている」、「引きずる」→「昨日の一言をまだ言い返している」、「理由探し」→「うまくいかなかった訳を書き出している」）。\n' +
+      '4. 食い違いの両側を、日常の場面で「カメラで撮れること」に置き換える → sides.a と sides.b。置き換えの方法：内面の語が出てきたら「その内面を持った人の体は、その場で何をしているか」を思い浮かべ、その動きか目に見える物で書く（「切り替えられない」→「同じ画面をまだ開いている」、「引きずる」→「昨日の一言をまだ言い返している」、「理由探し」→「うまくいかなかった訳を書き出している」、「苦しい」→「ため息をついて画面を閉じる」、「不安」→「同じページを何度も開き直す」、「迷い」→「返信を打ちかけて消す」）。a と b のどちらにも「何を」しているのかが分かる物を入れる（日記、仕事のメール、企画書、明日の予定、皿、布団、通勤の電車、など）。「作業」「何か」「こと」で済ませない。\n' +
       '5. a と b が同じ一場面に同時にある場面を1文で書く → scene。\n' +
       '6. 芯（core）を書く。\n' +
-      '7. 確かめる：scene を読んだ他人が、a と b の両方をその文の中に見つけられるか。見つけられないなら scene を書き直す。a か b に内面の語が残っていないか。\n' +
+      '7. 確かめる（3つ。どれか一つでも通らなければ書き直す）：\n' +
+      '   (1) a・b・scene を一語ずつ見て、カメラで撮れない語（苦しさ、不安、迷い、焦り、悩み、気持ち、心、疲れ、思う、感じる、考える、抱える、など）が残っていないか。残っていれば、その人の体がしていることに置き換える。\n' +
+      '   (2) scene に「何を」しているのかが分かる物が入っているか（日記なのか仕事のメールなのか）。無ければ入れる。\n' +
+      '   (3) scene を読んだ他人が、自分の一日の中の同じ場面を思い出せるか。a と b の両方をその文の中に見つけられるか。\n' +
       '8. 材料の間に本当の食い違いや引っかかりが見つからない場合、または2枚が別の話で一本にならない場合は、無理に作らない。{"scene": null, "reason": "…"} を返す（reason は1行、なぜ立たなかったか）。無理に作った種より、立たなかったと言うほうが良い。\n\n' +
       '場面（scene）の決まり：\n' +
       '- 体が何をしているかが見えるように書く（スマホを見ている、布団の中で、皿を洗いながら、返信を打ちかけて消す、など）。内面は書かず、その行動に語らせる。「気持ち」「心」「状態」「同時に」「〜と感じる」のような内面を説明する語は使わない。\n' +
       '- 具体的な行動・時間帯・場所のどれかを必ず含める（夜、休みの日、通勤中、寝る前、机の前、風呂で、など）。\n' +
       '- 誰にでもある平凡な場面にする。特別な状況・劇的な出来事・大きな決断にしない。\n' +
       '- 本人の記録の言葉、材料の言い回し、出典の名前は使わない。「〜と書いた自分」のような本人の話にしない。\n' +
+      '- 何をしているのかが分かる物を1つ入れる（日記、仕事のメール、企画書、明日の予定、皿、布団、通勤の電車、など）。「作業」「何か」「こと」だけで済ませない。聞いた人が「自分の一日のあの場面だ」と置き換えられる具体性が要る。\n' +
       '- 言い切りの1文で終える。「〜のとき」「〜という状態」で終わらない。問いかけにしない（問いは次の工程が書く）。\n\n' +
       '例（種と場面の3組。核心の落とし方の参考であり、場面・語・文の形はそのまま使わない）：\n' +
       '  a「同じ作業を繰り返している」 b「思うような結果が出ない日が続いている」\n' +
@@ -4988,7 +4993,8 @@
       '  scene「休みの日に一日何もしなかった夕方、カーテンを閉めながらその一日を数えている。」\n' +
       '悪い例：\n' +
       '  a「続けている」 b「理由探しをしている」（「理由探し」は目に見えない。体に起きることに置き換える）\n' +
-      '  a「気持ちを切り替えたい」 b「昨日のことを引きずっている」（両方とも内面の語。「同じ画面をまだ開いている」「昨日の一言をまだ言い返している」のように書く）\n\n' +
+      '  a「気持ちを切り替えたい」 b「昨日のことを引きずっている」（両方とも内面の語。「同じ画面をまだ開いている」「昨日の一言をまだ言い返している」のように書く）\n' +
+      '  scene「夜、机の前に座って苦しさを抱えているのに、その苦しさについてはまだ何も書いていない。」（「苦しさを抱えている」は撮れない内面。何を書こうとしているのか（日記か仕事か）も無いので、聞いた人が自分に置き換えられない。直すなら a「夜、日記を開いて机に座っている」 b「一行も書けないまま閉じる」 scene「夜、日記を開いて机に座ったのに、一行も書けないまま閉じている。」）\n\n' +
       '厳守すること：\n' +
       '- tension は「「◯◯」と書いているのに「△△」では〜になっている」の形で、材料の言葉そのものを引いて1行で書く。抽象語でまとめない。\n' +
       '- core・tension・why_now・reason の中で、材料を id や番号（n_20260907_014 も 014 も）で指さない。必ずその言葉を引く。\n' +
@@ -5074,7 +5080,9 @@
     return { question, type: parsed.type === 'A' ? 'A' : 'B' };
   }
 
-  function buildQuestionUserPrompt(materials) {
+  // words a camera cannot film: if pass 1 leaves one in the scene or a / b it gets one rewrite
+  const SCENE_BANNED = /苦し|不安|迷い|迷っ|焦り|焦っ|悩み|悩ん|気持ち|心の|心が|疲れ|思って|感じ|考えて|抱え/;
+  function buildQuestionUserPrompt(materials, note) {
     const lines = (arr) => (arr.length ? arr.map((r) => '- ' + r.date + ' ' + r.text).join('\n') : '（記録なし）');
     const recentQuestions = sortedQuestionEntriesDesc().slice(0, 5).map((j) => '- ' + j.text);
     const notesJson = materials.notes.map((n) => ({
@@ -5097,7 +5105,8 @@
       'この1ヶ月の朝に書いた一言：\n' + lines(recentJournalTextsFor('morning', 10)) + '\n\n' +
       'この1ヶ月の相談で書いたこと：\n' + lines(recentJournalTextsFor('consult', 10)) + '\n\n' +
       '最近この人に出した問い（同じ切り口を避けるため）：\n' +
-      (recentQuestions.length ? recentQuestions.join('\n') : '（まだない）');
+      (recentQuestions.length ? recentQuestions.join('\n') : '（まだない）') +
+      (note ? '\n\n前回の案は使えなかった：' + note + '\n書き直すこと。' : '');
   }
 
   // Same loose-parse posture as the other calls: try clean JSON, then fall
@@ -5122,7 +5131,7 @@
     }
   }
 
-  async function callQuestionApi(materials, is429Retry, isParseRetry) {
+  async function callQuestionApi(materials, is429Retry, isParseRetry, sceneNote) {
     const apiKey = getClaudeApiKey();
     if (!apiKey) { const e = new Error('no-api-key'); e.noKey = true; throw e; }
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -5148,12 +5157,12 @@
         // harder each time. Same budget as 相談 now.
         max_tokens: 8192,
         system: buildQuestionSystemBlocks(),
-        messages: [{ role: 'user', content: buildQuestionUserPrompt(materials) }],
+        messages: [{ role: 'user', content: buildQuestionUserPrompt(materials, sceneNote) }],
       }),
     });
     if (res.status === 429 && !is429Retry) {
       await sleep(2000);
-      return callQuestionApi(materials, true, isParseRetry);
+      return callQuestionApi(materials, true, isParseRetry, sceneNote);
     }
     if (!res.ok) {
       const err = new Error('Claude API failed: ' + res.status);
@@ -5168,7 +5177,7 @@
     const hasScene = parsed && typeof parsed.scene === 'string' && parsed.scene.trim();
     if (!parsed || (!declined && !hasScene)) {
       if (isTruncated(json)) throw truncatedResponseError();
-      if (!isParseRetry) return callQuestionApi(materials, is429Retry, true);
+      if (!isParseRetry) return callQuestionApi(materials, is429Retry, true, sceneNote);
       throw new Error('invalid response shape');
     }
     // v3.3.1: the model may decline. That is a result, not an error - the
@@ -5192,6 +5201,7 @@
     // spoken question from those alone (no materials in sight).
     const scene = one(parsed.scene, 120);
     const sides = { a: one(parsed.sides && parsed.sides.a, 40), b: one(parsed.sides && parsed.sides.b, 40) };
+    { const m = SCENE_BANNED.exec(scene + '／' + sides.a + '／' + sides.b); if (m && !sceneNote) return callQuestionApi(materials, is429Retry, isParseRetry, '場面か a/b に、カメラで撮れない内面の語（「' + m[0] + '」）が残っている。その人の体がしていること・目に見える物に置き換え、何をしているのか分かる物（日記、メール、企画書など）を入れる。'); }
     const ask = await callQuestionAskApi(scene, sides);
     return {
       question: ask.question,
@@ -9506,6 +9516,12 @@
         core.textContent = '芯 ・ ' + j.core;
         item.appendChild(core);
       }
+      if (j.sides && (j.sides.a || j.sides.b)) {
+        const sd = document.createElement('div');
+        sd.className = 'questionRecordMeta';
+        sd.textContent = '種 ・ a「' + (j.sides.a || '') + '」 b「' + (j.sides.b || '') + '」' + (j.qtype ? '　型' + j.qtype : '');
+        item.appendChild(sd);
+      }
       if (j.for_viewer && !j.scene) {
         const viewer = document.createElement('div');
         viewer.className = 'questionRecordMeta';
@@ -10064,8 +10080,9 @@
     document.getElementById('btnDrawToGraph').hidden = true;
     document.getElementById('btnQuestionAgain').hidden = false;
     { const sc = document.getElementById('questionScene'), ak = document.getElementById('questionAsk'), co = document.getElementById('questionCore'), qt = document.getElementById('questionText');
-      if (entry.scene) { qt.hidden = true; sc.hidden = false; sc.textContent = entry.scene; ak.hidden = !entry.ask; ak.textContent = entry.ask || ''; co.hidden = !entry.core; co.textContent = entry.core ? '芯 ・ ' + entry.core : ''; }
-      else { qt.hidden = false; qt.textContent = entry.text; sc.hidden = true; ak.hidden = true; co.hidden = true; } }
+      if (entry.scene) { qt.hidden = true; sc.hidden = false; sc.textContent = entry.scene; ak.hidden = !entry.ask; ak.textContent = entry.ask || ''; co.hidden = !entry.core; co.textContent = entry.core ? '芯 ・ ' + entry.core : '';
+        const sd = document.getElementById('questionSides'); const hasSides = !!(entry.sides && (entry.sides.a || entry.sides.b)); sd.hidden = !hasSides; sd.textContent = hasSides ? '種 ・ a「' + (entry.sides.a || '') + '」 b「' + (entry.sides.b || '') + '」' + (entry.qtype ? '　型' + entry.qtype : '') : ''; }
+      else { qt.hidden = false; qt.textContent = entry.text; sc.hidden = true; ak.hidden = true; co.hidden = true; document.getElementById('questionSides').hidden = true; } }
     const tensionEl = document.getElementById('questionTension');
     tensionEl.textContent = entry.tension || '';
     tensionEl.hidden = !entry.tension;

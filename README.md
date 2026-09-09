@@ -228,7 +228,7 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
 | 刺さった★の重み（減衰・飽和・休み・探索） | `HIT_TUNING` |
 | 「残したい」の効き（倍率 1 + boost ÷ (1 + ★累計)） | `KEEP_TUNING`（boost 0.5）, `keepMultiplier` |
 | 眠っている言葉の枠（引くの何回に 1 回・古い方の何割・朝の候補に何枚） | `SLEEP_TUNING`, `sleepingPool`, `lastSeenMap`（「最後に見た日」＝朝・相談・引くで届いた日、問いの材料になった日、眠り順から詳細を開いた日） |
-| 問いの角度・プロンプト | `QUESTION_MODES`, `buildQuestionSystemBlocks`（1回目：種 a/b と場面、芯）, `buildQuestionAskSystemBlocks`（2回目：場面だけから問い。(A)建前と本音／(B)二択 の型、責めない、例文）, `ASK_BANNED`（詰問の語。出たら1回書き直させる） |
+| 問いの角度・プロンプト | `QUESTION_MODES`, `buildQuestionSystemBlocks`（1回目：種 a/b と場面、芯）, `buildQuestionAskSystemBlocks`（2回目：場面だけから問い。(A)建前と本音／(B)二択 の型、責めない、例文）, `ASK_BANNED`（詰問の語。出たら1回書き直させる）, `SCENE_BANNED`（場面・a/b に残った内面の語。出たら1回目を1回書き直させる）。引く結果と日付詳細の「種 ・ a／b　型」で、どちらの工程が外れたかを見る |
 | 相談・朝のプロンプト | `buildChatSystemBlocks` |
 | 自動関連づけのプロンプト | `buildAutoLinkSystemBlocks` |
 | 読書メモのプロンプト | `buildReadingSystemBlocks` |
