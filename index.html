@@ -576,6 +576,9 @@
   .shootPremiseWhat { font-size: 12px; color: #e0836b; line-height: 1.7; margin-top: 4px; }
   .shootHistory { margin-top: 10px; font-size: 12px; color: var(--text-faint); line-height: 1.8; }
   .shootHistory div { padding: 2px 0; }
+  .tagFilterBtn:disabled, .secondaryBtn:disabled { opacity: 0.4; cursor: default; }
+  .shootGateHint { color: var(--text-faint); }
+  .shootAnswerAgain { border-top: 1px solid var(--border); margin-top: 14px; padding-top: 12px; }
   .shootCardEdit .shootReadonly { font-size: 12px; color: var(--text-faint); line-height: 1.7; padding: 2px 0; }
   .shootHookCandidate { background: var(--bg-card); border-radius: 12px; padding: 12px 14px; margin-top: 8px; font-size: 15px; line-height: 1.7; cursor: pointer; }
   .shootConsultCard { background: var(--bg-card); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 6px; margin-top: 10px; position: relative; }
@@ -1621,31 +1624,23 @@
 
     <div class="editorBody" id="shootEditView" hidden>
       <div class="field">
-        <span class="fieldLabel">問い</span>
+        <span class="fieldLabel">1 問い</span>
         <div class="tagFilterRow" id="shootQuestionChips"></div>
         <textarea id="shootQuestionText" rows="2" placeholder="引いた問いを選ぶか、ここに書く" autocomplete="off"></textarea>
       </div>
       <div class="field">
-        <span class="fieldLabel">仮の答え<span class="required">必須</span></span>
+        <span class="fieldLabel">2 仮の答え<span class="required">必須</span></span>
         <textarea id="shootAnswerInput" rows="2" placeholder="今日はこう答える、を1文で" autocomplete="off"></textarea>
-        <p class="fieldNote" id="shootAnswerHint" hidden>仮の答えを書くまで、カードは足せません。</p>
-        <div class="medRow" style="margin-top:6px;">
-          <button type="button" id="btnShootBreakPrompt" class="tagFilterBtn">答えを壊すプロンプトをコピー</button>
-        </div>
-        <textarea id="shootBreakPaste" rows="2" placeholder="チャットが返した JSON をここに貼る" autocomplete="off"></textarea>
-        <button type="button" id="btnShootBreakImport" class="secondaryBtn">取り込む</button>
-        <p class="fieldNote" id="shootBreakStatus"></p>
-        <div id="shootPremises"></div>
-        <div id="shootAnswerHistory" class="shootHistory" hidden></div>
       </div>
       <div class="field">
-        <span class="fieldLabel">タイトル（任意）</span>
+        <span class="fieldLabel">3 タイトル（任意）</span>
         <input type="text" id="shootTitleInput" placeholder="動画のタイトル" autocomplete="off">
       </div>
       <div class="field" id="shootConsultField">
-        <span class="fieldLabel">相談する</span>
+        <span class="fieldLabel">4 相談する</span>
         <p class="fieldNote">問いと仮の答えを相談に投げて、返ってきた札を「言葉」の枠に入れます。</p>
         <button type="button" id="btnShootConsultOpen" class="tagFilterBtn">相談をひらく</button>
+        <p class="fieldNote shootGateHint" id="shootConsultHint" hidden></p>
         <div id="shootConsultPanel" hidden>
           <textarea id="shootConsultInput" rows="3" placeholder="相談する文（問いと仮の答えが入ります。直せます）" autocomplete="off"></textarea>
           <button type="button" id="btnShootConsultAsk" class="secondaryBtn">聞く</button>
@@ -1654,7 +1649,7 @@
         </div>
       </div>
       <div class="field">
-        <span class="fieldLabel">カード</span>
+        <span class="fieldLabel">5 カード</span>
         <div class="medRow">
           <button type="button" id="btnShootAddWord" class="tagFilterBtn">言葉から</button>
           <button type="button" id="btnShootAddResearch" class="tagFilterBtn">研究を手で</button>
@@ -1672,22 +1667,41 @@
         </div>
         <textarea id="shootCardsPaste" rows="3" placeholder="チャットが返した JSON をここに貼る" autocomplete="off"></textarea>
         <button type="button" id="btnShootCardsImport" class="secondaryBtn">取り込む</button>
+        <p class="fieldNote shootGateHint" id="shootAnswerHint" hidden></p>
         <p class="fieldNote" id="shootCardsStatus"></p>
         <div id="shootWordPicker" class="listItems" hidden></div>
         <div id="shootCardList"></div>
       </div>
       <div class="field">
-        <span class="fieldLabel">展開</span>
-        <p class="fieldNote">カードが揃ったら、話す順番とカードどうしの関係だけをチャットで決めて貼り戻します。喋る内容は入りません。</p>
+        <span class="fieldLabel">6 答えを壊す</span>
+        <p class="fieldNote">カードが揃ったら、仮の答えがどの前提で崩れるかを見て、自分で書き直します。</p>
+        <div class="medRow">
+          <button type="button" id="btnShootBreakPrompt" class="tagFilterBtn">答えを壊すプロンプトをコピー</button>
+        </div>
+        <textarea id="shootBreakPaste" rows="2" placeholder="チャットが返した JSON をここに貼る" autocomplete="off"></textarea>
+        <button type="button" id="btnShootBreakImport" class="secondaryBtn">取り込む</button>
+        <p class="fieldNote shootGateHint" id="shootBreakHint" hidden></p>
+        <p class="fieldNote" id="shootBreakStatus"></p>
+        <div id="shootPremises"></div>
+        <div class="shootAnswerAgain">
+          <span class="fieldLabel">仮の答え（ここで書き直せます）</span>
+          <textarea id="shootAnswerAgain" rows="2" placeholder="前提を見て、書き直す" autocomplete="off"></textarea>
+        </div>
+        <div id="shootAnswerHistory" class="shootHistory" hidden></div>
+      </div>
+      <div class="field">
+        <span class="fieldLabel">7 展開</span>
+        <p class="fieldNote">話す順番とカードどうしの関係だけをチャットで決めて貼り戻します。喋る内容は入りません。</p>
         <div class="medRow">
           <button type="button" id="btnShootFlowPrompt" class="tagFilterBtn">展開のプロンプトをコピー</button>
         </div>
         <textarea id="shootFlowPaste" rows="2" placeholder="チャットが返した JSON をここに貼る" autocomplete="off"></textarea>
         <button type="button" id="btnShootFlowImport" class="secondaryBtn">取り込む</button>
+        <p class="fieldNote shootGateHint" id="shootFlowHint" hidden></p>
         <p class="fieldNote" id="shootFlowStatus"></p>
       </div>
       <div class="field">
-        <span class="fieldLabel">入り（0秒で言う1行）<span class="required">必須</span></span>
+        <span class="fieldLabel">8 入り（0秒で言う1行）<span class="required">必須</span></span>
         <p class="fieldNote">主張ではなく釣り針です。全体ができてから書きます。</p>
         <textarea id="shootHookInput" rows="2" placeholder="断言か問いかけ。挨拶やチャンネル説明は書かない" autocomplete="off"></textarea>
         <div class="medRow">
@@ -1695,6 +1709,7 @@
         </div>
         <textarea id="shootHookPaste" rows="2" placeholder="チャットが返した JSON をここに貼る" autocomplete="off"></textarea>
         <button type="button" id="btnShootHookImport" class="secondaryBtn">取り込む</button>
+        <p class="fieldNote shootGateHint" id="shootHookHint" hidden></p>
         <p class="fieldNote" id="shootHookStatus"></p>
         <div id="shootHookCandidates"></div>
       </div>
@@ -12357,6 +12372,7 @@
       document.getElementById('shootQuestionText').value = deck.questionText || '';
       document.getElementById('shootHookInput').value = deck.hook || '';
       document.getElementById('shootAnswerInput').value = deck.text || '';
+      document.getElementById('shootAnswerAgain').value = deck.text || '';
       document.getElementById('shootTitleInput').value = deck.title || '';
       // catch the version the deck already carries, so the first answer is in
       // the history even if it is never edited again (a flush only runs when
@@ -12374,11 +12390,25 @@
     updateShootMeta(deck);
     updateShootAddButtons();
   }
+  // Each block says why it cannot be used yet instead of just looking dead;
+  // the order of the blocks is the order they get filled in.
+  function shootGate(ids, ok, hintId, reason) {
+    ids.forEach((id) => { const b = document.getElementById(id); if (b) b.disabled = !ok; });
+    const hint = document.getElementById(hintId);
+    if (hint) { hint.hidden = ok; hint.textContent = ok ? '' : reason; }
+  }
   function updateShootAddButtons() {
-    const ok = document.getElementById('shootAnswerInput').value.trim().length > 0;
-    ['btnShootAddWord', 'btnShootAddRecord', 'btnShootAddResearch', 'btnShootAddFun', 'btnShootCardsPromptAll', 'btnShootCardsPromptResearch', 'btnShootCardsPromptFun', 'btnShootCardsImport'].forEach((id) => { document.getElementById(id).disabled = !ok; });
-    document.getElementById('shootAnswerHint').hidden = ok;
-    const canShoot = ok && document.getElementById('shootHookInput').value.trim().length > 0;
+    const deck = findDeck(shootState.deckId);
+    const answer = document.getElementById('shootAnswerInput').value.trim();
+    const question = document.getElementById('shootQuestionText').value.trim();
+    const hook = document.getElementById('shootHookInput').value.trim();
+    const live = deck ? deckLiveCards(deck).length : 0;
+    shootGate(['btnShootConsultOpen'], !!(question || answer), 'shootConsultHint', '問いか仮の答えを書くと使えます。');
+    shootGate(['btnShootAddWord', 'btnShootAddRecord', 'btnShootAddResearch', 'btnShootAddFun', 'btnShootCardsPromptAll', 'btnShootCardsPromptResearch', 'btnShootCardsPromptFun', 'btnShootCardsImport'], !!answer, 'shootAnswerHint', '仮の答えを書くと使えます。');
+    shootGate(['btnShootBreakPrompt', 'btnShootBreakImport'], !!answer && live >= 3, 'shootBreakHint', !answer ? '仮の答えを書くと使えます。' : 'カードが3枚そろうと使えます。（いま ' + live + '枚）');
+    shootGate(['btnShootFlowPrompt', 'btnShootFlowImport'], live >= 2, 'shootFlowHint', 'カードが2枚そろうと使えます。（いま ' + live + '枚）');
+    shootGate(['btnShootHookPrompt', 'btnShootHookImport'], live >= 1, 'shootHookHint', 'カードが1枚でもあると、候補を出せます。');
+    const canShoot = !!answer && !!hook;
     document.getElementById('btnShootStart').disabled = !canShoot;
     document.getElementById('shootStartHint').hidden = canShoot;
   }
@@ -12414,6 +12444,7 @@
     deck.cards.push(c);
     shootTouch(deck);
     renderShootCards(deck);
+    updateShootAddButtons();
     return c;
   }
   // ↑↓ move a card within its own frame; frames are changed with the chips
@@ -12507,6 +12538,7 @@
   function renderShootCards(deck) {
     const wrap = document.getElementById('shootCardList');
     wrap.innerHTML = '';
+    updateShootAddButtons();
     document.getElementById('btnShootLabelMode').classList.toggle('selected', !!shootState.labelMode);
     if (shootState.labelMode) { renderShootLabelList(deck, wrap); return; }
     const list = deckCardsBySlot(deck);
@@ -12918,6 +12950,7 @@
   // ---- 答えの履歴と前提の表示 ----
   const SHOOT_HISTORY_GAP_MS = 60000;   // edits closer together than this update the same history entry
   function renderShootPremises(deck) {
+    { const a2 = document.getElementById('shootAnswerAgain'); if (a2.value !== (deck.text || '')) a2.value = deck.text || ''; }
     const wrap = document.getElementById('shootPremises');
     wrap.innerHTML = '';
     const order = deckCardsBySlot(deck);
@@ -13118,8 +13151,19 @@
     saveJournalEntry(entry);
     openDeck(entry.id);
   });
+  // the answer is edited in two places (once at the top, once under the
+  // premises); they are the same field, mirrored
   ['shootQuestionText', 'shootHookInput', 'shootAnswerInput', 'shootTitleInput'].forEach((id) => {
-    document.getElementById(id).addEventListener('input', () => { if (id === 'shootAnswerInput' || id === 'shootHookInput') updateShootAddButtons(); shootScheduleSave(); });
+    document.getElementById(id).addEventListener('input', () => {
+      if (id === 'shootAnswerInput') document.getElementById('shootAnswerAgain').value = document.getElementById('shootAnswerInput').value;
+      updateShootAddButtons();
+      shootScheduleSave();
+    });
+  });
+  document.getElementById('shootAnswerAgain').addEventListener('input', () => {
+    document.getElementById('shootAnswerInput').value = document.getElementById('shootAnswerAgain').value;
+    updateShootAddButtons();
+    shootScheduleSave();
   });
   document.getElementById('btnShootConsultOpen').addEventListener('click', () => {
     shootFlush();   // the seed is built from the deck, so take what is typed first
@@ -13177,7 +13221,7 @@
   const INPUT_DRAFT_MAX_AGE_MS = 48 * 3600 * 1000;
   const INPUT_DRAFT_NAV_MAX_AGE_MS = 30 * 60 * 1000;   // older than this: refill the fields when you go there, but never jump there on boot
   const INPUT_DRAFT_SKIP_SCREENS = new Set(['settings']);
-  const INPUT_DRAFT_SKIP = new Set(['trDate', 'trWeight', 'listSearch', 'walkShareTextInput', 'medMemoInput', 'medAlarmCustom', 'shootQuestionText', 'shootHookInput', 'shootAnswerInput', 'shootTitleInput', 'shootConsultInput', 'shootCardsPaste', 'shootBreakPaste', 'shootFlowPaste', 'shootHookPaste']); // medMemoInput autosaves itself   // own persistence / not worth restoring
+  const INPUT_DRAFT_SKIP = new Set(['trDate', 'trWeight', 'listSearch', 'walkShareTextInput', 'medMemoInput', 'medAlarmCustom', 'shootQuestionText', 'shootHookInput', 'shootAnswerInput', 'shootTitleInput', 'shootConsultInput', 'shootCardsPaste', 'shootBreakPaste', 'shootFlowPaste', 'shootHookPaste', 'shootAnswerAgain']); // medMemoInput autosaves itself   // own persistence / not worth restoring
   let inputDraftTimer = null, inputDraftRestoring = false;
   function readInputDraft() { try { const raw = localStorage.getItem(INPUT_DRAFT_KEY); const d = raw ? JSON.parse(raw) : null; return (d && d.fields && d.ctx) ? d : null; } catch (e) { return null; } }
   function inputDraftContext() {
