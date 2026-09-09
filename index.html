@@ -777,6 +777,9 @@
   }
   .questionResult.pop { transform: scale(1.05); }
   .questionText { font-size: 23px; line-height: 1.95; white-space: pre-wrap; padding: 0 8px; }
+  .questionScene { font-size: 22px; line-height: 1.95; white-space: pre-wrap; padding: 0 8px; }
+  .questionAsk { font-size: 22px; line-height: 1.95; white-space: pre-wrap; padding: 0 8px; color: var(--accent); }
+  .questionCore { font-size: 13px; color: var(--text-dim); line-height: 1.75; padding: 0 12px; }
   .questionTension { font-size: 13px; color: var(--text-dim); line-height: 1.75; padding: 0 12px; }
   .questionWhyNow { font-size: 14px; color: var(--accent); line-height: 1.8; white-space: pre-wrap; padding: 0 12px; }
   .questionFooter { flex-shrink: 0; padding-top: 16px; display: flex; flex-direction: column; gap: 12px; }
@@ -1697,7 +1700,10 @@
         <div class="drawResultStar" id="drawResultStar"></div>
       </div>
       <div id="questionResult" class="questionResult" hidden>
+        <div class="questionScene" id="questionScene" hidden></div>
+        <div class="questionAsk" id="questionAsk" hidden></div>
         <div class="questionText" id="questionText"></div>
+        <div class="questionCore" id="questionCore" hidden></div>
         <div class="questionTension" id="questionTension" hidden></div>
         <div class="questionWhyNow" id="questionWhyNow" hidden></div>
       </div>
@@ -1903,6 +1909,9 @@
       out.why_now = typeof j.why_now === 'string' ? j.why_now : '';
       out.tension = typeof j.tension === 'string' ? j.tension : '';
       out.for_viewer = typeof j.for_viewer === 'string' ? j.for_viewer : ''; // v3.3.2
+      out.scene = typeof j.scene === 'string' ? j.scene : '';   // v8.3: 場面 → 問い の2文。古い問いは scene が空で text が問い
+      out.ask = typeof j.ask === 'string' ? j.ask : '';
+      out.core = typeof j.core === 'string' ? j.core : '';
       out.via = typeof j.via === 'string' ? j.via : ''; // v3.6: 遠い対立の経由した言葉
       out.source_mode = QUESTION_MODES.includes(j.source_mode) ? j.source_mode : 'self';
       out.used = j.used === true;
@@ -4935,7 +4944,11 @@
 
   function buildQuestionSystemBlocks() {
     const text =
-      'あなたは、この人が集めた言葉と、この人自身の言葉だけを材料に、この人が今日ひとりで話すための「問い」を1つ作る。\n\n' +
+      'あなたは、この人が集めた言葉と、この人自身の言葉だけを材料に、この人が今日ひとりで動画で話すための「問い」を1つ作る。\n\n' +
+      '出力は3つの文からなる：\n' +
+      '- scene（場面）：誰にでもある日常の一場面。動画の冒頭で口に出す1文目。\n' +
+      '- question（問い）：その場面に立てる問い。口に出す2文目。\n' +
+      '- core（芯）：その問いがこの人の材料のどこから立ったかを、材料の言い回しをそのまま使って1文で書く。画面の下に小さく出す控えであり、口には出さない。\n\n' +
       '渡される材料：\n' +
       '- 言葉（本や偉人の言葉、または本人が自分で書いた言葉）と、その言葉に本人が書いた解釈（myWords）\n' +
       '- 本人がこの1ヶ月の朝に書いた一言と、相談で書いたこと\n' +
@@ -4946,50 +4959,46 @@
       '   - 言葉そのものと、その言葉に本人が書いた解釈がずれている（自分の都合に引き寄せている、言葉より強く言い切っている、逆に弱めている）\n' +
       '   - 本人の解釈どうしが噛み合っていない（別の言葉のところで逆のことを言っている）\n' +
       '   - 本人が言い切っていることと、この1ヶ月の記録に書かれた実際の状態が食い違っている\n' +
-      '2. その食い違いを、どちらが正しいかを決めずに、そのまま問いの中心に置く。\n' +
-      '3. 材料の1枚を「軸」に決める。問いは、その軸の言葉に対して、もう1枚（または本人の1ヶ月の記録）をその軸から照らす形にする。材料を横に並べて選ばせる形にしない。\n' +
-      '4. 問いを1文で書く。書いたら、材料を知らない人が一読して意味が取れるかを確かめる。取れなければ書き直す。\n' +
-      '5. 材料の間に本当の食い違いや引っかかりが見つからない場合、または2枚が別の話で一本の問いにならない場合は、無理に問いを作らない。{"question": null, "reason": "…"} を返す（reason は1行、なぜ立たなかったか）。無理に作った問いより、立たなかったと言うほうが良い。\n\n' +
-      '厳守すること：\n' +
-      '- 材料の中の特徴的な言い回し（本人の解釈 myWords の語句、または言葉そのものの表現）を、少なくとも1つ、そのままの形で問いに入れる。言い換えない、要約しない。\n' +
-      '- 材料を読んでいない他人には半分しか意味が取れないくらい、この人に固有の問いにする。\n' +
-      '- 「〜とは何か」「〜はなぜ大切か」「どうすれば〜できるか」「〜と〜のバランスをどう取るか」のような、材料がなくても立てられる形にしない。\n' +
-      '- 「人は」「人間は」「私たちは」で始まる一般論にしない。この人が自分に向けて考える形にする。\n' +
-      '- 人生訓・道徳・励まし・助言・材料の要約を書かない。\n' +
-      '- 答えが1つに決まる問い、はい/いいえで終わる問いにしない。話しながら考えが動く問いにする。\n' +
-      '- 一読して意味が取れることを最優先にする。鋭くても、読んで一度止まる問いは失敗である。\n' +
-      '- 「AなのかBなのか」「Xなのか、それともYなのか」のように、材料同士を横に並べてどちらの話かを選ばせる二択の形にしない。軸は必ず1枚だけ。\n' +
-      '  良い例：「『心を守れ』と書いた自分は、今朝の靄がかかった心を、守れなかった状態と見るか、それとも別の何かと見るか」（軸は「心を守れ」の1枚。もう一方の「今朝の靄」を、その軸から見ている。「それとも」があっても、選ばせているのは軸から見た見え方であって、材料のどちらかではない）\n' +
-      '  悪い例：「結果が出るのかと苦しくなるのは、成長し続けない人ほど飽きやすいという焦りなのか、それともプライドを手放せていないだけなのか」（別の話の2枚を横に並べ、どちらの話かを選ばせている。軸がない）\n' +
-      '- 良い例の文の形（「〜と見るか、それとも〜と見るか」）を毎回そのまま使わない。軸から照らす形であれば、文末は問いに合わせて変えてよい（例：「〜の物差しをどこから引っ張り出しているのか」「〜の中に〜が紛れ込んでいないか」）。\n' +
-      '- 問いは30〜80字程度の1文にする。\n' +
-      '- tension は「「◯◯」と書いているのに「△△」では〜になっている」の形で、材料の言葉そのものを引いて1行で書く。抽象語でまとめない。\n' +
-      '- question・tension・why_now・reason の中で、材料を id や番号（n_20260907_014 も 014 も）で指さない。必ずその言葉を引く。\n' +
-      '- why_now は、この1ヶ月の朝の一言・相談に具体的な接点があるときだけ書く。その記録の言葉を引いて2行以内で書く。接点がなければ空文字にする。ないものを作らない。\n' +
-      '- 最近この人に出した問い（渡したもの）と、同じ切り口・同じ言葉の組み合わせを使わない。\n' +
-      '- from には、その問いが立っている材料の id を入れる（軸の1枚を先頭に）。渡された id 以外は書かない。\n' +
-      '- question・for_viewer・why_now・tension・reason には改行を使わない。\n\n' +
-      'for_viewer（視聴者に向けた一行）：\n' +
-      'この問いは、本人がひとりで話す動画の冒頭で口に出す。本人の問いは材料と記録を知っている前提なので、そのままでは届かない。同じ核心を、聞いた視聴者が「あー、それある」と自分の記憶を思い出す一行にする。\n' +
-      '- 状態や心情の説明ではなく、視聴者の日常に実際に起きる「場面」を書く。「〜する自分と〜する自分が同時にいるとき」「〜する気持ちと〜する気持ちが同時に湧く」「〜という状態」は説明であって場面ではない。時間帯を頭に付けただけの説明も場面ではない。\n' +
+      '2. その食い違いを、どちらが正しいかを決めずに、そのまま中心に置く。\n' +
+      '3. 材料の1枚を「軸」に決める。芯は、その軸の言葉に対して、もう1枚（または本人の1ヶ月の記録）をその軸から照らす形にする。材料を横に並べて選ばせる形にしない。\n' +
+      '4. 芯（core）を1文で書く。材料の特徴的な言い回し（本人の解釈 myWords の語句、または言葉そのものの表現）を少なくとも1つ、そのままの形で含める。この人に固有の1文でよい。30〜80字。\n' +
+      '5. 場面（scene）を書く。芯と同じ食い違いが、視聴者の日常で実際に起きている一場面にする。\n' +
+      '6. 問い（question）を書く。場面の直後に声に出す1文。場面に出てきたものごとだけで立ち、材料を知らない人にそのまま届くようにする。\n' +
+      '7. scene と question を続けて声に出して読み、息が続き、一度で意味が取れるかを確かめる。取れなければ書き直す。\n' +
+      '8. 材料の間に本当の食い違いや引っかかりが見つからない場合、または2枚が別の話で一本にならない場合は、無理に作らない。{"scene": null, "question": null, "core": null, "reason": "…"} を返す（reason は1行、なぜ立たなかったか）。無理に作った問いより、立たなかったと言うほうが良い。\n\n' +
+      '場面（scene）の決まり：\n' +
       '- 体が何をしているかが見えるように書く（スマホを見ている、布団の中で、皿を洗いながら、返信を打ちかけて消す、など）。内面は書かず、その行動に語らせる。「気持ち」「心」「状態」「同時に」「〜と感じる」のような内面を説明する語は使わない。\n' +
       '- 具体的な行動・時間帯・場所のどれかを必ず含める（夜、休みの日、通勤中、寝る前、机の前、風呂で、など）。\n' +
       '- 誰にでもある平凡な場面にする。特別な状況・劇的な出来事・大きな決断にしない。\n' +
-      '- 核心を保つ：その場面の中で、本人の問いと同じ食い違い（tension）が実際に起きているようにする。別の話にしない、丸めない。\n' +
-      '- 本人の記録の言葉、材料の言葉の言い回し、出典の名前は使わない。「〜と書いた自分」のような本人の話にしない。\n' +
-      '- 一般論・説教・教訓・答えを書かない。\n' +
-      '- 問いかけの形にしなくてよい。場面を言い切る形でも、軽く問いかける形でもよい。「〜のとき」「〜という状態」で終わらない。\n' +
-      '- 40〜70字程度の1文。\n' +
-      '- 書いたら確かめる：その一行を聞いた人が、いつ・どこで・何をしている一場面を具体的に思い浮かべられるか。浮かばなければ、内面の語を消して行動に置き換えて書き直す。\n' +
-      '- 例（毛色の違う3つ。核心の落とし方の参考であり、これらの場面・語・文の形はそのまま使わない）：\n' +
-      '  「今日は早く寝ようと決めたのに、気づいたら夜中の2時まで何かやっている」（決めたことと体が選ぶことのずれ）\n' +
-      '  「休みの日に一日何もしなかった夕方、それを休めたと数えるか、無駄にしたと数えるか」（同じ一日への二つの見方）\n' +
-      '  「通勤の電車で、昨日の会話の一言をまだ頭の中で言い返している」（終わったはずのことが終わっていない）\n' +
-      '- 問いが null のときは for_viewer も null。\n\n' +
+      '- 本人の記録の言葉、材料の言い回し、出典の名前は使わない。「〜と書いた自分」のような本人の話にしない。\n' +
+      '- 言い切りの1文で終える。「〜のとき」「〜という状態」で終わらない。問いかけにしない（問いは次の文が受け持つ）。\n' +
+      '- 30〜60字。\n\n' +
+      '問い（question）の決まり：\n' +
+      '- 場面に出てきたものごとをそのまま指して立てる（「これは」「この〜は」で受けてよい）。\n' +
+      '- 抽象語を使わない。自己、状態、本質、意味、価値、成長、バランス、あり方、「〜性」「〜化」のような硬い名詞を避け、話し言葉の動詞と身近な名詞で書く。\n' +
+      '- 一般論・説教・助言・答えを書かない。はい/いいえで終わる問いにしない。「〜とは何か」「どうすれば〜できるか」の形にしない。\n' +
+      '- 形は自由。「これは〜なのか、それとも〜なのか」でもよいし、「〜をどこで決めているのだろう」のような形でもよい。ただし最近の問いと同じ形を繰り返さない。\n' +
+      '- 25〜60字の1文。読点は多くても1つ。文末は「〜のか」「〜だろうか」など、声に出して落ち着く終わり方にする。\n' +
+      '- 核心を保つ：芯（core）と同じ食い違いが、この問いの中で起きていること。別の話にしない、丸めない。\n\n' +
+      '例（毛色の違う3組。核心の落とし方の参考であり、場面・語・文の形はそのまま使わない）：\n' +
+      '  scene「布団の中で体は動かないのに、頭だけが同じ心配を何度も回している。」\n' +
+      '  question「これは考えるのをやめられていないのか、それとも休めというサインなのか。」\n' +
+      '  scene「今日は早く寝ようと決めたのに、気づいたら夜中の2時まで何かをいじっている。」\n' +
+      '  question「夜になると、誰が今日の予定を決め直しているのだろう。」\n' +
+      '  scene「休みの日に一日何もしなかった夕方、カーテンを閉めながらその一日を数えている。」\n' +
+      '  question「この一日は休めた一日なのか、それとも空いてしまった一日なのか。」\n\n' +
+      '厳守すること：\n' +
+      '- tension は「「◯◯」と書いているのに「△△」では〜になっている」の形で、材料の言葉そのものを引いて1行で書く。抽象語でまとめない。\n' +
+      '- core・tension・why_now・reason の中で、材料を id や番号（n_20260907_014 も 014 も）で指さない。必ずその言葉を引く。\n' +
+      '- why_now は、この1ヶ月の朝の一言・相談に具体的な接点があるときだけ書く。その記録の言葉を引いて2行以内で書く。接点がなければ空文字にする。ないものを作らない。\n' +
+      '- 最近この人に出した問い（渡したもの）と、同じ切り口・同じ言葉の組み合わせ・同じ場面を使わない。\n' +
+      '- from には、その問いが立っている材料の id を入れる（軸の1枚を先頭に）。渡された id 以外は書かない。\n' +
+      '- どの項目にも改行を使わない。\n' +
+      '- 問いが null のときは scene・core も null。\n\n' +
       '返答は JSON のみ。前置きも説明も書かない：\n' +
-      '{"question":"...","for_viewer":"...","from":["id","id"],"why_now":"...","tension":"..."}\n' +
+      '{"scene":"...","question":"...","core":"...","from":["id","id"],"why_now":"...","tension":"..."}\n' +
       '問いが立たなかったとき：\n' +
-      '{"question":null,"for_viewer":null,"reason":"..."}';
+      '{"scene":null,"question":null,"core":null,"reason":"..."}';
     return [{ type: 'text', text }];
   }
 
@@ -5104,9 +5113,14 @@
       if (from.length >= 2) break;
       if (!from.includes(id)) from.push(id);
     }
+    const one = (v, max) => (typeof v === 'string' ? v : '').trim().replace(/\s+/g, ' ').slice(0, max);
+    // v8.3: scene (口に出す1文目) + question (2文目) + core (材料の言い回しを残す控え).
+    // A reply in the old shape (question + for_viewer, no scene) still works: it is shown the old way.
     return {
-      question: parsed.question.trim().replace(/\s+/g, ' ').slice(0, 200),
-      for_viewer: (typeof parsed.for_viewer === 'string' ? parsed.for_viewer : '').trim().replace(/\s+/g, ' ').slice(0, 120),
+      question: one(parsed.question, 200),
+      scene: one(parsed.scene, 120),
+      core: one(parsed.core, 200),
+      for_viewer: one(parsed.scene || parsed.for_viewer, 120),
       from,
       why_now: (typeof parsed.why_now === 'string' ? parsed.why_now : '').trim().slice(0, 160),
       tension: (typeof parsed.tension === 'string' ? parsed.tension : '').trim().replace(/\s+/g, ' ').slice(0, 160),
@@ -6942,7 +6956,8 @@
     const video = notes[0].video;
     const q = video.questionId ? findJournalEntry(video.questionId) : null;
     const lines = [];
-    if (q && q.for_viewer) { lines.push(oneLine(q.for_viewer), ''); }
+    if (q && q.scene) { lines.push(oneLine(q.scene)); if (q.ask) lines.push(oneLine(q.ask)); lines.push(''); }
+    else if (q && q.for_viewer) { lines.push(oneLine(q.for_viewer), ''); }
     const fromNotes = q ? (q.from || []).map(findNote).filter(Boolean) : [];
     if (fromNotes.length) {
       lines.push('この動画の元になった言葉');
@@ -9406,7 +9421,13 @@
         why.textContent = j.why_now;
         item.appendChild(why);
       }
-      if (j.for_viewer) {
+      if (j.core) {
+        const core = document.createElement('div');
+        core.className = 'questionRecordMeta';
+        core.textContent = '芯 ・ ' + j.core;
+        item.appendChild(core);
+      }
+      if (j.for_viewer && !j.scene) {
         const viewer = document.createElement('div');
         viewer.className = 'questionRecordMeta';
         viewer.textContent = '視聴者に向けて ・ ' + j.for_viewer;
@@ -9963,7 +9984,9 @@
     document.getElementById('btnDrawAgain').hidden = true;
     document.getElementById('btnDrawToGraph').hidden = true;
     document.getElementById('btnQuestionAgain').hidden = false;
-    document.getElementById('questionText').textContent = entry.text;
+    { const sc = document.getElementById('questionScene'), ak = document.getElementById('questionAsk'), co = document.getElementById('questionCore'), qt = document.getElementById('questionText');
+      if (entry.scene) { qt.hidden = true; sc.hidden = false; sc.textContent = entry.scene; ak.hidden = !entry.ask; ak.textContent = entry.ask || ''; co.hidden = !entry.core; co.textContent = entry.core ? '芯 ・ ' + entry.core : ''; }
+      else { qt.hidden = false; qt.textContent = entry.text; sc.hidden = true; ak.hidden = true; co.hidden = true; } }
     const tensionEl = document.getElementById('questionTension');
     tensionEl.textContent = entry.tension || '';
     tensionEl.hidden = !entry.tension;
@@ -9982,7 +10005,7 @@
     renderQuestionFromCards(entry);
     const viewerEl = document.getElementById('questionViewer');
     document.getElementById('questionViewerText').textContent = entry.for_viewer || '';
-    viewerEl.hidden = !entry.for_viewer; // older entries (pre-v3.3.2) simply have none
+    viewerEl.hidden = !entry.for_viewer || !!entry.scene; // older entries (pre-v3.3.2) simply have none; v8.3 entries already lead with the scene
     renderQuestionUseButton(entry);
     document.getElementById('questionFooter').hidden = false;
   }
@@ -10031,7 +10054,8 @@
       const iso = nowIso();
       const entry = {
         id: generateJournalId(), date: todayStr(), kind: 'question',
-        text: result.question, picks: [], closing: '',
+        text: result.scene ? result.scene + ' ' + result.question : result.question, picks: [], closing: '',
+        scene: result.scene || '', ask: result.scene ? result.question : '', core: result.core || '',
         from: result.from, why_now: result.why_now, tension: result.tension, for_viewer: result.for_viewer, via: materials.via ? materials.via.id : '',
         source_mode: materials.mode, used: false,
         createdAt: iso, updatedAt: iso,

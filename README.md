@@ -166,7 +166,7 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
 ```
 { id: 'j_YYYYMMDD_連番', date: 'YYYY-MM-DD', kind: 'morning'|'consult'|'draw'|'question'|'read'（read = 言葉の詳細で押した★。届いた回数には数えない）,
   text: 入力文, picks: [{ id: ノートid, why, hit?: 1, hitAt? }], closing, mood?（朝）, sessionId?（引く）,
-  from[] / why_now / tension / for_viewer / used?（問い）, createdAt, updatedAt }
+  from[] / why_now / tension / for_viewer / used?（問い）, scene / ask / core（v8.3 の問い：場面の1文・そこに立てる問い・材料の言い回しを残した芯。text は scene + ask。古い問いは scene が空で text が問い）, createdAt, updatedAt }
 ```
 `hit` が「刺さった ★」。ノート側には何も保存せず、回数は記録から集計する。
 
@@ -228,7 +228,7 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
 | 刺さった★の重み（減衰・飽和・休み・探索） | `HIT_TUNING` |
 | 「残したい」の効き（倍率 1 + boost ÷ (1 + ★累計)） | `KEEP_TUNING`（boost 0.5）, `keepMultiplier` |
 | 眠っている言葉の枠（引くの何回に 1 回・古い方の何割・朝の候補に何枚） | `SLEEP_TUNING`, `sleepingPool`, `lastSeenMap`（「最後に見た日」＝朝・相談・引くで届いた日、問いの材料になった日、眠り順から詳細を開いた日） |
-| 問いの角度・プロンプト | `QUESTION_MODES`, `buildQuestionSystemBlocks` |
+| 問いの角度・プロンプト | `QUESTION_MODES`, `buildQuestionSystemBlocks`（v8.3: scene → question の2文構成。場面の決まり・問いの決まり・例文はここ） |
 | 相談・朝のプロンプト | `buildChatSystemBlocks` |
 | 自動関連づけのプロンプト | `buildAutoLinkSystemBlocks` |
 | 読書メモのプロンプト | `buildReadingSystemBlocks` |
