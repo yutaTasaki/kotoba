@@ -1912,6 +1912,8 @@
       out.scene = typeof j.scene === 'string' ? j.scene : '';   // v8.3: 場面 → 問い の2文。古い問いは scene が空で text が問い
       out.ask = typeof j.ask === 'string' ? j.ask : '';
       out.core = typeof j.core === 'string' ? j.core : '';
+      if (j.sides && typeof j.sides === 'object') out.sides = { a: typeof j.sides.a === 'string' ? j.sides.a : '', b: typeof j.sides.b === 'string' ? j.sides.b : '' };   // v8.4
+      if (j.qtype === 'A' || j.qtype === 'B') out.qtype = j.qtype;
       out.via = typeof j.via === 'string' ? j.via : ''; // v3.6: 遠い対立の経由した言葉
       out.source_mode = QUESTION_MODES.includes(j.source_mode) ? j.source_mode : 'self';
       out.used = j.used === true;
@@ -4942,17 +4944,22 @@
       .map((j) => ({ date: j.date.slice(5), text: j.text.trim().slice(0, 80) }));
   }
 
+  // 問い is made in two passes (v8.4). Pass 1 reads the materials and puts
+  // the 食い違い into one everyday scene as two VISIBLE sides (a / b). Pass 2
+  // never sees the materials: it writes the spoken question from the scene
+  // and a / b alone, so nothing from the materials can leak into it.
   function buildQuestionSystemBlocks() {
     const text =
-      'あなたは、この人が集めた言葉と、この人自身の言葉だけを材料に、この人が今日ひとりで動画で話すための「問い」を1つ作る。\n\n' +
-      '出力は3つの文からなる：\n' +
-      '- scene（場面）：誰にでもある日常の一場面。動画の冒頭で口に出す1文目。\n' +
-      '- question（問い）：その場面に立てる問い。口に出す2文目。\n' +
-      '- core（芯）：その問いがこの人の材料のどこから立ったかを、材料の言い回しをそのまま使って1文で書く。画面の下に小さく出す控えであり、口には出さない。\n\n' +
+      'あなたは、この人が集めた言葉と、この人自身の言葉だけを材料に、この人が今日ひとりで動画で話すための「問い」の種を作る。問いの文そのものは、この後の別の工程が、ここで書いた場面だけを見て書く。だからこの工程の仕事は、材料の中の食い違いを、誰にでもある日常の一場面に「目に見える形で」置くことである。\n\n' +
       '渡される材料：\n' +
       '- 言葉（本や偉人の言葉、または本人が自分で書いた言葉）と、その言葉に本人が書いた解釈（myWords）\n' +
       '- 本人がこの1ヶ月の朝に書いた一言と、相談で書いたこと\n' +
       '- 最近この人に出した問い\n\n' +
+      '出力するもの：\n' +
+      '- sides.a / sides.b：食い違いの両側を、その場面で目に見えること（体の動き・起きている事実）として、それぞれ20字以内の話し言葉で書く。a は表に出ている行動（続けている、開いている、書いている、など）、b は同じ場面で同時に起きているもう一つの事実（結果が出ていない、手が止まっている、消している、など）。内面の語（思う、感じる、悩む、切り替える、引きずる、理由探し、など）は使わない。\n' +
+      '- scene（場面）：a と b の両方が入った一場面。1文。30〜60字。動画の冒頭で口に出す。\n' +
+      '- core（芯）：その食い違いが材料のどこから来たかを、材料の言い回しをそのまま使って1文で書く。画面の下に小さく出す控えであり、口には出さない。材料の言葉を使うのはここだけ。30〜80字。\n' +
+      '- tension / why_now / from（下の厳守を参照）\n\n' +
       '手順：\n' +
       '1. まず材料の中の「食い違い」を1つ見つける。次のどれかである。\n' +
       '   - 2つの言葉が反対のことを言っている\n' +
@@ -4961,57 +4968,110 @@
       '   - 本人が言い切っていることと、この1ヶ月の記録に書かれた実際の状態が食い違っている\n' +
       '2. その食い違いを、どちらが正しいかを決めずに、そのまま中心に置く。\n' +
       '3. 材料の1枚を「軸」に決める。芯は、その軸の言葉に対して、もう1枚（または本人の1ヶ月の記録）をその軸から照らす形にする。材料を横に並べて選ばせる形にしない。\n' +
-      '4. 芯（core）を1文で書く。材料の特徴的な言い回し（本人の解釈 myWords の語句、または言葉そのものの表現）を少なくとも1つ、そのままの形で含める。この人に固有の1文でよい。30〜80字。材料の言葉を残すのはこの芯だけである。\n' +
-      '5. 場面（scene）を書く。芯と同じ食い違いが、視聴者の日常で実際に起きている一場面にする。\n' +
-      '6. 問い（question）を書く。場面の直後に声に出す1文。場面に出てきたものごとだけで立ち、材料を知らない人にそのまま届くようにする。材料は問いを生む種であって、問いの中に材料の言葉を残す必要はない。自分の言葉で書く。次の2つの型のどちらかに必ず当てはめる。\n' +
-      '   (A) 建前と本音の食い違いを突く：「〜と思っている。でも本当は、〜と分かっている。」の形。\n' +
-      '   (B) 二択に見えて、どちらも自分の姿である：「これは〜なのか、それとも〜なのか。」の形。どちらの側にも心当たりがあり、簡単に答えが出ない二択にする。\n' +
-      '7. scene と question を続けて声に出して読む。息が続き、一度で意味が取れ、普段の会話で言う日本語になっているかを確かめる。材料の語を組み込んだせいで不自然な言い回しになっていたら、材料から離れて書き直す。自然さを最優先にする。\n' +
-      '8. 最後に、聞いた人がどう感じるかを確かめる。「それ、自分のことだ」と自分の中の矛盾を言い当てられた感じ（共感）になるか、それとも責められた感じ（防御）になるか。防御になるなら、責めている語を消し、両方の側に心当たりがある形に書き直す。\n' +
-      '9. 材料の間に本当の食い違いや引っかかりが見つからない場合、または2枚が別の話で一本にならない場合は、無理に作らない。{"scene": null, "question": null, "core": null, "reason": "…"} を返す（reason は1行、なぜ立たなかったか）。無理に作った問いより、立たなかったと言うほうが良い。\n\n' +
+      '4. 食い違いの両側を、日常の場面で「体に起きること」に置き換える → sides.a と sides.b。ここで内面の語が出てきたら、体の動きか目に見える事実に置き換える（「切り替えられない」→「同じ画面をまだ開いている」、「引きずる」→「昨日の一言をまだ言い返している」、「理由探し」→「うまくいかなかった訳を書き出している」）。\n' +
+      '5. a と b が同じ一場面に同時にある場面を1文で書く → scene。\n' +
+      '6. 芯（core）を書く。\n' +
+      '7. 確かめる：scene を読んだ他人が、a と b の両方をその文の中に見つけられるか。見つけられないなら scene を書き直す。a か b に内面の語が残っていないか。\n' +
+      '8. 材料の間に本当の食い違いや引っかかりが見つからない場合、または2枚が別の話で一本にならない場合は、無理に作らない。{"scene": null, "reason": "…"} を返す（reason は1行、なぜ立たなかったか）。無理に作った種より、立たなかったと言うほうが良い。\n\n' +
       '場面（scene）の決まり：\n' +
       '- 体が何をしているかが見えるように書く（スマホを見ている、布団の中で、皿を洗いながら、返信を打ちかけて消す、など）。内面は書かず、その行動に語らせる。「気持ち」「心」「状態」「同時に」「〜と感じる」のような内面を説明する語は使わない。\n' +
       '- 具体的な行動・時間帯・場所のどれかを必ず含める（夜、休みの日、通勤中、寝る前、机の前、風呂で、など）。\n' +
       '- 誰にでもある平凡な場面にする。特別な状況・劇的な出来事・大きな決断にしない。\n' +
       '- 本人の記録の言葉、材料の言い回し、出典の名前は使わない。「〜と書いた自分」のような本人の話にしない。\n' +
-      '- 言い切りの1文で終える。「〜のとき」「〜という状態」で終わらない。問いかけにしない（問いは次の文が受け持つ）。\n' +
-      '- 30〜60字。\n\n' +
-      '問い（question）の決まり：\n' +
-      '- 声に出して不自然でないことを最優先にする。普段の会話で言わない語の組み合わせを作らない。\n' +
-      '- 材料の言葉（言葉そのものの語句、本人の解釈の語句）を問いに持ち込まない。材料との対応は芯（core）が受け持つ。\n' +
-      '- 場面に出てきたものごとだけで立てる（「これは」「この〜は」で受けてよい）。場面に無い概念・言葉を問いで持ち込まない。問いに出る名詞は、場面に出ているか、その場面を見た誰もが同時に思い浮かべるものに限る。\n' +
-      '- 責める調子を使わない。「いつまで〜するつもり」「なぜ〜しないのか」「まだ〜しているのか」のような詰問の形は禁止。自分に向けた問いとして書く。\n' +
-      '- 二択（型B）は、どちらの側にも心当たりがあるものにする。片方が明らかに正しい二択、片方が本人を責めるだけの二択にしない。\n' +
-      '- 抽象語を使わない。自己、状態、本質、意味、価値、成長、バランス、あり方、「〜性」「〜化」のような硬い名詞を避け、話し言葉の動詞と身近な名詞で書く。\n' +
-      '- 一般論・説教・助言・答えを書かない。はい/いいえで終わる問いにしない。「〜とは何か」「どうすれば〜できるか」の形にしない。\n' +
-      '- 形は自由。「これは〜なのか、それとも〜なのか」でもよいし、「〜をどこで決めているのだろう」のような形でもよい。ただし最近の問いと同じ形を繰り返さない。\n' +
-      '- 25〜60字。型Bは1文で、文末は「〜のか」「〜だろうか」など、声に出して落ち着く終わり方にする。型Aは「〜と思っている。でも本当は、〜と分かっている。」の2文でよい。読点は多くても1つ。\n' +
-      '- 核心を保つ：芯（core）と同じ食い違いが、この問いの中で起きていること。別の話にしない、丸めない。\n\n' +
-      '例（毛色の違う3組。核心の落とし方の参考であり、場面・語・文の形はそのまま使わない）：\n' +
+      '- 言い切りの1文で終える。「〜のとき」「〜という状態」で終わらない。問いかけにしない（問いは次の工程が書く）。\n\n' +
+      '例（種と場面の3組。核心の落とし方の参考であり、場面・語・文の形はそのまま使わない）：\n' +
+      '  a「同じ作業を繰り返している」 b「思うような結果が出ない日が続いている」\n' +
+      '  scene「夜、机に向かって同じ作業を繰り返しているのに、思うような結果が出ない日が続いている。」\n' +
+      '  a「布団の中で体は動かない」 b「頭だけが同じ心配を何度も回している」\n' +
       '  scene「布団の中で体は動かないのに、頭だけが同じ心配を何度も回している。」\n' +
-      '  question「これは考えるのをやめられていないのか、それとも休めというサインなのか。」（型B。どちらの側にも心当たりがある）\n' +
-      '  scene「夜、机に向かって同じ作業を繰り返しているのに、思うような結果が出ない日が続いている。」\n' +
-      '  question「続けていればいつか実る、と思っている。でも本当は、実らないかもしれないと分かっている。」（型A。建前と本音）\n' +
-      '  question「これは信じて続けているのか、それとも、やめる決断から逃げているだけなのか。」（同じ場面の型B）\n' +
+      '  a「休みの日に一日何もしなかった」 b「夕方、その一日を数えている」\n' +
       '  scene「休みの日に一日何もしなかった夕方、カーテンを閉めながらその一日を数えている。」\n' +
-      '  question「この一日は休めた一日なのか、それとも空いてしまった一日なのか。」（型B）\n' +
       '悪い例：\n' +
-      '  scene「夜、机に向かって同じ作業を繰り返しているのに、思うような結果が出ない日が続いている。」\n' +
-      '  question「この繰り返しを、いつまで理由探しに使うつもりなんだろう。」（場面に「理由探し」は出てこないので飛躍している。「いつまで〜つもり」は自問ではなく詰問で、聞いた人は共感ではなく防御を起こす）\n' +
-      '  question「この手間は価値に積み上がっているのか、それとも足踏みしているだけなのか。」（材料の「価値」「手間」を残そうとして歪んでいる。「手間が価値に積み上がる」とは普段言わない。材料の語を捨てて「同じことを繰り返している今日は、前に進んでいるのか、それとも足踏みしているだけなのか。」のように書く）\n\n' +
+      '  a「続けている」 b「理由探しをしている」（「理由探し」は目に見えない。体に起きることに置き換える）\n' +
+      '  a「気持ちを切り替えたい」 b「昨日のことを引きずっている」（両方とも内面の語。「同じ画面をまだ開いている」「昨日の一言をまだ言い返している」のように書く）\n\n' +
       '厳守すること：\n' +
       '- tension は「「◯◯」と書いているのに「△△」では〜になっている」の形で、材料の言葉そのものを引いて1行で書く。抽象語でまとめない。\n' +
       '- core・tension・why_now・reason の中で、材料を id や番号（n_20260907_014 も 014 も）で指さない。必ずその言葉を引く。\n' +
       '- why_now は、この1ヶ月の朝の一言・相談に具体的な接点があるときだけ書く。その記録の言葉を引いて2行以内で書く。接点がなければ空文字にする。ないものを作らない。\n' +
-      '- 最近この人に出した問い（渡したもの）と、同じ切り口・同じ言葉の組み合わせ・同じ場面を使わない。\n' +
-      '- from には、その問いが立っている材料の id を入れる（軸の1枚を先頭に）。渡された id 以外は書かない。\n' +
-      '- どの項目にも改行を使わない。\n' +
-      '- 問いが null のときは scene・core も null。\n\n' +
+      '- 最近この人に出した問い（渡したもの）と、同じ切り口・同じ場面を使わない。\n' +
+      '- from には、その種が立っている材料の id を入れる（軸の1枚を先頭に）。渡された id 以外は書かない。\n' +
+      '- どの項目にも改行を使わない。\n\n' +
       '返答は JSON のみ。前置きも説明も書かない：\n' +
-      '{"scene":"...","question":"...","core":"...","from":["id","id"],"why_now":"...","tension":"..."}\n' +
-      '問いが立たなかったとき：\n' +
-      '{"scene":null,"question":null,"core":null,"reason":"..."}';
+      '{"sides":{"a":"...","b":"..."},"scene":"...","core":"...","from":["id","id"],"why_now":"...","tension":"..."}\n' +
+      '種が立たなかったとき：\n' +
+      '{"scene":null,"reason":"..."}';
     return [{ type: 'text', text }];
+  }
+
+  // pass 2: the spoken question, from the scene and a / b only
+  function buildQuestionAskSystemBlocks() {
+    const text =
+      'あなたは、動画の冒頭で本人が口に出す「問い」を書く。渡されるのは、場面（1文）と、その場面の中にある二つの側面 a / b だけである。それ以外の材料は無い。問いは、この場面と a / b の言葉だけで立てる。\n\n' +
+      '目指す問い：聞いた人が「それ、自分のことだ」と、自分の中の矛盾を言い当てられたと感じる問い。型は2つ。どちらかに当てはめる。\n' +
+      '(A) 建前と本音：「〜と思っている。でも本当は、〜と分かっている。」 a を建前の側、b を本音の側に置く。\n' +
+      '(B) 二択に見えて、どちらも自分の姿：「これは〜なのか、それとも〜なのか。」 a の見方と b の見方を二択にする。どちらの側にも心当たりがあり、簡単に答えが出ない二択にする。片方が明らかに正しい二択、片方が本人を責めるだけの二択にしない。\n\n' +
+      '決まり：\n' +
+      '- 名詞は、場面と a / b に出ているものと、その言い換え（同じ物を指す別の言い方）だけ。新しい名詞を持ち込まない。\n' +
+      '- 動詞は、場面と a / b の動きと、その反対（続ける↔やめる、開く↔閉じる、動く↔止まる）と、型の枠の語（思っている、分かっている）まで。その動きにかかる短い気持ちの向き（信じて、迷って、逃げて）は使ってよいが、場面に無い出来事や心の作業（理由探し、切り替える、引きずる、期待する、こだわる）を新しく足さない。\n' +
+      '- 責める調子を使わない。「いつまで〜するつもり」「なぜ〜しないのか」「まだ〜しているのか」「〜すべき」は禁止。自分に向けた問いとして書く。\n' +
+      '- 一般論・説教・助言・答えを書かない。はい/いいえで終わる問いにしない。\n' +
+      '- 普段の会話で言う日本語で書く。漢語の名詞（価値、意味、本質、状態、成長、自己、判断、選択、など）を使わない。読点は多くても1つ。\n' +
+      '- 長さ：型Bは25〜60字の1文、文末は「〜のか」「〜だろうか」。型Aは2文で合わせて30〜70字。\n' +
+      '- 最近出した問い（渡されたら）と同じ形・同じ言葉の組み合わせにしない。\n\n' +
+      '書いたら確かめる（3つ。どれか一つでも通らなければ書き直す）：\n' +
+      '1. 問いの中の名詞と動詞を一つずつ見て、場面か a / b に出ているか、その言い換えか反対か、型の枠の語か。それ以外があれば消す。\n' +
+      '2. 場面に続けて声に出して読み、普段言う日本語になっているか。\n' +
+      '3. 聞いた人が、責められた（防御）ではなく、言い当てられた（共感）と感じるか。両方の側に心当たりがあるか。\n\n' +
+      '例：\n' +
+      '  scene「夜、机に向かって同じ作業を繰り返しているのに、思うような結果が出ない日が続いている。」 a「同じ作業を繰り返している」 b「結果が出ない日が続いている」\n' +
+      '  → (A)「続けていればいつか実る、と思っている。でも本当は、実らないかもしれないと分かっている。」\n' +
+      '  → (B)「これは信じて続けているのか、それとも、やめる決断から逃げているだけなのか。」\n' +
+      '  scene「布団の中で体は動かないのに、頭だけが同じ心配を何度も回している。」 a「体は動かない」 b「同じ心配を何度も回している」\n' +
+      '  → (B)「これは考えるのをやめられていないのか、それとも休めというサインなのか。」\n' +
+      '  scene「休みの日に一日何もしなかった夕方、カーテンを閉めながらその一日を数えている。」 a「一日何もしなかった」 b「その一日を数えている」\n' +
+      '  → (B)「この一日は休めた一日なのか、それとも空いてしまった一日なのか。」\n' +
+      '悪い例（夜の机の場面で）：\n' +
+      '  「この繰り返しを、いつまで理由探しに使うつもりなんだろう。」（「理由探し」は場面に無い。「いつまで〜つもり」は詰問）\n' +
+      '  「この手間は価値に積み上がっているのか、それとも足踏みしているだけなのか。」（「価値」「手間」は場面に無い漢語。普段言わない）\n' +
+      '  「いつになったら気持ちを切り替えられるんだろう。」（「切り替える」は場面に無い心の作業。「いつになったら」は詰問）\n\n' +
+      '返答は JSON のみ。前置きも説明も書かない：\n' +
+      '{"question":"...","type":"A"}  または  {"question":"...","type":"B"}';
+    return [{ type: 'text', text }];
+  }
+  function buildQuestionAskUserPrompt(scene, sides, note) {
+    const recent = sortedQuestionEntriesDesc().slice(0, 5).map((j) => '- ' + (j.ask || j.text));
+    return '場面：' + scene + '\n' +
+      'a：' + (sides.a || '') + '\n' +
+      'b：' + (sides.b || '') + '\n\n' +
+      '最近出した問い（同じ形を避けるため）：\n' + (recent.length ? recent.join('\n') : '（まだない）') +
+      (note ? '\n\n前回の案は使えなかった：' + note + '\n書き直すこと。' : '');
+  }
+  // a question that scolds gets one rewrite; after that whatever came back is shown
+  const ASK_BANNED = /いつまで|いつになったら|なぜ[^。]*ない|つもり|すべき|べきだ/;
+  async function callQuestionAskApi(scene, sides, attempt) {
+    const apiKey = getClaudeApiKey();
+    const note = attempt && attempt.note ? attempt.note : '';
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({ model: getClaudeQuestionModel(), max_tokens: 4096, system: buildQuestionAskSystemBlocks(), messages: [{ role: 'user', content: buildQuestionAskUserPrompt(scene, sides, note) }] }),
+    });
+    if (res.status === 429 && !(attempt && attempt.retried429)) { await sleep(2000); return callQuestionAskApi(scene, sides, { note, retried429: true, parseRetried: attempt && attempt.parseRetried, banRetried: attempt && attempt.banRetried }); }
+    if (!res.ok) { const err = new Error('Claude API failed: ' + res.status); err.status = res.status; throw err; }
+    const json = await res.json();
+    recordApiUsage('question', json.usage);
+    const textOut = (json.content || []).map((b) => b.text || '').join('');
+    const parsed = parseQuestionResponseLoose(textOut);
+    if (!parsed || typeof parsed.question !== 'string' || !parsed.question.trim()) {
+      if (isTruncated(json)) throw truncatedResponseError();
+      if (!(attempt && attempt.parseRetried)) return callQuestionAskApi(scene, sides, { note, parseRetried: true, banRetried: attempt && attempt.banRetried });
+      throw new Error('invalid response shape');
+    }
+    const question = parsed.question.trim().replace(/\s+/g, ' ').slice(0, 200);
+    if (ASK_BANNED.test(question) && !(attempt && attempt.banRetried)) {
+      return callQuestionAskApi(scene, sides, { note: '「' + question + '」は責める調子（いつまで／なぜ〜ない／つもり／すべき）になっている。自分に向けた問いに。', banRetried: true, parseRetried: attempt && attempt.parseRetried });
+    }
+    return { question, type: parsed.type === 'A' ? 'A' : 'B' };
   }
 
   function buildQuestionUserPrompt(materials) {
@@ -5046,7 +5106,7 @@
     const cleaned = text.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
     // question: null is a legitimate answer ("no question stands on these"),
     // so the shape check is "has a question key", not "has a string there".
-    const ok = (p) => p && typeof p === 'object' && (typeof p.question === 'string' || p.question === null);
+    const ok = (p) => p && typeof p === 'object' && (typeof p.question === 'string' || p.question === null || typeof p.scene === 'string' || p.scene === null);
     try {
       const p = JSON.parse(cleaned);
       if (ok(p)) return p;
@@ -5104,14 +5164,16 @@
     recordApiUsage('question', json.usage);
     const textOut = (json.content || []).map((b) => b.text || '').join('');
     const parsed = parseQuestionResponseLoose(textOut);
-    if (!parsed || (parsed.question !== null && !parsed.question.trim())) {
+    const declined = parsed && (parsed.scene === null || parsed.question === null);
+    const hasScene = parsed && typeof parsed.scene === 'string' && parsed.scene.trim();
+    if (!parsed || (!declined && !hasScene)) {
       if (isTruncated(json)) throw truncatedResponseError();
       if (!isParseRetry) return callQuestionApi(materials, is429Retry, true);
       throw new Error('invalid response shape');
     }
     // v3.3.1: the model may decline. That is a result, not an error - the
     // caller shows it and offers 「もう一つ」; nothing is saved.
-    if (parsed.question === null) {
+    if (declined) {
       return { question: null, reason: (typeof parsed.reason === 'string' ? parsed.reason : '').trim().replace(/\s+/g, ' ').slice(0, 160) };
     }
     const materialIds = materials.notes.map((n) => n.id);
@@ -5126,13 +5188,18 @@
       if (!from.includes(id)) from.push(id);
     }
     const one = (v, max) => (typeof v === 'string' ? v : '').trim().replace(/\s+/g, ' ').slice(0, max);
-    // v8.3: scene (口に出す1文目) + question (2文目) + core (材料の言い回しを残す控え).
-    // A reply in the old shape (question + for_viewer, no scene) still works: it is shown the old way.
+    // v8.4: pass 1 gave the scene and its two visible sides; pass 2 writes the
+    // spoken question from those alone (no materials in sight).
+    const scene = one(parsed.scene, 120);
+    const sides = { a: one(parsed.sides && parsed.sides.a, 40), b: one(parsed.sides && parsed.sides.b, 40) };
+    const ask = await callQuestionAskApi(scene, sides);
     return {
-      question: one(parsed.question, 200),
-      scene: one(parsed.scene, 120),
+      question: ask.question,
+      qtype: ask.type,
+      sides,
+      scene,
       core: one(parsed.core, 200),
-      for_viewer: one(parsed.scene || parsed.for_viewer, 120),
+      for_viewer: scene,
       from,
       why_now: (typeof parsed.why_now === 'string' ? parsed.why_now : '').trim().slice(0, 160),
       tension: (typeof parsed.tension === 'string' ? parsed.tension : '').trim().replace(/\s+/g, ' ').slice(0, 160),
@@ -10068,6 +10135,7 @@
         id: generateJournalId(), date: todayStr(), kind: 'question',
         text: result.scene ? result.scene + ' ' + result.question : result.question, picks: [], closing: '',
         scene: result.scene || '', ask: result.scene ? result.question : '', core: result.core || '',
+        sides: result.sides || null, qtype: result.qtype || '',
         from: result.from, why_now: result.why_now, tension: result.tension, for_viewer: result.for_viewer, via: materials.via ? materials.via.id : '',
         source_mode: materials.mode, used: false,
         createdAt: iso, updatedAt: iso,

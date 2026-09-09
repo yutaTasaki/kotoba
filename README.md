@@ -166,7 +166,7 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
 ```
 { id: 'j_YYYYMMDD_連番', date: 'YYYY-MM-DD', kind: 'morning'|'consult'|'draw'|'question'|'read'（read = 言葉の詳細で押した★。届いた回数には数えない）,
   text: 入力文, picks: [{ id: ノートid, why, hit?: 1, hitAt? }], closing, mood?（朝）, sessionId?（引く）,
-  from[] / why_now / tension / for_viewer / used?（問い）, scene / ask / core（v8.3 の問い：場面の1文・そこに立てる問い・材料の言い回しを残した芯。text は scene + ask。古い問いは scene が空で text が問い）, createdAt, updatedAt }
+  from[] / why_now / tension / for_viewer / used?（問い）, scene / ask / core / sides{a,b} / qtype（v8.3〜8.4 の問い：場面の1文・そこに立てる問い・材料の言い回しを残した芯・場面の両側・型。text は scene + ask。古い問いは scene が空で text が問い）, createdAt, updatedAt }
 ```
 `hit` が「刺さった ★」。ノート側には何も保存せず、回数は記録から集計する。
 
@@ -208,7 +208,7 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
 ### 3.3 AI（Claude API）の使い方
 
 - API キーは端末の localStorage にだけ置く（`kotoba_claudeApiKey`）。data.json には入れない。
-- 機能ごとに呼び分け: 朝の言葉・相談（`callChatApi`）、自動関連づけ（`callClaudeApi`、Haiku）、一括入力（`callBulkDecomposeApi`）、問い（`callQuestionApi`）、筋肉対応（`generateMuscleMaps`）、読書メモ（`callReadingDecomposeApi`）。
+- 機能ごとに呼び分け: 朝の言葉・相談（`callChatApi`）、自動関連づけ（`callClaudeApi`、Haiku）、一括入力（`callBulkDecomposeApi`）、問い（`callQuestionApi`：v8.4 から2回呼ぶ。1回目は材料から「種と場面」、2回目は場面と a/b だけから問い `callQuestionAskApi`。材料は2回目に渡さない）、筋肉対応（`generateMuscleMaps`）、読書メモ（`callReadingDecomposeApi`）。
 - 読書メモは「口述」と「本文の書き写し」のどちらでも受ける。書き写しなら AI が引く価値のある箇所を 1〜3 か所（各 200 字まで）選び、残りを周辺のメモにする。応答はコードフェンスや文字列内の改行があっても読めるように直してから JSON 解析する（`parseReadingReply`）。
 - 相談・関連づけに渡す言葉: 言葉が上限（既定 200 枚、設定で変更）以下なら全件を渡してキャッシュ。超えたら「入力に近い言葉」を端末で選んで渡す（`selectCandidateNotes`）。
 - 使用量は機能別に月ごと集計し、設定の月上限（USD）を超えると自動関連づけと朝の言葉が止まる。
@@ -228,7 +228,7 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
 | 刺さった★の重み（減衰・飽和・休み・探索） | `HIT_TUNING` |
 | 「残したい」の効き（倍率 1 + boost ÷ (1 + ★累計)） | `KEEP_TUNING`（boost 0.5）, `keepMultiplier` |
 | 眠っている言葉の枠（引くの何回に 1 回・古い方の何割・朝の候補に何枚） | `SLEEP_TUNING`, `sleepingPool`, `lastSeenMap`（「最後に見た日」＝朝・相談・引くで届いた日、問いの材料になった日、眠り順から詳細を開いた日） |
-| 問いの角度・プロンプト | `QUESTION_MODES`, `buildQuestionSystemBlocks`（v8.3: scene → question の2文構成。場面の決まり・問いの決まり・例文はここ） |
+| 問いの角度・プロンプト | `QUESTION_MODES`, `buildQuestionSystemBlocks`（1回目：種 a/b と場面、芯）, `buildQuestionAskSystemBlocks`（2回目：場面だけから問い。(A)建前と本音／(B)二択 の型、責めない、例文）, `ASK_BANNED`（詰問の語。出たら1回書き直させる） |
 | 相談・朝のプロンプト | `buildChatSystemBlocks` |
 | 自動関連づけのプロンプト | `buildAutoLinkSystemBlocks` |
 | 読書メモのプロンプト | `buildReadingSystemBlocks` |
