@@ -8728,44 +8728,73 @@
   });
 
   // --- the log image (1080x1920: it closes a vertical video) --------------
-  // v9.9. Until now this sheet copied the walk image: one green, one dot
-  // font, every number the same weight. That reads fine for two numbers and
-  // fails for fifty - nothing stands out, so there is no place to look. The
-  // rules now are: two colours (white numbers on black, green only for the
-  // part title, the kg unit and the one rule), two levels (the weight is big
-  // and white; the set number, the reps and the drop are a step smaller and
-  // a step darker but still meant to be read), no boxes - parts are
-  // separated by air - and a small date instead of a headline date.
+  // v9.11. Built as a table, not as a poster. What makes a sheet of fifty
+  // numbers readable is not emphasis but regularity, so:
+  //  - the weight always carries one decimal (27.0 / 62.5 / 41.0). Every
+  //    weight is then the same number of characters and the columns cannot
+  //    drift, whatever the day holds. This is the one that matters most.
+  //  - one type size for the set number, the weight and the reps. No
+  //    hierarchy inside a row. Only the drop is a step smaller.
+  //  - the unit is on every line. Nothing has to be remembered from a header.
+  //  - each exercise sits in a box again, but tight inside: the boxes read as
+  //    noise only when the rows they hold are sparse.
+  //  - the 1RM is on every row, small, at the right, so the sets compare.
+  // Black ground and white numbers for now; a light version is the fallback
+  // if this still reads hard.
   // Content is measured first; if it does not fit the type shrinks to a
   // floor, then the page splits by part. Nothing is ever clipped.
   const TR_IMG_W = 1080, TR_IMG_H = 1920;
   const TR_JP = "'Noto Sans JP', system-ui, sans-serif";
   const TR_NUM = "'Inter', 'Noto Sans JP', system-ui, sans-serif";
-  // v9.10: green is now only the part title and its rule. A green unit beside
-  // every weight cut the white numbers into pieces, so kg is grey. The reps
-  // are a record in their own right, not a suffix, so they are one step below
-  // the weight instead of three. The drop is dimmer than a working set but
-  // still readable - the old value was the difference between seen and unseen.
   const TR_ACCENT = '#5BD46A';   // part title and its rule - nothing else
   const TR_TEXT = '#F2F2EF';     // exercise names
-  const TR_BIG = '#FFFFFF';      // the weights
-  const TR_REP = '#E4E4DF';      // × reps
-  const TR_SET = '#B8B8B2';      // set number
-  const TR_UNIT = '#8E8E88';     // kg
-  const TR_DROP = '#B4B4AE';     // the word drop and its unit
-  const TR_DROPNUM = '#D6D6D0';  // the drop's own numbers
-  const TR_FAINT = '#95958F';    // date, MAX, 1RM, footer
+  const TR_NUMC = '#FFFFFF';     // every number on a working set: one colour
+  const TR_UNIT = '#8E8E88';     // kg / 回 / × - labels, not data
+  const TR_DROP = '#9A9A94';     // the word drop and its units
+  const TR_DROPNUM = '#CFCFC9';  // the drop's own numbers
+  const TR_FAINT = '#8C8C86';    // date, MAX, 1RM, footer
   const TR_RED = '#FF5B4A';      // NEW MAX
+  const TR_BOX = '#0C0C0B';      // box fill, a shade off the ground
+  const TR_BOXLINE = '#2B2B28';  // box border
   // every size in one place: this object is the whole visual design
   const TRD = {
-    margin: 84, headSize: 24, afterHead: 76,
-    partSize: 34, partWeight: 500, partTrack: 5, afterPart: 56,
-    nameSize: 34, nameWeight: 500, afterName: 58,
-    bigSize: 50, bigWeight: 600, repSize: 40, smallSize: 32, dropSize: 32, tinySize: 25,
-    rowLead: 72, dropLead: 42, dropGap: 48, afterEx: 56, afterBlock: 66,
-    gapSet: 30, gapRep: 16, gapMark: 30, kgAt: 0.34,
+    margin: 76, headSize: 24, afterHead: 60,
+    partSize: 30, partWeight: 500, partTrack: 4, afterPart: 42,
+    nameSize: 32, nameWeight: 600, nameLead: 50,
+    uniSize: 38, dropSize: 29, tinySize: 22,
+    rowLead: 47, dropLead: 38,
+    boxPad: 22, boxGap: 14, afterBlock: 40, boxRadius: 12,
+    gapSet: 26, gapUnit: 7, gapOp: 14, gapRM: 26,
   };
   const trFont = (px, family, weight) => (weight || 400) + ' ' + px + 'px ' + family;
+  // one decimal, always: this is what keeps the columns from drifting
+  const fmtKg1 = (n) => (Math.round(Number(n) * 10) / 10).toFixed(1);
+  // Inter's figures are proportional by default (60.0 is 9px wider than 57.5
+  // at 40px), and a canvas has no font-variant-numeric, so the digits are
+  // placed by hand: every digit is given the same advance and centred in it.
+  // Same characters -> same width -> the columns cannot drift, whatever face
+  // the device ends up using.
+  const trIsDigit = (ch) => ch >= '0' && ch <= '9';
+  function trNumWidth(ctx, text) {
+    const dw = ctx.measureText('0').width;
+    let total = 0;
+    for (const ch of text) total += trIsDigit(ch) ? dw : ctx.measureText(ch).width;
+    return total;
+  }
+  // draws right-aligned at xRight; the caller's textAlign is ignored
+  function trDrawNum(ctx, text, xRight, y) {
+    const prev = ctx.textAlign;
+    ctx.textAlign = 'left';
+    const dw = ctx.measureText('0').width;
+    let x = xRight - trNumWidth(ctx, text);
+    for (const ch of text) {
+      const gw = ctx.measureText(ch).width;
+      const cw = trIsDigit(ch) ? dw : gw;
+      ctx.fillText(ch, x + (cw - gw) / 2, y);
+      x += cw;
+    }
+    ctx.textAlign = prev;
+  }
   // letter-spacing drawn by hand: ctx.letterSpacing is not on every Safari
   function trTracked(ctx, text, x, y, track) {
     if (!track) { ctx.fillText(text, x, y); return ctx.measureText(text).width; }
@@ -8785,7 +8814,8 @@
         const allMax = prevMax === null ? v : (v === null ? prevMax : Math.max(prevMax, v));
         let bestIdx = -1, bestV = -1;
         e.sets.forEach((st, i) => { const vv = est1RM(st); if (vv !== null && vv > bestV) { bestV = vv; bestIdx = i; } });
-        return { name: e.name, sets: e.sets.map((st) => ({ w: st.w, r: st.r, drops: st.drops || [] })), cardio: null, rm: v, isNewMax: v !== null && (prevMax === null || v > prevMax), allMax, bestIdx };
+        // every row carries its own 1RM now, so the sets can be compared
+        return { name: e.name, sets: e.sets.map((st) => ({ w: st.w, r: st.r, drops: st.drops || [], rm: est1RM(st) })), cardio: null, rm: v, isNewMax: v !== null && (prevMax === null || v > prevMax), allMax, bestIdx };
       }),
     }));
   }
@@ -8794,126 +8824,142 @@
     const d = TRD, s = (px) => px * scale;
     const jp = (px, wt) => trFont(px, TR_JP, wt);
     const nu = (px, wt) => trFont(px, TR_NUM, wt);
-    const M = x0, colR = x0 + colW;
+    const M = x0;
+    const pad = s(d.boxPad);
     let y = y0, overflow = false;
 
-    blocks.forEach((b) => {
-      // one set of columns per part, measured from the widest entry, so the
-      // numbers read as a single table however many digits the day holds
-      let wSet = 0, wRep = 0, wKg = 0;
-      let wMark = 0;
-      b.rows.forEach((r) => {
-        if (r.rm !== null && r.rm !== undefined) {
-          ctx.font = nu(s(d.tinySize), 600);
-          wMark = Math.max(wMark, ctx.measureText(r.isNewMax ? 'NEW MAX ' + fmtKg(r.rm) : '1RM ' + fmtKg(r.rm)).width);
-        }
-        r.sets.forEach((st, i) => {
-          ctx.font = nu(s(d.smallSize));
-          wSet = Math.max(wSet, ctx.measureText(String(i + 1)).width);
-          ctx.font = nu(s(d.repSize));
-          wRep = Math.max(wRep, ctx.measureText('× ' + (st.r || '')).width);
-          ctx.font = st.w === null ? jp(s(d.bigSize * 0.62), d.bigWeight) : nu(s(d.bigSize), d.bigWeight);
-          wKg = Math.max(wKg, ctx.measureText(st.w === null ? '自重' : fmtKg(st.w)).width);
-        });
+    const exHeight = (r) => {
+      let h = pad + s(d.nameLead);
+      if (r.cardio) return h + s(d.uniSize * 1.55) + pad;
+      r.sets.forEach((st) => {
+        h += s(d.rowLead);
+        (st.drops || []).forEach(() => { h += s(d.dropLead); });
       });
-      const unitW = s(d.smallSize * 1.6);
-      const xSet = M + wSet;
-      const xKg = Math.max(xSet + s(d.gapSet) + wKg, M + colW * d.kgAt);
-      const xRep = xKg + s(d.gapRep) + unitW;
-      // v9.10: the mark used to sit on the right margin, which left the eye to
-      // travel half the sheet to find which set earned it. It now follows the
-      // reps, and the row simply ends where it ends.
-      const xMark = xRep + wRep + s(d.gapMark);
-      if (xMark + wMark > colR) overflow = true;
+      return h + pad;
+    };
+
+    blocks.forEach((b) => {
+      // the columns are shared by every exercise in the part, so the numbers
+      // form one table down the page
+      let wSet = 0, wKg = 0, wRep = 0, wRM = 0;
+      ctx.font = nu(s(d.uniSize));
+      const wUnitKg = ctx.measureText('kg').width;
+      const wUnitRep = ctx.measureText('回').width;
+      const wX = ctx.measureText('×').width;
+      b.rows.forEach((r) => r.sets.forEach((st, i) => {
+        ctx.font = nu(s(d.uniSize));
+        wSet = Math.max(wSet, trNumWidth(ctx, String(i + 1)));
+        if (st.r) wRep = Math.max(wRep, trNumWidth(ctx, String(st.r)));
+        ctx.font = st.w === null ? jp(s(d.uniSize * 0.92), 500) : nu(s(d.uniSize));
+        wKg = Math.max(wKg, st.w === null ? ctx.measureText('自重').width : trNumWidth(ctx, fmtKg1(st.w)));
+        ctx.font = nu(s(d.tinySize));
+        if (st.rm !== null && st.rm !== undefined) wRM = Math.max(wRM, ctx.measureText('(1RM:' + fmtKg1(st.rm) + ')' + (i === r.bestIdx && r.isNewMax ? ' NEW MAX' : '')).width);
+      }));
+      const L = M + pad;
+      const xSet = L + wSet;
+      const xW = xSet + s(d.gapSet) + wKg;
+      const xKgU = xW + s(d.gapUnit);
+      const xX = xKgU + wUnitKg + s(d.gapOp);
+      const xR = xX + wX + s(d.gapOp) + wRep;
+      const xRepU = xR + s(d.gapUnit);
+      const xRM = xRepU + wUnitRep + s(d.gapRM);
+      if (xRM + wRM > M + colW - pad) overflow = true;
 
       if (!dry) {
         ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
         ctx.font = jp(s(d.partSize), d.partWeight); ctx.fillStyle = TR_ACCENT;
         const tw = trTracked(ctx, b.part, M, y, s(d.partTrack));
-        ctx.fillRect(M + tw + s(26), y - s(d.partSize) * 0.32, colW - tw - s(26), Math.max(1, Math.round(scale)));
+        ctx.fillRect(M + tw + s(22), y - s(d.partSize) * 0.32, colW - tw - s(22), Math.max(1, Math.round(scale)));
       }
       y += s(d.afterPart);
 
       b.rows.forEach((r) => {
+        const h = exHeight(r);
+        if (!dry) {
+          ctx.fillStyle = TR_BOX;
+          roundRectPath(ctx, M, y, colW, h, s(d.boxRadius));
+          ctx.fill();
+          ctx.lineWidth = Math.max(1, Math.round(scale));
+          ctx.strokeStyle = TR_BOXLINE;
+          roundRectPath(ctx, M + 0.5, y + 0.5, colW - 1, h - 1, s(d.boxRadius));
+          ctx.stroke();
+        }
+        let yy = y + pad + s(d.nameSize) * 0.82;
+
         if (!dry) {
           ctx.textAlign = 'left'; ctx.font = jp(s(d.nameSize), d.nameWeight); ctx.fillStyle = TR_TEXT;
-          ctx.fillText(r.name, M, y);
-          // set count and all-time max follow the name instead of sitting on
-          // the right margin; the whole sheet then hangs off one left edge
-          let cx = M + ctx.measureText(r.name).width + s(20);
-          if (!r.cardio) {
-            ctx.font = jp(s(d.smallSize * 0.86)); ctx.fillStyle = TR_SET;
-            ctx.fillText(r.sets.length + 'セット', cx, y);
-            cx += ctx.measureText(r.sets.length + 'セット').width + s(20);
-          }
+          ctx.fillText(r.name, L, yy);
           if (r.allMax !== null && r.allMax !== undefined && !r.isNewMax) {
-            ctx.font = nu(s(d.tinySize)); ctx.fillStyle = TR_FAINT;
-            ctx.fillText('MAX ' + fmtKg(r.allMax), cx, y);
+            ctx.textAlign = 'right'; ctx.font = nu(s(d.tinySize)); ctx.fillStyle = TR_FAINT;
+            ctx.fillText('MAX ' + fmtKg1(r.allMax), M + colW - pad, yy);
           }
         }
-        y += s(d.afterName);
+        yy = y + pad + s(d.nameLead);
 
         if (r.cardio) {
-          const cw = colW / 4;
+          const cw = (colW - pad * 2) / 4;
           r.cardio.forEach((c, i) => {
             const unit = (c.unit === c.label || c.value === '-') ? '' : c.unit;
-            ctx.font = nu(s(d.bigSize * 0.9), d.bigWeight);
+            ctx.font = nu(s(d.uniSize));
             const vw = ctx.measureText(c.value).width;
-            ctx.font = nu(s(d.smallSize * 0.8));
-            if (vw + ctx.measureText(unit).width > cw - s(18)) overflow = true;
+            if (vw + ctx.measureText(unit).width > cw - s(14)) overflow = true;
             if (dry) return;
-            const cx = M + cw * i;
+            const cx = L + cw * i;
             ctx.textAlign = 'left';
             ctx.font = jp(s(d.tinySize)); ctx.fillStyle = TR_FAINT;
-            ctx.fillText(c.label, cx, y);
-            ctx.font = nu(s(d.bigSize * 0.9), d.bigWeight); ctx.fillStyle = TR_BIG;
-            ctx.fillText(c.value, cx, y + s(d.bigSize * 0.95));
-            ctx.font = nu(s(d.smallSize * 0.8)); ctx.fillStyle = TR_UNIT;
-            if (unit) ctx.fillText(unit, cx + vw + s(8), y + s(d.bigSize * 0.95));
+            ctx.fillText(c.label, cx, yy + s(d.tinySize) * 0.9);
+            ctx.font = nu(s(d.uniSize)); ctx.fillStyle = TR_NUMC;
+            ctx.fillText(c.value, cx, yy + s(d.uniSize * 1.5));
+            ctx.font = nu(s(d.uniSize * 0.72)); ctx.fillStyle = TR_UNIT;
+            if (unit) ctx.fillText(unit, cx + vw + s(6), yy + s(d.uniSize * 1.5));
           });
-          y += s(d.bigSize * 0.95) + s(d.afterEx);
+          y += h + s(d.boxGap);
           return;
         }
 
         r.sets.forEach((st, i) => {
+          const by = yy + s(d.uniSize) * 0.78;
           if (!dry) {
-            ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'right';
-            ctx.font = nu(s(d.smallSize)); ctx.fillStyle = TR_SET;
-            ctx.fillText(String(i + 1), xSet, y);
-            ctx.fillStyle = TR_BIG;
-            ctx.font = st.w === null ? jp(s(d.bigSize * 0.62), d.bigWeight) : nu(s(d.bigSize), d.bigWeight);
-            ctx.fillText(st.w === null ? '自重' : fmtKg(st.w), xKg, y);
-            ctx.textAlign = 'left';
-            if (st.w !== null) {
-              ctx.font = nu(s(d.smallSize)); ctx.fillStyle = TR_UNIT;
-              ctx.fillText('kg', xKg + s(9), y);
-            }
-            ctx.font = nu(s(d.repSize)); ctx.fillStyle = TR_REP;
-            if (st.r) ctx.fillText('× ' + st.r, xRep, y);
-            if (i === r.bestIdx && r.rm !== null) {
-              ctx.font = nu(s(d.tinySize), 600);
-              ctx.fillStyle = r.isNewMax ? TR_RED : TR_FAINT;
-              ctx.fillText(r.isNewMax ? 'NEW MAX ' + fmtKg(r.rm) : '1RM ' + fmtKg(r.rm), xMark, y);
+            ctx.textBaseline = 'alphabetic';
+            // one size, one colour: a flat row is what a table wants
+            ctx.textAlign = 'right'; ctx.font = nu(s(d.uniSize)); ctx.fillStyle = TR_NUMC;
+            trDrawNum(ctx, String(i + 1), xSet, by);
+            if (st.w === null) { ctx.font = jp(s(d.uniSize * 0.92), 500); ctx.fillText('自重', xW, by); }
+            else trDrawNum(ctx, fmtKg1(st.w), xW, by);
+            ctx.textAlign = 'left'; ctx.font = nu(s(d.uniSize)); ctx.fillStyle = TR_UNIT;
+            if (st.w !== null) ctx.fillText('kg', xKgU, by);
+            ctx.fillText('×', xX, by);
+            ctx.fillStyle = TR_NUMC;
+            if (st.r) trDrawNum(ctx, String(st.r), xR, by);
+            ctx.fillStyle = TR_UNIT;
+            if (st.r) ctx.fillText('回', xRepU, by);
+            if (st.rm !== null && st.rm !== undefined) {
+              const newMax = (i === r.bestIdx && r.isNewMax);
+              ctx.font = nu(s(d.tinySize), newMax ? 600 : 400);
+              ctx.fillStyle = newMax ? TR_RED : TR_FAINT;
+              ctx.fillText('(1RM:' + fmtKg1(st.rm) + ')' + (newMax ? ' NEW MAX' : ''), xRM, by);
             }
           }
-          // a drop belongs to the set above it, so it sits close under it
-          const drops = st.drops || [];
-          y += drops.length ? s(d.dropGap) : s(d.rowLead);
-          drops.forEach((dr, di) => {
+          yy += s(d.rowLead);
+          (st.drops || []).forEach((dr, di) => {
+            const dy = yy + s(d.dropSize) * 0.78;
             if (!dry) {
               ctx.textAlign = 'left'; ctx.font = nu(s(d.dropSize)); ctx.fillStyle = TR_DROP;
-              if (di === 0) ctx.fillText('drop', M, y);
-              ctx.textAlign = 'right'; ctx.font = nu(s(d.dropSize), d.bigWeight); ctx.fillStyle = TR_DROPNUM;
-              ctx.fillText(fmtKg(dr.w), xKg, y);
-              ctx.textAlign = 'left'; ctx.font = nu(s(d.dropSize)); ctx.fillStyle = TR_UNIT;
-              ctx.fillText('kg', xKg + s(9), y);
+              if (di === 0) ctx.fillText('drop', L, dy);
               ctx.fillStyle = TR_DROPNUM;
-              ctx.fillText('× ' + dr.r, xRep, y);
+              trDrawNum(ctx, fmtKg1(dr.w), xW, dy);
+              ctx.fillStyle = TR_DROP;
+              ctx.fillText('kg', xKgU, dy);
+              ctx.fillText('×', xX, dy);
+              ctx.fillStyle = TR_DROPNUM;
+              trDrawNum(ctx, String(dr.r), xR, dy);
+              ctx.fillStyle = TR_DROP;
+              ctx.fillText('回', xRepU, dy);
             }
-            y += di === drops.length - 1 ? s(d.rowLead * 0.72) : s(d.dropLead);
+            yy += s(d.dropLead);
           });
         });
-        y += s(d.afterEx);
+        y += h + s(d.boxGap);
       });
       y += s(d.afterBlock);
     });
@@ -8934,18 +8980,18 @@
     const dw = ctx.measureText(dotDate(day.date)).width;
     ctx.font = trFont(d.headSize, TR_JP, 400);
     const right = [
-      day.weight !== null ? '体重 ' + fmtKg(day.weight) + 'kg' : '',
+      day.weight !== null ? '体重 ' + fmtKg1(day.weight) + 'kg' : '',
       pageCount > 1 ? (pageNo + 1) + '/' + pageCount : '',
     ].filter(Boolean).join('　');
-    if (right) ctx.fillText(right, M + dw + 30, M + d.headSize);
+    if (right) ctx.fillText(right, M + dw + 28, M + d.headSize);
 
-    const top = M + d.headSize + d.afterHead, bottom = H - M - 40;
+    const top = M + d.headSize + d.afterHead, bottom = H - M - 36;
     const avail = bottom - top, fullW = W - 2 * M;
-    let sc = 1.3;
+    let sc = 1.5;
     while (sc > 0.62 && trMeasure(ctx, blocks, sc, fullW) > avail) sc -= 0.03;
     const used = trMeasure(ctx, blocks, sc, fullW);
     if (used > avail) return false; // needs paging
-    trDrawBlocks(ctx, blocks, sc, M, top + Math.max(0, (avail - used) * 0.34), fullW);
+    trDrawBlocks(ctx, blocks, sc, M, top + Math.max(0, (avail - used) * 0.3), fullW);
     ctx.textAlign = 'right'; ctx.font = trFont(d.tinySize, TR_JP, 400); ctx.fillStyle = TR_FAINT;
     ctx.fillText('一万日', W - M, H - M);
     return true;
