@@ -425,6 +425,18 @@
   }
   .statRow span:last-child { color: var(--text); }
   .consultTurns { display: flex; flex-direction: column; gap: 22px; }
+  /* v9.7: three layers - the words that just came back are the only thing at
+     full size; the input folds to one line once there is an answer; earlier
+     rounds stay folded away. */
+  #consultLatest { margin-bottom: 18px; }
+  #consultLatest .consultCard .cardText { font-size: 19px; line-height: 1.9; }
+  #consultLatest .consultClosing { margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--border); }
+  #consultHistoryField { margin-top: 22px; display: flex; flex-direction: column; gap: 12px; }
+  #consultHistoryField .consultCard { padding: 12px 14px; }
+  #consultHistoryField .consultCard .cardText { font-size: 14px; line-height: 1.75; }
+  #consultHistoryField .cardMyWords, #consultHistoryField .consultWhy, #consultHistoryField .cardSource { font-size: 11px; }
+  #consultHistoryField .consultClosing { font-size: 12px; }
+  .consultAskedLine { font-size: 12px; color: var(--text-dim); margin-top: 4px; line-height: 1.6; }
   .consultTurn { display: flex; flex-direction: column; gap: 10px; }
   .consultInputEcho {
     align-self: flex-end;
@@ -1074,12 +1086,19 @@
       <div class="topbar-title">相談</div>
       <div style="width:40px;"></div>
     </header>
-    <div class="field">
-      <textarea id="consultInput" rows="3" placeholder="今の状態や考えていることを書いてください" autocomplete="off"></textarea>
-      <p class="fieldNote warn" id="consultBudgetNote" hidden></p>
-      <button id="btnConsultAsk" class="primaryBtn">聞く</button>
+    <div id="consultLatest" class="consultTurns"></div>
+    <div class="field" id="consultInputField">
+      <button type="button" id="consultCollapsedRow" class="homeStepCollapsed" hidden></button>
+      <div id="consultInputOpen">
+        <textarea id="consultInput" rows="3" placeholder="今の状態や考えていることを書いてください" autocomplete="off"></textarea>
+        <p class="fieldNote warn" id="consultBudgetNote" hidden></p>
+        <button id="btnConsultAsk" class="primaryBtn">聞く</button>
+      </div>
     </div>
-    <div id="consultTurns" class="consultTurns"></div>
+    <div id="consultHistoryField">
+      <button type="button" id="btnConsultHistory" class="tagFilterBtn" hidden></button>
+      <div id="consultTurns" class="consultTurns"></div>
+    </div>
   </section>
 
   <section id="screen-detail" class="screen" hidden>
@@ -5588,6 +5607,8 @@
   // "相談" tap from the bottom nav always starts clean.
   const CONSULT_HISTORY_TURNS = 2;
   let consultTurns = [];
+  let consultInputOpen = true;      // v9.7: the middle layer folds once there is an answer
+  let consultHistoryOpen = false;   // earlier rounds stay away until asked for
   let consultBusy = false;
 
   // v3: a fresh tap of "相談" still starts a clean typing state, but now
@@ -5599,6 +5620,8 @@
     consultTurns = todaysConsultJournalEntries().map((j) => ({
       input: j.text, status: 'done', picks: j.picks, closing: j.closing, journalId: j.id,
     }));
+    consultInputOpen = consultTurns.length === 0;
+    consultHistoryOpen = false;
   }
 
   function openConsult(fresh) {
@@ -5623,14 +5646,11 @@
     renderSourceCandidates();
   }
 
-  function renderConsultTurns() {
-    renderConsultBudgetNote();
-    const container = document.getElementById('consultTurns');
-    container.innerHTML = '';
-    consultTurns.forEach((turn) => {
-      const wrap = document.createElement('div');
-      wrap.className = 'consultTurn';
-
+  // one round: the words that came back, plus (in the history) what was asked
+  function buildConsultTurn(turn, opts) {
+    const wrap = document.createElement('div');
+    wrap.className = 'consultTurn';
+    if (opts && opts.showInput) {
       const topRow = document.createElement('div');
       topRow.className = 'detailLinkRow';
       const inputEl = document.createElement('div');
@@ -5643,7 +5663,7 @@
         del.className = 'linkRemoveBtn';
         del.textContent = '消す';
         del.addEventListener('click', () => {
-          if (!confirm(`${dotDate(todayStr())}の相談を消しますか？`)) return;
+          if (!confirm(dotDate(todayStr()) + 'の相談を消しますか？')) return;
           deleteJournalEntry(turn.journalId);
           consultTurns = consultTurns.filter((t) => t !== turn);
           renderConsultTurns();
@@ -5651,68 +5671,111 @@
         topRow.appendChild(del);
       }
       wrap.appendChild(topRow);
+    }
 
-      if (turn.status === 'loading') {
-        const s = document.createElement('p');
-        s.className = 'fieldNote';
-        s.textContent = '言葉を探しています…';
-        wrap.appendChild(s);
-      } else if (turn.status === 'error') {
-        const s = document.createElement('p');
-        s.className = 'fieldNote warn';
-        s.textContent = turn.errorText || '言葉を探せませんでした。もう一度お試しください。';
-        wrap.appendChild(s);
-      } else if (turn.status === 'done' && turn.picks.length === 0) {
-        const s = document.createElement('p');
-        s.className = 'emptyMsg';
-        s.textContent = 'まだ、これに応える言葉はノートにありません';
-        wrap.appendChild(s);
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'secondaryBtn';
-        btn.textContent = 'この気持ちをノートに書く';
-        btn.addEventListener('click', () => openEditorFromConsult(turn.input));
-        wrap.appendChild(btn);
-      } else if (turn.status === 'done') {
-        turn.picks.forEach((pick) => {
-          const note = findNote(pick.id);
-          if (!note) return;
-          const card = document.createElement('div');
-          card.className = 'consultCard';
-          const t = document.createElement('div');
-          t.className = 'cardText';
-          t.textContent = note.text;
-          card.appendChild(t);
-          if (note.source) {
-            const s = document.createElement('div');
-            s.className = 'cardSource';
-            s.textContent = note.source;
-            card.appendChild(s);
-          }
-          const mw = document.createElement('div');
-          mw.className = 'cardMyWords';
-          mw.textContent = note.myWords;
-          card.appendChild(mw);
-          if (pick.why) {
-            const why = document.createElement('div');
-            why.className = 'consultWhy';
-            why.textContent = pick.why;
-            card.appendChild(why);
-          }
-          if (turn.journalId) card.appendChild(makeHitButton(turn.journalId, note.id));
-          card.addEventListener('click', () => openDetail(note.id, 'consult'));
-          wrap.appendChild(card);
-        });
-        if (turn.closing) {
-          const closing = document.createElement('div');
-          closing.className = 'consultClosing';
-          closing.textContent = turn.closing;
-          wrap.appendChild(closing);
+    if (turn.status === 'loading') {
+      const s2 = document.createElement('p');
+      s2.className = 'fieldNote';
+      s2.textContent = '言葉を探しています…';
+      wrap.appendChild(s2);
+    } else if (turn.status === 'error') {
+      const s2 = document.createElement('p');
+      s2.className = 'fieldNote warn';
+      s2.textContent = turn.errorText || '言葉を探せませんでした。もう一度お試しください。';
+      wrap.appendChild(s2);
+    } else if (turn.status === 'done' && turn.picks.length === 0) {
+      const s2 = document.createElement('p');
+      s2.className = 'emptyMsg';
+      s2.textContent = 'まだ、これに応える言葉はノートにありません';
+      wrap.appendChild(s2);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'secondaryBtn';
+      btn.textContent = 'この気持ちをノートに書く';
+      btn.addEventListener('click', () => openEditorFromConsult(turn.input));
+      wrap.appendChild(btn);
+    } else if (turn.status === 'done') {
+      turn.picks.forEach((pick) => {
+        const note = findNote(pick.id);
+        if (!note) return;
+        const card = document.createElement('div');
+        card.className = 'consultCard';
+        const t = document.createElement('div');
+        t.className = 'cardText';
+        t.textContent = note.text;
+        card.appendChild(t);
+        if (note.source) {
+          const s2 = document.createElement('div');
+          s2.className = 'cardSource';
+          s2.textContent = note.source;
+          card.appendChild(s2);
         }
+        const mw = document.createElement('div');
+        mw.className = 'cardMyWords';
+        mw.textContent = note.myWords;
+        card.appendChild(mw);
+        if (pick.why) {
+          const why = document.createElement('div');
+          why.className = 'consultWhy';
+          why.textContent = pick.why;
+          card.appendChild(why);
+        }
+        if (turn.journalId) card.appendChild(makeHitButton(turn.journalId, note.id));
+        card.addEventListener('click', () => openDetail(note.id, 'consult'));
+        wrap.appendChild(card);
+      });
+      if (turn.closing) {
+        const closing = document.createElement('div');
+        closing.className = 'consultClosing';
+        closing.textContent = turn.closing;
+        wrap.appendChild(closing);
       }
-      container.appendChild(wrap);
-    });
+    }
+    return wrap;
   }
+
+  function renderConsultTurns() {
+    renderConsultBudgetNote();
+    const latestWrap = document.getElementById('consultLatest');
+    const historyWrap = document.getElementById('consultTurns');
+    latestWrap.innerHTML = '';
+    historyWrap.innerHTML = '';
+
+    const latest = consultTurns[consultTurns.length - 1] || null;
+    const earlier = consultTurns.slice(0, -1);
+
+    // 1. what just came back, at full size and nothing else
+    if (latest) latestWrap.appendChild(buildConsultTurn(latest, { showInput: false }));
+
+    // 2. the input: open while there is nothing to read, one line after that
+    const answered = !!latest && latest.status !== 'loading';
+    const open = !answered || consultInputOpen;
+    document.getElementById('consultInputOpen').hidden = !open;
+    const row = document.getElementById('consultCollapsedRow');
+    row.hidden = open;
+    if (!open && latest) {
+      // the question has to stay visible, or the words above lose their reason
+      row.textContent = '続けて聞く　／　聞いたこと：' + noteSnippet(latest.input || '', 28);
+    }
+
+    // 3. earlier rounds, folded
+    const btn = document.getElementById('btnConsultHistory');
+    btn.hidden = earlier.length === 0;
+    btn.textContent = (consultHistoryOpen ? '前のやり取りを閉じる' : '前のやり取り ' + earlier.length + '件');
+    if (earlier.length && consultHistoryOpen) {
+      earlier.slice().reverse().forEach((t) => historyWrap.appendChild(buildConsultTurn(t, { showInput: true })));
+    }
+  }
+
+  document.getElementById('consultCollapsedRow').addEventListener('click', () => {
+    consultInputOpen = true;
+    renderConsultTurns();
+    document.getElementById('consultInput').focus();
+  });
+  document.getElementById('btnConsultHistory').addEventListener('click', () => {
+    consultHistoryOpen = !consultHistoryOpen;
+    renderConsultTurns();
+  });
 
   document.getElementById('navConsult').addEventListener('click', () => openConsult(true));
   document.getElementById('backFromConsult').addEventListener('click', goHome);
@@ -5743,6 +5806,7 @@
       const entry = { id: generateJournalId(), date: todayStr(), kind: 'consult', text: input, picks: result.picks, closing: result.closing, createdAt: iso, updatedAt: iso };
       saveJournalEntry(entry);
       turn.journalId = entry.id;
+      consultInputOpen = false;   // the answer takes the top; the box folds away
     } catch (e) {
       turn.status = 'error';
       turn.errorText = chatErrorText(e);

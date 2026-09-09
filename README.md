@@ -276,6 +276,7 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
 | 筋肉対応のプロンプト | `buildMuscleSystemBlocks` |
 | モデル名の既定値 | `DEFAULT_AUTOLINK_MODEL`, `DEFAULT_CHAT_MODEL` |
 | API の max_tokens | 各 `fetch('https://api.anthropic.com` の `max_tokens` |
+| 相談の画面の3層 | `renderConsultTurns`（上＝今返ってきた札だけ / 中＝入力。答えが出たら「続けて聞く」の1行に畳み、直前に聞いた文を出す / 下＝前のやり取り、既定は畳む）, `buildConsultTurn`, `consultInputOpen`, `consultHistoryOpen` |
 | 相談・朝の失敗の文言とタイムアウト | `chatErrorText`（種類ごとの文）, `CHAT_TIMEOUT_MS`（60 秒）。失敗の詳細（ステータス・応答の冒頭 200 字・モデル名）は設定の「最終エラー」に入る |
 | 筋トレの桁の警告 | `TR_OUTLIER_RATIO`（前回までの最大の 1.5 倍を超えたら警告）, `TR_MAX_PLAUSIBLE_REPS`（60 回）。止めずに警告だけ出す |
 | 使用量の単価 | `MODEL_PRICING` |
