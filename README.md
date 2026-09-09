@@ -237,7 +237,7 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
 | 筋肉一覧 | `MUSCLE_CATALOG`（`assets/muscles.json` と同じ） |
 | 網の見た目 | `GRAPH_FIT_FLOOR`, `graphPathsFrom` |
 | 画面のスクロール構造 | `#shell`（v7.3。この箱がスクロールし、ページ自体は動かない） |
-| 瞑想 | `MEDITATION_INDEX_PATH`, `MED_MIN_PRESETS`（5/10/15/20）, `MED_BELLS`（鈴の倍音。試聴ページと同じ計算）, `MED_BELL_DEFAULT`, `MED_BELL_KEY`（選んだ音）, `MED_TIMER_KEY`（計測中の開始時刻）。時間帯の区切りは `medBandOf`（朝 5〜11 / 昼 11〜17 / 夜） |
+| 瞑想 | `MEDITATION_INDEX_PATH`, `MED_MIN_PRESETS`（5/10/15/20）, `MED_BELLS`（鈴の倍音。試聴ページと同じ計算）, `MED_BELL_DEFAULT`, `MED_BELL_KEY`（選んだ音）, `MED_TIMER_KEY`（計測中の開始時刻）, `MED_ALARM_CUSTOM_KEY`（任意分数の前回値）。時間帯の区切りは `medBandOf`（朝 5〜11 / 昼 11〜17 / 夜） |
 | 入力の退避（未保存の下書き） | `INPUT_DRAFT_KEY`, `captureInputDraftNow`, `restoreInputDraft`（対象外にしたい欄は `INPUT_DRAFT_SKIP`） |
 
 ### 4.2 直して反映するまで

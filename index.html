@@ -1371,7 +1371,10 @@
     </header>
     <div class="editorBody" id="medMain">
       <div class="field" id="medStartField">
-        <span class="fieldLabel">はじめる</span>
+        <span class="fieldLabel">記録する</span>
+        <button type="button" id="btnMedManual" class="primaryBtn">後から入れる</button>
+        <p class="fieldNote">iPhone のタイマーなどで計ったあと、時刻・分数・集中を入れる。</p>
+        <span class="fieldLabel" style="margin-top:10px;">アプリ内で計る</span>
         <div class="medRow">
           <button type="button" id="btnMedTimerStart" class="tagFilterBtn">計る</button>
           <span class="fieldNote" style="margin:0;">｜</span>
@@ -1379,19 +1382,18 @@
           <button type="button" class="tagFilterBtn medAlarmBtn" data-min="10">10</button>
           <button type="button" class="tagFilterBtn medAlarmBtn" data-min="15">15</button>
           <button type="button" class="tagFilterBtn medAlarmBtn" data-min="20">20</button>
-          <span class="fieldNote" style="margin:0;">分で鳴らす</span>
-        </div>
-        <div class="medRow" style="margin-top:6px;">
-          <button type="button" id="btnMedManual" class="tagFilterBtn">後から入れる</button>
+          <input type="number" id="medAlarmCustom" min="1" max="600" inputmode="numeric" placeholder="任意" style="width:72px;">
+          <button type="button" id="btnMedAlarmCustom" class="tagFilterBtn">分で鳴らす</button>
         </div>
         <div class="medRow" style="margin-top:6px;">
           <span class="fieldNote" style="margin:0;">音</span>
           <button type="button" class="tagFilterBtn medBellBtn" data-bell="rin">お鈴</button>
           <button type="button" class="tagFilterBtn medBellBtn" data-bell="chime">チャイム</button>
           <button type="button" class="tagFilterBtn medBellBtn" data-bell="bonsho">梵鐘</button>
-          <button type="button" class="tagFilterBtn medBellBtn" data-bell="none">なし</button>
+          <button type="button" class="tagFilterBtn medBellBtn" data-bell="none">音なし</button>
           <button type="button" id="btnMedBellTry" class="linkLikeBtn">試聴</button>
         </div>
+        <p class="fieldNote">音なし＝時間が来ると画面が一度明るくなる（Android では振動）。計測中は画面を点けたままにする。</p>
       </div>
 
       <div class="field medStage" id="medEntryStage" hidden>
@@ -1732,6 +1734,7 @@
   const MED_BELL_DEFAULT = 'rin';
   const MED_TIMER_KEY = 'kotoba_medTimer';        // a running timer survives a relaunch
   const MED_MIN_PRESETS = [5, 10, 15, 20];
+  const MED_ALARM_CUSTOM_KEY = 'kotoba_medAlarmCustom';  // the last free-form alarm length
   // declared up here, not in the 筋トレ section: loadTrainingData() runs at boot
   // and normalizeTrainingData reads this - a later const would be in its TDZ
   const TRAINING_PARTS = ['肩', '胸', '背中', '腕', '足', '腹筋', '有酸素', 'その他'];
@@ -11169,9 +11172,10 @@
   // WAV data URI and played through an <audio> element (unlike Web Audio,
   // that keeps sounding when the iPhone's ring/silent switch is on silent)
   const MED_BELLS = {
-    rin: { seconds: 9, partials: [[1, 1, 7.5], [1.0035, 0.6, 7.0], [2.71, 0.45, 4.5], [2.72, 0.25, 4.0], [5.05, 0.18, 2.6], [7.6, 0.07, 1.4]], strikes: [[0, 1046, 1]] },
-    chime: { seconds: 7, partials: [[0.5, 0.25, 3.0], [1, 1, 4.0], [2.76, 0.5, 2.6], [5.4, 0.22, 1.6], [8.93, 0.08, 0.9]], strikes: [[0, 1318, 0.85], [0.55, 1046, 0.9], [1.1, 784, 1]] },
-    bonsho: { seconds: 12, partials: [[0.5, 0.7, 11], [1, 1, 9], [1.19, 0.35, 5], [1.5, 0.5, 6], [2.0, 0.35, 3.5], [2.5, 0.2, 2.4], [3.0, 0.12, 1.6], [4.2, 0.06, 0.9]], strikes: [[0, 175, 1]] },
+    // partials: [ratio to the fundamental, level, seconds to -60 dB]; strikes: [time, Hz, level]
+    rin: { seconds: 10, partials: [[1, 1, 8.0], [1.004, 0.5, 7.5], [2.71, 0.4, 4.5], [2.725, 0.2, 4.0], [5.05, 0.15, 2.5], [7.6, 0.06, 1.4]], strikes: [[0, 1046, 1]] },
+    chime: { seconds: 8, partials: [[0.5, 0.2, 3.0], [1, 1, 4.5], [2.76, 0.45, 2.5], [5.4, 0.2, 1.5], [8.93, 0.07, 0.8]], strikes: [[0, 1318, 0.8], [0.6, 1046, 0.9], [1.2, 784, 1]] },
+    bonsho: { seconds: 14, partials: [[0.5, 0.6, 12], [1, 1, 10], [1.003, 0.5, 9], [1.19, 0.3, 6], [1.5, 0.45, 7], [2.0, 0.3, 4], [2.5, 0.18, 2.8], [3.0, 0.1, 1.8]], strikes: [[0, 262, 1]] },
   };
   const medBellCache = {};
   function medSynthBell(bell) {
@@ -11181,7 +11185,7 @@
       bell.partials.forEach(([ratio, level, decay]) => {
         const f = f0 * ratio; if (f > RATE / 2 - 200) return;
         const w = 2 * Math.PI * f / RATE, k = Math.log(1000) / (decay * RATE), attack = Math.floor(0.004 * RATE);
-        for (let i = start, j = 0; i < n; i++, j++) { const env = Math.exp(-k * j) * (j < attack ? j / attack : 1); if (env < 0.0005) break; out[i] += Math.sin(w * j) * level * lv * env; }
+        for (let i = start, j = 0; i < n; i++, j++) { const env = Math.exp(-k * j) * (j < attack ? j / attack : 1); if (j > attack && env < 0.0005) break; out[i] += Math.sin(w * j) * level * lv * env; }
       });
       let lp = 0; const tl = Math.floor(0.012 * RATE);
       for (let j = 0; j < tl && start + j < n; j++) { lp += ((Math.random() * 2 - 1) - lp) * 0.35; out[start + j] += lp * 0.5 * lv * (1 - j / tl); }
@@ -11207,6 +11211,8 @@
   }
   function medBellRing() {
     const choice = medBellChoice();
+    // Android: a short buzz (iPhone web apps cannot vibrate - the flash below is what they get)
+    if (navigator.vibrate) { try { navigator.vibrate(choice === 'none' ? [400, 200, 400] : [200]); } catch (e) {} }
     if (choice === 'none') { const ov = document.getElementById('screen-medTimer'); ov.classList.add('flash'); setTimeout(() => ov.classList.remove('flash'), 1500); return; }
     const uri = medBellUri(choice); if (!uri) return;
     if (medBellAudio.getAttribute('src') !== uri) { medBellAudio.src = uri; medBellAudio.load(); }
@@ -11339,6 +11345,7 @@
     if (medStatsShown) { renderMedStats(); return; }
     const st = medForm.stage;
     document.querySelectorAll('.medBellBtn').forEach((b) => b.classList.toggle('selected', b.dataset.bell === medBellChoice()));
+    { const el = document.getElementById('medAlarmCustom'); if (!el.value) el.value = localStorage.getItem(MED_ALARM_CUSTOM_KEY) || ''; }
     document.getElementById('medStartField').hidden = st !== 'idle';
     document.getElementById('medEntryStage').hidden = !(st === 'entry' || st === 'edit');
     document.getElementById('medDoneStage').hidden = st !== 'done';
@@ -11433,6 +11440,13 @@
   document.getElementById('btnMedStats').addEventListener('click', () => { medMemoFlush(); medShowStats(!medStatsShown); });
   document.getElementById('btnMedTimerStart').addEventListener('click', () => medStartTimer(null));
   document.querySelectorAll('.medAlarmBtn').forEach((b) => b.addEventListener('click', () => medStartTimer(Number(b.dataset.min))));
+  document.getElementById('btnMedAlarmCustom').addEventListener('click', () => {
+    const el = document.getElementById('medAlarmCustom');
+    const n = Math.round(Number(el.value));
+    if (!Number.isFinite(n) || n < 1 || n > 600) { el.focus(); return; }
+    localStorage.setItem(MED_ALARM_CUSTOM_KEY, String(n));
+    medStartTimer(n);
+  });
   document.getElementById('btnMedManual').addEventListener('click', () => { document.getElementById('medTimeInput').value = ''; medOpenEntry({ mode: 'manual', min: null, at: new Date() }); });
   document.querySelectorAll('.medBellBtn').forEach((b) => b.addEventListener('click', () => { localStorage.setItem(MED_BELL_KEY, b.dataset.bell); renderMeditation(); }));
   document.getElementById('btnMedBellTry').addEventListener('click', () => medBellRing());
@@ -11453,7 +11467,7 @@
 
   const INPUT_DRAFT_KEY = 'kotoba_inputDraft';
   const INPUT_DRAFT_MAX_AGE_MS = 48 * 3600 * 1000;
-  const INPUT_DRAFT_SKIP = new Set(['trDate', 'trWeight', 'listSearch', 'walkShareTextInput', 'medMemoInput']); // medMemoInput autosaves itself   // own persistence / not worth restoring
+  const INPUT_DRAFT_SKIP = new Set(['trDate', 'trWeight', 'listSearch', 'walkShareTextInput', 'medMemoInput', 'medAlarmCustom']); // medMemoInput autosaves itself   // own persistence / not worth restoring
   let inputDraftTimer = null, inputDraftRestoring = false;
   function readInputDraft() { try { const raw = localStorage.getItem(INPUT_DRAFT_KEY); const d = raw ? JSON.parse(raw) : null; return (d && d.fields && d.ctx) ? d : null; } catch (e) { return null; } }
   function inputDraftContext() {
