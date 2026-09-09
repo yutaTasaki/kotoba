@@ -8850,8 +8850,8 @@
           y += drops.length ? s(d.dropGap) : s(d.rowLead);
           drops.forEach((dr, di) => {
             if (!dry) {
-              ctx.textAlign = 'left'; ctx.font = jp(s(d.dropSize)); ctx.fillStyle = TR_DROP;
-              if (di === 0) ctx.fillText('ドロップ', M, y);
+              ctx.textAlign = 'left'; ctx.font = nu(s(d.dropSize)); ctx.fillStyle = TR_DROP;
+              if (di === 0) ctx.fillText('drop', M, y);
               ctx.textAlign = 'right'; ctx.font = nu(s(d.dropSize), d.bigWeight); ctx.fillStyle = TR_SMALL;
               ctx.fillText(fmtKg(dr.w), xKg, y);
               ctx.textAlign = 'left'; ctx.font = nu(s(d.dropSize)); ctx.fillStyle = TR_DROP;
