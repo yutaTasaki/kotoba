@@ -540,6 +540,33 @@
   .calDot.dotDraw { background: #a98fd0; }
   .calDot.dotQuestion { background: #d3b16a; }
   .calDot.dotTraining { background: #e07a5f; }
+  .calDot.dotMeditation { background: #5aa89a; }
+  /* 瞑想 (v8.0) */
+  .medRow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .medRow .tagFilterBtn { min-width: 44px; text-align: center; }
+  .medFocusRow { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; }
+  .medFocusRow .tagFilterBtn { padding: 10px 0; min-width: 0; text-align: center; font-variant-numeric: tabular-nums; }
+  .medStage { display: flex; flex-direction: column; gap: 10px; }
+  .medSaved { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 14px; color: var(--text-dim); }
+  .medSession { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .medSession:last-child { border-bottom: none; }
+  .medSessionTop { display: flex; gap: 10px; align-items: baseline; font-variant-numeric: tabular-nums; }
+  .medSessionTop .medTime { font-size: 15px; }
+  .medSessionTop .medDim { color: var(--text-dim); font-size: 13px; }
+  .medMemo { font-size: 14px; white-space: pre-wrap; word-break: break-word; }
+  .medActions { display: flex; gap: 12px; flex-wrap: wrap; }
+  .medTable { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .medTable th, .medTable td { padding: 6px 4px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .medTable th { color: var(--text-dim); font-weight: normal; }
+  .medTable th:first-child, .medTable td:first-child { text-align: left; }
+  .medTableWrap { overflow-x: auto; }
+  input[type="time"] { font-family: inherit; font-size: 16px; background: var(--bg-elevated); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+  #screen-medTimer { background: #050807; color: #9aa59d; justify-content: center; align-items: center; text-align: center; gap: 24px; transition: background 0.6s ease; }
+  #screen-medTimer.flash { background: #3b4a44; }
+  #medTimerBig { font-size: 64px; font-variant-numeric: tabular-nums; letter-spacing: 0.04em; color: #b9c3bc; }
+  #medTimerSub { font-size: 14px; }
+  #btnMedTimerEnd { border: 1px solid #3a4540; color: #b9c3bc; border-radius: 999px; padding: 12px 36px; font-size: 16px; }
+  #btnMedTimerEnd:active { background: #1c2420; }
   /* --- v4.0: 筋トレ ------------------------------------------------- */
   .trBlock { background: var(--bg-card); border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; }
   .trBlockHead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
@@ -1083,6 +1110,8 @@
         <button id="btnNotesMigrate" class="secondaryBtn">言葉を月ファイル方式に移行</button>
         <button id="btnNotesRevert" class="secondaryBtn">言葉を data.json 方式に戻す</button>
         <p class="fieldNote" id="notesMigrateStatus"></p>
+        <div class="statRow"><span>瞑想の保存方式</span><span id="statMeditationMode"></span></div>
+        <p class="fieldNote">瞑想の記録は最初から kotoba-data の meditation/YYYY.json（年ごと）＋ meditation/index.json に置きます。端末には全年分を持ちます。</p>
         <button id="btnClearLegacyStorage" class="secondaryBtn">古い保存形式のコピーを消す（localStorage）</button>
         <p class="fieldNote">v6 からデータは端末の IndexedDB に保存されます。localStorage に残った古いコピーは旧バージョンへ戻すときの保険です。容量が気になるときだけ消してください。</p>
         <button id="btnSyncNow" class="secondaryBtn">今すぐ同期</button>
@@ -1282,7 +1311,10 @@
     <header class="topbar">
       <button class="backBtn" id="backFromRecords">← 戻る</button>
       <div class="topbar-title">記録</div>
-      <button id="btnOpenTraining" class="iconBtn">筋トレ</button>
+      <div class="topbarBtnGroup">
+        <button id="btnOpenMeditation" class="iconBtn">瞑想</button>
+        <button id="btnOpenTraining" class="iconBtn">筋トレ</button>
+      </div>
     </header>
 
     <div id="recordsCalendarView">
@@ -1308,6 +1340,7 @@
         <div class="statRow"><span>相談した回数</span><span id="summaryConsultCount"></span></div>
         <div class="statRow"><span>生成した問い</span><span id="summaryQuestionCount"></span></div>
         <div class="statRow"><span>筋トレ日数</span><span id="summaryTrainingDays"></span></div>
+        <div class="statRow"><span>瞑想</span><span id="summaryMeditation"></span></div>
         <div class="field">
           <span class="fieldLabel">その月に最も多く届いた言葉</span>
           <div id="summaryTopNotes" class="listItems"></div>
@@ -1325,6 +1358,111 @@
       <button id="btnSaveDayEdit" class="secondaryBtn">保存</button>
       <button id="btnDeleteDayRecord" class="dangerBtn">この日の記録を取り消す</button>
       <button id="btnCloseDayEdit" class="secondaryBtn">戻る</button>
+    </div>
+  </section>
+
+  <section id="screen-meditation" class="screen" hidden>
+    <header class="topbar">
+      <button class="backBtn" id="backFromMeditation">← 戻る</button>
+      <div class="topbar-title">瞑想</div>
+      <div class="topbarBtnGroup">
+        <button id="btnMedStats" class="iconBtn">推移</button>
+      </div>
+    </header>
+    <div class="editorBody" id="medMain">
+      <div class="field" id="medStartField">
+        <span class="fieldLabel">はじめる</span>
+        <div class="medRow">
+          <button type="button" id="btnMedTimerStart" class="tagFilterBtn">計る</button>
+          <span class="fieldNote" style="margin:0;">｜</span>
+          <button type="button" class="tagFilterBtn medAlarmBtn" data-min="5">5</button>
+          <button type="button" class="tagFilterBtn medAlarmBtn" data-min="10">10</button>
+          <button type="button" class="tagFilterBtn medAlarmBtn" data-min="15">15</button>
+          <button type="button" class="tagFilterBtn medAlarmBtn" data-min="20">20</button>
+          <span class="fieldNote" style="margin:0;">分で鳴らす</span>
+        </div>
+        <div class="medRow" style="margin-top:6px;">
+          <button type="button" id="btnMedManual" class="tagFilterBtn">後から入れる</button>
+        </div>
+        <div class="medRow" style="margin-top:6px;">
+          <span class="fieldNote" style="margin:0;">音</span>
+          <button type="button" class="tagFilterBtn medBellBtn" data-bell="rin">お鈴</button>
+          <button type="button" class="tagFilterBtn medBellBtn" data-bell="chime">チャイム</button>
+          <button type="button" class="tagFilterBtn medBellBtn" data-bell="bonsho">梵鐘</button>
+          <button type="button" class="tagFilterBtn medBellBtn" data-bell="none">なし</button>
+          <button type="button" id="btnMedBellTry" class="linkLikeBtn">試聴</button>
+        </div>
+      </div>
+
+      <div class="field medStage" id="medEntryStage" hidden>
+        <span class="fieldLabel" id="medEntryTitle"></span>
+        <div class="medRow" id="medTimeRow">
+          <input type="time" id="medTimeInput" style="width:auto;">
+          <span class="fieldNote" style="margin:0;" id="medTimeNote">終わった時刻</span>
+        </div>
+        <div id="medMinField">
+          <span class="fieldLabel">分数</span>
+          <div class="medRow">
+            <button type="button" class="tagFilterBtn medMinBtn" data-min="5">5</button>
+            <button type="button" class="tagFilterBtn medMinBtn" data-min="10">10</button>
+            <button type="button" class="tagFilterBtn medMinBtn" data-min="15">15</button>
+            <button type="button" class="tagFilterBtn medMinBtn" data-min="20">20</button>
+            <button type="button" class="tagFilterBtn medMinBtn" data-min="other">その他</button>
+            <input type="number" id="medMinOther" min="1" max="600" inputmode="numeric" placeholder="分" style="width:80px;" hidden>
+          </div>
+        </div>
+        <div id="medFocusField">
+          <span class="fieldLabel">集中できた？（1〜10）</span>
+          <div class="medFocusRow" id="medFocusRow"></div>
+        </div>
+        <div id="medEditMemoField" hidden>
+          <span class="fieldLabel">メモ</span>
+          <textarea id="medEditMemo" rows="3" autocomplete="off"></textarea>
+        </div>
+        <div class="medRow" id="medEditActions" hidden>
+          <button type="button" id="btnMedEditSave" class="secondaryBtn" style="width:auto;">保存</button>
+          <button type="button" id="btnMedEditCancel" class="secondaryBtn" style="width:auto;">やめる</button>
+          <button type="button" id="btnMedEditDelete" class="dangerBtn" style="width:auto;">消す</button>
+        </div>
+      </div>
+
+      <div class="field medStage" id="medDoneStage" hidden>
+        <div class="medSaved"><span id="medDoneText"></span><button type="button" id="btnMedUndo" class="linkLikeBtn">取り消す</button></div>
+        <span class="fieldLabel">メモ（任意・そのときの感覚や気づき）</span>
+        <textarea id="medMemoInput" rows="3" placeholder="何もない日は空のままで" autocomplete="off"></textarea>
+        <p class="fieldNote" id="medMemoStatus"></p>
+        <div class="medRow">
+          <button type="button" id="btnMedDoneClose" class="secondaryBtn" style="width:auto;">閉じる</button>
+        </div>
+      </div>
+
+      <div class="field" id="medTodayField">
+        <span class="fieldLabel" id="medTodayLabel">今日</span>
+        <div id="medTodayList"></div>
+        <p class="emptyMsg" id="medTodayEmpty" hidden>今日はまだ記録がありません。</p>
+        <p class="fieldNote" id="medTotals"></p>
+      </div>
+      <audio id="medBellAudio" preload="auto"></audio>
+    </div>
+    <div class="editorBody" id="medStatsView" hidden>
+      <div class="field">
+        <div class="statRow"><span>連続日数</span><span id="medStatStreak"></span></div>
+        <div class="statRow"><span>直近30日の実施日数</span><span id="medStatDays30"></span></div>
+        <div class="statRow"><span>累計</span><span id="medStatTotal"></span></div>
+      </div>
+      <div class="field">
+        <span class="fieldLabel">月ごとの推移</span>
+        <div class="medTableWrap"><table class="medTable" id="medMonthTable"></table></div>
+        <p class="fieldNote">「時刻」は月の中心の時刻と、そこからのばらつき（±分）。±が小さいほど習慣が決まった時間に固まっています。</p>
+      </div>
+      <div class="field">
+        <span class="fieldLabel">時間帯（朝 5〜11時 ／ 昼 11〜17時 ／ 夜 17〜5時）</span>
+        <div class="medTableWrap"><table class="medTable" id="medBandTable"></table></div>
+      </div>
+      <div class="field">
+        <span class="fieldLabel">分数ごとの集中</span>
+        <div class="medTableWrap"><table class="medTable" id="medLenTable"></table></div>
+      </div>
     </div>
   </section>
 
@@ -1544,6 +1682,11 @@
     </div>
   </div>
 
+  <div id="screen-medTimer" class="drawOverlay" hidden>
+    <div id="medTimerBig">00:00</div>
+    <div id="medTimerSub"></div>
+    <button type="button" id="btnMedTimerEnd">終了</button>
+  </div>
   <div id="screen-muscle" class="drawOverlay" hidden>
     <div class="drawTopBar">
       <div class="graphTitle" id="muscleTitle">筋肉</div>
@@ -1581,6 +1724,14 @@
   const TRAINING_LAST_SYNC_KEY = 'kotoba_trainingLastSyncAt';
   const TRAINING_STORAGE_KEY = 'kotoba_trainingData';
   const TRAINING_PATH = 'training.json';
+  const MEDITATION_INDEX_PATH = 'meditation/index.json';
+  const meditationYearPath = (y) => 'meditation/' + y + '.json';
+  const MEDITATION_LAST_SYNC_KEY = 'kotoba_meditationLastSyncAt';
+  const MEDITATION_LAST_SYNC_ERROR_KEY = 'kotoba_meditationLastSyncError';
+  const MED_BELL_KEY = 'kotoba_medBell';          // which bell to ring: rin / chime / bonsho / none
+  const MED_BELL_DEFAULT = 'rin';
+  const MED_TIMER_KEY = 'kotoba_medTimer';        // a running timer survives a relaunch
+  const MED_MIN_PRESETS = [5, 10, 15, 20];
   // declared up here, not in the 筋トレ section: loadTrainingData() runs at boot
   // and normalizeTrainingData reads this - a later const would be in its TDZ
   const TRAINING_PARTS = ['肩', '胸', '背中', '腕', '足', '腹筋', '有酸素', 'その他'];
@@ -1926,7 +2077,9 @@
   for (const m of liveJournalMonths()) { try { bootKV.months[m] = await kvGet('journal:' + m); } catch (e) { bootKV.months[m] = null; } }
   bootKV.noteDocs = {};
   try { (await kvGetAllPrefix('notes:')).forEach((v, k) => { bootKV.noteDocs[k.slice(6)] = v; }); } catch (e) {}
-  for (const k of ['notesDirty', 'notesStamps']) { try { bootKV[k] = await kvGet(k); } catch (e) { bootKV[k] = null; } }
+  for (const k of ['notesDirty', 'notesStamps', 'meditationDirty', 'meditationStamps']) { try { bootKV[k] = await kvGet(k); } catch (e) { bootKV[k] = null; } }
+  bootKV.medDocs = {};
+  try { (await kvGetAllPrefix('meditation:')).forEach((v, k) => { bootKV.medDocs[k.slice(11)] = v; }); } catch (e) {}
 
   // --- 言葉の月ファイル (v7.4; v7.2 was per year) ---------------------------------
   // Legacy mode: notes are an array inside data.json. Monthly mode:
@@ -2518,7 +2671,7 @@
     try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
   }
   function combinedSyncErrorText() {
-    const msgs = [LAST_SYNC_ERROR_KEY, WALK_LAST_SYNC_ERROR_KEY, TRAINING_LAST_SYNC_ERROR_KEY].map(getSyncError).filter(Boolean).map((e) => e.message);
+    const msgs = [LAST_SYNC_ERROR_KEY, WALK_LAST_SYNC_ERROR_KEY, TRAINING_LAST_SYNC_ERROR_KEY, MEDITATION_LAST_SYNC_ERROR_KEY].map(getSyncError).filter(Boolean).map((e) => e.message);
     return msgs.length ? msgs.join(' / ') : '同期エラー';
   }
 
@@ -2530,11 +2683,12 @@
   let noteSyncState = getGhToken() ? 'unsynced' : 'off';
   let walkSyncState = getGhToken() ? 'unsynced' : 'off';
   let trainingSyncState = getGhToken() ? 'unsynced' : 'off';
+  let meditationSyncState = getGhToken() ? 'unsynced' : 'off';
 
   function combinedPendingCount() { return pendingChangeCount + (typeof walkPendingChangeCount === 'number' ? walkPendingChangeCount : 0); }
 
   function renderSyncBar() {
-    const states = [noteSyncState, walkSyncState, trainingSyncState];
+    const states = [noteSyncState, walkSyncState, trainingSyncState, meditationSyncState];
     let state;
     if (states.includes('syncing')) state = 'syncing';
     else if (states.includes('error')) state = 'error';
@@ -2549,7 +2703,8 @@
       const t1 = localStorage.getItem(LAST_SYNC_KEY);
       const t2 = localStorage.getItem(WALK_LAST_SYNC_KEY);
       const t3 = localStorage.getItem(TRAINING_LAST_SYNC_KEY);
-      const latest = [t1, t2, t3].filter(Boolean).sort().pop();
+      const t4 = localStorage.getItem(MEDITATION_LAST_SYNC_KEY);
+      const latest = [t1, t2, t3, t4].filter(Boolean).sort().pop();
       text = latest ? `同期済み ${formatDateTime(latest)}` : '同期済み';
     } else if (state === 'error') {
       text = combinedSyncErrorText() + (pending > 0 ? `（未反映 ${pending}件）` : '');
@@ -2569,6 +2724,7 @@
   function setSyncStatus(state) { noteSyncState = state; renderSyncBar(); }
   function setWalkSyncStatus(state) { walkSyncState = state; renderSyncBar(); }
   function setTrainingSyncStatus(state) { trainingSyncState = state; renderSyncBar(); }
+  function setMeditationSyncStatus(state) { meditationSyncState = state; renderSyncBar(); }
 
   let syncDebounceTimer = null;
   function scheduleSync() {
@@ -2816,7 +2972,7 @@
   }
 
   async function syncAllNow() {
-    await Promise.all([syncNow(), walkSyncNow(), trainingSyncNow()]);
+    await Promise.all([syncNow(), walkSyncNow(), trainingSyncNow(), meditationSyncNow()]);
   }
 
   // --- Walk derived values / canvas / share (ported verbatim from walk10000,
@@ -5015,7 +5171,7 @@
   function showScreen(name) {
     if (nav.screen !== name) captureInputDraftNow();
     if (nav.screen === 'training' && name !== 'training') trFlush();
-    ['home', 'list', 'consult', 'detail', 'editor', 'settings', 'records', 'bulk', 'draftreview', 'training'].forEach((s) => {
+    ['home', 'list', 'consult', 'detail', 'editor', 'settings', 'records', 'bulk', 'draftreview', 'training', 'meditation'].forEach((s) => {
       document.getElementById('screen-' + s).hidden = s !== name;
     });
     nav.screen = name;
@@ -5025,12 +5181,13 @@
     // mechanism that already hid it before this nav became position:fixed.
     document.getElementById('globalBottomNav').hidden = false;
     document.querySelectorAll('#globalBottomNav .navBtn').forEach((b) => b.classList.remove('selected'));
-    const activeBtn = { home: 'navHome', list: 'navList', consult: 'navConsult', records: 'navRecords', settings: 'navSettings', training: 'navRecords' }[name];
+    const activeBtn = { home: 'navHome', list: 'navList', consult: 'navConsult', records: 'navRecords', settings: 'navSettings', training: 'navRecords', meditation: 'navRecords' }[name];
     if (activeBtn) document.getElementById(activeBtn).classList.add('selected');
   }
 
   function refreshCurrentScreen() {
     if (nav.screen === 'training') { renderTraining(); return; }
+    if (nav.screen === 'meditation') { renderMeditation(); return; }
     if (nav.screen === 'home') renderHome();
     else if (nav.screen === 'list') renderList();
     else if (nav.screen === 'detail') renderDetail();
@@ -6813,8 +6970,7 @@
       showScreen('consult');
       renderConsultTurns();
     } else if (nav.detailOrigin === 'records') {
-      showScreen('records');
-      renderRecords();
+      openRecords();
     } else if (nav.detailOrigin === 'settings') {
       openSettings();
     } else {
@@ -7715,6 +7871,7 @@
   }
 
   document.getElementById('btnOpenTraining').addEventListener('click', () => openTraining(todayStr()));
+  document.getElementById('btnOpenMeditation').addEventListener('click', () => openMeditation());
   document.getElementById('backFromTraining').addEventListener('click', () => { trFlush(); openRecords(); });
   document.getElementById('trDate').addEventListener('change', (e) => { trLoadDate(e.target.value || todayStr()); renderTraining(); });
   document.getElementById('trWeight').addEventListener('input', (e) => { trState.weight = e.target.value.trim(); trScheduleSave(); });
@@ -8552,6 +8709,7 @@
     if (journalMonthly() && jm.index) Object.keys(jm.index.months).forEach((m) => { const d = m + '-01'; if (!min || d < min) min = d; });
     data.journal.forEach((j) => { if (!min || j.date < min) min = j.date; });
     walkData.walkedDates.forEach((d) => { if (!min || d < min) min = d; });
+    medData.sessions.forEach((x) => { if (!min || x.date < min) min = x.date; });
     return min ? min.slice(0, 7) : todayStr().slice(0, 7);
   }
 
@@ -8574,6 +8732,7 @@
 
     const today = todayStr();
     const walkedSet = new Set(walkData.walkedDates);
+    const medDateSet = new Set(medData.sessions.map((x) => x.date));
     const partEls = [];
 
     for (let i = 0; i < leadBlanks; i++) {
@@ -8590,6 +8749,7 @@
       const hasQuestion = data.journal.some((j) => j.kind === 'question' && j.date === dateStr);
       const trainingDay = findTrainingDay(dateStr);
       const hasTraining = !!trainingDay;
+      const hasMeditation = medDateSet.has(dateStr);
       const walked = walkedSet.has(dateStr);
 
       const el = document.createElement('button');
@@ -8617,6 +8777,7 @@
       if (hasDraw) { const d = document.createElement('span'); d.className = 'calDot dotDraw'; dots.appendChild(d); }
       if (hasQuestion) { const d = document.createElement('span'); d.className = 'calDot dotQuestion'; dots.appendChild(d); }
       if (hasTraining) { const d = document.createElement('span'); d.className = 'calDot dotTraining'; dots.appendChild(d); }
+      if (hasMeditation) { const d = document.createElement('span'); d.className = 'calDot dotMeditation'; dots.appendChild(d); }
       el.appendChild(dots);
       if (calShowParts && trainingDay && trainingDay.parts.length) {
         const pe = document.createElement('div');
@@ -8953,6 +9114,7 @@
 
     const trDay = findTrainingDay(dateStr);
     if (trDay) { any = true; body.appendChild(renderDayTrainingCard(trDay)); }
+    if (medSessionsOn(dateStr).length) { any = true; body.appendChild(renderDayMeditationCard(dateStr)); }
 
     data.journal
       .filter((j) => j.kind === 'consult' && j.date === dateStr)
@@ -8984,6 +9146,7 @@
     const usedQuestions = monthQuestions.filter((j) => j.used).length;
     document.getElementById('summaryQuestionCount').textContent = `${monthQuestions.length}件 / 使った ${usedQuestions}件`;
     document.getElementById('summaryTrainingDays').textContent = `${trainingData.days.filter((d) => inMonth(d.date)).length}日`;
+    { const ms = medData.sessions.filter((x) => inMonth(x.date)); document.getElementById('summaryMeditation').textContent = ms.length ? `${new Set(ms.map((x) => x.date)).size}日 ／ ${ms.length}回 ${medSum(ms)}分` : '0日'; }
 
     // "届いた言葉" mirrors topMonthlyPickedNoteIds's own scope: morning +
     // consult picks only - 引く is something the user pulls themselves, not
@@ -9931,6 +10094,9 @@
     } else if (nav.editorReturnScreen === 'consult') {
       showScreen('consult');
       renderConsultTurns();
+    } else if (nav.editorReturnScreen === 'meditation') {
+      medNoteFor = null;
+      openMeditation();
     } else {
       goHome();
     }
@@ -9993,6 +10159,12 @@
       const id = generateId(data.notes);
       const note = { id, text, source, myWords, tags: [...editorState.tags], links: [], rejectedLinks: [], autoLinkedAt: null, createdAt: iso, updatedAt: iso };
       applyEditorKind(note, source);
+      // 瞑想メモから: the memo as it was spoken stays with the card as 周辺メモ
+      if (nav.editorReturnScreen === 'meditation' && medNoteFor) {
+        const sess = medFind(medNoteFor);
+        if (sess) { if (sess.memo && sess.memo.trim() && sess.memo.trim() !== text) note.context = [{ text: sess.memo.trim(), at: sess.at }]; sess.noteId = id; sess.updatedAt = iso; saveMeditation(); }
+        medNoteFor = null;
+      }
       data.notes.push(note);
       applyManualLinksDiff(id, [], newManualLinks);
       savedId = id;
@@ -10004,7 +10176,7 @@
     blankEditorFields();
 
     if (nav.editorMode === 'new') {
-      const origin = nav.editorReturnScreen === 'list' ? 'list' : nav.editorReturnScreen === 'consult' ? 'consult' : 'home';
+      const origin = nav.editorReturnScreen === 'list' ? 'list' : nav.editorReturnScreen === 'consult' ? 'consult' : nav.editorReturnScreen === 'meditation' ? 'records' : 'home';
       openDetail(savedId, origin);
     } else {
       nav.detailId = savedId;
@@ -10412,9 +10584,10 @@
     document.getElementById('statUsagePrevMonthTotal').textContent = `約$${prevMonthCost.toFixed(3)}`;
     const allTimeCost = totalCostForKindStats(sumUsageAcrossDevices(null));
     document.getElementById('statUsageAllTimeTotal').textContent = `約$${allTimeCost.toFixed(3)}`;
-    document.getElementById('statSyncState').textContent = (noteSyncState === walkSyncState && walkSyncState === trainingSyncState)
+    document.getElementById('statSyncState').textContent = (noteSyncState === walkSyncState && walkSyncState === trainingSyncState && trainingSyncState === meditationSyncState)
       ? syncStateLabel(noteSyncState)
-      : `言葉: ${syncStateLabel(noteSyncState)} / 散歩: ${syncStateLabel(walkSyncState)} / 筋トレ: ${syncStateLabel(trainingSyncState)}`;
+      : `言葉: ${syncStateLabel(noteSyncState)} / 散歩: ${syncStateLabel(walkSyncState)} / 筋トレ: ${syncStateLabel(trainingSyncState)} / 瞑想: ${syncStateLabel(meditationSyncState)}`;
+    document.getElementById('statMeditationMode').textContent = `年ファイル（${Object.keys(md.yearJson).length} 年分、${medData.sessions.length} 回、未同期 ${md.dirty.size}）`;
     const lastSync = localStorage.getItem(LAST_SYNC_KEY);
     const lastWalkSync = localStorage.getItem(WALK_LAST_SYNC_KEY);
     const latestSync = [lastSync, lastWalkSync].filter(Boolean).sort().pop();
@@ -10744,9 +10917,543 @@
   // changes; at boot the app returns to that screen and refills the fields.
   // Saved data is never touched - this is only the unsaved draft, and the
   // submit/save handlers clear it.
+  // --- 瞑想の記録 (v8.0) ----------------------------------------------------
+  // One entry per sitting, kept in kotoba-data as meditation/YYYY.json (one
+  // file per year, ~550 entries / ~100 KB a year) plus meditation/index.json
+  // with one row per year. The device keeps every year in kv
+  // (`meditation:YYYY`) and in memory (medData.sessions) so streaks and
+  // totals never need the network. Sync is the notes-month pattern: only
+  // the years touched here or changed elsewhere are fetched and merged
+  // (per entry, later updatedAt wins, deletions are tombstones).
+  const md = { dirty: new Set(), stamps: {}, yearJson: {}, busy: false };
+  let medData = { sessions: [], deletedIds: [] };
+  let meditationSyncTimer = null, meditationSyncInFlight = false;
+  let medNoteFor = null;               // session id whose memo is being turned into a 言葉
+  const medForm = { stage: 'idle', mode: null, editId: null, min: null, focus: null, startAt: null, plannedMin: null, savedId: null, endAt: null };
+  let medTimerTick = null, medWakeLock = null, medMemoTimer = null, medStatsShown = false;
+
+  function medLocalIso(d) {
+    const p = (n) => String(n).padStart(2, '0');
+    const off = -d.getTimezoneOffset(), sg = off >= 0 ? '+' : '-', a = Math.abs(off);
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}${sg}${p(Math.floor(a / 60))}:${p(a % 60)}`;
+  }
+  function medYearOf(x) { const y = String((x && x.date) || '').slice(0, 4); return /^\d{4}$/.test(y) ? y : todayStr().slice(0, 4); }
+  function medYearOfId(id) { const m = /^m_(\d{4})/.exec(String(id || '')); return m ? m[1] : todayStr().slice(0, 4); }
+  function medMinutesOfDay(x) { const m = /T(\d{2}):(\d{2})/.exec(String(x.at || '')); return m ? Number(m[1]) * 60 + Number(m[2]) : null; }
+  function medHm(x) { const m = /T(\d{2}:\d{2})/.exec(String(x.at || '')); return m ? m[1] : '--:--'; }
+  function normalizeMedSession(x) {
+    if (!x || typeof x !== 'object' || !x.id || typeof x.at !== 'string') return null;
+    const min = Math.round(Number(x.min));
+    if (!Number.isFinite(min) || min <= 0) return null;
+    let focus = Number(x.focus); focus = Number.isFinite(focus) ? Math.min(10, Math.max(1, Math.round(focus))) : null;
+    const date = /^\d{4}-\d{2}-\d{2}/.test(x.date || '') ? x.date.slice(0, 10) : x.at.slice(0, 10);
+    const out = { id: String(x.id), at: x.at, date, min, focus, memo: typeof x.memo === 'string' ? x.memo : '', mode: ['timer', 'alarm', 'manual'].includes(x.mode) ? x.mode : 'manual', noteId: typeof x.noteId === 'string' ? x.noteId : null, createdAt: x.createdAt || x.at, updatedAt: x.updatedAt || x.createdAt || x.at };
+    if (Number.isFinite(Number(x.plannedMin)) && Number(x.plannedMin) > 0) out.plannedMin = Math.round(Number(x.plannedMin));
+    return out;
+  }
+  function emptyMedYearDoc(y) { return { version: 1, year: y, updatedAt: '', sessions: [], deletedIds: [] }; }
+  function normalizeMedYearDoc(raw, y) {
+    const out = emptyMedYearDoc(y);
+    if (!raw || typeof raw !== 'object') return out;
+    out.updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : '';
+    out.sessions = (Array.isArray(raw.sessions) ? raw.sessions : []).map(normalizeMedSession).filter(Boolean);
+    out.deletedIds = (Array.isArray(raw.deletedIds) ? raw.deletedIds : []).filter((t) => t && t.id).map((t) => ({ id: String(t.id), deletedAt: t.deletedAt || nowIso() }));
+    return out;
+  }
+  function medSortSessions(list) { return list.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0)); }
+  function medYearDoc(y) {
+    return { version: 1, year: y, updatedAt: nowIso(), sessions: medSortSessions(medData.sessions.filter((x) => medYearOf(x) === y)), deletedIds: medData.deletedIds.filter((t) => medYearOfId(t.id) === y) };
+  }
+  function medYearDocBody(doc) { return JSON.stringify({ sessions: doc.sessions, deletedIds: doc.deletedIds }); }
+  function medYearsOf() { const ys = new Set(); medData.sessions.forEach((x) => ys.add(medYearOf(x))); medData.deletedIds.forEach((t) => ys.add(medYearOfId(t.id))); Object.keys(md.yearJson).forEach((y) => ys.add(y)); return [...ys].sort(); }
+  function persistMedDirty() { return kvSet('meditationDirty', JSON.stringify([...md.dirty])).catch(() => {}); }
+  function persistMedStamps() { return kvSet('meditationStamps', JSON.stringify(md.stamps)).catch(() => {}); }
+  function persistMeditationYears() {
+    let changed = false;
+    medYearsOf().forEach((y) => {
+      const doc = medYearDoc(y);
+      const body = medYearDocBody(doc);
+      if (md.yearJson[y] === body) return;
+      md.yearJson[y] = body;
+      kvSet('meditation:' + y, JSON.stringify(doc)).catch(() => { recordSyncError(MEDITATION_LAST_SYNC_ERROR_KEY, '端末の保存に失敗しました'); renderSyncBar(); });
+      md.dirty.add(y); changed = true;
+    });
+    if (changed) persistMedDirty();
+  }
+  function saveMeditation() { persistMeditationYears(); scheduleMeditationSync(); }
+  function mergeMedSets(a, delA, b, delB) {
+    const mA = new Map(a.map((x) => [x.id, x])), mB = new Map(b.map((x) => [x.id, x]));
+    const dA = new Map(delA.map((t) => [t.id, t.deletedAt])), dB = new Map(delB.map((t) => [t.id, t.deletedAt]));
+    const out = new Map();
+    new Set([...mA.keys(), ...mB.keys()]).forEach((id) => {
+      const x = mA.get(id), y = mB.get(id);
+      let w;
+      if (x && y) w = new Date(x.updatedAt) >= new Date(y.updatedAt) ? x : y;
+      else { const only = x || y; const tomb = x ? dB.get(id) : dA.get(id); w = (tomb && new Date(tomb) >= new Date(only.updatedAt)) ? null : only; }
+      if (w) out.set(id, { ...w });
+    });
+    const deleted = new Map();
+    dA.forEach((at, id) => deleted.set(id, at));
+    dB.forEach((at, id) => { const c = deleted.get(id); if (!c || new Date(at) > new Date(c)) deleted.set(id, at); });
+    out.forEach((_, id) => deleted.delete(id));
+    return { sessions: medSortSessions([...out.values()]), deleted: [...deleted.entries()].map(([id, deletedAt]) => ({ id, deletedAt })) };
+  }
+  function meditationBoot() {
+    try { JSON.parse(bootKV.meditationDirty || '[]').forEach((y) => md.dirty.add(y)); } catch (e) {}
+    try { md.stamps = JSON.parse(bootKV.meditationStamps || '{}') || {}; } catch (e) { md.stamps = {}; }
+    let sessions = [], deleted = [];
+    Object.entries(bootKV.medDocs || {}).forEach(([y, raw]) => {
+      try { const doc = normalizeMedYearDoc(JSON.parse(raw), y); sessions = sessions.concat(doc.sessions); deleted = deleted.concat(doc.deletedIds); md.yearJson[y] = medYearDocBody(doc); } catch (e) {}
+    });
+    const m = mergeMedSets(sessions, deleted, [], []);
+    medData = { sessions: m.sessions, deletedIds: m.deleted };
+  }
+  function medSignature(doc) { return doc.sessions.map((x) => x.id + ':' + x.updatedAt).sort().join('|') + '#' + doc.deletedIds.map((t) => t.id + ':' + t.deletedAt).sort().join('|'); }
+  function emptyMedIndex() { return { version: 1, updatedAt: '', years: {} }; }
+  function normalizeMedIndex(raw) {
+    const out = emptyMedIndex();
+    if (!raw || typeof raw !== 'object' || !raw.years || typeof raw.years !== 'object') return out;
+    out.updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : '';
+    Object.entries(raw.years).forEach(([y, v]) => { if (/^\d{4}$/.test(y) && v && typeof v === 'object') out.years[y] = { updatedAt: typeof v.updatedAt === 'string' ? v.updatedAt : '', count: Number(v.count) || 0 }; });
+    return out;
+  }
+  function mergeMedIndex(a, b) {
+    const out = emptyMedIndex();
+    new Set([...Object.keys(a.years), ...Object.keys(b.years)]).forEach((y) => { const x = a.years[y], z = b.years[y]; out.years[y] = (x && z) ? ((z.updatedAt > x.updatedAt) ? z : x) : (x || z); });
+    out.updatedAt = a.updatedAt > b.updatedAt ? a.updatedAt : b.updatedAt;
+    return out;
+  }
+  async function syncMeditationYear(token, y, attempt) {
+    const remote = await ghGetContents(GITHUB_REPO, meditationYearPath(y), token);
+    let rdoc = emptyMedYearDoc(y);
+    try { if (remote.text) rdoc = normalizeMedYearDoc(JSON.parse(remote.text), y); } catch (e) {}
+    const local = medYearDoc(y);
+    const ms = mergeMedSets(local.sessions, local.deletedIds, rdoc.sessions, rdoc.deletedIds);
+    const merged = { version: 1, year: y, updatedAt: nowIso(), sessions: ms.sessions, deletedIds: ms.deleted };
+    medData.sessions = medSortSessions(medData.sessions.filter((x) => medYearOf(x) !== y).concat(merged.sessions));
+    medData.deletedIds = medData.deletedIds.filter((t) => medYearOfId(t.id) !== y).concat(merged.deletedIds);
+    md.yearJson[y] = medYearDocBody(merged);
+    await kvSet('meditation:' + y, JSON.stringify(merged)).catch(() => {});
+    const isEmpty = !merged.sessions.length && !merged.deletedIds.length;
+    if ((!remote.text && !isEmpty) || (remote.text && medSignature(rdoc) !== medSignature(merged))) {
+      try { await ghPutJson(meditationYearPath(y), merged, remote.sha, `meditation ${y}: ${merged.sessions.length} sessions`); }
+      catch (e) { if (e.status === 409 && !attempt) return syncMeditationYear(token, y, 1); throw e; }
+    }
+    md.dirty.delete(y);
+    return { changed: medSignature(rdoc) !== medSignature(merged), count: merged.sessions.length };
+  }
+  function scheduleMeditationSync() {
+    if (!getGhToken()) return;
+    if (meditationSyncTimer) clearTimeout(meditationSyncTimer);
+    setMeditationSyncStatus('unsynced');
+    meditationSyncTimer = setTimeout(meditationSyncNow, 800);
+  }
+  async function meditationSyncNow() {
+    const token = getGhToken();
+    if (!token) { setMeditationSyncStatus('off'); return; }
+    if (meditationSyncInFlight || md.busy) return;
+    if (!navigator.onLine) { setMeditationSyncStatus('offline'); return; }
+    meditationSyncInFlight = true; md.busy = true;
+    setMeditationSyncStatus('syncing');
+    try {
+      const ri = await ghGetContents(GITHUB_REPO, MEDITATION_INDEX_PATH, token);
+      let remoteIndex = emptyMedIndex();
+      try { if (ri.text) remoteIndex = normalizeMedIndex(JSON.parse(ri.text)); } catch (e) {}
+      const localIndex = emptyMedIndex();
+      Object.keys(md.yearJson).forEach((y) => { localIndex.years[y] = { updatedAt: md.stamps[y] || '', count: medData.sessions.filter((x) => medYearOf(x) === y).length }; });
+      const years = new Set([...md.dirty]);
+      Object.entries(remoteIndex.years).forEach(([y, row]) => { if (!(y in md.yearJson) || row.updatedAt !== (md.stamps[y] || '')) years.add(y); });
+      let indexChanged = false;
+      const index = mergeMedIndex(localIndex, remoteIndex);
+      for (const y of [...years].sort()) {
+        const r = await syncMeditationYear(token, y);
+        const prev = index.years[y];
+        if (r.changed || !prev) { index.years[y] = { updatedAt: nowIso(), count: r.count }; indexChanged = true; }
+        md.stamps[y] = index.years[y].updatedAt;
+      }
+      persistMedDirty(); persistMedStamps();
+      if (years.size) refreshCurrentScreen();
+      const sig = (ix) => JSON.stringify(Object.keys(ix.years).sort().map((y) => [y, ix.years[y].updatedAt]));
+      if (indexChanged || sig(index) !== sig(remoteIndex)) {
+        index.updatedAt = nowIso();
+        try { await ghPutJson(MEDITATION_INDEX_PATH, index, ri.sha, 'meditation index'); }
+        catch (e) { if (e.status !== 409) throw e; const ri2 = await ghGetContents(GITHUB_REPO, MEDITATION_INDEX_PATH, token); let r2 = emptyMedIndex(); try { if (ri2.text) r2 = normalizeMedIndex(JSON.parse(ri2.text)); } catch (e2) {} await ghPutJson(MEDITATION_INDEX_PATH, mergeMedIndex(index, r2), ri2.sha, 'meditation index'); }
+      }
+      localStorage.setItem(MEDITATION_LAST_SYNC_KEY, nowIso());
+      clearSyncError(MEDITATION_LAST_SYNC_ERROR_KEY);
+      setMeditationSyncStatus('synced');
+    } catch (e) {
+      recordSyncError(MEDITATION_LAST_SYNC_ERROR_KEY, repoErrorMessage('瞑想データ（kotoba-data/meditation/）', e));
+      setMeditationSyncStatus('error');
+    } finally { meditationSyncInFlight = false; md.busy = false; }
+  }
+
+  // sessions
+  function medFind(id) { return medData.sessions.find((x) => x.id === id) || null; }
+  function medSessionsOn(date) { return medSortSessions(medData.sessions.filter((x) => x.date === date)); }
+  function medSum(list) { return list.reduce((a, x) => a + x.min, 0); }
+  function medGenerateId(d) {
+    const p = (n) => String(n).padStart(2, '0');
+    const base = `m_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+    const taken = new Set([...medData.sessions.map((x) => x.id), ...medData.deletedIds.map((t) => t.id)]);
+    let id = base, n = 2;
+    while (taken.has(id)) id = base + '_' + (n++);
+    return id;
+  }
+  function medAddSession(o) {
+    const at = o.at instanceof Date ? o.at : new Date();
+    const iso = nowIso();
+    const x = { id: medGenerateId(at), at: medLocalIso(at), date: formatDateStr(at), min: Math.max(1, Math.round(o.min)), focus: o.focus == null ? null : o.focus, memo: o.memo || '', mode: o.mode || 'manual', noteId: null, createdAt: iso, updatedAt: iso };
+    if (o.plannedMin) x.plannedMin = o.plannedMin;
+    medData.sessions.push(x); medSortSessions(medData.sessions);
+    medData.deletedIds = medData.deletedIds.filter((t) => t.id !== x.id);
+    saveMeditation();
+    return x;
+  }
+  function medUpdateSession(id, patch) {
+    const x = medFind(id); if (!x) return null;
+    Object.assign(x, patch); x.updatedAt = nowIso();
+    medSortSessions(medData.sessions);
+    saveMeditation();
+    return x;
+  }
+  function medDeleteSession(id) {
+    const x = medFind(id); if (!x) return;
+    medData.sessions = medData.sessions.filter((s) => s.id !== id);
+    medData.deletedIds = medData.deletedIds.filter((t) => t.id !== id).concat([{ id, deletedAt: nowIso() }]);
+    saveMeditation();
+  }
+
+  // statistics (all from time / minutes / focus - no extra input)
+  function medStreak() {
+    const set = new Set(medData.sessions.map((x) => x.date));
+    const today = todayStr(), yesterday = addDays(today, -1);
+    const anchor = set.has(today) ? today : set.has(yesterday) ? yesterday : null;
+    if (!anchor) return { days: 0, includesToday: false };
+    let n = 0, cur = anchor;
+    while (set.has(cur)) { n++; cur = addDays(cur, -1); }
+    return { days: n, includesToday: anchor === today };
+  }
+  function medDays30() { const from = addDays(todayStr(), -29); return new Set(medData.sessions.filter((x) => x.date >= from).map((x) => x.date)).size; }
+  function medAvg(list, f) { const v = list.map(f).filter((n) => n != null && Number.isFinite(n)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; }
+  // where in the day the sittings cluster: circular mean of the clock time
+  // (so 23:30 and 00:30 average to midnight, not noon) and the spread around it
+  function medClock(list) {
+    const mins = list.map(medMinutesOfDay).filter((m) => m != null);
+    if (!mins.length) return null;
+    let sx = 0, sy = 0;
+    mins.forEach((m) => { const a = m / 1440 * 2 * Math.PI; sx += Math.cos(a); sy += Math.sin(a); });
+    const r = Math.sqrt(sx * sx + sy * sy) / mins.length;
+    let center = Math.atan2(sy, sx) / (2 * Math.PI) * 1440; if (center < 0) center += 1440;
+    const spread = r <= 1e-9 ? 720 : Math.min(720, Math.sqrt(-2 * Math.log(Math.min(1, r))) / (2 * Math.PI) * 1440);
+    return { center: Math.round(center) % 1440, spread: Math.round(spread) };
+  }
+  function medBandOf(x) { const m = medMinutesOfDay(x); if (m == null) return null; const h = m / 60; return h >= 5 && h < 11 ? '朝' : h >= 11 && h < 17 ? '昼' : '夜'; }
+  function medMonthRows() {
+    const by = new Map();
+    medData.sessions.forEach((x) => { const k = x.date.slice(0, 7); if (!by.has(k)) by.set(k, []); by.get(k).push(x); });
+    return [...by.keys()].sort().reverse().map((k) => { const l = by.get(k); const c = medClock(l); return { month: k, days: new Set(l.map((x) => x.date)).size, count: l.length, minutes: medSum(l), avgMin: medSum(l) / l.length, avgFocus: medAvg(l, (x) => x.focus), clock: c }; });
+  }
+  function medBandRows() {
+    const from = addDays(todayStr(), -89);
+    return ['朝', '昼', '夜'].map((b) => { const all = medData.sessions.filter((x) => medBandOf(x) === b), rec = all.filter((x) => x.date >= from); return { band: b, recentCount: rec.length, recentFocus: medAvg(rec, (x) => x.focus), allCount: all.length, allFocus: medAvg(all, (x) => x.focus) }; });
+  }
+  function medLenRows() {
+    const buckets = [['〜5分', (m) => m <= 5], ['6〜10分', (m) => m > 5 && m <= 10], ['11〜15分', (m) => m > 10 && m <= 15], ['16〜20分', (m) => m > 15 && m <= 20], ['21分〜', (m) => m > 20]];
+    return buckets.map(([label, f]) => { const l = medData.sessions.filter((x) => f(x.min)); return { label, count: l.length, avgFocus: medAvg(l, (x) => x.focus) }; }).filter((r) => r.count);
+  }
+  function medFmtClock(m) { return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); }
+  function medFmtHours(min) { return min >= 60 ? (min / 60).toFixed(1) + '時間' : min + '分'; }
+
+  // bell: the same partial-synthesis as the 試聴 page, rendered once into a
+  // WAV data URI and played through an <audio> element (unlike Web Audio,
+  // that keeps sounding when the iPhone's ring/silent switch is on silent)
+  const MED_BELLS = {
+    rin: { seconds: 9, partials: [[1, 1, 7.5], [1.0035, 0.6, 7.0], [2.71, 0.45, 4.5], [2.72, 0.25, 4.0], [5.05, 0.18, 2.6], [7.6, 0.07, 1.4]], strikes: [[0, 1046, 1]] },
+    chime: { seconds: 7, partials: [[0.5, 0.25, 3.0], [1, 1, 4.0], [2.76, 0.5, 2.6], [5.4, 0.22, 1.6], [8.93, 0.08, 0.9]], strikes: [[0, 1318, 0.85], [0.55, 1046, 0.9], [1.1, 784, 1]] },
+    bonsho: { seconds: 12, partials: [[0.5, 0.7, 11], [1, 1, 9], [1.19, 0.35, 5], [1.5, 0.5, 6], [2.0, 0.35, 3.5], [2.5, 0.2, 2.4], [3.0, 0.12, 1.6], [4.2, 0.06, 0.9]], strikes: [[0, 175, 1]] },
+  };
+  const medBellCache = {};
+  function medSynthBell(bell) {
+    const RATE = 22050, n = Math.floor(RATE * bell.seconds), out = new Float32Array(n);
+    bell.strikes.forEach(([t0, f0, lv]) => {
+      const start = Math.floor(t0 * RATE);
+      bell.partials.forEach(([ratio, level, decay]) => {
+        const f = f0 * ratio; if (f > RATE / 2 - 200) return;
+        const w = 2 * Math.PI * f / RATE, k = Math.log(1000) / (decay * RATE), attack = Math.floor(0.004 * RATE);
+        for (let i = start, j = 0; i < n; i++, j++) { const env = Math.exp(-k * j) * (j < attack ? j / attack : 1); if (env < 0.0005) break; out[i] += Math.sin(w * j) * level * lv * env; }
+      });
+      let lp = 0; const tl = Math.floor(0.012 * RATE);
+      for (let j = 0; j < tl && start + j < n; j++) { lp += ((Math.random() * 2 - 1) - lp) * 0.35; out[start + j] += lp * 0.5 * lv * (1 - j / tl); }
+    });
+    let peak = 0; for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(out[i]));
+    const g = peak > 0 ? 0.85 / peak : 1;
+    const buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+    const str = (o, t) => { for (let i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)); };
+    str(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); str(8, 'WAVE'); str(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, RATE, true); v.setUint32(28, RATE * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); str(36, 'data'); v.setUint32(40, n * 2, true);
+    for (let i = 0; i < n; i++) { const x = Math.max(-1, Math.min(1, out[i] * g)); v.setInt16(44 + i * 2, x < 0 ? x * 32768 : x * 32767, true); }
+    const bytes = new Uint8Array(buf); let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return 'data:audio/wav;base64,' + btoa(bin);
+  }
+  function medBellChoice() { const v = localStorage.getItem(MED_BELL_KEY); return (v && (v === 'none' || MED_BELLS[v])) ? v : MED_BELL_DEFAULT; }
+  function medBellUri(name) { if (!MED_BELLS[name]) return null; if (!medBellCache[name]) { try { medBellCache[name] = medSynthBell(MED_BELLS[name]); } catch (e) { recordFeatureError('鈴の音', e); return null; } } return medBellCache[name]; }
+  const medBellAudio = document.getElementById('medBellAudio');
+  function medBellPrepare() {   // inside a tap: load the chosen bell and let iOS unlock the element
+    const uri = medBellUri(medBellChoice()); if (!uri) return;
+    if (medBellAudio.getAttribute('src') !== uri) { medBellAudio.src = uri; medBellAudio.load(); }
+    const p = medBellAudio.play(); if (p && p.then) p.then(() => { medBellAudio.pause(); medBellAudio.currentTime = 0; }).catch(() => {});
+  }
+  function medBellRing() {
+    const choice = medBellChoice();
+    if (choice === 'none') { const ov = document.getElementById('screen-medTimer'); ov.classList.add('flash'); setTimeout(() => ov.classList.remove('flash'), 1500); return; }
+    const uri = medBellUri(choice); if (!uri) return;
+    if (medBellAudio.getAttribute('src') !== uri) { medBellAudio.src = uri; medBellAudio.load(); }
+    medBellAudio.currentTime = 0;
+    const p = medBellAudio.play(); if (p && p.catch) p.catch(() => {});
+  }
+
+  // timer / alarm (screen stays on via Wake Lock; if the app is suspended
+  // anyway, the start time on disk still gives the right minutes)
+  function medTimerState() { try { return JSON.parse(localStorage.getItem(MED_TIMER_KEY) || 'null'); } catch (e) { return null; } }
+  async function medWakeAcquire() {
+    try { if (navigator.wakeLock && !medWakeLock) { medWakeLock = await navigator.wakeLock.request('screen'); medWakeLock.addEventListener('release', () => { medWakeLock = null; }); } } catch (e) { medWakeLock = null; }
+  }
+  function medWakeRelease() { try { if (medWakeLock) { medWakeLock.release(); medWakeLock = null; } } catch (e) {} }
+  function medStartTimer(plannedMin) {
+    medBellPrepare();
+    const st = { startAt: Date.now(), plannedMin: plannedMin || null, mode: plannedMin ? 'alarm' : 'timer' };
+    localStorage.setItem(MED_TIMER_KEY, JSON.stringify(st));
+    medShowTimer(st);
+  }
+  function medShowTimer(st) {
+    medForm.stage = 'running'; medForm.startAt = st.startAt; medForm.plannedMin = st.plannedMin; medForm.mode = st.mode;
+    document.getElementById('screen-medTimer').hidden = false;
+    document.getElementById('medTimerSub').textContent = st.mode === 'alarm' ? `${st.plannedMin}分で鳴ります` : '終わったら「終了」';
+    medWakeAcquire();
+    medTimerPaint();
+    if (medTimerTick) clearInterval(medTimerTick);
+    medTimerTick = setInterval(medTimerPaint, 500);
+  }
+  function medTimerPaint() {
+    if (medForm.stage !== 'running') return;
+    const el = Math.max(0, Math.floor((Date.now() - medForm.startAt) / 1000));
+    let shown = el;
+    if (medForm.mode === 'alarm') { const rem = medForm.plannedMin * 60 - el; if (rem <= 0) { medTimerFinish(true); return; } shown = rem; }
+    document.getElementById('medTimerBig').textContent = String(Math.floor(shown / 60)).padStart(2, '0') + ':' + String(shown % 60).padStart(2, '0');
+  }
+  function medTimerFinish(rang) {
+    if (medTimerTick) { clearInterval(medTimerTick); medTimerTick = null; }
+    medWakeRelease();
+    localStorage.removeItem(MED_TIMER_KEY);
+    const elapsedMin = Math.max(1, Math.round((Date.now() - medForm.startAt) / 60000));
+    const min = (medForm.mode === 'alarm' && rang) ? medForm.plannedMin : elapsedMin;
+    const entry = { mode: medForm.mode, min, plannedMin: medForm.mode === 'alarm' ? medForm.plannedMin : null, at: new Date() };
+    const proceed = () => { document.getElementById('screen-medTimer').hidden = true; if (nav.screen !== 'meditation') openMeditation(); medOpenEntry(entry); };
+    if (rang) { medForm.stage = 'ending'; medBellRing(); document.getElementById('medTimerBig').textContent = '終わり'; document.getElementById('medTimerSub').textContent = ''; setTimeout(proceed, 1500); }
+    else proceed();
+  }
+  function medResumeTimer() {
+    const st = medTimerState(); if (!st || !st.startAt) return;
+    if (st.mode === 'alarm' && Date.now() - st.startAt >= st.plannedMin * 60000) {   // rang (or should have) while we were away
+      medForm.startAt = st.startAt; medForm.plannedMin = st.plannedMin; medForm.mode = 'alarm';
+      localStorage.removeItem(MED_TIMER_KEY);
+      if (nav.screen !== 'meditation') openMeditation();
+      medOpenEntry({ mode: 'alarm', min: st.plannedMin, plannedMin: st.plannedMin, at: new Date(st.startAt + st.plannedMin * 60000) });
+      return;
+    }
+    if (nav.screen !== 'meditation') openMeditation();
+    medShowTimer(st);
+  }
+  document.getElementById('btnMedTimerEnd').addEventListener('click', () => medTimerFinish(false));
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && medForm.stage === 'running') { medWakeAcquire(); medTimerPaint(); }
+    if (document.visibilityState === 'hidden') medMemoFlush();
+  });
+
+  // entry: after a timer (minutes known, one tap for focus), by hand
+  // (minutes then focus), or editing an old sitting
+  function medOpenEntry(o) {
+    medForm.stage = 'entry'; medForm.mode = o.mode; medForm.min = o.min || null; medForm.plannedMin = o.plannedMin || null; medForm.focus = null; medForm.editId = null; medForm.endAt = o.at || new Date();
+    renderMeditation();
+  }
+  function medBeginEdit(id) {
+    const x = medFind(id); if (!x) return;
+    medMemoFlush();
+    medStatsShown = false;
+    medForm.stage = 'edit'; medForm.editId = id; medForm.mode = x.mode; medForm.min = x.min; medForm.focus = x.focus; medForm.plannedMin = x.plannedMin || null; medForm.endAt = null;
+    renderMeditation();
+    document.getElementById('medTimeInput').value = medHm(x);
+    document.getElementById('medEditMemo').value = x.memo || '';
+    if (!MED_MIN_PRESETS.includes(x.min)) document.getElementById('medMinOther').value = String(x.min);
+  }
+  function medEntryTime() {   // Date from the time field on the entry's date (today, or the edited sitting's day)
+    const v = document.getElementById('medTimeInput').value;
+    const base = medForm.editId ? medFind(medForm.editId).date : todayStr();
+    const d = parseDateStr(base);
+    if (/^\d{2}:\d{2}/.test(v)) { d.setHours(Number(v.slice(0, 2)), Number(v.slice(3, 5)), medForm.editId ? Number((medFind(medForm.editId).at.slice(17, 19)) || 0) : 0, 0); }
+    else if (medForm.endAt) return medForm.endAt;
+    return d;
+  }
+  function medCommit() {
+    if (medForm.min == null || medForm.focus == null) return;
+    clearInputDraft();
+    if (medForm.stage === 'edit') {
+      const x = medFind(medForm.editId); if (!x) { medForm.stage = 'idle'; renderMeditation(); return; }
+      const d = medEntryTime();
+      medUpdateSession(x.id, { at: medLocalIso(d), date: formatDateStr(d), min: medForm.min, focus: medForm.focus, memo: document.getElementById('medEditMemo').value });
+      medForm.stage = 'idle'; medForm.editId = null; renderMeditation();
+      return;
+    }
+    const at = medForm.mode === 'manual' ? medEntryTime() : (medForm.endAt || new Date());
+    const x = medAddSession({ at, min: medForm.min, focus: medForm.focus, mode: medForm.mode, plannedMin: medForm.plannedMin });
+    medForm.stage = 'done'; medForm.savedId = x.id;
+    document.getElementById('medMemoInput').value = ''; document.getElementById('medMemoStatus').textContent = '';
+    renderMeditation();
+  }
+  function medMemoFlush() {
+    if (medMemoTimer) { clearTimeout(medMemoTimer); medMemoTimer = null; medMemoPersist(); }
+  }
+  function medMemoPersist() {
+    if (medForm.stage !== 'done' || !medForm.savedId) return;
+    const x = medFind(medForm.savedId); if (!x) return;
+    const v = document.getElementById('medMemoInput').value;
+    if (v === (x.memo || '')) return;
+    medUpdateSession(x.id, { memo: v });
+    const t = new Date();
+    document.getElementById('medMemoStatus').textContent = '自動保存 ' + String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0');
+    medRenderToday();
+  }
+  function openMeditation() {
+    medStatsShown = false;
+    showScreen('meditation');
+    if (medForm.stage === 'done' && !medFind(medForm.savedId)) medForm.stage = 'idle';
+    renderMeditation();
+  }
+  function medShowStats(on) { medStatsShown = on; renderMeditation(); }
+  function renderMeditation() {
+    document.getElementById('medMain').hidden = medStatsShown;
+    document.getElementById('medStatsView').hidden = !medStatsShown;
+    document.getElementById('btnMedStats').textContent = medStatsShown ? '記録' : '推移';
+    if (medStatsShown) { renderMedStats(); return; }
+    const st = medForm.stage;
+    document.querySelectorAll('.medBellBtn').forEach((b) => b.classList.toggle('selected', b.dataset.bell === medBellChoice()));
+    document.getElementById('medStartField').hidden = st !== 'idle';
+    document.getElementById('medEntryStage').hidden = !(st === 'entry' || st === 'edit');
+    document.getElementById('medDoneStage').hidden = st !== 'done';
+    if (st === 'entry' || st === 'edit') {
+      const fixed = st === 'entry' && medForm.mode !== 'manual';
+      document.getElementById('medEntryTitle').textContent = st === 'edit' ? '記録を直す' : fixed ? `${medForm.min}分 座りました` : '後から入れる';
+      document.getElementById('medTimeRow').hidden = fixed;
+      if (!fixed && !document.getElementById('medTimeInput').value) { const d = medForm.endAt || new Date(); document.getElementById('medTimeInput').value = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
+      document.getElementById('medMinField').hidden = fixed;
+      document.querySelectorAll('.medMinBtn').forEach((b) => { const v = b.dataset.min; b.classList.toggle('selected', v === 'other' ? (medForm.min != null && !MED_MIN_PRESETS.includes(medForm.min)) : Number(v) === medForm.min); });
+      document.getElementById('medMinOther').hidden = !(medForm.min != null && !MED_MIN_PRESETS.includes(medForm.min)) && !medForm.otherOpen;
+      const row = document.getElementById('medFocusRow');
+      if (!row.children.length) for (let i = 1; i <= 10; i++) { const b = document.createElement('button'); b.type = 'button'; b.className = 'tagFilterBtn'; b.textContent = String(i); b.dataset.focus = String(i); b.addEventListener('click', () => { if (medForm.stage !== 'entry' && medForm.stage !== 'edit') return; if (medForm.min == null) { document.getElementById('medEntryTitle').textContent = '先に分数を選んでください'; return; } medForm.focus = i; if (medForm.stage === 'edit') renderMeditation(); else medCommit(); }); row.appendChild(b); }
+      row.querySelectorAll('button').forEach((b) => { b.classList.toggle('selected', Number(b.dataset.focus) === medForm.focus); b.style.opacity = medForm.min == null ? '0.45' : ''; });
+      document.getElementById('medEditActions').hidden = st !== 'edit';
+      document.getElementById('medEditMemoField').hidden = st !== 'edit';
+    }
+    if (st === 'done') {
+      const x = medFind(medForm.savedId);
+      if (x) document.getElementById('medDoneText').textContent = `記録しました　${medHm(x)} ・ ${x.min}分 ・ 集中 ${x.focus}`;
+    }
+    medRenderToday();
+  }
+  function medModeMark(x) { return x.mode === 'timer' ? '計' : x.mode === 'alarm' ? '鳴' : ''; }
+  function medSessionRow(x, opts) {
+    const row = document.createElement('div'); row.className = 'medSession';
+    const top = document.createElement('div'); top.className = 'medSessionTop';
+    const t = document.createElement('span'); t.className = 'medTime'; t.textContent = medHm(x); top.appendChild(t);
+    const m = document.createElement('span'); m.textContent = `${x.min}分`; top.appendChild(m);
+    const f = document.createElement('span'); f.className = 'medDim'; f.textContent = x.focus != null ? `集中 ${x.focus}` : '集中 -'; top.appendChild(f);
+    const mk = medModeMark(x); if (mk) { const k = document.createElement('span'); k.className = 'medDim'; k.textContent = mk; top.appendChild(k); }
+    row.appendChild(top);
+    if (x.memo && x.memo.trim()) { const memo = document.createElement('div'); memo.className = 'medMemo'; memo.textContent = x.memo.trim(); row.appendChild(memo); }
+    const acts = document.createElement('div'); acts.className = 'medActions';
+    if (x.noteId && findNote(x.noteId)) { const b = document.createElement('button'); b.type = 'button'; b.className = 'linkLikeBtn'; b.textContent = '言葉を見る'; b.addEventListener('click', () => openDetail(x.noteId, 'records')); acts.appendChild(b); }
+    else if (x.memo && x.memo.trim()) { const b = document.createElement('button'); b.type = 'button'; b.className = 'linkLikeBtn'; b.textContent = '言葉にする'; b.addEventListener('click', () => openEditorFromMeditation(x.id)); acts.appendChild(b); }
+    const e = document.createElement('button'); e.type = 'button'; e.className = 'linkLikeBtn'; e.textContent = '編集'; e.addEventListener('click', () => { if (nav.screen !== 'meditation') openMeditation(); medBeginEdit(x.id); }); acts.appendChild(e);
+    row.appendChild(acts);
+    return row;
+  }
+  function medRenderToday() {
+    const today = todayStr();
+    const list = medSessionsOn(today);
+    const wrap = document.getElementById('medTodayList'); wrap.innerHTML = '';
+    list.forEach((x) => wrap.appendChild(medSessionRow(x)));
+    document.getElementById('medTodayEmpty').hidden = list.length > 0;
+    document.getElementById('medTodayLabel').textContent = list.length ? `今日　${list.length}回 ${medSum(list)}分` : '今日';
+    const all = medData.sessions;
+    const streak = medStreak();
+    document.getElementById('medTotals').textContent = all.length ? `累計 ${all.length}回 ${medSum(all)}分（${medFmtHours(medSum(all))}）　連続 ${streak.days}日${streak.days && !streak.includesToday ? '（昨日まで）' : ''}` : '';
+  }
+  function medTable(tableId, head, rows) {
+    const t = document.getElementById(tableId); t.innerHTML = '';
+    const tr = document.createElement('tr'); head.forEach((h) => { const th = document.createElement('th'); th.textContent = h; tr.appendChild(th); }); t.appendChild(tr);
+    rows.forEach((r) => { const tr2 = document.createElement('tr'); r.forEach((c) => { const td = document.createElement('td'); td.textContent = c; tr2.appendChild(td); }); t.appendChild(tr2); });
+    if (!rows.length) { const tr3 = document.createElement('tr'); const td = document.createElement('td'); td.colSpan = head.length; td.textContent = 'まだ記録がありません'; td.style.textAlign = 'left'; tr3.appendChild(td); t.appendChild(tr3); }
+  }
+  function renderMedStats() {
+    const streak = medStreak();
+    document.getElementById('medStatStreak').textContent = `${streak.days}日${streak.days && !streak.includesToday ? '（昨日まで）' : ''}`;
+    document.getElementById('medStatDays30').textContent = `${medDays30()}日 / 30日`;
+    const all = medData.sessions;
+    document.getElementById('medStatTotal').textContent = all.length ? `${all.length}回 ${medSum(all)}分（${medFmtHours(medSum(all))}）` : '0回';
+    const f1 = (v) => v == null ? '-' : v.toFixed(1);
+    medTable('medMonthTable', ['月', '日数', '回', '分', '平均分', '集中', '時刻'], medMonthRows().map((r) => [r.month.slice(0, 4) + '/' + r.month.slice(5), String(r.days), String(r.count), String(r.minutes), f1(r.avgMin), f1(r.avgFocus), r.clock ? `${medFmtClock(r.clock.center)} ±${r.clock.spread}分` : '-']));
+    medTable('medBandTable', ['時間帯', '直近90日 回', '集中', '全期間 回', '集中'], medBandRows().map((r) => [r.band, String(r.recentCount), f1(r.recentFocus), String(r.allCount), f1(r.allFocus)]));
+    medTable('medLenTable', ['分数', '回', '集中'], medLenRows().map((r) => [r.label, String(r.count), f1(r.avgFocus)]));
+  }
+  function renderDayMeditationCard(dateStr) {
+    const list = medSessionsOn(dateStr);
+    const item = document.createElement('div'); item.className = 'recordEntry';
+    const top = document.createElement('div'); top.className = 'recordEntryTop';
+    const label = document.createElement('span'); label.className = 'recordEntryDate'; label.textContent = `瞑想 ・ ${list.length}回 ${medSum(list)}分`; top.appendChild(label);
+    item.appendChild(top);
+    list.forEach((x) => item.appendChild(medSessionRow(x)));
+    return item;
+  }
+  function openEditorFromMeditation(id) {
+    const x = medFind(id); if (!x) return;
+    medMemoFlush();
+    medNoteFor = id;
+    openEditor('new', null, 'meditation');
+    editTextEl.value = (x.memo || '').trim();
+    editSourceEl.value = '瞑想';
+    editorState.kind = 'self';
+    editorState.tags = ['瞑想'];
+    renderEditKindRow(); renderTagChips(); renderSourceCandidates(); updateSaveButtonState();
+  }
+
+  // wiring
+  document.getElementById('backFromMeditation').addEventListener('click', () => { medMemoFlush(); if (medStatsShown) { medShowStats(false); return; } openRecords(); });
+  document.getElementById('btnMedStats').addEventListener('click', () => { medMemoFlush(); medShowStats(!medStatsShown); });
+  document.getElementById('btnMedTimerStart').addEventListener('click', () => medStartTimer(null));
+  document.querySelectorAll('.medAlarmBtn').forEach((b) => b.addEventListener('click', () => medStartTimer(Number(b.dataset.min))));
+  document.getElementById('btnMedManual').addEventListener('click', () => { document.getElementById('medTimeInput').value = ''; medOpenEntry({ mode: 'manual', min: null, at: new Date() }); });
+  document.querySelectorAll('.medBellBtn').forEach((b) => b.addEventListener('click', () => { localStorage.setItem(MED_BELL_KEY, b.dataset.bell); renderMeditation(); }));
+  document.getElementById('btnMedBellTry').addEventListener('click', () => medBellRing());
+  document.querySelectorAll('.medMinBtn').forEach((b) => b.addEventListener('click', () => {
+    if (medForm.stage !== 'entry' && medForm.stage !== 'edit') return;
+    if (b.dataset.min === 'other') { medForm.otherOpen = true; medForm.min = null; renderMeditation(); document.getElementById('medMinOther').hidden = false; document.getElementById('medMinOther').focus(); return; }
+    medForm.otherOpen = false; medForm.min = Number(b.dataset.min); document.getElementById('medMinOther').value = ''; renderMeditation();
+  }));
+  document.getElementById('medMinOther').addEventListener('input', (e) => { const n = Math.round(Number(e.target.value)); medForm.min = (Number.isFinite(n) && n > 0) ? n : null; document.querySelectorAll('.medMinBtn').forEach((b) => b.classList.toggle('selected', b.dataset.min === 'other' && medForm.min != null)); document.querySelectorAll('#medFocusRow button').forEach((x) => { x.style.opacity = medForm.min == null ? '0.45' : ''; }); });
+  document.getElementById('btnMedEditSave').addEventListener('click', () => { if (medForm.min == null) { document.getElementById('medEntryTitle').textContent = '分数を選んでください'; return; } if (medForm.focus == null) { document.getElementById('medEntryTitle').textContent = '集中の点数を選んでください'; return; } medCommit(); });
+  document.getElementById('btnMedEditCancel').addEventListener('click', () => { clearInputDraft(); medForm.stage = 'idle'; medForm.editId = null; renderMeditation(); });
+  document.getElementById('btnMedEditDelete').addEventListener('click', () => { const x = medFind(medForm.editId); if (!x) return; if (!confirm(`${dotDate(x.date)} ${medHm(x)} の瞑想の記録を消します。よろしいですか？`)) return; clearInputDraft(); medDeleteSession(x.id); medForm.stage = 'idle'; medForm.editId = null; renderMeditation(); });
+  document.getElementById('btnMedUndo').addEventListener('click', () => { medMemoFlush(); if (medForm.savedId) medDeleteSession(medForm.savedId); medForm.stage = 'idle'; medForm.savedId = null; document.getElementById('medMemoInput').value = ''; document.getElementById('medMemoStatus').textContent = ''; renderMeditation(); });
+  document.getElementById('btnMedDoneClose').addEventListener('click', () => { medMemoFlush(); medForm.stage = 'idle'; medForm.savedId = null; document.getElementById('medMemoInput').value = ''; document.getElementById('medMemoStatus').textContent = ''; renderMeditation(); });
+  document.getElementById('medMemoInput').addEventListener('input', () => { if (medMemoTimer) clearTimeout(medMemoTimer); medMemoTimer = setTimeout(() => { medMemoTimer = null; medMemoPersist(); }, 400); });
+  window.addEventListener('pagehide', () => medMemoFlush());
+
+
   const INPUT_DRAFT_KEY = 'kotoba_inputDraft';
   const INPUT_DRAFT_MAX_AGE_MS = 48 * 3600 * 1000;
-  const INPUT_DRAFT_SKIP = new Set(['trDate', 'trWeight', 'listSearch', 'walkShareTextInput']);   // own persistence / not worth restoring
+  const INPUT_DRAFT_SKIP = new Set(['trDate', 'trWeight', 'listSearch', 'walkShareTextInput', 'medMemoInput']); // medMemoInput autosaves itself   // own persistence / not worth restoring
   let inputDraftTimer = null, inputDraftRestoring = false;
   function readInputDraft() { try { const raw = localStorage.getItem(INPUT_DRAFT_KEY); const d = raw ? JSON.parse(raw) : null; return (d && d.fields && d.ctx) ? d : null; } catch (e) { return null; } }
   function inputDraftContext() {
@@ -10756,6 +11463,7 @@
     if (nav.screen === 'draftreview') ctx.draftId = draftQueue[draftQueueIndex] || null;
     if (nav.screen === 'detail') ctx.detailId = nav.detailId;
     if (nav.screen === 'records') ctx.editingDate = editingDate;
+    if (nav.screen === 'meditation') ctx.medEditId = medForm.editId || null;
     return ctx;
   }
   function inputDraftMatches(d) {
@@ -10765,6 +11473,7 @@
     if (c.screen === 'draftreview') return (c.draftId || null) === (draftQueue[draftQueueIndex] || null);
     if (c.screen === 'detail') return c.detailId === nav.detailId;
     if (c.screen === 'records') return (c.editingDate || null) === (editingDate || null);
+    if (c.screen === 'meditation') return (c.medEditId || null) === (medForm.editId || null);
     return true;
   }
   function captureInputDraftNow() {
@@ -10819,6 +11528,7 @@
       else if (c.screen === 'detail') { if (!findNote(c.detailId)) { clearInputDraft(); return; } openDetail(c.detailId, 'list'); }
       else if (c.screen === 'draftreview') { openDraftReview(); const i = draftQueue.indexOf(c.draftId); if (i >= 0) { draftQueueIndex = i; renderDraftCard(); } }
       else if (c.screen === 'records') { openRecords(); if (c.editingDate) openDayEditor(c.editingDate); }
+      else if (c.screen === 'meditation') { openMeditation(); if (c.medEditId && medFind(c.medEditId)) medBeginEdit(c.medEditId); }
       else if (c.screen === 'settings') openSettings();
       else if (c.screen === 'list') openList();
       else goHome();
@@ -10836,8 +11546,10 @@
   // --- boot ---------------------------------------------------------------
   notesBoot();
   journalBoot();
+  meditationBoot();
   goHome();
   restoreInputDraft();
+  medResumeTimer();
   syncAllNow();
   if (document.fonts && document.fonts.ready) {
     // walk canvas uses DotGothic16; re-render once it's actually loaded so

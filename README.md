@@ -33,6 +33,8 @@
 | 下のタブバーがスクロール中に浮く | — | v7.3 で修正済み。まだ出るなら上の「画面が古いまま」を試す。 |
 | 入力途中の文章が、他のアプリに切り替えて戻ると消えている | — | v7.5 で対応。入力中の内容は 0.3 秒ごと・画面を離れるとき・バックグラウンドになるときに端末に退避し、次に開いたときにその画面と内容を復元する（48 時間以内）。保存・送信・「戻る」で消える。localStorage の `kotoba_inputDraft`。 |
 | 筋トレの入力途中で消えた | 設定 →「最終同期エラー」 | v4.1 から自動保存。エラーが無ければ同期で戻っている。 |
+| 瞑想のタイマーが鳴らない | — | ホーム画面のアプリは画面が消えると止まる。計測中は画面を消さない（v8.0 は Wake Lock で消えないようにする）。iOS 純正のタイマーを使い「後から入れる」で記録してもよい。鳴らなくても開始時刻は端末に残るので、戻ると分数は正しく出る。 |
+| 瞑想の記録が減った・消えたように見える | 設定 →「瞑想の保存方式」 | 「年ファイル（N 年分）」の N が 0 なら索引が取れていない → 「今すぐ同期」。 |
 | 読書メモの「分解する」が失敗 | 一括入力の画面の文言、設定 →「最終エラー」 | v7.4.1 から理由が出る。「API エラー 429」= 混雑、少し待つ。「API エラー 401」= API キー。「時間切れ」= 文章を短く分ける（120 秒で打ち切り）。「応答を JSON として読めません」= もう一度（応答の先頭が文言に出る）。「途中で切れました」= 文章を分ける。 |
 
 ---
@@ -127,6 +129,7 @@ iPhone: 設定 → Safari → 詳細 → Web サイトデータ → yutatasaki.g
 | ゴミ箱・下書き・API使用量・方式フラグ | `data`（予備 `dataBackup`） | `kotoba-data` の `data.json` | |
 | 記録（朝・相談・引く・問い） | `journal:YYYY-MM`（月ごと）、索引 `journalIndex`、未同期の月 `journalDirty` | `kotoba-data` の `journal/YYYY-MM.json` と `journal/index.json` | 月ファイル方式のとき。旧方式では `data.json` の `journal` |
 | 筋トレ | `training` | `kotoba-data` の `training.json` | |
+| 瞑想 | `meditation:YYYY`（年ごと。全年を端末に持つ）、未同期の年 `meditationDirty`、最後に見た索引 `meditationStamps` | `kotoba-data` の `meditation/YYYY.json` と `meditation/index.json` | v8.0。最初から年ファイル |
 | 散歩 | `walk`（予備 `walkBackup`） | `walk10000-data` の `data.json` | walk10000 と同じ形 |
 | 設定（トークン・APIキー・モデル名・各種フラグ） | localStorage `kotoba_*` | 置かない | 端末ごと |
 
@@ -175,6 +178,17 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
   deletedDayIds: [], exercises: { 部位: [{ name, lastUsedAt }] }, muscleMap: { 種目名: { p: [筋肉id], s: [筋肉id], at, by } } }
 ```
 
+**瞑想 `meditation/YYYY.json`**（1 回の瞑想が 1 件。年 = `date` の年、削除の墓標は id の年）
+```
+{ version: 1, year: 'YYYY', updatedAt,
+  sessions: [{ id: 'm_YYYYMMDD_HHMMSS', at: '2026-09-09T21:30:12+09:00'（端末の時刻。時刻帯の集計はこの文字列の時刻で見る）, date: 'YYYY-MM-DD',
+               min: 分数, focus: 1〜10 の集中, memo: '', mode: 'timer'|'alarm'|'manual', plannedMin?（アラームの予定分数）,
+               noteId?: 言葉にしたときのノートid, createdAt, updatedAt }],
+  deletedIds: [{id, deletedAt}] }
+```
+**索引 `meditation/index.json`**: `{ version: 1, updatedAt, years: { 'YYYY': { updatedAt, count } } }`
+1 年 ≈ 550 件・100 KB。27 年分でも端末メモリ 3 MB 程度。連続日数・直近 30 日・月ごとの推移（平均分数・平均集中・中心の時刻±ばらつき）・時間帯・分数ごとの集中は、すべてこの `at / min / focus` から画面で計算する（`medStreak`, `medMonthRows`, `medClock`, `medBandRows`, `medLenRows`）。
+
 ### 3.2 同期のしくみ
 
 - 何かを変えると 0.8 秒後に同期。起動時・画面に戻ったとき・オンラインに戻ったときも同期。
@@ -184,6 +198,7 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
 - **記録（月ファイル）**: `journal/index.json` を読む → 今月・先月・端末で変えた月・他端末が変えた月を読む → `mergeJournalSets` → 書く → 索引を書く。端末のメモリには今月・先月と、記録タブや詳細で開いた月だけを載せる。
 - **data.json**: ゴミ箱・下書き・使用量・方式フラグ。`mergeData`。
 - **筋トレ**: 日ごとに `updatedAt` 新しい方＋墓標。種目カタログと筋肉対応は和集合。
+- **瞑想（年ファイル）**: 言葉の月ファイルと同じ作り。`meditation/index.json` を読む → 端末で変えた年・他端末が変えた年・端末に無い年を読む → `mergeMedSets`（1 回ごとに `updatedAt` の新しい方＋墓標）→ 変わっていれば書く → 索引を書く。
 - **散歩**: walk10000 と同じ「歩いた日数が多い方が勝つ」（ファイル単位）。
 - 同期バーの文言は `renderSyncBar`。エラーは localStorage の `kotoba_lastSyncError` などに残り、設定の「最終同期エラー」に出る。
 
@@ -222,6 +237,7 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
 | 筋肉一覧 | `MUSCLE_CATALOG`（`assets/muscles.json` と同じ） |
 | 網の見た目 | `GRAPH_FIT_FLOOR`, `graphPathsFrom` |
 | 画面のスクロール構造 | `#shell`（v7.3。この箱がスクロールし、ページ自体は動かない） |
+| 瞑想 | `MEDITATION_INDEX_PATH`, `MED_MIN_PRESETS`（5/10/15/20）, `MED_BELLS`（鈴の倍音。試聴ページと同じ計算）, `MED_BELL_DEFAULT`, `MED_BELL_KEY`（選んだ音）, `MED_TIMER_KEY`（計測中の開始時刻）。時間帯の区切りは `medBandOf`（朝 5〜11 / 昼 11〜17 / 夜） |
 | 入力の退避（未保存の下書き） | `INPUT_DRAFT_KEY`, `captureInputDraftNow`, `restoreInputDraft`（対象外にしたい欄は `INPUT_DRAFT_SKIP`） |
 
 ### 4.2 直して反映するまで
@@ -257,4 +273,5 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
 | 言葉が 3 万枚（27 年）を超える | 1 日 3 枚のペースで 27 年 | ファイル分割は月ごとなので問題なし（324 ファイル・約 105 MB）。壁は端末側：起動時に全件を読むので iPhone で 3〜5 秒、メモリ 150〜250 MB。10 万枚（1 日 10 枚）だと起動 10 秒超 | そのときは「古い月を起動時に読まない」改修（`notesBoot` で読む月を絞り、記録タブや詳細で必要になったら読む。記録の月ファイルと同じ作り） |
 | 候補の言葉の上限（既定 200 枚） | 2027 年初め | 200 枚を超えると相談・自動関連づけは「入力に近い言葉」だけを渡す。1 回あたりのトークンが全件キャッシュ時の約 3 倍（Sonnet で $0.03/相談） | そのまま使える。物足りなければ `selectCandidateNotes` のスコア（2-gram 重なり・タグ・種類・★の重み・新しさ）を調整 |
 | API の月上限（既定 $2） | 読書メモを使い始めたら | 読書メモ 1 回 ≈ $0.01〜0.015。1 日 10 回で **月 $4〜5** | 設定 → Claude API → 月の上限を $10 程度に上げる |
+| 瞑想の記録が 27 年分（約 1.5 万件） | 2053 年 | 年ファイルなので 1 ファイル 100 KB 前後のまま。端末メモリ 3 MB 程度 | 何もしなくてよい |
 | トークンの期限（最長 1 年） | 作った日から 1 年 | 同期が 401 で止まる | 2.1 で作り直す |
