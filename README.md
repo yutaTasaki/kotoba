@@ -35,7 +35,7 @@
 | 筋トレの入力途中で消えた | 設定 →「最終同期エラー」 | v4.1 から自動保存。エラーが無ければ同期で戻っている。 |
 | 「1年前」「どこかの日」で記録のある日が開かない | 記録タブの月ラベル「（読み込み中）」 | 端末に無い月の記録（朝・相談・引く・問い）は開いた時に 1 ファイル読む。圏外なら散歩・筋トレ・瞑想・言葉だけ出る。「一番近い日」の探索は端末が知っている日（散歩・筋トレ・瞑想・言葉の作成日・読み込み済みの月）だけを見る。 |
 | 撮るのデッキが他の端末に出てこない | 撮る画面の「最終同期」 | 作った側は 0.8 秒後に自動で送る。受け取る側は起動・タブに戻る・オンライン復帰のときだけ取りに行くので、**開きっぱなしのタブは自分から取りに行かない**。撮る画面の「取り込む」を押す。同じデッキを 2 台で同時に編集すると、後に保存した側が丸ごと勝つ（カード単位では混ざらない）。 |
-| 撮るのカード生成が失敗する | 撮る画面のカードの下の文言 | 「時間切れ」= 3 分。もう一度。「JSON として読めません」= もう一度（最後の応答は localStorage の `kotoba_lastCardsReply` に残る）。「API エラー 400」= 設定の「撮るのカードのモデル」が web 検索に対応していない可能性（空欄に戻すと相談と同じモデルになる）。組織の設定で web 検索が無効だと 400 になる。 |
+| 撮るで貼った JSON が取り込めない | 撮る画面の貼り付け欄の下の文言 | 「JSON として読めませんでした」= チャットの返事に説明文が混じっている。JSON の部分（`{` から `}`）だけを貼る。コードブロックの ``` は付いたままでよい。URL が消えた場合は http/https でなかったため（意図した動き）。 |
 | 瞑想のタイマーが鳴らない | — | ホーム画面のアプリは画面が消えると止まる。計測中は画面を消さない（v8.0 は Wake Lock で消えないようにする）。iOS 純正のタイマーを使い「後から入れる」で記録してもよい。鳴らなくても開始時刻は端末に残るので、戻ると分数は正しく出る。 |
 | 瞑想の記録が減った・消えたように見える | 設定 →「瞑想の保存方式」 | 「年ファイル（N 年分）」の N が 0 なら索引が取れていない → 「今すぐ同期」。 |
 | 読書メモの「分解する」が失敗 | 一括入力の画面の文言、設定 →「最終エラー」 | v7.4.1 から理由が出る。「API エラー 429」= 混雑、少し待つ。「API エラー 401」= API キー。「時間切れ」= 文章を短く分ける（120 秒で打ち切り）。「応答を JSON として読めません」= もう一度（応答の先頭が文言に出る）。「途中で切れました」= 文章を分ける。 |
@@ -179,7 +179,8 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
   text: 仮の答え（1文。空のあいだはカードを足せない）, title: 動画のタイトル（任意）,
   questionId: 元の問いの記録 id（手書きなら ''）, questionText: 問いの写し, from: [材料の言葉 id],
   cards: [{ id: 'c1', kind: 'research'|'fun'|'word'|'record',
-            slot: 1〜7（話の型の枠）, stance: 'support'|'break'|''（事実が仮の答えを支持するか壊すか）, gen: 1（AI が作ったカード。引き直しはこれだけを不採用にする）,
+            slot: 1〜7（話の型の枠）, stance: 'support'|'break'|''（事実が仮の答えを支持するか壊すか）, gen: 1（貼り込んだカード。引き直しはこれだけを不採用にする）,
+            flow: 直前のカードとの関係（展開の取り込み。撮影表示に小さく出る）,
             fact: 事実の1行, source: 誰がどこで, url, breaks: 仮の答えの何を壊すか,
             tag?: '伝承'|'噂'（わくわくのみ）, belief?: 'yes'|'half'|'fun'（自分が信じているか）,
             noteId?（言葉カード）, order, dropped }],
@@ -231,8 +232,9 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
 
 - API キーは端末の localStorage にだけ置く（`kotoba_claudeApiKey`）。data.json には入れない。
 - 機能ごとに呼び分け: 朝の言葉・相談（`callChatApi`）、自動関連づけ（`callClaudeApi`、Haiku）、一括入力（`callBulkDecomposeApi`）、問い（`callQuestionApi`：v8.4 から2回呼ぶ。1回目は材料から「種と場面」、2回目は場面と a/b だけから問い `callQuestionAskApi`。材料は2回目に渡さない）、筋肉対応（`generateMuscleMaps`）、読書メモ（`callReadingDecomposeApi`）。
-- 撮るのカード生成は web 検索つき（`web_search_20260318`）。検索は 1 回 $0.01 が**トークンとは別に**かかり、設定の「API使用量」では「撮るのカード」の行に検索回数として出る。1 本あたり検索 6 回で $0.06 前後＋トークン。撮るを使う月は上限を $10 程度にしておく。
-- 撮るの「答えを壊す」は検索なし。前提の分解と、カードとの衝突の指摘だけを返させる。答えは絶対に書かせない（書かせた瞬間に台本になる）。
+- **撮るはアプリから AI を呼ばない**（v9.0）。カード・答えを壊す・展開・入りの候補は、撮る画面で「プロンプトをコピー」→ Claude のチャットに貼る → 返ってきた JSON をアプリに貼り戻す、という形。1 本の生成に 3 分かかって時間切れになり課金だけ残ったのが理由。週 2 回しか使わないので、チャットの方が確実で安い。
+- 貼り戻しの検査はアプリ側にある。JSON として読めなければ入れない。URL は http/https 以外を空にする。枠は `stance`（support / break）から決め、モデルには枠を決めさせない。
+- 検索料の算入（`WEB_SEARCH_USD`）はそのまま残してある。撮るからは呼ばなくなったが、他の機能が web 検索を使い始めたときに月上限へ乗る。
 - 読書メモは「口述」と「本文の書き写し」のどちらでも受ける。書き写しなら AI が引く価値のある箇所を 1〜3 か所（各 200 字まで）選び、残りを周辺のメモにする。応答はコードフェンスや文字列内の改行があっても読めるように直してから JSON 解析する（`parseReadingReply`）。
 - 相談・関連づけに渡す言葉: 言葉が上限（既定 200 枚、設定で変更）以下なら全件を渡してキャッシュ。超えたら「入力に近い言葉」を端末で選んで渡す（`selectCandidateNotes`）。
 - 使用量は機能別に月ごと集計し、設定の月上限（USD）を超えると自動関連づけと朝の言葉が止まる。
@@ -267,9 +269,9 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
 | 網の見た目 | `GRAPH_FIT_FLOOR`, `graphPathsFrom` |
 | 画面のスクロール構造 | `#shell`（v7.3。この箱がスクロールし、ページ自体は動かない） |
 | 瞑想 | `MEDITATION_INDEX_PATH`, `MED_MIN_PRESETS`（5/10/15/20）, `MED_BELLS`（鈴の倍音。試聴ページと同じ計算）, `MED_BELL_DEFAULT`, `MED_BELL_KEY`（選んだ音）, `MED_TIMER_KEY`（計測中の開始時刻）, `MED_ALARM_CUSTOM_KEY`（任意分数の前回値）。時間帯の区切りは `medBandOf`（朝 5〜11 / 昼 11〜17 / 夜） |
-| 撮るのカード生成（web 検索つき） | `buildCardsSystemBlocks`（固定プロンプト。研究・わくわくの条件と禁止事項）, `callCardsApi`（`web_search_20260318`、`max_uses` 初回6・引き直し4、`pause_turn` は最大4周、3 分で時間切れ）, `CLAUDE_MODEL_CARDS_KEY`（設定「撮るのカードのモデル」）, `LAST_CARDS_REPLY_KEY`（最後の応答。うまくいかないときに中身を見る） |
+| 撮るのプロンプトと取り込み（v9.0。アプリは AI を呼ばない） | `shootCardsPromptText` / `shootBreakPromptText` / `shootFlowPromptText` / `shootHookPromptText`（チャットに貼る完成形）, `shootImportCards` / `shootImportBreak` / `shootImportFlow` / `shootImportHooks`（貼り戻した JSON の取り込み）, `shootParseJson`, `cardsFromItems`（枠は `stance` から決め、URL は `shootSafeUrl` を通す） |
 | 検索料 | `WEB_SEARCH_USD`（1 回 $0.01）。`recordApiUsage` が `usage.server_tool_use.web_search_requests` を `searches` として貯め、`estimateCostUsd` が金額に足す。**これが無いと月上限に検索料が乗らない** |
-| 撮るの「答えを壊す」 | `buildBreakSystemBlocks`（前提の分解と衝突の指摘だけ。答えは書かせない）, `callBreakApi`（検索なし、壊れたら 1 回だけ再試行）, `SHOOT_HISTORY_GAP_MS`（仮の答えの履歴をまとめる間隔） |
+| 撮るの答えの履歴 | `SHOOT_HISTORY_GAP_MS`（仮の答えの履歴をまとめる間隔） |
 | 撮る（話の型の枠） | `TALK_SLOTS`（枠の定義。ここだけ直せば名前・並び・受け入れる種類が変わる）, `defaultSlotFor`（新しいカードがどの枠に入るか。判断はコード側、モデルは `stance` を返すだけ） |
 | 撮る（デッキの中の相談） | `shootConsultSeed`（相談に投げる文の初期値＝問い＋仮の答え）, `shootConsultAsk`（相談タブと同じ `callChatApi`。★も同じ hit として記録される）。選んだ札はその場で「言葉」の枠のカードになる |
 | 撮る（デッキ・カード・撮影表示） | `SHOOT_SAVE_MS`（自動保存 0.4 秒）, `SHOOT_CARD_LABEL`, `SHOOT_BELIEF_LABEL`, `SHOOT_USED_PICK_DAYS`（「使う」印を拾う日数、30）, `shootSafeUrl`（出典を開くのは http/https だけ）, `normalizeDeckCard` |

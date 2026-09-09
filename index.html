@@ -576,6 +576,9 @@
   .shootPremiseWhat { font-size: 12px; color: #e0836b; line-height: 1.7; margin-top: 4px; }
   .shootHistory { margin-top: 10px; font-size: 12px; color: var(--text-faint); line-height: 1.8; }
   .shootHistory div { padding: 2px 0; }
+  .shootCardEdit .shootReadonly { font-size: 12px; color: var(--text-faint); line-height: 1.7; padding: 2px 0; }
+  .shootHookCandidate { background: var(--bg-card); border-radius: 12px; padding: 12px 14px; margin-top: 8px; font-size: 15px; line-height: 1.7; cursor: pointer; }
+  .shootFlowLine { font-size: 12px; color: #7f8d96; line-height: 1.6; }
   .shootConsultCard { background: var(--bg-card); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 6px; margin-top: 10px; position: relative; }
   .shootConsultCard .cardText { font-size: 15px; line-height: 1.8; padding-right: 34px; }
   .shootConsultCard .cardSource { font-size: 12px; color: var(--text-dim); }
@@ -1230,9 +1233,6 @@
         <span class="fieldLabel">問いのモデル</span>
         <p class="fieldNote">「問いを引く」に使うモデルです。空欄にすると「朝の言葉・相談のモデル」と同じになります。</p>
         <input id="claudeModelQuestionInput" type="text" placeholder="claude-sonnet-5" autocomplete="off" spellcheck="false">
-        <span class="fieldLabel">撮るのカードのモデル</span>
-        <p class="fieldNote">カード生成（web 検索つき）に使うモデルです。空欄にすると「朝の言葉・相談のモデル」と同じになります。検索は 1 回 $0.01 が別にかかります。</p>
-        <input id="claudeModelCardsInput" type="text" placeholder="claude-sonnet-5" autocomplete="off" spellcheck="false">
         <span class="fieldLabel">月の上限（USD）</span>
         <p class="fieldNote">今月の概算費用がこの割合（50% / 80% / 100%）に達すると朝タブに知らせます。100%を超えると自動関連づけと朝の言葉を自動で止めます（相談は確認のうえ続行できます）。</p>
         <input id="usageBudgetInput" type="text" inputmode="decimal" placeholder="2.00" autocomplete="off">
@@ -1365,8 +1365,8 @@
         <div class="statRow"><span>問い</span><span id="statUsageMonthQuestion"></span></div>
         <div class="statRow"><span>筋肉の対応</span><span id="statUsageMonthMuscle"></span></div>
         <div class="statRow"><span>読書メモ</span><span id="statUsageMonthReading"></span></div>
-        <div class="statRow"><span>撮るのカード</span><span id="statUsageMonthCards"></span></div>
-        <div class="statRow"><span>答えを壊す</span><span id="statUsageMonthBreak"></span></div>
+        <div class="statRow"><span>撮るのカード（v9.0 で終了）</span><span id="statUsageMonthCards"></span></div>
+        <div class="statRow"><span>答えを壊す（v9.0 で終了）</span><span id="statUsageMonthBreak"></span></div>
         <div class="statRow"><span>今月・合計</span><span id="statUsageMonthTotal"></span></div>
         <div id="statUsagePerDevice"></div>
       </div>
@@ -1605,21 +1605,19 @@
 
     <div class="editorBody" id="shootEditView" hidden>
       <div class="field">
-        <span class="fieldLabel">問い（動画の入り）</span>
+        <span class="fieldLabel">問い</span>
         <div class="tagFilterRow" id="shootQuestionChips"></div>
         <textarea id="shootQuestionText" rows="2" placeholder="引いた問いを選ぶか、ここに書く" autocomplete="off"></textarea>
-      </div>
-      <div class="field">
-        <span class="fieldLabel">入り（0秒で言う1行）<span class="required">必須</span></span>
-        <textarea id="shootHookInput" rows="2" placeholder="断言か問いかけ。挨拶やチャンネル説明は書かない" autocomplete="off"></textarea>
       </div>
       <div class="field">
         <span class="fieldLabel">仮の答え<span class="required">必須</span></span>
         <textarea id="shootAnswerInput" rows="2" placeholder="今日はこう答える、を1文で" autocomplete="off"></textarea>
         <p class="fieldNote" id="shootAnswerHint" hidden>仮の答えを書くまで、カードは足せません。</p>
         <div class="medRow" style="margin-top:6px;">
-          <button type="button" id="btnShootBreak" class="tagFilterBtn">答えを壊す</button>
+          <button type="button" id="btnShootBreakPrompt" class="tagFilterBtn">答えを壊すプロンプトをコピー</button>
         </div>
+        <textarea id="shootBreakPaste" rows="2" placeholder="チャットが返した JSON をここに貼る" autocomplete="off"></textarea>
+        <button type="button" id="btnShootBreakImport" class="secondaryBtn">取り込む</button>
         <p class="fieldNote" id="shootBreakStatus"></p>
         <div id="shootPremises"></div>
         <div id="shootAnswerHistory" class="shootHistory" hidden></div>
@@ -1647,14 +1645,39 @@
           <button type="button" id="btnShootAddResearch" class="tagFilterBtn">研究を手で</button>
           <button type="button" id="btnShootAddFun" class="tagFilterBtn">わくわくを手で</button>
         </div>
-        <div class="medRow" style="margin-top:6px;">
-          <button type="button" id="btnShootGenAll" class="tagFilterBtn">カードを作る（研究3・わくわく2）</button>
-          <button type="button" id="btnShootGenResearch" class="tagFilterBtn">研究を引き直す</button>
-          <button type="button" id="btnShootGenFun" class="tagFilterBtn">わくわくを引き直す</button>
+        <p class="fieldNote">カードはチャットで作ります。プロンプトをコピーして Claude に貼り、返ってきた JSON をここに貼り戻します。</p>
+        <div class="medRow">
+          <button type="button" id="btnShootCardsPromptAll" class="tagFilterBtn">プロンプトをコピー（研究3・わくわく2）</button>
+          <button type="button" id="btnShootCardsPromptResearch" class="tagFilterBtn">研究だけ</button>
+          <button type="button" id="btnShootCardsPromptFun" class="tagFilterBtn">わくわくだけ</button>
         </div>
-        <p class="fieldNote" id="shootGenStatus"></p>
+        <textarea id="shootCardsPaste" rows="3" placeholder="チャットが返した JSON をここに貼る" autocomplete="off"></textarea>
+        <button type="button" id="btnShootCardsImport" class="secondaryBtn">取り込む</button>
+        <p class="fieldNote" id="shootCardsStatus"></p>
         <div id="shootWordPicker" class="listItems" hidden></div>
         <div id="shootCardList"></div>
+      </div>
+      <div class="field">
+        <span class="fieldLabel">展開</span>
+        <p class="fieldNote">カードが揃ったら、話す順番とカードどうしの関係だけをチャットで決めて貼り戻します。喋る内容は入りません。</p>
+        <div class="medRow">
+          <button type="button" id="btnShootFlowPrompt" class="tagFilterBtn">展開のプロンプトをコピー</button>
+        </div>
+        <textarea id="shootFlowPaste" rows="2" placeholder="チャットが返した JSON をここに貼る" autocomplete="off"></textarea>
+        <button type="button" id="btnShootFlowImport" class="secondaryBtn">取り込む</button>
+        <p class="fieldNote" id="shootFlowStatus"></p>
+      </div>
+      <div class="field">
+        <span class="fieldLabel">入り（0秒で言う1行）<span class="required">必須</span></span>
+        <p class="fieldNote">主張ではなく釣り針です。全体ができてから書きます。</p>
+        <textarea id="shootHookInput" rows="2" placeholder="断言か問いかけ。挨拶やチャンネル説明は書かない" autocomplete="off"></textarea>
+        <div class="medRow">
+          <button type="button" id="btnShootHookPrompt" class="tagFilterBtn">入りの候補を出すプロンプトをコピー</button>
+        </div>
+        <textarea id="shootHookPaste" rows="2" placeholder="チャットが返した JSON をここに貼る" autocomplete="off"></textarea>
+        <button type="button" id="btnShootHookImport" class="secondaryBtn">取り込む</button>
+        <p class="fieldNote" id="shootHookStatus"></p>
+        <div id="shootHookCandidates"></div>
       </div>
       <div class="field">
         <button id="btnShootStart" class="primaryBtn">撮影表示をひらく</button>
@@ -3723,7 +3746,8 @@
       if (['yes', 'half', 'fun'].includes(c.belief)) out.belief = c.belief;
     }
     if (kind === 'word' && typeof c.noteId === 'string') out.noteId = c.noteId;
-    if (c.gen) out.gen = 1;   // came from カードを作る - a re-roll only touches these
+    if (c.gen) out.gen = 1;   // came from a pasted batch - a re-roll only touches these
+    if (typeof c.flow === 'string' && c.flow.trim()) out.flow = c.flow.trim().slice(0, 60);   // v9.0 展開: relation to the card before it
     return out;
   }
   function saveJournalEntry(entry) {
@@ -4290,7 +4314,6 @@
   const CLAUDE_MODEL_AUTOLINK_KEY = 'kotoba_claudeModelAutoLink';
   const CLAUDE_MODEL_CHAT_KEY = 'kotoba_claudeModelChat';
   const CLAUDE_MODEL_QUESTION_KEY = 'kotoba_claudeModelQuestion';
-  const CLAUDE_MODEL_CARDS_KEY = 'kotoba_claudeModelCards';
   const AUTO_LINK_ENABLED_KEY = 'kotoba_autoLinkEnabled';
   const MORNING_ENABLED_KEY = 'kotoba_morningEnabled';
   const COMPRESS_THRESHOLD_KEY = 'kotoba_compressThreshold';
@@ -4326,7 +4349,6 @@
   // v3.3: falls back to the chat model rather than to a constant, so leaving
   // the field blank keeps 問い on whatever the 朝/相談 model is set to.
   function getClaudeQuestionModel() { return localStorage.getItem(CLAUDE_MODEL_QUESTION_KEY) || getClaudeChatModel(); }
-  function getClaudeCardsModel() { return localStorage.getItem(CLAUDE_MODEL_CARDS_KEY) || getClaudeChatModel(); }
 
   function getAutoLinkEnabled() {
     const v = localStorage.getItem(AUTO_LINK_ENABLED_KEY);
@@ -4452,7 +4474,6 @@
   function modelForUsageKind(kind) {
     if (kind === 'autolink' || kind === 'searchAgain') return getClaudeAutoLinkModel();
     if (kind === 'question') return getClaudeQuestionModel();
-    if (kind === 'cards') return getClaudeCardsModel();
     return getClaudeChatModel();
   }
   function totalCostForKindStats(kindStats) {
@@ -11256,7 +11277,6 @@
     document.getElementById('claudeModelAutoLinkInput').value = getClaudeAutoLinkModel();
     document.getElementById('claudeModelChatInput').value = getClaudeChatModel();
     document.getElementById('claudeModelQuestionInput').value = localStorage.getItem(CLAUDE_MODEL_QUESTION_KEY) || '';
-    document.getElementById('claudeModelCardsInput').value = localStorage.getItem(CLAUDE_MODEL_CARDS_KEY) || '';
     document.getElementById('usageBudgetInput').value = getUsageBudget().toFixed(2);
     document.getElementById('deviceLabelInput').value = getDeviceLabel();
     document.getElementById('autoLinkToggle').checked = getAutoLinkEnabled();
@@ -11407,14 +11427,11 @@
     const autoLinkModel = document.getElementById('claudeModelAutoLinkInput').value.trim();
     const chatModel = document.getElementById('claudeModelChatInput').value.trim();
     const questionModel = document.getElementById('claudeModelQuestionInput').value.trim();
-    const cardsModel = document.getElementById('claudeModelCardsInput').value.trim();
     if (key) localStorage.setItem(CLAUDE_API_KEY_KEY, key); else localStorage.removeItem(CLAUDE_API_KEY_KEY);
     localStorage.setItem(CLAUDE_MODEL_AUTOLINK_KEY, autoLinkModel || DEFAULT_AUTOLINK_MODEL);
     localStorage.setItem(CLAUDE_MODEL_CHAT_KEY, chatModel || DEFAULT_CHAT_MODEL);
     if (questionModel) localStorage.setItem(CLAUDE_MODEL_QUESTION_KEY, questionModel);
     else localStorage.removeItem(CLAUDE_MODEL_QUESTION_KEY);
-    if (cardsModel) localStorage.setItem(CLAUDE_MODEL_CARDS_KEY, cardsModel);
-    else localStorage.removeItem(CLAUDE_MODEL_CARDS_KEY);
     const budget = parseFloat(document.getElementById('usageBudgetInput').value);
     localStorage.setItem(USAGE_BUDGET_KEY, String(Number.isFinite(budget) && budget > 0 ? budget : DEFAULT_USAGE_BUDGET_USD));
     setDeviceLabel(document.getElementById('deviceLabelInput').value.trim() || getDeviceLabel());
@@ -12199,7 +12216,7 @@
   const SHOOT_CARD_LABEL = { research: '研究', fun: 'わくわく', word: '言葉', record: '記録' };
   const SHOOT_BELIEF_LABEL = { yes: '信じている', half: '半信半疑', fun: 'エンタメだと思う' };
   const SHOOT_USED_PICK_DAYS = 30;
-  const shootState = { deckId: null, filledFor: null, saveTimer: null, pickerOpen: false, said: new Set(), consultOpen: false, consultBusy: false, consultFilledFor: null, consult: null, genBusy: false, breakBusy: false };
+  const shootState = { deckId: null, filledFor: null, saveTimer: null, pickerOpen: false, said: new Set(), consultOpen: false, consultBusy: false, consultFilledFor: null, consult: null, hookCandidates: [] };
   let shootWakeLock = null;
 
   // a card's URL is observed content (typed here, generated by the model in
@@ -12258,7 +12275,7 @@
   }
   function openDeck(id) {
     if (!findDeck(id)) return;
-    if (shootState.deckId !== id) { shootState.consult = null; shootState.consultOpen = false; shootState.consultFilledFor = null; }
+    if (shootState.deckId !== id) { shootState.consult = null; shootState.consultOpen = false; shootState.consultFilledFor = null; shootState.hookCandidates = []; }
     shootState.deckId = id; shootState.filledFor = null; shootState.pickerOpen = false;
     if (nav.screen !== 'shoot') showScreen('shoot');
     renderShoot();
@@ -12321,6 +12338,7 @@
     }
     renderShootQuestionChips(deck);
     renderShootPremises(deck);
+    renderShootHookCandidates();
     renderShootConsult(deck);
     renderShootCards(deck);
     renderShootWordPicker(deck);
@@ -12329,7 +12347,7 @@
   }
   function updateShootAddButtons() {
     const ok = document.getElementById('shootAnswerInput').value.trim().length > 0;
-    ['btnShootAddWord', 'btnShootAddRecord', 'btnShootAddResearch', 'btnShootAddFun', 'btnShootGenAll', 'btnShootGenResearch', 'btnShootGenFun'].forEach((id) => { document.getElementById(id).disabled = !ok || shootState.genBusy; });
+    ['btnShootAddWord', 'btnShootAddRecord', 'btnShootAddResearch', 'btnShootAddFun', 'btnShootCardsPromptAll', 'btnShootCardsPromptResearch', 'btnShootCardsPromptFun', 'btnShootCardsImport'].forEach((id) => { document.getElementById(id).disabled = !ok; });
     document.getElementById('shootAnswerHint').hidden = ok;
     const canShoot = ok && document.getElementById('shootHookInput').value.trim().length > 0;
     document.getElementById('btnShootStart').disabled = !canShoot;
@@ -12436,6 +12454,8 @@
       panel.appendChild(row);
     });
   }
+  // Each kind shows only the fields it has: a 記録 card has no URL and
+  // nothing to break, a 言葉 card carries its own line from the note.
   function renderShootCards(deck) {
     const wrap = document.getElementById('shootCardList');
     wrap.innerHTML = '';
@@ -12471,22 +12491,44 @@
         el.autocomplete = 'off';
         el.addEventListener('input', () => { on(el.value); shootScheduleSave(); });
         box.appendChild(el);
-        return el;
       };
-      field('事実', c.fact, 2, (v) => { c.fact = v; });
-      field('出典（誰がどこで）', c.source, 0, (v) => { c.source = v; });
-      field('URL', c.url, 0, (v) => { c.url = v; });
-      field('仮の答えの何を壊すか', c.breaks, 0, (v) => { c.breaks = v; });
+      const readonly = (text) => { const d1 = document.createElement('div'); d1.className = 'shootReadonly'; d1.textContent = text; box.appendChild(d1); };
+      const chipRow = (label, options, current, onPick) => {
+        if (label) { const l = document.createElement('span'); l.className = 'fieldLabel'; l.textContent = label; box.appendChild(l); }
+        const row = document.createElement('div'); row.className = 'tagFilterRow';
+        options.forEach(([key, text]) => {
+          const b = document.createElement('button'); b.type = 'button';
+          b.className = 'tagFilterBtn' + (current === key ? ' selected' : '');
+          b.textContent = text;
+          b.addEventListener('click', () => { onPick(current === key ? '' : key); shootTouch(deck); renderShootCards(deck); });
+          row.appendChild(b);
+        });
+        box.appendChild(row);
+      };
 
-      if (c.kind === 'fun') {
-        const tagRow = document.createElement('div'); tagRow.className = 'tagFilterRow';
-        ['伝承', '噂'].forEach((t) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'tagFilterBtn' + (c.tag === t ? ' selected' : ''); b.textContent = t; b.addEventListener('click', () => { c.tag = c.tag === t ? '' : t; shootTouch(deck); renderShootCards(deck); }); tagRow.appendChild(b); });
-        box.appendChild(tagRow);
-        const bl = document.createElement('span'); bl.className = 'fieldLabel'; bl.textContent = '自分はこれを信じているか'; box.appendChild(bl);
-        const belRow = document.createElement('div'); belRow.className = 'tagFilterRow';
-        Object.keys(SHOOT_BELIEF_LABEL).forEach((key) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'tagFilterBtn' + (c.belief === key ? ' selected' : ''); b.textContent = SHOOT_BELIEF_LABEL[key]; b.addEventListener('click', () => { c.belief = c.belief === key ? '' : key; shootTouch(deck); renderShootCards(deck); }); belRow.appendChild(b); });
-        box.appendChild(belRow);
+      if (c.kind === 'record') {
+        field('事実', c.fact, 2, (v) => { c.fact = v; });
+        field('日付', c.source, 0, (v) => { c.source = v; });
+      } else if (c.kind === 'word') {
+        field('本文', c.fact, 2, (v) => { c.fact = v; });
+        const note = c.noteId ? findNote(c.noteId) : null;
+        if (note && note.myWords) readonly('自分の一言 ・ ' + note.myWords);
+        else if (c.source) readonly('出典 ・ ' + c.source);
+      } else {
+        field('事実', c.fact, 2, (v) => { c.fact = v; });
+        field('出典（誰がどこで）', c.source, 0, (v) => { c.source = v; });
+        field('URL', c.url, 0, (v) => { c.url = v; });
+        chipRow('仮の答えを', [['support', '支える'], ['break', '壊す']], c.stance, (v) => {
+          c.stance = v;
+          if (c.kind !== 'fun' && v) c.slot = defaultSlotFor(c.kind, v);
+        });
+        if (c.breaks) readonly(c.breaks);
+        if (c.kind === 'fun') {
+          chipRow('種別', [['伝承', '伝承'], ['噂', '噂']], c.tag, (v) => { if (v) c.tag = v; else delete c.tag; });
+          chipRow('自分はこれを信じているか', Object.keys(SHOOT_BELIEF_LABEL).map((key) => [key, SHOOT_BELIEF_LABEL[key]]), c.belief, (v) => { if (v) c.belief = v; else delete c.belief; });
+        }
       }
+      if (c.flow) readonly('展開 ・ ' + c.flow);
 
       const acts = document.createElement('div'); acts.className = 'shootCardActions';
       const act = (label, fn) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.addEventListener('click', fn); acts.appendChild(b); };
@@ -12577,21 +12619,35 @@
     }
   }
 
-  // ---- カード生成 (v8.8) ----
-  // One fixed prompt with the question, the answer and the chosen words
-  // dropped in. The aim is not material that answers the question but
-  // material that tests the premises between the question and the answer.
-  // The model never assigns a frame: it says support / break, and
-  // defaultSlotFor() turns that into a slot.
-  const CARDS_TIMEOUT_MS = 180000;
-  const LAST_CARDS_REPLY_KEY = 'kotoba_lastCardsReply';
-  function buildCardsSystemBlocks() {
-    const text =
-      'あなたは動画の材料係です。台本は書きません。事実カードだけを作ります。\n\n' +
+  // ---- チャットに出す・貼って取り込む (v9.0) ----
+  // The generation itself moved out of the app: one real run timed out at
+  // three minutes and left only the charge. It happens twice a week, so it
+  // belongs in a chat window. What stays here is the prompt (built from the
+  // deck so nothing has to be retyped) and the import, which is where the
+  // rules live: the frame comes from stance, and a URL is only kept when it
+  // is http(s).
+  const SHOOT_PROMPT_HEAD = '（このまま Claude のチャットに貼ってください。返事は JSON だけにしてください。）\n\n';
+  function shootDeckWords(deck) {
+    return deckCards(deck).filter((c) => c.kind === 'word').map((c) => {
+      const note = c.noteId ? findNote(c.noteId) : null;
+      return '- ' + (c.fact || '') + (note && note.myWords ? '（本人の一言：' + note.myWords + '）' : '');
+    });
+  }
+  function shootCardsPromptText(deck, only) {
+    const want = only === 'research' ? '研究カードを3枚だけ返す。わくわくカードは返さない。'
+      : only === 'fun' ? 'わくわくカードを2枚だけ返す。研究カードは返さない。'
+      : '研究カードを3枚、わくわくカードを2枚返す。';
+    const words = shootDeckWords(deck);
+    return SHOOT_PROMPT_HEAD +
+      'あなたは動画の材料係です。台本は書きません。事実カードだけを作ります。\n' +
+      'web 検索を使って、実在する出典と URL を確かめてください。\n\n' +
+      '問い：' + (deck.questionText || '（未設定）') + '\n' +
+      '仮の答え：' + (deck.text || '（未設定）') + '\n' +
+      '本人が選んだ言葉（参考。カードにはしない）：\n' + (words.length ? words.join('\n') : '（なし）') + '\n\n' +
       '手順：\n' +
       '1. 仮の答えの中にある前提を1〜3個に分解する。\n' +
       '2. それぞれの前提について、支持する事実と、衝突する事実を探す。問いに直接答えている資料より、前提を検証できる資料を優先する。\n' +
-      '3. 求められた種類のカードを返す。\n\n' +
+      '3. ' + want + '\n\n' +
       '研究カードの条件：\n' +
       '- 数字か固有名詞を必ず含む。\n' +
       '- 出典は媒体名と年、URL。\n' +
@@ -12604,90 +12660,89 @@
       '共通：\n' +
       '- fact は1〜3文。\n' +
       '- stance は support（前提を支持する）か break（前提と衝突する）のどちらか。\n' +
-      '- breaks は「前提『…』と衝突」または「前提『…』を支持」の**一句のみ**。文章にしない。句点で終わる複数の文を書かない。20〜40字。\n' +
-      '- **意見・評価・助言・つなぎの言葉・話し方の提案は書かない。**\n' +
-      '- **カード以外の文章を返さない。JSON のみ。**\n' +
-      '- url は実在するページのものだけを書く。見つからなければそのカードを作らない。\n\n' +
-      '出力形式（JSON のみ。前置きも説明も書かない）：\n' +
+      '- breaks は「前提『…』と衝突」または「前提『…』を支持」の一句のみ。文章にしない。20〜40字。\n' +
+      '- 意見・評価・助言・つなぎの言葉・話し方の提案は書かない。\n' +
+      '- url は実在するページのものだけを書く。見つからなければそのカードを作らない。\n' +
+      '- カード以外の文章を返さない。JSON のみ。\n\n' +
+      '出力形式：\n' +
       '{"cards":[{"kind":"research"|"fun","fact":"...","source":"...","url":"https://...","breaks":"前提『...』と衝突","stance":"support"|"break","tag":"伝承"|"噂"|""}]}';
-    return [{ type: 'text', text }];
   }
-  function buildCardsUserPrompt(deck, only) {
-    const words = deckCards(deck).filter((c) => c.kind === 'word').map((c) => {
-      const note = c.noteId ? findNote(c.noteId) : null;
-      return '- ' + (c.fact || '') + (note && note.myWords ? '（本人の一言：' + note.myWords + '）' : '');
+  function shootBreakPromptText(deck) {
+    const cards = deckCards(deck).filter((c) => !c.dropped).map((c) => {
+      const note = c.kind === 'word' && c.noteId ? findNote(c.noteId) : null;
+      return { id: c.id, 枠: slotName(c.slot), 種類: SHOOT_CARD_LABEL[c.kind] || c.kind, fact: c.fact || '', breaks: c.breaks || '', 自分の一言: note && note.myWords ? note.myWords : undefined };
     });
-    const want = only === 'research' ? '研究カードを3枚だけ返す。わくわくカードは返さない。'
-      : only === 'fun' ? 'わくわくカードを2枚だけ返す。研究カードは返さない。'
-      : '研究カードを3枚、わくわくカードを2枚返す。';
-    return '問い：' + (deck.questionText || '（未設定）') + '\n' +
-      '仮の答え：' + (deck.text || '（未設定）') + '\n' +
-      '本人が選んだ言葉（参考。カードにはしない）：\n' + (words.length ? words.join('\n') : '（なし）') + '\n\n' +
-      '今回の依頼：' + want;
+    return SHOOT_PROMPT_HEAD +
+      'あなたは、本人が書いた「仮の答え」がどこで崩れるかを指すだけの係です。答えは書きません。\n\n' +
+      '仮の答え：' + (deck.text || '') + '\n\n' +
+      'カード：\n' + JSON.stringify(cards, null, 1) + '\n\n' +
+      '手順：\n' +
+      '1. 仮の答えが成り立つために必要な前提を、最大3つに分解する。前提は本人の言葉に近い短い文にする。\n' +
+      '2. カードのうち、その前提と衝突しているものを挙げる。衝突が無ければ空の配列を返す。無理に作らない。\n\n' +
+      '厳守すること：\n' +
+      '- 答え・言い直し・候補・助言・評価・感想を書かない。\n' +
+      '- what は「カードの何が衝突しているか」を1句で書く。文章にしない。40字まで。\n' +
+      '- cardId は上の id のうちのどれか。\n' +
+      '- JSON のみ。\n\n' +
+      '出力形式：\n' +
+      '{"premises":["前提1","前提2"],"conflicts":[{"premise":"前提1","cardId":"c3","what":"…"}]}';
   }
-  function parseCardsReply(text) {
-    const cleaned = String(text || '').trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
-    const take = (p) => {
-      if (!p) return null;
-      if (Array.isArray(p)) return p;
-      if (Array.isArray(p.cards)) return p.cards;
-      return null;
-    };
-    try { const got = take(JSON.parse(cleaned)); if (got) return got; } catch (e) {}
-    const start = cleaned.search(/[{[]/);
-    const end = Math.max(cleaned.lastIndexOf('}'), cleaned.lastIndexOf(']'));
-    if (start < 0 || end <= start) return null;
-    try { return take(JSON.parse(cleaned.slice(start, end + 1))); } catch (e) {}
+  function shootFlowPromptText(deck) {
+    const cards = deckCardsBySlot(deck).filter((c) => !c.dropped).map((c) => ({ id: c.id, 枠: slotName(c.slot), 種類: SHOOT_CARD_LABEL[c.kind] || c.kind, fact: c.fact || '' }));
+    return SHOOT_PROMPT_HEAD +
+      'あなたは動画の構成係です。台本は書きません。話す順番と、カードどうしの関係だけを決めます。\n\n' +
+      '入り：' + (deck.hook || '（未設定）') + '\n' +
+      '仮の答え：' + (deck.text || '') + '\n\n' +
+      'カード：\n' + JSON.stringify(cards, null, 1) + '\n\n' +
+      '決まり：\n' +
+      '- 枠の順（支え→寄り道→壊す→言葉）は変えない。並べ替えるのは枠の中だけ。\n' +
+      '- カードを増やさない、減らさない。id は上のものだけを使う。\n' +
+      '- flow は「直前のカードとどうつながるか」を15〜30字で1行だけ書く。例：「前の数字を否定する」「同じ話を別の角度から」「ここで一度引く」。\n' +
+      '- 喋る内容・つなぎの台詞・言い回し・助言を書かない。関係だけを書く。\n' +
+      '- JSON のみ。\n\n' +
+      '出力形式：\n' +
+      '{"order":["c3","c1"],"relations":[{"cardId":"c1","flow":"…"}]}';
+  }
+  function shootHookPromptText(deck) {
+    const facts = deckLiveCards(deck).map((c) => '- ' + (c.fact || ''));
+    return SHOOT_PROMPT_HEAD +
+      'あなたは動画の冒頭の1行を作る係です。これは主張ではなく釣り針です。0秒で口に出す1行を3つ出します。\n\n' +
+      '問い：' + (deck.questionText || '') + '\n' +
+      '仮の答え：' + (deck.text || '') + '\n' +
+      'カードの事実：\n' + (facts.length ? facts.join('\n') : '（なし）') + '\n\n' +
+      '決まり：\n' +
+      '- 3つ出す。それぞれ20〜45字。\n' +
+      '- 断言か問いかけ。挨拶・チャンネル説明・自己紹介を書かない。\n' +
+      '- 答えを先に言わない（答えは次の文で本人が言う）。\n' +
+      '- カードの事実の数字や固有名詞を1つ入れてよい。入れなくてもよい。\n' +
+      '- 説明・理由・助言・煽りの決まり文句を書かない。\n' +
+      '- 声に出して一息で読める長さにする。\n' +
+      '- JSON のみ。\n\n' +
+      '出力形式：\n' +
+      '{"hooks":["...","...","..."]}';
+  }
+  async function shootCopyPrompt(text, statusId) {
+    const ok = await copyToClipboard(text);
+    const el = document.getElementById(statusId);
+    if (ok) { el.textContent = 'コピーしました。Claude のチャットに貼ってください。'; return; }
+    // clipboard blocked (some browsers outside a secure context): show it to copy by hand
+    el.textContent = 'コピーできませんでした。下の欄の内容を選んでコピーしてください。';
+    const box = document.getElementById(statusId.replace('Status', 'Paste'));
+    if (box) box.value = text;
+  }
+  function shootParseJson(raw) {
+    const cleaned = String(raw || '').trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+    if (!cleaned) return null;
+    try { return JSON.parse(cleaned); } catch (e) {}
+    const a = cleaned.search(/[{[]/);
+    const b = Math.max(cleaned.lastIndexOf('}'), cleaned.lastIndexOf(']'));
+    if (a < 0 || b <= a) return null;
+    try { return JSON.parse(cleaned.slice(a, b + 1)); } catch (e) {}
     return null;
-  }
-  async function callCardsApi(deck, only) {
-    const apiKey = getClaudeApiKey();
-    if (!apiKey) { const e = new Error('no-api-key'); e.noKey = true; throw e; }
-    const maxUses = only ? 4 : 6;
-    let messages = [{ role: 'user', content: buildCardsUserPrompt(deck, only) }];
-    let searches = 0, lastJson = null;
-    // the server runs its own search loop and can hand the turn back with
-    // pause_turn; continue by sending the assistant content straight back
-    for (let turn = 0; turn < 4; turn++) {
-      const ctl = new AbortController();
-      const timer = setTimeout(() => ctl.abort(), CARDS_TIMEOUT_MS);
-      let res;
-      try {
-        res = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          signal: ctl.signal,
-          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-          body: JSON.stringify({
-            model: getClaudeCardsModel(),
-            max_tokens: 16000,
-            system: buildCardsSystemBlocks(),
-            tools: [{ type: 'web_search_20260318', name: 'web_search', max_uses: maxUses, response_inclusion: 'excluded' }],
-            messages,
-          }),
-        });
-      } catch (e) {
-        if (e && e.name === 'AbortError') { const err = new Error('timeout'); err.timeout = true; throw err; }
-        throw e;
-      } finally { clearTimeout(timer); }
-      if (!res.ok) { const err = new Error('Claude API failed: ' + res.status); err.status = res.status; throw err; }
-      const json = await res.json();
-      recordApiUsage('cards', json.usage);
-      searches += (json.usage && json.usage.server_tool_use && json.usage.server_tool_use.web_search_requests) || 0;
-      lastJson = json;
-      if (json.stop_reason === 'pause_turn') { messages = messages.concat([{ role: 'assistant', content: json.content }]); continue; }
-      break;
-    }
-    const textOut = ((lastJson && lastJson.content) || []).map((b) => (b.type === 'text' ? b.text || '' : '')).join('');
-    try { localStorage.setItem(LAST_CARDS_REPLY_KEY, textOut.slice(0, 8000)); } catch (e) {}
-    const items = parseCardsReply(textOut);
-    if (!items) {
-      if (lastJson && lastJson.stop_reason === 'max_tokens') { const err = new Error('truncated'); err.truncated = true; err.searches = searches; throw err; }
-      const err = new Error('parse'); err.parse = true; err.searches = searches; throw err;
-    }
-    return { items, searches };
   }
   function cardsFromItems(items, only) {
     const out = [];
+    let badUrls = 0;
     items.forEach((it) => {
       if (!it || typeof it !== 'object') return;
       const kind = it.kind === 'fun' ? 'fun' : 'research';
@@ -12695,139 +12750,109 @@
       const fact = typeof it.fact === 'string' ? it.fact.trim() : '';
       if (!fact) return;
       const stance = it.stance === 'break' ? 'break' : it.stance === 'support' ? 'support' : '';
+      const rawUrl = typeof it.url === 'string' ? it.url.trim() : '';
+      const url = shootSafeUrl(rawUrl);
+      if (rawUrl && !url) badUrls++;
       const card = {
-        kind, fact, stance, gen: 1,
+        kind, fact, stance, gen: 1, url,
         source: typeof it.source === 'string' ? it.source.trim() : '',
-        url: typeof it.url === 'string' ? it.url.trim() : '',
         breaks: typeof it.breaks === 'string' ? it.breaks.trim().replace(/\s+/g, ' ') : '',
         slot: defaultSlotFor(kind, stance),
       };
+      if (typeof it.flow === 'string' && it.flow.trim()) card.flow = it.flow.trim().slice(0, 60);
       if (kind === 'fun' && (it.tag === '伝承' || it.tag === '噂')) card.tag = it.tag;
       out.push(card);
     });
-    return out;
+    return { cards: out, badUrls };
   }
-  async function shootGenerate(only) {
+  function shootImportCards() {
     const deck = findDeck(shootState.deckId);
-    if (!deck || shootState.genBusy) return;
+    const statusEl = document.getElementById('shootCardsStatus');
+    if (!deck) return;
     shootFlush();
-    if (!(deck.text || '').trim()) { document.getElementById('shootGenStatus').textContent = '仮の答えを書いてから作れます。'; return; }
-    if (isUsageOverBudget() && !confirm('上限を超えています。続けますか？')) return;
-    const statusEl = document.getElementById('shootGenStatus');
-    shootState.genBusy = true;
-    ['btnShootGenAll', 'btnShootGenResearch', 'btnShootGenFun'].forEach((id) => { document.getElementById(id).disabled = true; });
-    statusEl.textContent = '調べています…（検索が入るので30秒ほどかかります）';
-    try {
-      const { items, searches } = await callCardsApi(deck, only);
-      const fresh = cardsFromItems(items, only);
-      const d2 = findDeck(shootState.deckId);
-      if (!d2) return;
-      if (!fresh.length) { statusEl.textContent = 'カードが返ってきませんでした。もう一度お試しください。（検索' + searches + '回）'; return; }
-      // a re-roll retires the generated cards it replaces; nothing is deleted,
-      // so a better old card can be brought back with 採用に戻す
-      (d2.cards || []).forEach((c) => { if (c.gen && !c.dropped && (!only || c.kind === only)) c.dropped = true; });
-      fresh.forEach((c) => deckAddCard(d2, c));
-      const long = fresh.filter((c) => c.breaks && (c.breaks.length > 60 || /。.+/.test(c.breaks))).length;
-      statusEl.textContent = fresh.length + '枚を入れました（検索' + searches + '回・約$' + (searches * WEB_SEARCH_USD).toFixed(2) + '）'
-        + (long ? '　※ breaks が一句になっていないカードが' + long + '枚あります' : '');
-      renderDeckEditor(d2);
-    } catch (e) {
-      statusEl.textContent = (e && e.noKey) ? '設定画面で Claude API キーを入力してください。'
-        : (e && e.timeout) ? '時間切れです（3分）。もう一度お試しください。'
-        : (e && e.truncated) ? '応答が長すぎて途中で切れました。もう一度お試しください。'
-        : (e && e.parse) ? '応答を JSON として読めませんでした。もう一度お試しください。'
-        : (e && e.status) ? '生成に失敗しました（API エラー ' + e.status + '）。'
-        : '生成に失敗しました。';
-      if (!(e && e.noKey)) recordFeatureError('撮るのカード生成', e);
-    } finally {
-      shootState.genBusy = false;
-      ['btnShootGenAll', 'btnShootGenResearch', 'btnShootGenFun'].forEach((id) => { const b = document.getElementById(id); if (b) b.disabled = false; });
-      updateShootAddButtons();
-    }
+    const parsed = shootParseJson(document.getElementById('shootCardsPaste').value);
+    const items = parsed ? (Array.isArray(parsed) ? parsed : Array.isArray(parsed.cards) ? parsed.cards : null) : null;
+    if (!items) { statusEl.textContent = 'JSON として読めませんでした。{"cards":[...]} の形で貼ってください。'; return; }
+    const { cards, badUrls } = cardsFromItems(items, null);
+    if (!cards.length) { statusEl.textContent = 'カードが見つかりませんでした。'; return; }
+    // whichever kinds came in are the kinds being replaced
+    const kinds = new Set(cards.map((c) => c.kind));
+    (deck.cards || []).forEach((c) => { if (c.gen && !c.dropped && kinds.has(c.kind)) c.dropped = true; });
+    cards.forEach((c) => deckAddCard(deck, c));
+    document.getElementById('shootCardsPaste').value = '';
+    const long = cards.filter((c) => c.breaks && (c.breaks.length > 60 || /。.+/.test(c.breaks))).length;
+    statusEl.textContent = cards.length + '枚を入れました。'
+      + (badUrls ? '　URL が http/https でないカードが' + badUrls + '枚あり、URL は空にしました。' : '')
+      + (long ? '　※ breaks が一句になっていないカードが' + long + '枚あります。' : '');
+    renderDeckEditor(deck);
+  }
+  function shootImportBreak() {
+    const deck = findDeck(shootState.deckId);
+    const statusEl = document.getElementById('shootBreakStatus');
+    if (!deck) return;
+    shootFlush();
+    const parsed = shootParseJson(document.getElementById('shootBreakPaste').value);
+    if (!parsed || !Array.isArray(parsed.premises)) { statusEl.textContent = 'JSON として読めませんでした。{"premises":[...],"conflicts":[...]} の形で貼ってください。'; return; }
+    const ids = new Set((deck.cards || []).map((c) => c.id));
+    deck.premises = parsed.premises.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim().slice(0, 200)).slice(0, 5);
+    deck.conflicts = (Array.isArray(parsed.conflicts) ? parsed.conflicts : []).filter((x) => x && ids.has(x.cardId)).map((x) => ({ premise: String(x.premise || ''), cardId: x.cardId, what: String(x.what || '').slice(0, 200) })).slice(0, 10);
+    shootTouch(deck);
+    document.getElementById('shootBreakPaste').value = '';
+    statusEl.textContent = '前提 ' + deck.premises.length + '件' + (deck.conflicts.length ? '、衝突 ' + deck.conflicts.length + '件。' : '。衝突はありませんでした。');
+    renderShootPremises(deck);
+  }
+  function shootImportFlow() {
+    const deck = findDeck(shootState.deckId);
+    const statusEl = document.getElementById('shootFlowStatus');
+    if (!deck) return;
+    shootFlush();
+    const parsed = shootParseJson(document.getElementById('shootFlowPaste').value);
+    if (!parsed || (!Array.isArray(parsed.order) && !Array.isArray(parsed.relations))) { statusEl.textContent = 'JSON として読めませんでした。{"order":[...],"relations":[...]} の形で貼ってください。'; return; }
+    const byId = new Map((deck.cards || []).map((c) => [c.id, c]));
+    let moved = 0, noted = 0;
+    (Array.isArray(parsed.order) ? parsed.order : []).forEach((id, i) => { const c = byId.get(id); if (c) { c.order = i; moved++; } });
+    (Array.isArray(parsed.relations) ? parsed.relations : []).forEach((r) => {
+      if (!r || !byId.has(r.cardId)) return;
+      const t = typeof r.flow === 'string' ? r.flow.trim() : '';
+      const c = byId.get(r.cardId);
+      if (t) { c.flow = t.slice(0, 60); noted++; } else delete c.flow;
+    });
+    shootTouch(deck);
+    document.getElementById('shootFlowPaste').value = '';
+    statusEl.textContent = '順番 ' + moved + '枚、関係 ' + noted + '枚を入れました。（枠の順は変わりません）';
+    renderShootCards(deck);
+  }
+  function shootImportHooks() {
+    const deck = findDeck(shootState.deckId);
+    const statusEl = document.getElementById('shootHookStatus');
+    if (!deck) return;
+    const parsed = shootParseJson(document.getElementById('shootHookPaste').value);
+    const list = parsed ? (Array.isArray(parsed) ? parsed : Array.isArray(parsed.hooks) ? parsed.hooks : null) : null;
+    if (!list) { statusEl.textContent = 'JSON として読めませんでした。{"hooks":["...","...","..."]} の形で貼ってください。'; return; }
+    shootState.hookCandidates = list.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim().slice(0, 200)).slice(0, 6);
+    document.getElementById('shootHookPaste').value = '';
+    statusEl.textContent = shootState.hookCandidates.length ? '候補を' + shootState.hookCandidates.length + 'つ出しました。押すと「入り」に入ります。' : '候補が見つかりませんでした。';
+    renderShootHookCandidates();
+  }
+  function renderShootHookCandidates() {
+    const wrap = document.getElementById('shootHookCandidates');
+    wrap.innerHTML = '';
+    (shootState.hookCandidates || []).forEach((t) => {
+      const el = document.createElement('div');
+      el.className = 'shootHookCandidate';
+      el.textContent = t;
+      el.addEventListener('click', () => {
+        document.getElementById('shootHookInput').value = t;
+        updateShootAddButtons();
+        shootScheduleSave();
+        document.getElementById('shootHookStatus').textContent = '「入り」に入れました。';
+      });
+      wrap.appendChild(el);
+    });
   }
 
-  // ---- 答えを壊す (v8.9) ----
-  // Names the premises the answer stands on and points at the cards that
-  // collide with them. It never writes an answer - the moment a model writes
-  // the answer this becomes a script again.
+  // ---- 答えの履歴と前提の表示 ----
   const SHOOT_HISTORY_GAP_MS = 60000;   // edits closer together than this update the same history entry
-  function buildBreakSystemBlocks() {
-    const text =
-      'あなたは、本人が書いた「仮の答え」がどこで崩れるかを指すだけの係です。答えは書きません。\n\n' +
-      '手順：\n' +
-      '1. 仮の答えが成り立つために必要な前提を、最大3つに分解する。前提は本人の言葉に近い短い文にする。\n' +
-      '2. 渡されたカードのうち、その前提と衝突しているものを挙げる。衝突が無ければ空の配列を返す。無理に作らない。\n\n' +
-      '厳守すること：\n' +
-      '- **答え・言い直し・候補・助言・評価・感想を書かない。**\n' +
-      '- what は「カードの何が衝突しているか」を1句で書く。文章にしない。40字まで。\n' +
-      '- cardId は渡された id のうちのどれか。渡されていない id を書かない。\n' +
-      '- **JSON のみ。前置きも説明も書かない。**\n\n' +
-      '出力形式：\n' +
-      '{"premises":["前提1","前提2"],"conflicts":[{"premise":"前提1","cardId":"c3","what":"…"}]}';
-    return [{ type: 'text', text }];
-  }
-  function buildBreakUserPrompt(deck) {
-    const cards = deckCards(deck).filter((c) => !c.dropped).map((c) => {
-      const note = c.kind === 'word' && c.noteId ? findNote(c.noteId) : null;
-      return { id: c.id, 枠: slotName(c.slot), 種類: SHOOT_CARD_LABEL[c.kind] || c.kind, fact: c.fact || '', breaks: c.breaks || '', 自分の一言: note && note.myWords ? note.myWords : undefined };
-    });
-    return '仮の答え：' + (deck.text || '') + '\n\n' +
-      'カード：\n' + JSON.stringify(cards, null, 1);
-  }
-  async function callBreakApi(deck, isRetry) {
-    const apiKey = getClaudeApiKey();
-    if (!apiKey) { const e = new Error('no-api-key'); e.noKey = true; throw e; }
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-      body: JSON.stringify({ model: getClaudeChatModel(), max_tokens: 4096, system: buildBreakSystemBlocks(), messages: [{ role: 'user', content: buildBreakUserPrompt(deck) }] }),
-    });
-    if (!res.ok) { const err = new Error('Claude API failed: ' + res.status); err.status = res.status; throw err; }
-    const json = await res.json();
-    recordApiUsage('break', json.usage);
-    const textOut = (json.content || []).map((b) => (b.type === 'text' ? b.text || '' : '')).join('');
-    let parsed = null;
-    try { parsed = JSON.parse(textOut.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim()); } catch (e) {}
-    if (!parsed) { const t = textOut; const a = t.indexOf('{'), b = t.lastIndexOf('}'); if (a >= 0 && b > a) { try { parsed = JSON.parse(t.slice(a, b + 1)); } catch (e) {} } }
-    if (!parsed || !Array.isArray(parsed.premises)) {
-      if (!isRetry) return callBreakApi(deck, true);
-      const err = new Error('parse'); err.parse = true; throw err;
-    }
-    return parsed;
-  }
-  async function shootBreakAnswer() {
-    const deck = findDeck(shootState.deckId);
-    if (!deck || shootState.breakBusy) return;
-    shootFlush();
-    const live = deckLiveCards(deck);
-    const statusEl = document.getElementById('shootBreakStatus');
-    if (!(deck.text || '').trim()) { statusEl.textContent = '仮の答えを書いてから使えます。'; return; }
-    if (live.length < 3) { statusEl.textContent = 'カードが3枚そろってから使えます。'; return; }
-    if (isUsageOverBudget() && !confirm('上限を超えています。続けますか？')) return;
-    shootState.breakBusy = true;
-    document.getElementById('btnShootBreak').disabled = true;
-    statusEl.textContent = '前提を洗い出しています…';
-    try {
-      const parsed = await callBreakApi(deck);
-      const d2 = findDeck(shootState.deckId);
-      if (!d2) return;
-      const ids = new Set((d2.cards || []).map((c) => c.id));
-      d2.premises = parsed.premises.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim().slice(0, 200)).slice(0, 5);
-      d2.conflicts = (Array.isArray(parsed.conflicts) ? parsed.conflicts : []).filter((x) => x && ids.has(x.cardId)).map((x) => ({ premise: String(x.premise || ''), cardId: x.cardId, what: String(x.what || '').slice(0, 200) })).slice(0, 10);
-      shootTouch(d2);
-      statusEl.textContent = d2.conflicts.length ? '前提 ' + d2.premises.length + '件、衝突 ' + d2.conflicts.length + '件。' : '前提 ' + d2.premises.length + '件。衝突は見つかりませんでした。';
-      renderShootPremises(d2);
-    } catch (e) {
-      statusEl.textContent = (e && e.noKey) ? '設定画面で Claude API キーを入力してください。'
-        : (e && e.parse) ? '応答を JSON として読めませんでした。もう一度お試しください。'
-        : (e && e.status) ? '失敗しました（API エラー ' + e.status + '）。'
-        : '失敗しました。';
-      if (!(e && e.noKey)) recordFeatureError('撮るの答えを壊す', e);
-    } finally {
-      shootState.breakBusy = false;
-      document.getElementById('btnShootBreak').disabled = false;
-    }
-  }
   function renderShootPremises(deck) {
     const wrap = document.getElementById('shootPremises');
     wrap.innerHTML = '';
@@ -12929,6 +12954,7 @@
       if (c.tag) { const t = document.createElement('span'); t.className = 'shootCardKind'; t.textContent = c.tag; head.appendChild(t); }
       if (c.belief) { const b = document.createElement('span'); b.className = 'shootBelief'; b.textContent = SHOOT_BELIEF_LABEL[c.belief]; head.appendChild(b); }
       box.appendChild(head);
+      if (c.flow) { const fl = document.createElement('div'); fl.className = 'shootFlowLine'; fl.textContent = c.flow; box.appendChild(fl); }
       const fact = document.createElement('div'); fact.className = 'shootFact'; fact.textContent = c.fact || '（空）'; box.appendChild(fact);
       // 言葉: the reader's own line belongs next to the words, and it is read
       // live from the note so an edit to the note shows up here
@@ -12998,10 +13024,21 @@
     renderShootConsult(deck);
   });
   document.getElementById('btnShootConsultAsk').addEventListener('click', shootConsultAsk);
-  document.getElementById('btnShootBreak').addEventListener('click', shootBreakAnswer);
-  document.getElementById('btnShootGenAll').addEventListener('click', () => shootGenerate(null));
-  document.getElementById('btnShootGenResearch').addEventListener('click', () => shootGenerate('research'));
-  document.getElementById('btnShootGenFun').addEventListener('click', () => shootGenerate('fun'));
+  const promptBtn = (id, build, statusId) => document.getElementById(id).addEventListener('click', () => {
+    shootFlush();
+    const deck = findDeck(shootState.deckId); if (!deck) return;
+    shootCopyPrompt(build(deck), statusId);
+  });
+  promptBtn('btnShootCardsPromptAll', (d1) => shootCardsPromptText(d1, null), 'shootCardsStatus');
+  promptBtn('btnShootCardsPromptResearch', (d1) => shootCardsPromptText(d1, 'research'), 'shootCardsStatus');
+  promptBtn('btnShootCardsPromptFun', (d1) => shootCardsPromptText(d1, 'fun'), 'shootCardsStatus');
+  promptBtn('btnShootBreakPrompt', shootBreakPromptText, 'shootBreakStatus');
+  promptBtn('btnShootFlowPrompt', shootFlowPromptText, 'shootFlowStatus');
+  promptBtn('btnShootHookPrompt', shootHookPromptText, 'shootHookStatus');
+  document.getElementById('btnShootCardsImport').addEventListener('click', shootImportCards);
+  document.getElementById('btnShootBreakImport').addEventListener('click', shootImportBreak);
+  document.getElementById('btnShootFlowImport').addEventListener('click', shootImportFlow);
+  document.getElementById('btnShootHookImport').addEventListener('click', shootImportHooks);
   document.getElementById('btnShootAddWord').addEventListener('click', () => { const deck = findDeck(shootState.deckId); if (!deck) return; shootState.pickerOpen = !shootState.pickerOpen; renderShootWordPicker(deck); });
   document.getElementById('btnShootAddRecord').addEventListener('click', () => { const deck = findDeck(shootState.deckId); if (deck) deckAddCard(deck, recordCardFor(deck.date)); });
   document.getElementById('btnShootAddResearch').addEventListener('click', () => { const deck = findDeck(shootState.deckId); if (deck) deckAddCard(deck, { kind: 'research' }); });
@@ -13028,7 +13065,7 @@
 
   const INPUT_DRAFT_KEY = 'kotoba_inputDraft';
   const INPUT_DRAFT_MAX_AGE_MS = 48 * 3600 * 1000;
-  const INPUT_DRAFT_SKIP = new Set(['trDate', 'trWeight', 'listSearch', 'walkShareTextInput', 'medMemoInput', 'medAlarmCustom', 'shootQuestionText', 'shootHookInput', 'shootAnswerInput', 'shootTitleInput', 'shootConsultInput']); // medMemoInput autosaves itself   // own persistence / not worth restoring
+  const INPUT_DRAFT_SKIP = new Set(['trDate', 'trWeight', 'listSearch', 'walkShareTextInput', 'medMemoInput', 'medAlarmCustom', 'shootQuestionText', 'shootHookInput', 'shootAnswerInput', 'shootTitleInput', 'shootConsultInput', 'shootCardsPaste', 'shootBreakPaste', 'shootFlowPaste', 'shootHookPaste']); // medMemoInput autosaves itself   // own persistence / not worth restoring
   let inputDraftTimer = null, inputDraftRestoring = false;
   function readInputDraft() { try { const raw = localStorage.getItem(INPUT_DRAFT_KEY); const d = raw ? JSON.parse(raw) : null; return (d && d.fields && d.ctx) ? d : null; } catch (e) { return null; } }
   function inputDraftContext() {
