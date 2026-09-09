@@ -34,6 +34,7 @@
 | 入力途中の文章が、他のアプリに切り替えて戻ると消えている | — | v7.5 で対応。入力中の内容は 0.3 秒ごと・画面を離れるとき・バックグラウンドになるときに端末に退避し、次に開いたときにその画面と内容を復元する（48 時間以内）。保存・送信・「戻る」で消える。localStorage の `kotoba_inputDraft`。 |
 | 筋トレの入力途中で消えた | 設定 →「最終同期エラー」 | v4.1 から自動保存。エラーが無ければ同期で戻っている。 |
 | 「1年前」「どこかの日」で記録のある日が開かない | 記録タブの月ラベル「（読み込み中）」 | 端末に無い月の記録（朝・相談・引く・問い）は開いた時に 1 ファイル読む。圏外なら散歩・筋トレ・瞑想・言葉だけ出る。「一番近い日」の探索は端末が知っている日（散歩・筋トレ・瞑想・言葉の作成日・読み込み済みの月）だけを見る。 |
+| 撮るのデッキが他の端末に出てこない | 撮る画面の「最終同期」 | 作った側は 0.8 秒後に自動で送る。受け取る側は起動・タブに戻る・オンライン復帰のときだけ取りに行くので、**開きっぱなしのタブは自分から取りに行かない**。撮る画面の「取り込む」を押す。同じデッキを 2 台で同時に編集すると、後に保存した側が丸ごと勝つ（カード単位では混ざらない）。 |
 | 瞑想のタイマーが鳴らない | — | ホーム画面のアプリは画面が消えると止まる。計測中は画面を消さない（v8.0 は Wake Lock で消えないようにする）。iOS 純正のタイマーを使い「後から入れる」で記録してもよい。鳴らなくても開始時刻は端末に残るので、戻ると分数は正しく出る。 |
 | 瞑想の記録が減った・消えたように見える | 設定 →「瞑想の保存方式」 | 「年ファイル（N 年分）」の N が 0 なら索引が取れていない → 「今すぐ同期」。 |
 | 読書メモの「分解する」が失敗 | 一括入力の画面の文言、設定 →「最終エラー」 | v7.4.1 から理由が出る。「API エラー 429」= 混雑、少し待つ。「API エラー 401」= API キー。「時間切れ」= 文章を短く分ける（120 秒で打ち切り）。「応答を JSON として読めません」= もう一度（応答の先頭が文言に出る）。「途中で切れました」= 文章を分ける。 |
@@ -164,11 +165,24 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
 
 **記録 1 件**
 ```
-{ id: 'j_YYYYMMDD_連番', date: 'YYYY-MM-DD', kind: 'morning'|'consult'|'draw'|'question'|'read'（read = 言葉の詳細で押した★。届いた回数には数えない）,
+{ id: 'j_YYYYMMDD_連番', date: 'YYYY-MM-DD', kind: 'morning'|'consult'|'draw'|'question'|'read'（read = 言葉の詳細で押した★。届いた回数には数えない）|'deck'（撮るのデッキ）,
   text: 入力文, picks: [{ id: ノートid, why, hit?: 1, hitAt? }], closing, mood?（朝）, sessionId?（引く）,
   from[] / why_now / tension / for_viewer / used?（問い）, scene / ask / core / sides{a,b} / qtype（v8.3〜8.4 の問い：場面の1文・そこに立てる問い・材料の言い回しを残した芯・場面の両側・型。text は scene + ask。古い問いは scene が空で text が問い）, createdAt, updatedAt }
 ```
-`hit` が「刺さった ★」。ノート側には何も保存せず、回数は記録から集計する。
+`hit` が「刺さった ★」。ノート側には何も保存せず、回数は記録から集計する。`use` は相談の札に付ける「使う」印（撮るの材料。★とは別物）。
+
+**デッキ 1 件（撮る。kind: 'deck'）**
+```
+{ id, date, kind: 'deck',
+  text: 仮の答え（1文。空のあいだはカードを足せない）, title: 動画のタイトル（任意）,
+  questionId: 元の問いの記録 id（手書きなら ''）, questionText: 問いの写し, from: [材料の言葉 id],
+  cards: [{ id: 'c1', kind: 'research'|'fun'|'word'|'record',
+            fact: 事実の1行, source: 誰がどこで, url, breaks: 仮の答えの何を壊すか,
+            tag?: '伝承'|'噂'（わくわくのみ）, belief?: 'yes'|'half'|'fun'（自分が信じているか）,
+            noteId?（言葉カード）, order, dropped }],
+  status: 'draft'|'shot', shotAt, picks: [], createdAt, updatedAt }
+```
+カードは材料であって台本ではない。第1段では AI を通さず、言葉カードは相談の「使う」印から、記録カードはその日の朝の記録から作り、研究・わくわくは手で書く（第2段で web search 付きの生成に置き換える）。
 
 **月ファイル `journal/YYYY-MM.json`**: `{ version: 1, month, updatedAt, entries: [...], deletedIds: [] }`
 **索引 `journal/index.json`**: `{ version: 1, updatedAt, months: { 'YYYY-MM': { updatedAt, count, noteStats: { ノートid: { p: 届いた回数, h: ★の回数, q: 問いに使われた回数, last, lastHit } } } } }`
@@ -243,6 +257,7 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
 | 網の見た目 | `GRAPH_FIT_FLOOR`, `graphPathsFrom` |
 | 画面のスクロール構造 | `#shell`（v7.3。この箱がスクロールし、ページ自体は動かない） |
 | 瞑想 | `MEDITATION_INDEX_PATH`, `MED_MIN_PRESETS`（5/10/15/20）, `MED_BELLS`（鈴の倍音。試聴ページと同じ計算）, `MED_BELL_DEFAULT`, `MED_BELL_KEY`（選んだ音）, `MED_TIMER_KEY`（計測中の開始時刻）, `MED_ALARM_CUSTOM_KEY`（任意分数の前回値）。時間帯の区切りは `medBandOf`（朝 5〜11 / 昼 11〜17 / 夜） |
+| 撮る（デッキ・カード・撮影表示） | `SHOOT_SAVE_MS`（自動保存 0.4 秒）, `SHOOT_CARD_LABEL`, `SHOOT_BELIEF_LABEL`, `SHOOT_USED_PICK_DAYS`（「使う」印を拾う日数、30）, `shootSafeUrl`（出典を開くのは http/https だけ）, `normalizeDeckCard` |
 | 振り返る（記録タブの入り口） | `LOOKBACK_SEARCH_DAYS`（記録のない日から近い日を探す範囲、400 日）, `DAY_NOTES_SHOWN`（その日に追加した言葉の表示枚数、5）, `dayPositionLine`（「一万日の N 日目 / 10000 ・ 言葉 ・ 筋トレ ・ 瞑想」の行）, `dayHeadlineNote`（その日の言葉：★ → 朝の最初の言葉） |
 | 入力の退避（未保存の下書き） | `INPUT_DRAFT_KEY`, `captureInputDraftNow`, `restoreInputDraft`（対象外にしたい欄は `INPUT_DRAFT_SKIP`） |
 

@@ -553,6 +553,45 @@
   .calDot.dotQuestion { background: #d3b16a; }
   .calDot.dotTraining { background: #e07a5f; }
   .calDot.dotMeditation { background: #5aa89a; }
+  /* 撮る (v8.5) */
+  .consultCard .cardText { padding-right: 86px; }
+  .useBtn { position: absolute; top: 10px; right: 44px; background: none; border: 1px solid var(--border); border-radius: 999px; font-size: 12px; line-height: 1; padding: 5px 8px; color: var(--text-faint); font-family: inherit; cursor: pointer; }
+  .useBtn.on { color: #7fb3a5; border-color: #7fb3a5; }
+  .deckRow { background: var(--bg-card); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; cursor: pointer; margin-bottom: 10px; }
+  .deckRowTop { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .deckRowText { font-size: 15px; line-height: 1.6; }
+  .deckRowAnswer { font-size: 12px; color: var(--text-faint); line-height: 1.6; }
+  .shootCardEdit { border: 1px solid var(--border); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+  .shootCardEdit.dropped { opacity: 0.45; }
+  .shootCardEdit textarea, .shootCardEdit input[type="text"] { font-size: 14px; padding: 8px; }
+  .shootCardHead { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
+  .shootCardKind { border-radius: 999px; padding: 1px 8px; border: 1px solid var(--border); font-size: 11px; white-space: nowrap; }
+  .shootCardKind.k-research { color: #86a9c9; border-color: #86a9c9; }
+  .shootCardKind.k-fun { color: #d3b16a; border-color: #d3b16a; }
+  .shootCardKind.k-word { color: #a98fd0; border-color: #a98fd0; }
+  .shootCardKind.k-record { color: #5aa89a; border-color: #5aa89a; }
+  .shootCardActions { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 6px; }
+  .shootCardActions button { font-size: 13px; color: var(--accent); padding: 4px 0; }
+  #screen-shootStage { background: #06080a; }
+  #screen-shootStage .drawTopBar { background: #06080a; }
+  .shootHead { flex-shrink: 0; padding: 4px 4px 12px; border-bottom: 1px solid #1e262b; }
+  .shootHeadQ { font-size: 16px; line-height: 1.8; color: #c8d2d8; white-space: pre-wrap; }
+  .shootHeadA { font-size: 13px; line-height: 1.7; color: #7f8d96; margin-top: 6px; white-space: pre-wrap; }
+  .shootCards { display: flex; flex-direction: column; gap: 14px; padding: 16px 0 32px; }
+  .shootEmpty { color: #7f8d96; font-size: 14px; padding: 24px 4px; }
+  .shootCard { background: #101418; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px; cursor: pointer; border-left: 4px solid #2b3439; transition: opacity .2s ease; }
+  .shootCard.k-research { border-left-color: #86a9c9; }
+  .shootCard.k-fun { border-left-color: #d3b16a; }
+  .shootCard.k-word { border-left-color: #a98fd0; }
+  .shootCard.k-record { border-left-color: #5aa89a; }
+  .shootCard.said { opacity: 0.3; }
+  .shootCardNo { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #7f8d96; font-variant-numeric: tabular-nums; flex-wrap: wrap; }
+  .shootBelief { font-size: 11px; color: #d3b16a; }
+  .shootFact { font-size: 21px; line-height: 1.8; color: #e7edf1; white-space: pre-wrap; word-break: break-word; }
+  .shootSource { font-size: 13px; color: #93a2ab; word-break: break-word; }
+  .shootBreaks { font-size: 14px; color: #d9b45a; line-height: 1.7; }
+  .shootUrlBtn { align-self: flex-start; border: 1px solid #35414a; border-radius: 999px; padding: 9px 18px; color: #c8d2d8; font-size: 13px; }
+  @media (prefers-reduced-motion: reduce) { .shootCard { transition: none; } }
   /* 瞑想 (v8.0) */
   .medRow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   .medRow .tagFilterBtn { min-width: 44px; text-align: center; }
@@ -1355,6 +1394,7 @@
       <button class="backBtn" id="backFromRecords">← 戻る</button>
       <div class="topbar-title">記録</div>
       <div class="topbarBtnGroup">
+        <button id="btnOpenShoot" class="iconBtn">撮る</button>
         <button id="btnOpenMeditation" class="iconBtn">瞑想</button>
         <button id="btnOpenTraining" class="iconBtn">筋トレ</button>
       </div>
@@ -1518,6 +1558,59 @@
       <div class="field">
         <span class="fieldLabel">分数ごとの集中</span>
         <div class="medTableWrap"><table class="medTable" id="medLenTable"></table></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="screen-shoot" class="screen" hidden>
+    <header class="topbar">
+      <button class="backBtn" id="backFromShoot">← 戻る</button>
+      <div class="topbar-title">撮る</div>
+      <div class="topbarBtnGroup">
+        <button id="btnShootSync" class="iconBtn">取り込む</button>
+        <button id="btnShootNew" class="iconBtn">＋</button>
+      </div>
+    </header>
+
+    <div class="editorBody" id="shootListView">
+      <p class="fieldNote" id="shootSyncNote"></p>
+      <div id="shootDeckList"></div>
+      <p class="emptyMsg" id="shootDeckEmpty" hidden>まだデッキがありません。右上の「＋」で作ります。</p>
+    </div>
+
+    <div class="editorBody" id="shootEditView" hidden>
+      <div class="field">
+        <span class="fieldLabel">問い（動画の入り）</span>
+        <div class="tagFilterRow" id="shootQuestionChips"></div>
+        <textarea id="shootQuestionText" rows="2" placeholder="引いた問いを選ぶか、ここに書く" autocomplete="off"></textarea>
+      </div>
+      <div class="field">
+        <span class="fieldLabel">仮の答え<span class="required">必須</span></span>
+        <textarea id="shootAnswerInput" rows="2" placeholder="今日はこう答える、を1文で" autocomplete="off"></textarea>
+        <p class="fieldNote" id="shootAnswerHint" hidden>仮の答えを書くまで、カードは足せません。</p>
+      </div>
+      <div class="field">
+        <span class="fieldLabel">タイトル（任意）</span>
+        <input type="text" id="shootTitleInput" placeholder="動画のタイトル" autocomplete="off">
+      </div>
+      <div class="field">
+        <span class="fieldLabel">カード</span>
+        <div class="medRow">
+          <button type="button" id="btnShootAddWord" class="tagFilterBtn">言葉から</button>
+          <button type="button" id="btnShootAddRecord" class="tagFilterBtn">今日の記録</button>
+          <button type="button" id="btnShootAddResearch" class="tagFilterBtn">研究を手で</button>
+          <button type="button" id="btnShootAddFun" class="tagFilterBtn">わくわくを手で</button>
+        </div>
+        <div id="shootWordPicker" class="listItems" hidden></div>
+        <div id="shootCardList"></div>
+      </div>
+      <div class="field">
+        <button id="btnShootStart" class="primaryBtn">撮影表示をひらく</button>
+        <div class="medRow">
+          <button type="button" id="btnShootDone" class="secondaryBtn" style="width:auto;">撮った印をつける</button>
+          <button type="button" id="btnShootDelete" class="dangerBtn" style="width:auto;">このデッキを消す</button>
+        </div>
+        <p class="fieldNote" id="shootMeta"></p>
       </div>
     </div>
   </section>
@@ -1751,6 +1844,17 @@
     </div>
   </div>
 
+  <div id="screen-shootStage" class="drawOverlay" hidden>
+    <div class="drawTopBar">
+      <div class="graphTitle">撮影</div>
+      <button id="btnShootStageClose" class="drawIconBtn" type="button">×</button>
+    </div>
+    <div class="shootHead">
+      <div class="shootHeadQ" id="shootStageQuestion"></div>
+      <div class="shootHeadA" id="shootStageAnswer"></div>
+    </div>
+    <div id="shootStageCards" class="shootCards"></div>
+  </div>
   <div id="screen-medTimer" class="drawOverlay" hidden>
     <div id="medTimerBig">00:00</div>
     <div id="medTimerSub"></div>
@@ -1880,7 +1984,7 @@
   // journal entries: kind 'morning' (今朝の言葉), 'consult' (相談の記録),
   // 'draw' (引く), or 'question' (問いを引く, v3.3). One per API response /
   // per 引く landing. Entry-level merge/tombstone, same pattern as notes.
-  const JOURNAL_KINDS = ['morning', 'consult', 'draw', 'question', 'read'];   // 'read' (v8.2.1): a ★ given on the detail screen, no delivery behind it
+  const JOURNAL_KINDS = ['morning', 'consult', 'draw', 'question', 'read', 'deck'];   // 'deck' (v8.5): one video's 撮る deck - question, provisional answer, cards   // 'read' (v8.2.1): a ★ given on the detail screen, no delivery behind it
   function normalizeJournalEntry(j) {
     if (!j || !j.id) return null;
     const kind = JOURNAL_KINDS.includes(j.kind) ? j.kind : 'morning';
@@ -1890,7 +1994,7 @@
       kind,
       text: typeof j.text === 'string' ? j.text : '',
       picks: Array.isArray(j.picks)
-        ? j.picks.filter((p) => p && p.id).map((p) => { const o = { id: String(p.id), why: typeof p.why === 'string' ? p.why : '' }; if (p.hit) { o.hit = 1; o.hitAt = typeof p.hitAt === 'string' ? p.hitAt : ''; } return o; })
+        ? j.picks.filter((p) => p && p.id).map((p) => { const o = { id: String(p.id), why: typeof p.why === 'string' ? p.why : '' }; if (p.hit) { o.hit = 1; o.hitAt = typeof p.hitAt === 'string' ? p.hitAt : ''; } if (p.use) o.use = 1; return o; })
         : [],
       closing: typeof j.closing === 'string' ? j.closing : '',
       createdAt: j.createdAt || nowIso(),
@@ -1918,6 +2022,17 @@
       out.via = typeof j.via === 'string' ? j.via : ''; // v3.6: 遠い対立の経由した言葉
       out.source_mode = QUESTION_MODES.includes(j.source_mode) ? j.source_mode : 'self';
       out.used = j.used === true;
+    }
+    // v8.5 撮る: one deck per video. Cards are material (事実 / 出典 / 壊すもの),
+    // never a script; nothing here is generated in stage 1.
+    if (kind === 'deck') {
+      out.title = typeof j.title === 'string' ? j.title : '';
+      out.questionId = typeof j.questionId === 'string' ? j.questionId : '';
+      out.questionText = typeof j.questionText === 'string' ? j.questionText : '';
+      out.from = Array.isArray(j.from) ? j.from.filter(Boolean).map(String).slice(0, 8) : [];
+      out.cards = (Array.isArray(j.cards) ? j.cards : []).map(normalizeDeckCard).filter(Boolean).slice(0, 40);
+      out.status = j.status === 'shot' ? 'shot' : 'draft';
+      out.shotAt = typeof j.shotAt === 'string' ? j.shotAt : '';
     }
     return out;
   }
@@ -3497,6 +3612,19 @@
   // Upserts by id (used both for a brand-new entry and for the same-day mood
   // overwrite case), stamps updatedAt, and goes through the normal
   // saveData()/scheduleSync() path so it merges/syncs exactly like a note.
+  function normalizeDeckCard(c, i) {
+    if (!c || typeof c !== 'object') return null;
+    const kind = ['research', 'fun', 'word', 'record'].includes(c.kind) ? c.kind : 'research';
+    const str = (v, n) => (typeof v === 'string' ? v : '').slice(0, n);
+    const order = Number(c.order);
+    const out = { id: String(c.id || ('c' + (i + 1))), kind, fact: str(c.fact, 400), source: str(c.source, 200), url: str(c.url, 500), breaks: str(c.breaks, 200), order: Number.isFinite(order) ? order : i, dropped: c.dropped === true };
+    if (kind === 'fun') {
+      if (c.tag === '伝承' || c.tag === '噂') out.tag = c.tag;
+      if (['yes', 'half', 'fun'].includes(c.belief)) out.belief = c.belief;
+    }
+    if (kind === 'word' && typeof c.noteId === 'string') out.noteId = c.noteId;
+    return out;
+  }
   function saveJournalEntry(entry) {
     entry.updatedAt = nowIso();
     const idx = data.journal.findIndex((j) => j.id === entry.id);
@@ -5336,7 +5464,7 @@
             why.textContent = pick.why;
             card.appendChild(why);
           }
-          if (turn.journalId) card.appendChild(makeHitButton(turn.journalId, note.id));
+          if (turn.journalId) { card.appendChild(makeHitButton(turn.journalId, note.id)); card.appendChild(makeUseButton(turn.journalId, note.id)); }
           card.addEventListener('click', () => openDetail(note.id, 'consult'));
           wrap.appendChild(card);
         });
@@ -5404,7 +5532,8 @@
   function showScreen(name) {
     if (nav.screen !== name) captureInputDraftNow();
     if (nav.screen === 'training' && name !== 'training') trFlush();
-    ['home', 'list', 'consult', 'detail', 'editor', 'settings', 'records', 'bulk', 'draftreview', 'training', 'meditation'].forEach((s) => {
+    if (nav.screen === 'shoot' && name !== 'shoot') shootFlush();
+    ['home', 'list', 'consult', 'detail', 'editor', 'settings', 'records', 'bulk', 'draftreview', 'training', 'meditation', 'shoot'].forEach((s) => {
       document.getElementById('screen-' + s).hidden = s !== name;
     });
     nav.screen = name;
@@ -5414,13 +5543,14 @@
     // mechanism that already hid it before this nav became position:fixed.
     document.getElementById('globalBottomNav').hidden = false;
     document.querySelectorAll('#globalBottomNav .navBtn').forEach((b) => b.classList.remove('selected'));
-    const activeBtn = { home: 'navHome', list: 'navList', consult: 'navConsult', records: 'navRecords', settings: 'navSettings', training: 'navRecords', meditation: 'navRecords' }[name];
+    const activeBtn = { home: 'navHome', list: 'navList', consult: 'navConsult', records: 'navRecords', settings: 'navSettings', training: 'navRecords', meditation: 'navRecords', shoot: 'navRecords' }[name];
     if (activeBtn) document.getElementById(activeBtn).classList.add('selected');
   }
 
   function refreshCurrentScreen() {
     if (nav.screen === 'training') { renderTraining(); return; }
     if (nav.screen === 'meditation') { renderMeditation(); return; }
+    if (nav.screen === 'shoot') { renderShoot(); return; }
     if (nav.screen === 'home') renderHome();
     else if (nav.screen === 'list') renderList();
     else if (nav.screen === 'detail') renderDetail();
@@ -5486,6 +5616,30 @@
   }
 
   // ★ toggle for one pick of one journal entry (consult / morning / records)
+  // 「使う」 (v8.5): marks a consulted word as material for the next video.
+  // Separate from ★ - ★ is 刺さった, this is 今日これで話す.
+  function isPickUse(journalId, noteId) {
+    const j = data.journal.find((x) => x.id === journalId);
+    const p = j && j.picks.find((x) => x.id === noteId);
+    return !!(p && p.use);
+  }
+  function toggleJournalUse(journalId, noteId) {
+    const j = data.journal.find((x) => x.id === journalId);
+    if (!j) return null;
+    const p = j.picks.find((x) => x.id === noteId);
+    if (!p) return null;
+    if (p.use) delete p.use; else p.use = 1;
+    saveJournalEntry(j);
+    return p;
+  }
+  function makeUseButton(journalId, noteId) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    const paint = () => { const on = isPickUse(journalId, noteId); b.className = 'useBtn' + (on ? ' on' : ''); b.textContent = '使う'; b.title = on ? '撮るの材料にする（もう一度押すと外す）' : '撮るの材料にする'; };
+    paint();
+    b.addEventListener('click', (e) => { e.stopPropagation(); toggleJournalUse(journalId, noteId); paint(); });
+    return b;
+  }
   function makeHitButton(journalId, noteId, onChange) {
     const b = document.createElement('button');
     b.type = 'button';
@@ -8169,6 +8323,7 @@
 
   document.getElementById('btnOpenTraining').addEventListener('click', () => openTraining(todayStr()));
   document.getElementById('btnOpenMeditation').addEventListener('click', () => openMeditation());
+  document.getElementById('btnOpenShoot').addEventListener('click', () => openShoot());
   document.getElementById('backFromTraining').addEventListener('click', () => { trFlush(); openRecords(); });
   document.getElementById('trDate').addEventListener('change', (e) => { trLoadDate(e.target.value || todayStr()); renderTraining(); });
   document.getElementById('trWeight').addEventListener('input', (e) => { trState.weight = e.target.value.trim(); trScheduleSave(); });
@@ -9577,6 +9732,8 @@
     if (drawEntries.length) { any = true; body.appendChild(renderDayDrawCard(drawEntries)); }
     const readEntries = data.journal.filter((j) => j.kind === 'read' && j.date === dateStr);
     if (readEntries.length) { any = true; body.appendChild(renderDayReadCard(readEntries)); }
+    const deckEntriesToday = data.journal.filter((j) => j.kind === 'deck' && j.date === dateStr);
+    if (deckEntriesToday.length) { any = true; body.appendChild(renderDayDeckCard(deckEntriesToday)); }
 
     const added = notesAddedOn(dateStr);
     if (added.length) { any = true; body.appendChild(renderDayNotesCard(added)); }
@@ -11934,9 +12091,397 @@
   window.addEventListener('pagehide', () => medMemoFlush());
 
 
+  // --- 撮る (v8.5, 第1段) ----------------------------------------------------
+  // A deck is one journal entry (kind 'deck'): the question, the provisional
+  // answer, and the cards to talk from. Cards are material, never a script -
+  // 事実 / 出典 / この事実が仮の答えの何を壊すか, three lines. Stage 1 makes no
+  // API call: 言葉 cards come from consult picks marked 「使う」, the 記録 card
+  // from that morning's journal entry, 研究 / わくわく are typed by hand until
+  // stage 2 generates them with web search.
+  const SHOOT_SAVE_MS = 400;
+  const SHOOT_CARD_LABEL = { research: '研究', fun: 'わくわく', word: '言葉', record: '記録' };
+  const SHOOT_BELIEF_LABEL = { yes: '信じている', half: '半信半疑', fun: 'エンタメだと思う' };
+  const SHOOT_USED_PICK_DAYS = 30;
+  const shootState = { deckId: null, filledFor: null, saveTimer: null, pickerOpen: false, said: new Set() };
+  let shootWakeLock = null;
+
+  // a card's URL is observed content (typed here, generated by the model in
+  // stage 2, or merged from another device): only http(s) is ever opened
+  function shootSafeUrl(u) {
+    const t = String(u || '').trim();
+    if (!t) return '';
+    if (/^https?:\/\//i.test(t)) return t;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(t)) return '';   // javascript:, data:, ... never
+    return 'https://' + t;
+  }
+  function deckEntries() { return data.journal.filter((j) => j.kind === 'deck').sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)); }
+  function findDeck(id) { const j = findJournalEntry(id); return j && j.kind === 'deck' ? j : null; }
+  function deckQuestionTextOf(q) { return q ? (q.scene ? q.scene + ' ' + (q.ask || '') : q.text || '') : ''; }
+  function deckCards(deck) { return (deck.cards || []).slice().sort((a, b) => a.order - b.order || (a.id < b.id ? -1 : 1)); }
+  function deckLiveCards(deck) { return deckCards(deck).filter((c) => !c.dropped); }
+  function deckHeadline(deck) { return deck.title || noteSnippet(deck.questionText || deck.text || '', 46) || '（空のデッキ）'; }
+  function deckNextCardId(deck) { const taken = new Set((deck.cards || []).map((c) => c.id)); let n = 1; while (taken.has('c' + n)) n++; return 'c' + n; }
+  function deckNextOrder(deck) { return (deck.cards || []).reduce((m, c) => Math.max(m, c.order), -1) + 1; }
+
+  // ---- save (autosave, same posture as 筋トレ / 瞑想のメモ) ----
+  function shootCollect() {
+    const deck = findDeck(shootState.deckId);
+    if (!deck || document.getElementById('shootEditView').hidden) return null;
+    deck.questionText = document.getElementById('shootQuestionText').value.trim();
+    deck.text = document.getElementById('shootAnswerInput').value.trim();
+    deck.title = document.getElementById('shootTitleInput').value.trim();
+    return deck;
+  }
+  function shootPersist() {
+    const deck = shootCollect();
+    if (!deck) return;
+    saveJournalEntry(deck);
+    updateShootMeta(deck);
+  }
+  function shootScheduleSave() {
+    if (shootState.saveTimer) clearTimeout(shootState.saveTimer);
+    shootState.saveTimer = setTimeout(() => { shootState.saveTimer = null; shootPersist(); }, SHOOT_SAVE_MS);
+  }
+  function shootFlush() { if (shootState.saveTimer) { clearTimeout(shootState.saveTimer); shootState.saveTimer = null; shootPersist(); } }
+  function shootTouch(deck) { saveJournalEntry(deck); updateShootMeta(deck); }
+
+  // ---- screens ----
+  function openShoot() {
+    shootState.deckId = null; shootState.filledFor = null; shootState.pickerOpen = false;
+    showScreen('shoot');
+    renderShoot();
+    // the other device may have written the deck a moment ago; an open tab
+    // never pulls on its own (see README §3.2), so ask once on the way in
+    syncAllNow().then(() => { if (nav.screen === 'shoot' && !shootState.deckId) renderShoot(); }).catch(() => {});
+  }
+  function openDeck(id) {
+    if (!findDeck(id)) return;
+    shootState.deckId = id; shootState.filledFor = null; shootState.pickerOpen = false;
+    if (nav.screen !== 'shoot') showScreen('shoot');
+    renderShoot();
+  }
+  function closeDeckEditor() { shootFlush(); shootState.deckId = null; shootState.filledFor = null; shootState.pickerOpen = false; renderShoot(); }
+  function renderShoot() {
+    const deck = shootState.deckId ? findDeck(shootState.deckId) : null;
+    if (shootState.deckId && !deck) { shootState.deckId = null; shootState.filledFor = null; }
+    const editing = !!deck;
+    document.getElementById('shootListView').hidden = editing;
+    document.getElementById('shootEditView').hidden = !editing;
+    if (editing) renderDeckEditor(deck); else renderShootList();
+  }
+  function shootSyncLine() {
+    const t = localStorage.getItem(LAST_SYNC_KEY);
+    return t ? '最終同期 ' + formatDateTime(t) : 'まだ同期していません';
+  }
+  function renderShootList() {
+    document.getElementById('shootSyncNote').textContent = shootSyncLine() + '　（他の端末で作ったデッキは「取り込む」で出ます）';
+    const wrap = document.getElementById('shootDeckList');
+    wrap.innerHTML = '';
+    const list = deckEntries();
+    document.getElementById('shootDeckEmpty').hidden = list.length > 0;
+    list.slice(0, 30).forEach((d) => {
+      const row = document.createElement('div');
+      row.className = 'deckRow';
+      const top = document.createElement('div');
+      top.className = 'deckRowTop';
+      const left = document.createElement('span');
+      left.textContent = dotDate(d.date);
+      top.appendChild(left);
+      const right = document.createElement('span');
+      right.textContent = `カード ${deckLiveCards(d).length}枚` + (d.status === 'shot' ? '　撮った' : '');
+      top.appendChild(right);
+      row.appendChild(top);
+      const t = document.createElement('div');
+      t.className = 'deckRowText';
+      t.textContent = deckHeadline(d);
+      row.appendChild(t);
+      if (d.text) { const a = document.createElement('div'); a.className = 'deckRowAnswer'; a.textContent = '仮の答え ・ ' + noteSnippet(d.text, 40); row.appendChild(a); }
+      row.addEventListener('click', () => openDeck(d.id));
+      wrap.appendChild(row);
+    });
+  }
+
+  // ---- deck editor ----
+  function renderDeckEditor(deck) {
+    if (shootState.filledFor !== deck.id) {
+      shootState.filledFor = deck.id;
+      document.getElementById('shootQuestionText').value = deck.questionText || '';
+      document.getElementById('shootAnswerInput').value = deck.text || '';
+      document.getElementById('shootTitleInput').value = deck.title || '';
+    }
+    renderShootQuestionChips(deck);
+    renderShootCards(deck);
+    renderShootWordPicker(deck);
+    updateShootMeta(deck);
+    updateShootAddButtons();
+  }
+  function updateShootAddButtons() {
+    const ok = document.getElementById('shootAnswerInput').value.trim().length > 0;
+    ['btnShootAddWord', 'btnShootAddRecord', 'btnShootAddResearch', 'btnShootAddFun'].forEach((id) => { document.getElementById(id).disabled = !ok; });
+    document.getElementById('shootAnswerHint').hidden = ok;
+  }
+  function updateShootMeta(deck) {
+    const dropped = (deck.cards || []).filter((c) => c.dropped).length;
+    document.getElementById('shootMeta').textContent =
+      `カード ${deckLiveCards(deck).length}枚` + (dropped ? `（不採用 ${dropped}）` : '') +
+      `　更新 ${formatDateTime(deck.updatedAt)}　${shootSyncLine()}`;
+    document.getElementById('btnShootDone').textContent = deck.status === 'shot' ? '撮った印を外す' : '撮った印をつける';
+  }
+  function renderShootQuestionChips(deck) {
+    const row = document.getElementById('shootQuestionChips');
+    row.innerHTML = '';
+    const mk = (label, on, fn) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'tagFilterBtn' + (on ? ' selected' : ''); b.textContent = label; b.addEventListener('click', fn); row.appendChild(b); };
+    sortedQuestionEntriesDesc().slice(0, 6).forEach((q) => {
+      mk(noteSnippet(deckQuestionTextOf(q), 18), deck.questionId === q.id, () => {
+        deck.questionId = q.id;
+        deck.questionText = deckQuestionTextOf(q);
+        deck.from = [...(q.from || [])];
+        document.getElementById('shootQuestionText').value = deck.questionText;
+        shootTouch(deck);
+        renderDeckEditor(deck);
+      });
+    });
+    mk('手で書く', !deck.questionId, () => { deck.questionId = ''; deck.from = []; shootTouch(deck); renderShootQuestionChips(deck); document.getElementById('shootQuestionText').focus(); });
+  }
+
+  // ---- cards ----
+  function deckAddCard(deck, card) {
+    if (!deck.cards) deck.cards = [];
+    const c = Object.assign({ id: deckNextCardId(deck), kind: 'research', fact: '', source: '', url: '', breaks: '', order: deckNextOrder(deck), dropped: false }, card);
+    deck.cards.push(c);
+    shootTouch(deck);
+    renderShootCards(deck);
+    return c;
+  }
+  function deckMoveCard(deck, id, dir) {
+    const list = deckCards(deck);
+    const i = list.findIndex((c) => c.id === id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= list.length) return;
+    const a = list[i].order, b = list[j].order;
+    list[i].order = b; list[j].order = a;
+    if (a === b) list.forEach((c, k) => { c.order = k; });
+    shootTouch(deck);
+    renderShootCards(deck);
+  }
+  function recordCardFor(date) {
+    const m = data.journal.find((j) => j.kind === 'morning' && j.date === date);
+    const stats = walkData.dailyStats[date] || {};
+    const parts = [];
+    if (m && m.mood != null) parts.push('気分 ' + MOOD_EMOJI[m.mood]);
+    else if (stats.wakeMood != null) parts.push('今朝の体調 ' + MOOD_EMOJI[stats.wakeMood]);
+    if (m && m.text) parts.push(m.text);
+    return { kind: 'record', fact: parts.join(' ・ ') || '（この日の朝の記録はまだありません）', source: dotDate(date) + ' の朝' };
+  }
+  // words this deck can draw on: the consult picks marked 「使う」 in the last
+  // 30 days, plus the words the deck's question stands on
+  function shootWordCandidates(deck) {
+    const cutoff = addDays(todayStr(), -SHOOT_USED_PICK_DAYS);
+    const seen = new Set(), out = [];
+    data.journal.forEach((j) => {
+      if (j.date < cutoff) return;
+      (j.picks || []).forEach((p) => { if (p.use && !seen.has(p.id) && findNote(p.id)) { seen.add(p.id); out.push({ id: p.id, why: '使う印 ・ ' + dotDate(j.date) }); } });
+    });
+    (deck.from || []).forEach((id) => { if (!seen.has(id) && findNote(id)) { seen.add(id); out.push({ id, why: 'この問いの材料' }); } });
+    return out;
+  }
+  function renderShootWordPicker(deck) {
+    const panel = document.getElementById('shootWordPicker');
+    panel.hidden = !shootState.pickerOpen;
+    if (!shootState.pickerOpen) return;
+    panel.innerHTML = '';
+    const used = new Set((deck.cards || []).map((c) => c.noteId).filter(Boolean));
+    const list = shootWordCandidates(deck).filter((x) => !used.has(x.id));
+    if (!list.length) { const p = document.createElement('p'); p.className = 'emptyMsg'; p.textContent = '相談の札に「使う」印を付けると、ここに出ます。'; panel.appendChild(p); return; }
+    list.forEach((x) => {
+      const note = findNote(x.id);
+      const row = document.createElement('div');
+      row.className = 'listItem'; row.style.cursor = 'pointer';
+      const t = document.createElement('div'); t.className = 'liText'; t.textContent = noteSnippet(note.text, 60); row.appendChild(t);
+      const b = document.createElement('div'); b.className = 'liBottomRow'; b.textContent = (note.source || '') + '　' + x.why; row.appendChild(b);
+      row.addEventListener('click', () => {
+        deckAddCard(deck, { kind: 'word', fact: note.text, source: note.source || '自分の言葉', noteId: note.id });
+        shootState.pickerOpen = false;
+        renderShootWordPicker(deck);
+      });
+      panel.appendChild(row);
+    });
+  }
+  function renderShootCards(deck) {
+    const wrap = document.getElementById('shootCardList');
+    wrap.innerHTML = '';
+    const list = deckCards(deck);
+    if (!list.length) { const p = document.createElement('p'); p.className = 'emptyMsg'; p.textContent = 'まだカードがありません。'; wrap.appendChild(p); return; }
+    list.forEach((c, i) => {
+      const box = document.createElement('div');
+      box.className = 'shootCardEdit' + (c.dropped ? ' dropped' : '');
+      const head = document.createElement('div');
+      head.className = 'shootCardHead';
+      const k = document.createElement('span'); k.className = 'shootCardKind k-' + c.kind; k.textContent = SHOOT_CARD_LABEL[c.kind] || c.kind; head.appendChild(k);
+      const no = document.createElement('span'); no.textContent = (i + 1) + ' / ' + list.length; head.appendChild(no);
+      box.appendChild(head);
+
+      const field = (label, value, rows, on) => {
+        const l = document.createElement('span'); l.className = 'fieldLabel'; l.textContent = label; box.appendChild(l);
+        const el = rows ? document.createElement('textarea') : document.createElement('input');
+        if (rows) el.rows = rows; else el.type = 'text';
+        el.value = value || '';
+        el.autocomplete = 'off';
+        el.addEventListener('input', () => { on(el.value); shootScheduleSave(); });
+        box.appendChild(el);
+        return el;
+      };
+      field('事実', c.fact, 2, (v) => { c.fact = v; });
+      field('出典（誰がどこで）', c.source, 0, (v) => { c.source = v; });
+      field('URL', c.url, 0, (v) => { c.url = v; });
+      field('仮の答えの何を壊すか', c.breaks, 0, (v) => { c.breaks = v; });
+
+      if (c.kind === 'fun') {
+        const tagRow = document.createElement('div'); tagRow.className = 'tagFilterRow';
+        ['伝承', '噂'].forEach((t) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'tagFilterBtn' + (c.tag === t ? ' selected' : ''); b.textContent = t; b.addEventListener('click', () => { c.tag = c.tag === t ? '' : t; shootTouch(deck); renderShootCards(deck); }); tagRow.appendChild(b); });
+        box.appendChild(tagRow);
+        const bl = document.createElement('span'); bl.className = 'fieldLabel'; bl.textContent = '自分はこれを信じているか'; box.appendChild(bl);
+        const belRow = document.createElement('div'); belRow.className = 'tagFilterRow';
+        Object.keys(SHOOT_BELIEF_LABEL).forEach((key) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'tagFilterBtn' + (c.belief === key ? ' selected' : ''); b.textContent = SHOOT_BELIEF_LABEL[key]; b.addEventListener('click', () => { c.belief = c.belief === key ? '' : key; shootTouch(deck); renderShootCards(deck); }); belRow.appendChild(b); });
+        box.appendChild(belRow);
+      }
+
+      const acts = document.createElement('div'); acts.className = 'shootCardActions';
+      const act = (label, fn) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.addEventListener('click', fn); acts.appendChild(b); };
+      act('↑', () => deckMoveCard(deck, c.id, -1));
+      act('↓', () => deckMoveCard(deck, c.id, 1));
+      act(c.dropped ? '採用に戻す' : '不採用', () => { c.dropped = !c.dropped; shootTouch(deck); renderShootCards(deck); });
+      act('消す', () => { if (!confirm('このカードを消しますか？')) return; deck.cards = deck.cards.filter((x) => x.id !== c.id); shootTouch(deck); renderShootCards(deck); });
+      box.appendChild(acts);
+      wrap.appendChild(box);
+    });
+  }
+
+  // ---- 撮影表示 (全画面、一覧を出しっぱなし) ----
+  async function shootWakeAcquire() {
+    try { if (navigator.wakeLock && !shootWakeLock) { shootWakeLock = await navigator.wakeLock.request('screen'); shootWakeLock.addEventListener('release', () => { shootWakeLock = null; }); } } catch (e) { shootWakeLock = null; }
+  }
+  function shootWakeRelease() { try { if (shootWakeLock) { shootWakeLock.release(); shootWakeLock = null; } } catch (e) {} }
+  function openShootStage() {
+    const deck = findDeck(shootState.deckId);
+    if (!deck) return;
+    shootFlush();
+    shootState.said = new Set();
+    document.getElementById('screen-shootStage').hidden = false;
+    shootWakeAcquire();
+    renderShootStage();
+    syncAllNow().then(() => { if (!document.getElementById('screen-shootStage').hidden) renderShootStage(); }).catch(() => {});
+  }
+  function closeShootStage() {
+    document.getElementById('screen-shootStage').hidden = true;
+    shootWakeRelease();
+    renderShoot();
+  }
+  function renderShootStage() {
+    const deck = findDeck(shootState.deckId);
+    if (!deck) { closeShootStage(); return; }
+    document.getElementById('shootStageQuestion').textContent = deck.questionText || '（問い未設定）';
+    document.getElementById('shootStageAnswer').textContent = deck.text ? '仮の答え ・ ' + deck.text : '';
+    const wrap = document.getElementById('shootStageCards');
+    wrap.innerHTML = '';
+    const list = deckLiveCards(deck);
+    if (!list.length) { const p = document.createElement('div'); p.className = 'shootEmpty'; p.textContent = 'カードがありません。'; wrap.appendChild(p); return; }
+    list.forEach((c, i) => {
+      const box = document.createElement('div');
+      box.className = 'shootCard k-' + c.kind + (shootState.said.has(c.id) ? ' said' : '');
+      const head = document.createElement('div');
+      head.className = 'shootCardNo';
+      const n = document.createElement('span'); n.textContent = String(i + 1); head.appendChild(n);
+      const k = document.createElement('span'); k.className = 'shootCardKind k-' + c.kind; k.textContent = SHOOT_CARD_LABEL[c.kind] || c.kind; head.appendChild(k);
+      if (c.tag) { const t = document.createElement('span'); t.className = 'shootCardKind'; t.textContent = c.tag; head.appendChild(t); }
+      if (c.belief) { const b = document.createElement('span'); b.className = 'shootBelief'; b.textContent = SHOOT_BELIEF_LABEL[c.belief]; head.appendChild(b); }
+      box.appendChild(head);
+      const fact = document.createElement('div'); fact.className = 'shootFact'; fact.textContent = c.fact || '（空）'; box.appendChild(fact);
+      if (c.source) { const s = document.createElement('div'); s.className = 'shootSource'; s.textContent = c.source; box.appendChild(s); }
+      if (c.breaks) { const br = document.createElement('div'); br.className = 'shootBreaks'; br.textContent = '壊すもの ・ ' + c.breaks; box.appendChild(br); }
+      const safeUrl = shootSafeUrl(c.url);
+      if (safeUrl) {
+        const u = document.createElement('button');
+        u.type = 'button'; u.className = 'shootUrlBtn'; u.textContent = '出典をひらく';
+        u.addEventListener('click', (e) => { e.stopPropagation(); try { window.open(safeUrl, '_blank', 'noopener'); } catch (err) {} });
+        box.appendChild(u);
+      }
+      box.addEventListener('click', () => {
+        if (shootState.said.has(c.id)) shootState.said.delete(c.id); else shootState.said.add(c.id);
+        box.classList.toggle('said');
+      });
+      wrap.appendChild(box);
+    });
+  }
+
+  // ---- day view ----
+  function renderDayDeckCard(entries) {
+    const item = document.createElement('div');
+    item.className = 'recordEntry';
+    const top = document.createElement('div');
+    top.className = 'recordEntryTop';
+    const label = document.createElement('span');
+    label.className = 'recordEntryDate';
+    label.textContent = '撮る ・ ' + entries.length + '件';
+    top.appendChild(label);
+    item.appendChild(top);
+    entries.forEach((d) => {
+      const row = document.createElement('div');
+      row.className = 'listItem'; row.style.cursor = 'pointer';
+      const t = document.createElement('div'); t.className = 'liText'; t.textContent = deckHeadline(d); row.appendChild(t);
+      const b = document.createElement('div'); b.className = 'liBottomRow';
+      b.textContent = `カード ${deckLiveCards(d).length}枚` + (d.status === 'shot' ? ' ・ 撮った' : ' ・ 準備中');
+      row.appendChild(b);
+      row.addEventListener('click', () => openDeck(d.id));
+      item.appendChild(row);
+    });
+    return item;
+  }
+
+  // ---- wiring ----
+  document.getElementById('backFromShoot').addEventListener('click', () => { if (shootState.deckId) closeDeckEditor(); else openRecords(); });
+  document.getElementById('btnShootSync').addEventListener('click', () => {
+    shootFlush();
+    document.getElementById('shootSyncNote').textContent = '取り込んでいます…';
+    syncAllNow().then(() => { if (nav.screen === 'shoot') renderShoot(); }).catch(() => { if (nav.screen === 'shoot') renderShoot(); });
+  });
+  document.getElementById('btnShootNew').addEventListener('click', () => {
+    shootFlush();
+    const iso = nowIso();
+    const entry = { id: generateJournalId(), date: todayStr(), kind: 'deck', text: '', title: '', questionId: '', questionText: '', from: [], picks: [], closing: '', cards: [], status: 'draft', shotAt: '', createdAt: iso, updatedAt: iso };
+    saveJournalEntry(entry);
+    openDeck(entry.id);
+  });
+  ['shootQuestionText', 'shootAnswerInput', 'shootTitleInput'].forEach((id) => {
+    document.getElementById(id).addEventListener('input', () => { if (id === 'shootAnswerInput') updateShootAddButtons(); shootScheduleSave(); });
+  });
+  document.getElementById('btnShootAddWord').addEventListener('click', () => { const deck = findDeck(shootState.deckId); if (!deck) return; shootState.pickerOpen = !shootState.pickerOpen; renderShootWordPicker(deck); });
+  document.getElementById('btnShootAddRecord').addEventListener('click', () => { const deck = findDeck(shootState.deckId); if (deck) deckAddCard(deck, recordCardFor(deck.date)); });
+  document.getElementById('btnShootAddResearch').addEventListener('click', () => { const deck = findDeck(shootState.deckId); if (deck) deckAddCard(deck, { kind: 'research' }); });
+  document.getElementById('btnShootAddFun').addEventListener('click', () => { const deck = findDeck(shootState.deckId); if (deck) deckAddCard(deck, { kind: 'fun' }); });
+  document.getElementById('btnShootStart').addEventListener('click', openShootStage);
+  document.getElementById('btnShootStageClose').addEventListener('click', closeShootStage);
+  document.getElementById('btnShootDone').addEventListener('click', () => {
+    const deck = findDeck(shootState.deckId); if (!deck) return;
+    deck.status = deck.status === 'shot' ? 'draft' : 'shot';
+    deck.shotAt = deck.status === 'shot' ? nowIso() : '';
+    shootTouch(deck);
+  });
+  document.getElementById('btnShootDelete').addEventListener('click', () => {
+    const deck = findDeck(shootState.deckId); if (!deck) return;
+    if (!confirm('このデッキを消します。よろしいですか？')) return;
+    if (shootState.saveTimer) { clearTimeout(shootState.saveTimer); shootState.saveTimer = null; }
+    deleteJournalEntry(deck.id);
+    shootState.deckId = null; shootState.filledFor = null;
+    renderShoot();
+  });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') shootFlush(); });
+  window.addEventListener('pagehide', () => shootFlush());
+
+
   const INPUT_DRAFT_KEY = 'kotoba_inputDraft';
   const INPUT_DRAFT_MAX_AGE_MS = 48 * 3600 * 1000;
-  const INPUT_DRAFT_SKIP = new Set(['trDate', 'trWeight', 'listSearch', 'walkShareTextInput', 'medMemoInput', 'medAlarmCustom']); // medMemoInput autosaves itself   // own persistence / not worth restoring
+  const INPUT_DRAFT_SKIP = new Set(['trDate', 'trWeight', 'listSearch', 'walkShareTextInput', 'medMemoInput', 'medAlarmCustom', 'shootQuestionText', 'shootAnswerInput', 'shootTitleInput']); // medMemoInput autosaves itself   // own persistence / not worth restoring
   let inputDraftTimer = null, inputDraftRestoring = false;
   function readInputDraft() { try { const raw = localStorage.getItem(INPUT_DRAFT_KEY); const d = raw ? JSON.parse(raw) : null; return (d && d.fields && d.ctx) ? d : null; } catch (e) { return null; } }
   function inputDraftContext() {
