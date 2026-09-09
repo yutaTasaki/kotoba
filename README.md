@@ -25,6 +25,8 @@
 | 言葉が減った・消えたように見える | 設定 →「言葉の保存方式」 | 「月ファイル（N か月分）」の N が 0 なら索引が取れていない → 「今すぐ同期」。直らなければ 2.4。 |
 | 記録（朝・相談・引く・問い）が消えたように見える | 設定 →「記録の保存方式」 | 「月ファイル（N か月）」の N が 0 なら → 「今すぐ同期」。直らなければ 2.4。 |
 | ★（刺さった）の回数が合わない | — | 2.4 の「記録を data.json 方式に戻す → 月ファイル方式に移行」で索引を作り直す。 |
+| 相談・朝の言葉が失敗する | 画面に出る文、設定 →「最終エラー」 | v9.5 から理由が分かれて出る。「API キーが使えません（401）」= 設定でキーを入れ直す。「混みあっています（429）」= 少し待つ。「リクエストが受け付けられませんでした（400）」= 設定のモデル名（最終エラーに応答の本文が出る）。「時間がかかりすぎました（60秒）」= 回線かモデルの混雑。「通信できませんでした」= 電波。「応答を読み取れません」= もう一度（最終エラーに応答の冒頭が残る）。上限に達しているときは相談画面の入力欄の下に先に出る。 |
+| 筋トレの入力欄をタップするとキーボードが閉じる | — | v9.6 で修正。裏の同期が終わると画面を描き直していて、入力中でも作り直されてフォーカスが外れていた。入力中（`isTypingInApp`）は描き直さない。 |
 | 朝の言葉・相談で「応答が長すぎて途中で切れました」 | 設定 →「最終エラー」 | もう一度試す。毎回出るなら 4.2 の `max_tokens` を増やす。 |
 | API が「429」 | — | 使いすぎ。少し待つ。 |
 | 朝の言葉が出ない・自動関連づけが止まった | 設定 →「API使用量」 | 月の上限（USD）を超えると止まる。上限を上げる。 |
@@ -212,6 +214,9 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
 { version: 1, updatedAt, days: [{ id: 日付, date, weight, parts: [{ part, exercises: [{ name, sets: [{ w, r, note?, drops?: [{w, r}] }], cardio?: {km, min, kcal, note} }] }], createdAt, updatedAt }],
   deletedDayIds: [], exercises: { 部位: [{ name, lastUsedAt }] }, muscleMap: { 種目名: { p: [筋肉id], s: [筋肉id], at, by } } }
 ```
+セット 1 つは `{ w, r }`。v9.6 から **重量だけでも保存する**（`r` は null になりうる。1RM は出ない）。両方空の行はセットとして保存しない。
+```
+```
 
 **瞑想 `meditation/YYYY.json`**（1 回の瞑想が 1 件。年 = `date` の年、削除の墓標は id の年）
 ```
@@ -271,6 +276,8 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
 | 筋肉対応のプロンプト | `buildMuscleSystemBlocks` |
 | モデル名の既定値 | `DEFAULT_AUTOLINK_MODEL`, `DEFAULT_CHAT_MODEL` |
 | API の max_tokens | 各 `fetch('https://api.anthropic.com` の `max_tokens` |
+| 相談・朝の失敗の文言とタイムアウト | `chatErrorText`（種類ごとの文）, `CHAT_TIMEOUT_MS`（60 秒）。失敗の詳細（ステータス・応答の冒頭 200 字・モデル名）は設定の「最終エラー」に入る |
+| 筋トレの桁の警告 | `TR_OUTLIER_RATIO`（前回までの最大の 1.5 倍を超えたら警告）, `TR_MAX_PLAUSIBLE_REPS`（60 回）。止めずに警告だけ出す |
 | 使用量の単価 | `MODEL_PRICING` |
 | 端末保存のキー | `KV_DB_NAME`, `STORAGE_KEY`, `BACKUP_MAX_CHARS` |
 | 筋トレ画像のデザイン | `trLayout`, `trDrawPage`（`TR_GREEN` など） |

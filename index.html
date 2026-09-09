@@ -672,6 +672,8 @@
   .trChipEdit { display: inline-flex; gap: 6px; align-items: center; margin: 4px 6px 4px 0; }
   .trChipEdit input { width: 11em; }
   .trEx { border-top: 1px solid var(--border); padding: 10px 0 6px; }
+  .trExCollapsed { font-size: 13px; color: var(--text-dim); line-height: 1.7; padding: 2px 0 2px; }
+  .trExToggle { font-size: 12px; color: var(--accent); padding: 4px 8px; white-space: nowrap; }
   .trExHead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
   .trExName { font-size: 16px; }
   .trExMax { font-size: 12px; color: #e0785a; white-space: nowrap; }
@@ -5784,7 +5786,18 @@
     applyInputDraftFields();
   }
 
+  // v9.6: a background sync used to repaint the screen mid-typing, which on
+  // iOS drops focus and closes the keyboard. Anything the sync brought in is
+  // painted at the next render instead.
+  function isTypingInApp() {
+    const el = document.activeElement;
+    if (!el) return false;
+    const tag = el.tagName;
+    if (tag !== 'INPUT' && tag !== 'TEXTAREA') return false;
+    return !!(el.closest && el.closest('#app'));
+  }
   function refreshCurrentScreen() {
+    if (isTypingInApp()) return;
     if (nav.screen === 'training') { renderTraining(); return; }
     if (nav.screen === 'meditation') { renderMeditation(); return; }
     if (nav.screen === 'shoot') { renderShoot(); return; }
@@ -7907,12 +7920,20 @@
 
   function trainingDefaultData() { return { version: 1, updatedAt: nowIso(), days: [], deletedDayIds: [], exercises: {}, muscleMap: {} }; }
 
+  // v9.6: a set is kept when it has a weight OR reps. Reps left empty are
+  // stored as null - the weight is the part that is easy to forget later,
+  // and dropping the whole row for a missing rep count lost real records.
   function normalizeTrainingSet(x) {
     if (!x || typeof x !== 'object') return null;
-    const r = Number(x.r);
-    if (!Number.isFinite(r) || r <= 0) return null;
-    const w = (x.w === null || x.w === undefined || x.w === '') ? null : Number(x.w);
-    const out = { w: Number.isFinite(w) ? w : null, r: Math.round(r) };
+    const rRaw = Number(x.r);
+    const r = (Number.isFinite(rRaw) && rRaw > 0) ? Math.round(rRaw) : null;
+    const wRaw = (x.w === null || x.w === undefined || x.w === '') ? null : Number(x.w);
+    const w = Number.isFinite(wRaw) ? wRaw : null;
+    const bodyweight = x.w === null || x.w === undefined || x.w === '';
+    // nothing at all in the row: not a set
+    if (r === null && w === null && !bodyweight) return null;
+    if (r === null && w === null && bodyweight) return null;
+    const out = { w, r };
     if (typeof x.note === 'string' && x.note.trim()) out.note = x.note.trim().slice(0, 80);
     // drop set: the weight is lowered without rest and the set goes on. Stored
     // under the set it follows; never counted as a set of its own and never
@@ -8095,7 +8116,7 @@
   // Epley: w * (1 + r/30). A single rep is the weight itself; bodyweight
   // sets (w null) have no 1RM.
   function est1RM(set) {
-    if (!set || set.w === null || !set.r) return null;
+    if (!set || set.w === null || !set.r) return null;   // no reps -> no 1RM (a weight-only row still stores)
     return set.r === 1 ? set.w : set.w * (1 + set.r / 30);
   }
   function bestSet(sets) {
@@ -8104,7 +8125,7 @@
     return best;
   }
   function fmtKg(v) { return v === null || v === undefined ? '' : (Math.round(v * 10) / 10).toString(); }
-  function fmtSet(st) { return (st.w === null ? '自重' : fmtKg(st.w)) + '×' + st.r + (st.drops || []).map((d) => ' ↓' + fmtKg(d.w) + '×' + d.r).join(''); }
+  function fmtSet(st) { return (st.w === null ? '自重' : fmtKg(st.w)) + (st.r ? '×' + st.r : '') + (st.drops || []).map((d) => ' ↓' + fmtKg(d.w) + '×' + d.r).join(''); }
   // 60×8, 60×8, 60×8, 55×10 -> 60×8 ×3, 55×10
   function fmtSetsCompact(sets) {
     const out = [];
@@ -8114,6 +8135,21 @@
       if (last && last.key === key) last.n++; else out.push({ key, n: 1 });
     });
     return out.map((o) => o.key + (o.n > 1 ? ' ×' + o.n : '')).join(', ');
+  }
+  // v9.6: heaviest weight ever actually lifted for this exercise (not the
+  // estimated 1RM) - the yardstick for "that looks like a typo".
+  const TR_OUTLIER_RATIO = 1.5;
+  const TR_MAX_PLAUSIBLE_REPS = 60;
+  function exerciseHeaviest(name, excludeDate) {
+    let max = null;
+    trainingData.days.forEach((d) => {
+      if (excludeDate && d.date === excludeDate) return;
+      d.parts.forEach((pp) => pp.exercises.forEach((e) => {
+        if (e.name !== name) return;
+        (e.sets || []).forEach((st) => { if (st.w !== null && (max === null || st.w > max)) max = st.w; });
+      }));
+    });
+    return max;
   }
   // All-time best e1RM for an exercise, optionally excluding one date (so
   // "today" can be compared against "before today").
@@ -8181,7 +8217,7 @@
       part: p.part,
       exercises: p.exercises.map((e) => e.cardio
         ? { name: e.name, cardio: { km: e.cardio.km === null ? '' : String(e.cardio.km), min: e.cardio.min === null ? '' : String(e.cardio.min), kcal: e.cardio.kcal === null ? '' : String(e.cardio.kcal), note: e.cardio.note || '' }, sets: [] }
-        : { name: e.name, sets: e.sets.map(trSetToState) }),
+        : { name: e.name, sets: e.sets.map(trSetToState), collapsed: e.sets.length > 0 }),   // v9.6: what is already recorded starts folded
     })) : [];
     document.getElementById('trDate').value = date;
     document.getElementById('trWeight').value = trState.weight;
@@ -8421,6 +8457,11 @@
     return box;
   }
 
+  function trExSummary(ex) {
+    if (ex.cardio) return cardioCells(ex.cardio).filter((c) => c.value !== '-').map((c) => c.label + ' ' + c.value + c.unit).join(' ・ ') || '（まだ入力なし）';
+    const sets = ex.sets.map((st) => normalizeTrainingSet({ w: st.bw ? null : (st.w === '' ? NaN : Number(st.w)), r: Number(st.r), drops: st.drops })).filter(Boolean);
+    return sets.length ? fmtSetsCompact(sets) : '（まだ入力なし）';
+  }
   function renderTrExercise(p, ex) {
     const box = document.createElement('div');
     box.className = 'trEx';
@@ -8430,6 +8471,21 @@
     name.className = 'trExName';
     name.textContent = ex.name;
     head.appendChild(name);
+    // finished exercises fold away so the day does not become a long scroll
+    const toggle = document.createElement('button');
+    toggle.type = 'button'; toggle.className = 'trExToggle';
+    toggle.textContent = ex.collapsed ? '開く' : '畳む';
+    toggle.addEventListener('click', () => { ex.collapsed = !ex.collapsed; renderTraining(); });
+    head.appendChild(toggle);
+    if (ex.collapsed) {
+      box.appendChild(head);
+      const sum = document.createElement('div');
+      sum.className = 'trExCollapsed';
+      sum.textContent = trExSummary(ex);
+      sum.addEventListener('click', () => { ex.collapsed = false; renderTraining(); });
+      box.appendChild(sum);
+      return box;
+    }
     const maxInfo = exerciseMax(ex.name, trState.date);
     const maxEl = document.createElement('div');
     maxEl.className = 'trExMax';
@@ -8455,6 +8511,9 @@
     box.appendChild(prevEl);
     const foot = document.createElement('div');
     foot.className = 'trExFoot';
+    const warn = document.createElement('div');
+    warn.className = 'fieldNote warn';
+    warn.hidden = true;
     const info = document.createElement('div');
     const refreshInfo = () => {
       const todaySets = ex.sets.map((st) => normalizeTrainingSet({ w: st.bw ? null : (st.w === '' ? NaN : Number(st.w)), r: Number(st.r) })).filter(Boolean);
@@ -8467,6 +8526,18 @@
         if (pb) { const dv = v - est1RM(pb); const span = document.createElement('span'); span.className = 'trDelta ' + (dv > 0 ? 'up' : dv < 0 ? 'down' : ''); span.textContent = '　前回比 ' + (dv > 0 ? '+' : '') + fmtKg(dv) + 'kg'; info.appendChild(span); }
         if (maxInfo.max === null || v > maxInfo.max) { const nb = document.createElement('span'); nb.className = 'trExMax'; nb.textContent = '　NEW MAX'; info.appendChild(nb); }
       } else if (todaySets.length) info.textContent = '自重（1RM なし）';
+      // v9.6: a mistyped digit used to sail straight into NEW MAX and, from
+      // tomorrow, into the all-time max. Warn instead of blocking - an extra
+      // confirmation every session costs more than the rare typo, and this
+      // makes the typo visible on the day it is made.
+      const heaviestBefore = exerciseHeaviest(ex.name, trState.date);
+      const todayHeaviest = todaySets.reduce((m, st) => (st.w !== null && st.w > m ? st.w : m), 0);
+      const odd = heaviestBefore !== null && todayHeaviest > heaviestBefore * TR_OUTLIER_RATIO;
+      const oddReps = ex.sets.some((st) => Number(st.r) > TR_MAX_PLAUSIBLE_REPS);
+      warn.hidden = !(odd || oddReps);
+      warn.textContent = odd
+        ? '前回までの最大 ' + fmtKg(heaviestBefore) + 'kg より大きい値です。桁を確かめてください。'
+        : oddReps ? '回数が ' + TR_MAX_PLAUSIBLE_REPS + ' を超えています。確かめてください。' : '';
     };
     ex.sets.forEach((st, i) => {
       const row = document.createElement('div');
@@ -8532,6 +8603,7 @@
     foot.appendChild(add);
     refreshInfo();
     foot.appendChild(info);
+    foot.appendChild(warn);
     box.appendChild(foot);
     return box;
   }
