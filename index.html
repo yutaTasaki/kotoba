@@ -571,6 +571,11 @@
   .shootSlotRow { display: flex; gap: 6px; flex-wrap: wrap; margin: 2px 0 6px; }
   .shootSlotRow .tagFilterBtn { font-size: 12px; padding: 4px 10px; }
   .shootSlotNote { font-size: 11px; color: var(--text-faint); line-height: 1.6; }
+  .shootPremise { border-left: 3px solid var(--border); padding: 8px 10px; margin-top: 8px; font-size: 14px; line-height: 1.7; }
+  .shootPremise.hit { border-left-color: #e0836b; }
+  .shootPremiseWhat { font-size: 12px; color: #e0836b; line-height: 1.7; margin-top: 4px; }
+  .shootHistory { margin-top: 10px; font-size: 12px; color: var(--text-faint); line-height: 1.8; }
+  .shootHistory div { padding: 2px 0; }
   .shootConsultCard { background: var(--bg-card); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 6px; margin-top: 10px; position: relative; }
   .shootConsultCard .cardText { font-size: 15px; line-height: 1.8; padding-right: 34px; }
   .shootConsultCard .cardSource { font-size: 12px; color: var(--text-dim); }
@@ -1225,6 +1230,9 @@
         <span class="fieldLabel">問いのモデル</span>
         <p class="fieldNote">「問いを引く」に使うモデルです。空欄にすると「朝の言葉・相談のモデル」と同じになります。</p>
         <input id="claudeModelQuestionInput" type="text" placeholder="claude-sonnet-5" autocomplete="off" spellcheck="false">
+        <span class="fieldLabel">撮るのカードのモデル</span>
+        <p class="fieldNote">カード生成（web 検索つき）に使うモデルです。空欄にすると「朝の言葉・相談のモデル」と同じになります。検索は 1 回 $0.01 が別にかかります。</p>
+        <input id="claudeModelCardsInput" type="text" placeholder="claude-sonnet-5" autocomplete="off" spellcheck="false">
         <span class="fieldLabel">月の上限（USD）</span>
         <p class="fieldNote">今月の概算費用がこの割合（50% / 80% / 100%）に達すると朝タブに知らせます。100%を超えると自動関連づけと朝の言葉を自動で止めます（相談は確認のうえ続行できます）。</p>
         <input id="usageBudgetInput" type="text" inputmode="decimal" placeholder="2.00" autocomplete="off">
@@ -1357,6 +1365,8 @@
         <div class="statRow"><span>問い</span><span id="statUsageMonthQuestion"></span></div>
         <div class="statRow"><span>筋肉の対応</span><span id="statUsageMonthMuscle"></span></div>
         <div class="statRow"><span>読書メモ</span><span id="statUsageMonthReading"></span></div>
+        <div class="statRow"><span>撮るのカード</span><span id="statUsageMonthCards"></span></div>
+        <div class="statRow"><span>答えを壊す</span><span id="statUsageMonthBreak"></span></div>
         <div class="statRow"><span>今月・合計</span><span id="statUsageMonthTotal"></span></div>
         <div id="statUsagePerDevice"></div>
       </div>
@@ -1607,6 +1617,12 @@
         <span class="fieldLabel">仮の答え<span class="required">必須</span></span>
         <textarea id="shootAnswerInput" rows="2" placeholder="今日はこう答える、を1文で" autocomplete="off"></textarea>
         <p class="fieldNote" id="shootAnswerHint" hidden>仮の答えを書くまで、カードは足せません。</p>
+        <div class="medRow" style="margin-top:6px;">
+          <button type="button" id="btnShootBreak" class="tagFilterBtn">答えを壊す</button>
+        </div>
+        <p class="fieldNote" id="shootBreakStatus"></p>
+        <div id="shootPremises"></div>
+        <div id="shootAnswerHistory" class="shootHistory" hidden></div>
       </div>
       <div class="field">
         <span class="fieldLabel">タイトル（任意）</span>
@@ -1631,6 +1647,12 @@
           <button type="button" id="btnShootAddResearch" class="tagFilterBtn">研究を手で</button>
           <button type="button" id="btnShootAddFun" class="tagFilterBtn">わくわくを手で</button>
         </div>
+        <div class="medRow" style="margin-top:6px;">
+          <button type="button" id="btnShootGenAll" class="tagFilterBtn">カードを作る（研究3・わくわく2）</button>
+          <button type="button" id="btnShootGenResearch" class="tagFilterBtn">研究を引き直す</button>
+          <button type="button" id="btnShootGenFun" class="tagFilterBtn">わくわくを引き直す</button>
+        </div>
+        <p class="fieldNote" id="shootGenStatus"></p>
         <div id="shootWordPicker" class="listItems" hidden></div>
         <div id="shootCardList"></div>
       </div>
@@ -2067,6 +2089,12 @@
       // produced. The conversation itself is not stored (same posture as the
       // 相談 tab); the picks keep the model's one-line why, which is the only
       // later clue to why that word was chosen.
+      // v8.9 答えを壊す: the premises the answer rests on and where a card
+      // collides with one. The answer is rewritten by hand; every version is
+      // kept, because that is the part that cannot be reconstructed later.
+      out.premises = (Array.isArray(j.premises) ? j.premises : []).filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim().slice(0, 200)).slice(0, 5);
+      out.conflicts = (Array.isArray(j.conflicts) ? j.conflicts : []).filter((x) => x && typeof x === 'object').map((x) => ({ premise: typeof x.premise === 'string' ? x.premise.slice(0, 200) : '', cardId: typeof x.cardId === 'string' ? x.cardId : '', what: typeof x.what === 'string' ? x.what.slice(0, 200) : '' })).slice(0, 10);
+      out.answers = (Array.isArray(j.answers) ? j.answers : []).filter((x) => x && typeof x.text === 'string').map((x) => ({ text: x.text.slice(0, 600), at: typeof x.at === 'string' ? x.at : '', stage: ['first', 'revised', 'after'].includes(x.stage) ? x.stage : 'first' })).slice(0, 40);
       out.consult = (j.consult && typeof j.consult === 'object')
         ? { input: typeof j.consult.input === 'string' ? j.consult.input.slice(0, 2000) : '',
             at: typeof j.consult.at === 'string' ? j.consult.at : '',
@@ -3695,6 +3723,7 @@
       if (['yes', 'half', 'fun'].includes(c.belief)) out.belief = c.belief;
     }
     if (kind === 'word' && typeof c.noteId === 'string') out.noteId = c.noteId;
+    if (c.gen) out.gen = 1;   // came from カードを作る - a re-roll only touches these
     return out;
   }
   function saveJournalEntry(entry) {
@@ -4261,6 +4290,7 @@
   const CLAUDE_MODEL_AUTOLINK_KEY = 'kotoba_claudeModelAutoLink';
   const CLAUDE_MODEL_CHAT_KEY = 'kotoba_claudeModelChat';
   const CLAUDE_MODEL_QUESTION_KEY = 'kotoba_claudeModelQuestion';
+  const CLAUDE_MODEL_CARDS_KEY = 'kotoba_claudeModelCards';
   const AUTO_LINK_ENABLED_KEY = 'kotoba_autoLinkEnabled';
   const MORNING_ENABLED_KEY = 'kotoba_morningEnabled';
   const COMPRESS_THRESHOLD_KEY = 'kotoba_compressThreshold';
@@ -4296,6 +4326,7 @@
   // v3.3: falls back to the chat model rather than to a constant, so leaving
   // the field blank keeps 問い on whatever the 朝/相談 model is set to.
   function getClaudeQuestionModel() { return localStorage.getItem(CLAUDE_MODEL_QUESTION_KEY) || getClaudeChatModel(); }
+  function getClaudeCardsModel() { return localStorage.getItem(CLAUDE_MODEL_CARDS_KEY) || getClaudeChatModel(); }
 
   function getAutoLinkEnabled() {
     const v = localStorage.getItem(AUTO_LINK_ENABLED_KEY);
@@ -4324,7 +4355,10 @@
   // {calls,input,output,cacheWrite,cacheRead} } } } - each device only ever
   // writes its own subtree (see mergeUsageData), so PC and iPhone combine
   // under sync while still keeping a per-device breakdown.
-  const USAGE_KINDS = ['autolink', 'morning', 'consult', 'searchAgain', 'bulk', 'question', 'muscle', 'reading'];
+  const USAGE_KINDS = ['autolink', 'morning', 'consult', 'searchAgain', 'bulk', 'question', 'muscle', 'reading', 'cards', 'break'];
+  // web search is billed per search on top of the tokens ($10 / 1,000). The
+  // month's cap counts tokens only unless this is added in.
+  const WEB_SEARCH_USD = 0.01;
 
   function getDeviceId() {
     let id = localStorage.getItem(DEVICE_ID_KEY);
@@ -4363,8 +4397,9 @@
     data.usage[deviceId].label = getDeviceLabel();
     if (!data.usage[deviceId].months) data.usage[deviceId].months = {};
     const monthBucket = data.usage[deviceId].months[month] || {};
-    const cur = monthBucket[kind] || { calls: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0 };
+    const cur = monthBucket[kind] || { calls: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, searches: 0 };
     cur.calls += 1;
+    cur.searches = (cur.searches || 0) + ((usage.server_tool_use && usage.server_tool_use.web_search_requests) || 0);
     cur.input += usage.input_tokens || 0;
     cur.output += usage.output_tokens || 0;
     cur.cacheWrite += usage.cache_creation_input_tokens || 0;
@@ -4374,13 +4409,14 @@
     saveData(data);
   }
 
-  function emptyKindStat() { return { calls: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0 }; }
+  function emptyKindStat() { return { calls: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, searches: 0 }; }
   function addKindStat(target, src) {
     target.calls += src.calls || 0;
     target.input += src.input || 0;
     target.output += src.output || 0;
     target.cacheWrite += src.cacheWrite || 0;
     target.cacheRead += src.cacheRead || 0;
+    target.searches = (target.searches || 0) + (src.searches || 0);
   }
   // monthKey null/omitted -> all-time (every month, every device, summed).
   function sumUsageAcrossDevices(monthKey) {
@@ -4416,6 +4452,7 @@
   function modelForUsageKind(kind) {
     if (kind === 'autolink' || kind === 'searchAgain') return getClaudeAutoLinkModel();
     if (kind === 'question') return getClaudeQuestionModel();
+    if (kind === 'cards') return getClaudeCardsModel();
     return getClaudeChatModel();
   }
   function totalCostForKindStats(kindStats) {
@@ -4458,7 +4495,8 @@
     return (stat.input / 1e6) * p.input
       + (stat.output / 1e6) * p.output
       + (stat.cacheWrite / 1e6) * p.input * 1.25
-      + (stat.cacheRead / 1e6) * p.input * 0.1;
+      + (stat.cacheRead / 1e6) * p.input * 0.1
+      + (stat.searches || 0) * WEB_SEARCH_USD;
   }
 
   // v3.3: every model this app realistically runs on the chat/question side
@@ -11153,7 +11191,8 @@
     if (!stat || !stat.calls) return '-';
     const totalInput = stat.input + stat.cacheWrite + stat.cacheRead;
     const cost = estimateCostUsd(stat, model);
-    return `${stat.calls}回・入力${formatTokenCount(totalInput)}/出力${formatTokenCount(stat.output)}・約$${cost.toFixed(3)}`;
+    const search = stat.searches ? `・検索${stat.searches}回` : '';
+    return `${stat.calls}回・入力${formatTokenCount(totalInput)}/出力${formatTokenCount(stat.output)}${search}・約$${cost.toFixed(3)}`;
   }
 
   function loadWalkStatsFormFor(dateStr) {
@@ -11217,6 +11256,7 @@
     document.getElementById('claudeModelAutoLinkInput').value = getClaudeAutoLinkModel();
     document.getElementById('claudeModelChatInput').value = getClaudeChatModel();
     document.getElementById('claudeModelQuestionInput').value = localStorage.getItem(CLAUDE_MODEL_QUESTION_KEY) || '';
+    document.getElementById('claudeModelCardsInput').value = localStorage.getItem(CLAUDE_MODEL_CARDS_KEY) || '';
     document.getElementById('usageBudgetInput').value = getUsageBudget().toFixed(2);
     document.getElementById('deviceLabelInput').value = getDeviceLabel();
     document.getElementById('autoLinkToggle').checked = getAutoLinkEnabled();
@@ -11243,6 +11283,8 @@
     document.getElementById('statUsageMonthQuestion').textContent = formatUsageRow(monthUsage.question, modelForUsageKind('question'));
     document.getElementById('statUsageMonthMuscle').textContent = formatUsageRow(monthUsage.muscle, modelForUsageKind('muscle'));
     document.getElementById('statUsageMonthReading').textContent = formatUsageRow(monthUsage.reading, modelForUsageKind('reading'));
+    document.getElementById('statUsageMonthCards').textContent = formatUsageRow(monthUsage.cards, modelForUsageKind('cards'));
+    document.getElementById('statUsageMonthBreak').textContent = formatUsageRow(monthUsage.break, modelForUsageKind('break'));
     const monthCost = totalCostForKindStats(monthUsage);
     const budget = getUsageBudget();
     document.getElementById('statUsageMonthTotal').textContent = `約$${monthCost.toFixed(3)}（上限 $${budget.toFixed(2)} の${Math.round((monthCost / budget) * 100)}%）`;
@@ -11365,11 +11407,14 @@
     const autoLinkModel = document.getElementById('claudeModelAutoLinkInput').value.trim();
     const chatModel = document.getElementById('claudeModelChatInput').value.trim();
     const questionModel = document.getElementById('claudeModelQuestionInput').value.trim();
+    const cardsModel = document.getElementById('claudeModelCardsInput').value.trim();
     if (key) localStorage.setItem(CLAUDE_API_KEY_KEY, key); else localStorage.removeItem(CLAUDE_API_KEY_KEY);
     localStorage.setItem(CLAUDE_MODEL_AUTOLINK_KEY, autoLinkModel || DEFAULT_AUTOLINK_MODEL);
     localStorage.setItem(CLAUDE_MODEL_CHAT_KEY, chatModel || DEFAULT_CHAT_MODEL);
     if (questionModel) localStorage.setItem(CLAUDE_MODEL_QUESTION_KEY, questionModel);
     else localStorage.removeItem(CLAUDE_MODEL_QUESTION_KEY);
+    if (cardsModel) localStorage.setItem(CLAUDE_MODEL_CARDS_KEY, cardsModel);
+    else localStorage.removeItem(CLAUDE_MODEL_CARDS_KEY);
     const budget = parseFloat(document.getElementById('usageBudgetInput').value);
     localStorage.setItem(USAGE_BUDGET_KEY, String(Number.isFinite(budget) && budget > 0 ? budget : DEFAULT_USAGE_BUDGET_USD));
     setDeviceLabel(document.getElementById('deviceLabelInput').value.trim() || getDeviceLabel());
@@ -12154,7 +12199,7 @@
   const SHOOT_CARD_LABEL = { research: '研究', fun: 'わくわく', word: '言葉', record: '記録' };
   const SHOOT_BELIEF_LABEL = { yes: '信じている', half: '半信半疑', fun: 'エンタメだと思う' };
   const SHOOT_USED_PICK_DAYS = 30;
-  const shootState = { deckId: null, filledFor: null, saveTimer: null, pickerOpen: false, said: new Set(), consultOpen: false, consultBusy: false, consultFilledFor: null, consult: null };
+  const shootState = { deckId: null, filledFor: null, saveTimer: null, pickerOpen: false, said: new Set(), consultOpen: false, consultBusy: false, consultFilledFor: null, consult: null, genBusy: false, breakBusy: false };
   let shootWakeLock = null;
 
   // a card's URL is observed content (typed here, generated by the model in
@@ -12186,6 +12231,7 @@
     deck.questionText = document.getElementById('shootQuestionText').value.trim();
     deck.text = document.getElementById('shootAnswerInput').value.trim();
     deck.title = document.getElementById('shootTitleInput').value.trim();
+    shootRecordAnswer(deck);
     return deck;
   }
   function shootPersist() {
@@ -12266,8 +12312,15 @@
       document.getElementById('shootHookInput').value = deck.hook || '';
       document.getElementById('shootAnswerInput').value = deck.text || '';
       document.getElementById('shootTitleInput').value = deck.title || '';
+      // catch the version the deck already carries, so the first answer is in
+      // the history even if it is never edited again (a flush only runs when
+      // something is pending, so it would otherwise be missed)
+      const before = (deck.answers || []).length;
+      shootRecordAnswer(deck);
+      if ((deck.answers || []).length !== before) shootTouch(deck);
     }
     renderShootQuestionChips(deck);
+    renderShootPremises(deck);
     renderShootConsult(deck);
     renderShootCards(deck);
     renderShootWordPicker(deck);
@@ -12276,7 +12329,7 @@
   }
   function updateShootAddButtons() {
     const ok = document.getElementById('shootAnswerInput').value.trim().length > 0;
-    ['btnShootAddWord', 'btnShootAddRecord', 'btnShootAddResearch', 'btnShootAddFun'].forEach((id) => { document.getElementById(id).disabled = !ok; });
+    ['btnShootAddWord', 'btnShootAddRecord', 'btnShootAddResearch', 'btnShootAddFun', 'btnShootGenAll', 'btnShootGenResearch', 'btnShootGenFun'].forEach((id) => { document.getElementById(id).disabled = !ok || shootState.genBusy; });
     document.getElementById('shootAnswerHint').hidden = ok;
     const canShoot = ok && document.getElementById('shootHookInput').value.trim().length > 0;
     document.getElementById('btnShootStart').disabled = !canShoot;
@@ -12330,14 +12383,26 @@
     shootTouch(deck);
     renderShootCards(deck);
   }
+  // v8.9: one card holds today's morning plus how often this same mood has
+  // come up this month, with the last two things written on those days -
+  // "この気分は今月4日目" is the part that makes it material and not a note.
   function recordCardFor(date) {
     const m = data.journal.find((j) => j.kind === 'morning' && j.date === date);
     const stats = walkData.dailyStats[date] || {};
+    const mood = (m && m.mood != null) ? m.mood : (stats.wakeMood != null ? stats.wakeMood : null);
     const parts = [];
-    if (m && m.mood != null) parts.push('気分 ' + MOOD_EMOJI[m.mood]);
-    else if (stats.wakeMood != null) parts.push('今朝の体調 ' + MOOD_EMOJI[stats.wakeMood]);
+    if (mood != null) parts.push('今日：' + MOOD_EMOJI[mood]);
     if (m && m.text) parts.push(m.text);
-    return { kind: 'record', fact: parts.join(' ・ ') || '（この日の朝の記録はまだありません）', source: dotDate(date) + ' の朝' };
+    let same = [];
+    if (mood != null) {
+      const month = date.slice(0, 7);
+      same = data.journal
+        .filter((j) => j.kind === 'morning' && j.date !== date && j.date.slice(0, 7) === month && j.mood === mood)
+        .sort((a, b) => (a.date < b.date ? 1 : -1));
+      parts.push('この気分は今月 ' + (same.length + 1) + '日目');
+      same.slice(0, 2).forEach((j) => { if (j.text) parts.push(dotDate(j.date).slice(5) + '「' + noteSnippet(j.text, 40) + '」'); });
+    }
+    return { kind: 'record', fact: parts.join(' ／ ') || '（この日の朝の記録はまだありません）', source: dotDate(date) + ' の朝', slot: 3 };
   }
   // words this deck can draw on: the consult picks marked 「使う」 in the last
   // 30 days, plus the words the deck's question stands on
@@ -12512,6 +12577,299 @@
     }
   }
 
+  // ---- カード生成 (v8.8) ----
+  // One fixed prompt with the question, the answer and the chosen words
+  // dropped in. The aim is not material that answers the question but
+  // material that tests the premises between the question and the answer.
+  // The model never assigns a frame: it says support / break, and
+  // defaultSlotFor() turns that into a slot.
+  const CARDS_TIMEOUT_MS = 180000;
+  const LAST_CARDS_REPLY_KEY = 'kotoba_lastCardsReply';
+  function buildCardsSystemBlocks() {
+    const text =
+      'あなたは動画の材料係です。台本は書きません。事実カードだけを作ります。\n\n' +
+      '手順：\n' +
+      '1. 仮の答えの中にある前提を1〜3個に分解する。\n' +
+      '2. それぞれの前提について、支持する事実と、衝突する事実を探す。問いに直接答えている資料より、前提を検証できる資料を優先する。\n' +
+      '3. 求められた種類のカードを返す。\n\n' +
+      '研究カードの条件：\n' +
+      '- 数字か固有名詞を必ず含む。\n' +
+      '- 出典は媒体名と年、URL。\n' +
+      '- 一次資料（論文・公的機関・原典）を優先する。\n\n' +
+      'わくわくカードの条件：\n' +
+      '- オカルト・スピリチュアル・都市伝説・民話・伝承から。\n' +
+      '- 断定形にしない（「〜と言われている」「〜という話が残っている」）。\n' +
+      '- 誰がどこで言っているかを必ず書く（掲示板・個人ブログも可、ただし場所を明記）。\n' +
+      '- 種別タグ（伝承／噂）を付ける。\n\n' +
+      '共通：\n' +
+      '- fact は1〜3文。\n' +
+      '- stance は support（前提を支持する）か break（前提と衝突する）のどちらか。\n' +
+      '- breaks は「前提『…』と衝突」または「前提『…』を支持」の**一句のみ**。文章にしない。句点で終わる複数の文を書かない。20〜40字。\n' +
+      '- **意見・評価・助言・つなぎの言葉・話し方の提案は書かない。**\n' +
+      '- **カード以外の文章を返さない。JSON のみ。**\n' +
+      '- url は実在するページのものだけを書く。見つからなければそのカードを作らない。\n\n' +
+      '出力形式（JSON のみ。前置きも説明も書かない）：\n' +
+      '{"cards":[{"kind":"research"|"fun","fact":"...","source":"...","url":"https://...","breaks":"前提『...』と衝突","stance":"support"|"break","tag":"伝承"|"噂"|""}]}';
+    return [{ type: 'text', text }];
+  }
+  function buildCardsUserPrompt(deck, only) {
+    const words = deckCards(deck).filter((c) => c.kind === 'word').map((c) => {
+      const note = c.noteId ? findNote(c.noteId) : null;
+      return '- ' + (c.fact || '') + (note && note.myWords ? '（本人の一言：' + note.myWords + '）' : '');
+    });
+    const want = only === 'research' ? '研究カードを3枚だけ返す。わくわくカードは返さない。'
+      : only === 'fun' ? 'わくわくカードを2枚だけ返す。研究カードは返さない。'
+      : '研究カードを3枚、わくわくカードを2枚返す。';
+    return '問い：' + (deck.questionText || '（未設定）') + '\n' +
+      '仮の答え：' + (deck.text || '（未設定）') + '\n' +
+      '本人が選んだ言葉（参考。カードにはしない）：\n' + (words.length ? words.join('\n') : '（なし）') + '\n\n' +
+      '今回の依頼：' + want;
+  }
+  function parseCardsReply(text) {
+    const cleaned = String(text || '').trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+    const take = (p) => {
+      if (!p) return null;
+      if (Array.isArray(p)) return p;
+      if (Array.isArray(p.cards)) return p.cards;
+      return null;
+    };
+    try { const got = take(JSON.parse(cleaned)); if (got) return got; } catch (e) {}
+    const start = cleaned.search(/[{[]/);
+    const end = Math.max(cleaned.lastIndexOf('}'), cleaned.lastIndexOf(']'));
+    if (start < 0 || end <= start) return null;
+    try { return take(JSON.parse(cleaned.slice(start, end + 1))); } catch (e) {}
+    return null;
+  }
+  async function callCardsApi(deck, only) {
+    const apiKey = getClaudeApiKey();
+    if (!apiKey) { const e = new Error('no-api-key'); e.noKey = true; throw e; }
+    const maxUses = only ? 4 : 6;
+    let messages = [{ role: 'user', content: buildCardsUserPrompt(deck, only) }];
+    let searches = 0, lastJson = null;
+    // the server runs its own search loop and can hand the turn back with
+    // pause_turn; continue by sending the assistant content straight back
+    for (let turn = 0; turn < 4; turn++) {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), CARDS_TIMEOUT_MS);
+      let res;
+      try {
+        res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          signal: ctl.signal,
+          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+          body: JSON.stringify({
+            model: getClaudeCardsModel(),
+            max_tokens: 16000,
+            system: buildCardsSystemBlocks(),
+            tools: [{ type: 'web_search_20260318', name: 'web_search', max_uses: maxUses, response_inclusion: 'excluded' }],
+            messages,
+          }),
+        });
+      } catch (e) {
+        if (e && e.name === 'AbortError') { const err = new Error('timeout'); err.timeout = true; throw err; }
+        throw e;
+      } finally { clearTimeout(timer); }
+      if (!res.ok) { const err = new Error('Claude API failed: ' + res.status); err.status = res.status; throw err; }
+      const json = await res.json();
+      recordApiUsage('cards', json.usage);
+      searches += (json.usage && json.usage.server_tool_use && json.usage.server_tool_use.web_search_requests) || 0;
+      lastJson = json;
+      if (json.stop_reason === 'pause_turn') { messages = messages.concat([{ role: 'assistant', content: json.content }]); continue; }
+      break;
+    }
+    const textOut = ((lastJson && lastJson.content) || []).map((b) => (b.type === 'text' ? b.text || '' : '')).join('');
+    try { localStorage.setItem(LAST_CARDS_REPLY_KEY, textOut.slice(0, 8000)); } catch (e) {}
+    const items = parseCardsReply(textOut);
+    if (!items) {
+      if (lastJson && lastJson.stop_reason === 'max_tokens') { const err = new Error('truncated'); err.truncated = true; err.searches = searches; throw err; }
+      const err = new Error('parse'); err.parse = true; err.searches = searches; throw err;
+    }
+    return { items, searches };
+  }
+  function cardsFromItems(items, only) {
+    const out = [];
+    items.forEach((it) => {
+      if (!it || typeof it !== 'object') return;
+      const kind = it.kind === 'fun' ? 'fun' : 'research';
+      if (only && kind !== only) return;
+      const fact = typeof it.fact === 'string' ? it.fact.trim() : '';
+      if (!fact) return;
+      const stance = it.stance === 'break' ? 'break' : it.stance === 'support' ? 'support' : '';
+      const card = {
+        kind, fact, stance, gen: 1,
+        source: typeof it.source === 'string' ? it.source.trim() : '',
+        url: typeof it.url === 'string' ? it.url.trim() : '',
+        breaks: typeof it.breaks === 'string' ? it.breaks.trim().replace(/\s+/g, ' ') : '',
+        slot: defaultSlotFor(kind, stance),
+      };
+      if (kind === 'fun' && (it.tag === '伝承' || it.tag === '噂')) card.tag = it.tag;
+      out.push(card);
+    });
+    return out;
+  }
+  async function shootGenerate(only) {
+    const deck = findDeck(shootState.deckId);
+    if (!deck || shootState.genBusy) return;
+    shootFlush();
+    if (!(deck.text || '').trim()) { document.getElementById('shootGenStatus').textContent = '仮の答えを書いてから作れます。'; return; }
+    if (isUsageOverBudget() && !confirm('上限を超えています。続けますか？')) return;
+    const statusEl = document.getElementById('shootGenStatus');
+    shootState.genBusy = true;
+    ['btnShootGenAll', 'btnShootGenResearch', 'btnShootGenFun'].forEach((id) => { document.getElementById(id).disabled = true; });
+    statusEl.textContent = '調べています…（検索が入るので30秒ほどかかります）';
+    try {
+      const { items, searches } = await callCardsApi(deck, only);
+      const fresh = cardsFromItems(items, only);
+      const d2 = findDeck(shootState.deckId);
+      if (!d2) return;
+      if (!fresh.length) { statusEl.textContent = 'カードが返ってきませんでした。もう一度お試しください。（検索' + searches + '回）'; return; }
+      // a re-roll retires the generated cards it replaces; nothing is deleted,
+      // so a better old card can be brought back with 採用に戻す
+      (d2.cards || []).forEach((c) => { if (c.gen && !c.dropped && (!only || c.kind === only)) c.dropped = true; });
+      fresh.forEach((c) => deckAddCard(d2, c));
+      const long = fresh.filter((c) => c.breaks && (c.breaks.length > 60 || /。.+/.test(c.breaks))).length;
+      statusEl.textContent = fresh.length + '枚を入れました（検索' + searches + '回・約$' + (searches * WEB_SEARCH_USD).toFixed(2) + '）'
+        + (long ? '　※ breaks が一句になっていないカードが' + long + '枚あります' : '');
+      renderDeckEditor(d2);
+    } catch (e) {
+      statusEl.textContent = (e && e.noKey) ? '設定画面で Claude API キーを入力してください。'
+        : (e && e.timeout) ? '時間切れです（3分）。もう一度お試しください。'
+        : (e && e.truncated) ? '応答が長すぎて途中で切れました。もう一度お試しください。'
+        : (e && e.parse) ? '応答を JSON として読めませんでした。もう一度お試しください。'
+        : (e && e.status) ? '生成に失敗しました（API エラー ' + e.status + '）。'
+        : '生成に失敗しました。';
+      if (!(e && e.noKey)) recordFeatureError('撮るのカード生成', e);
+    } finally {
+      shootState.genBusy = false;
+      ['btnShootGenAll', 'btnShootGenResearch', 'btnShootGenFun'].forEach((id) => { const b = document.getElementById(id); if (b) b.disabled = false; });
+      updateShootAddButtons();
+    }
+  }
+
+  // ---- 答えを壊す (v8.9) ----
+  // Names the premises the answer stands on and points at the cards that
+  // collide with them. It never writes an answer - the moment a model writes
+  // the answer this becomes a script again.
+  const SHOOT_HISTORY_GAP_MS = 60000;   // edits closer together than this update the same history entry
+  function buildBreakSystemBlocks() {
+    const text =
+      'あなたは、本人が書いた「仮の答え」がどこで崩れるかを指すだけの係です。答えは書きません。\n\n' +
+      '手順：\n' +
+      '1. 仮の答えが成り立つために必要な前提を、最大3つに分解する。前提は本人の言葉に近い短い文にする。\n' +
+      '2. 渡されたカードのうち、その前提と衝突しているものを挙げる。衝突が無ければ空の配列を返す。無理に作らない。\n\n' +
+      '厳守すること：\n' +
+      '- **答え・言い直し・候補・助言・評価・感想を書かない。**\n' +
+      '- what は「カードの何が衝突しているか」を1句で書く。文章にしない。40字まで。\n' +
+      '- cardId は渡された id のうちのどれか。渡されていない id を書かない。\n' +
+      '- **JSON のみ。前置きも説明も書かない。**\n\n' +
+      '出力形式：\n' +
+      '{"premises":["前提1","前提2"],"conflicts":[{"premise":"前提1","cardId":"c3","what":"…"}]}';
+    return [{ type: 'text', text }];
+  }
+  function buildBreakUserPrompt(deck) {
+    const cards = deckCards(deck).filter((c) => !c.dropped).map((c) => {
+      const note = c.kind === 'word' && c.noteId ? findNote(c.noteId) : null;
+      return { id: c.id, 枠: slotName(c.slot), 種類: SHOOT_CARD_LABEL[c.kind] || c.kind, fact: c.fact || '', breaks: c.breaks || '', 自分の一言: note && note.myWords ? note.myWords : undefined };
+    });
+    return '仮の答え：' + (deck.text || '') + '\n\n' +
+      'カード：\n' + JSON.stringify(cards, null, 1);
+  }
+  async function callBreakApi(deck, isRetry) {
+    const apiKey = getClaudeApiKey();
+    if (!apiKey) { const e = new Error('no-api-key'); e.noKey = true; throw e; }
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({ model: getClaudeChatModel(), max_tokens: 4096, system: buildBreakSystemBlocks(), messages: [{ role: 'user', content: buildBreakUserPrompt(deck) }] }),
+    });
+    if (!res.ok) { const err = new Error('Claude API failed: ' + res.status); err.status = res.status; throw err; }
+    const json = await res.json();
+    recordApiUsage('break', json.usage);
+    const textOut = (json.content || []).map((b) => (b.type === 'text' ? b.text || '' : '')).join('');
+    let parsed = null;
+    try { parsed = JSON.parse(textOut.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim()); } catch (e) {}
+    if (!parsed) { const t = textOut; const a = t.indexOf('{'), b = t.lastIndexOf('}'); if (a >= 0 && b > a) { try { parsed = JSON.parse(t.slice(a, b + 1)); } catch (e) {} } }
+    if (!parsed || !Array.isArray(parsed.premises)) {
+      if (!isRetry) return callBreakApi(deck, true);
+      const err = new Error('parse'); err.parse = true; throw err;
+    }
+    return parsed;
+  }
+  async function shootBreakAnswer() {
+    const deck = findDeck(shootState.deckId);
+    if (!deck || shootState.breakBusy) return;
+    shootFlush();
+    const live = deckLiveCards(deck);
+    const statusEl = document.getElementById('shootBreakStatus');
+    if (!(deck.text || '').trim()) { statusEl.textContent = '仮の答えを書いてから使えます。'; return; }
+    if (live.length < 3) { statusEl.textContent = 'カードが3枚そろってから使えます。'; return; }
+    if (isUsageOverBudget() && !confirm('上限を超えています。続けますか？')) return;
+    shootState.breakBusy = true;
+    document.getElementById('btnShootBreak').disabled = true;
+    statusEl.textContent = '前提を洗い出しています…';
+    try {
+      const parsed = await callBreakApi(deck);
+      const d2 = findDeck(shootState.deckId);
+      if (!d2) return;
+      const ids = new Set((d2.cards || []).map((c) => c.id));
+      d2.premises = parsed.premises.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim().slice(0, 200)).slice(0, 5);
+      d2.conflicts = (Array.isArray(parsed.conflicts) ? parsed.conflicts : []).filter((x) => x && ids.has(x.cardId)).map((x) => ({ premise: String(x.premise || ''), cardId: x.cardId, what: String(x.what || '').slice(0, 200) })).slice(0, 10);
+      shootTouch(d2);
+      statusEl.textContent = d2.conflicts.length ? '前提 ' + d2.premises.length + '件、衝突 ' + d2.conflicts.length + '件。' : '前提 ' + d2.premises.length + '件。衝突は見つかりませんでした。';
+      renderShootPremises(d2);
+    } catch (e) {
+      statusEl.textContent = (e && e.noKey) ? '設定画面で Claude API キーを入力してください。'
+        : (e && e.parse) ? '応答を JSON として読めませんでした。もう一度お試しください。'
+        : (e && e.status) ? '失敗しました（API エラー ' + e.status + '）。'
+        : '失敗しました。';
+      if (!(e && e.noKey)) recordFeatureError('撮るの答えを壊す', e);
+    } finally {
+      shootState.breakBusy = false;
+      document.getElementById('btnShootBreak').disabled = false;
+    }
+  }
+  function renderShootPremises(deck) {
+    const wrap = document.getElementById('shootPremises');
+    wrap.innerHTML = '';
+    const order = deckCardsBySlot(deck);
+    (deck.premises || []).forEach((pr) => {
+      const hits = (deck.conflicts || []).filter((c) => c.premise === pr);
+      const box = document.createElement('div');
+      box.className = 'shootPremise' + (hits.length ? ' hit' : '');
+      const t = document.createElement('div'); t.textContent = (hits.length ? '⚠ ' : '') + pr; box.appendChild(t);
+      hits.forEach((h) => {
+        const i = order.findIndex((c) => c.id === h.cardId);
+        const card = order[i];
+        const w = document.createElement('div'); w.className = 'shootPremiseWhat';
+        w.textContent = (i >= 0 ? (i + 1) + '枚目（' + slotName(card.slot) + '）' : 'カード') + ' ・ ' + h.what;
+        box.appendChild(w);
+      });
+      wrap.appendChild(box);
+    });
+    const hist = document.getElementById('shootAnswerHistory');
+    const list = deck.answers || [];
+    hist.hidden = list.length < 2;
+    hist.innerHTML = '';
+    if (list.length >= 2) {
+      const head = document.createElement('div'); head.textContent = '仮の答えの履歴'; hist.appendChild(head);
+      list.slice(0, -1).forEach((a) => { const d1 = document.createElement('div'); d1.textContent = formatDateTime(a.at) + ' ・ ' + a.text; hist.appendChild(d1); });
+    }
+  }
+  // every version of the answer is kept; edits within a minute update the
+  // same entry so typing does not fill the history
+  function shootRecordAnswer(deck) {
+    const text = (deck.text || '').trim();
+    if (!text) return;
+    if (!Array.isArray(deck.answers)) deck.answers = [];
+    const last = deck.answers[deck.answers.length - 1];
+    if (last && last.text === text) return;
+    const stage = deck.status === 'shot' ? 'after' : ((deck.premises && deck.premises.length) ? 'revised' : 'first');
+    const now = Date.now();
+    if (last && last.stage === stage && now - new Date(last.at).getTime() < SHOOT_HISTORY_GAP_MS) { last.text = text; last.at = nowIso(); return; }
+    deck.answers.push({ text, at: nowIso(), stage });
+    if (deck.answers.length > 40) deck.answers.shift();
+  }
+
   // ---- 撮影表示 (全画面、一覧を出しっぱなし) ----
   async function shootWakeAcquire() {
     try { if (navigator.wakeLock && !shootWakeLock) { shootWakeLock = await navigator.wakeLock.request('screen'); shootWakeLock.addEventListener('release', () => { shootWakeLock = null; }); } } catch (e) { shootWakeLock = null; }
@@ -12640,6 +12998,10 @@
     renderShootConsult(deck);
   });
   document.getElementById('btnShootConsultAsk').addEventListener('click', shootConsultAsk);
+  document.getElementById('btnShootBreak').addEventListener('click', shootBreakAnswer);
+  document.getElementById('btnShootGenAll').addEventListener('click', () => shootGenerate(null));
+  document.getElementById('btnShootGenResearch').addEventListener('click', () => shootGenerate('research'));
+  document.getElementById('btnShootGenFun').addEventListener('click', () => shootGenerate('fun'));
   document.getElementById('btnShootAddWord').addEventListener('click', () => { const deck = findDeck(shootState.deckId); if (!deck) return; shootState.pickerOpen = !shootState.pickerOpen; renderShootWordPicker(deck); });
   document.getElementById('btnShootAddRecord').addEventListener('click', () => { const deck = findDeck(shootState.deckId); if (deck) deckAddCard(deck, recordCardFor(deck.date)); });
   document.getElementById('btnShootAddResearch').addEventListener('click', () => { const deck = findDeck(shootState.deckId); if (deck) deckAddCard(deck, { kind: 'research' }); });
