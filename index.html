@@ -554,9 +554,6 @@
   .calDot.dotTraining { background: #e07a5f; }
   .calDot.dotMeditation { background: #5aa89a; }
   /* 撮る (v8.5) */
-  .consultCard .cardText { padding-right: 86px; }
-  .useBtn { position: absolute; top: 10px; right: 44px; background: none; border: 1px solid var(--border); border-radius: 999px; font-size: 12px; line-height: 1; padding: 5px 8px; color: var(--text-faint); font-family: inherit; cursor: pointer; }
-  .useBtn.on { color: #7fb3a5; border-color: #7fb3a5; }
   .deckRow { background: var(--bg-card); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; cursor: pointer; margin-bottom: 10px; }
   .deckRowTop { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
   .deckRowText { font-size: 15px; line-height: 1.6; }
@@ -574,6 +571,12 @@
   .shootSlotRow { display: flex; gap: 6px; flex-wrap: wrap; margin: 2px 0 6px; }
   .shootSlotRow .tagFilterBtn { font-size: 12px; padding: 4px 10px; }
   .shootSlotNote { font-size: 11px; color: var(--text-faint); line-height: 1.6; }
+  .shootConsultCard { background: var(--bg-card); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 6px; margin-top: 10px; position: relative; }
+  .shootConsultCard .cardText { font-size: 15px; line-height: 1.8; padding-right: 34px; }
+  .shootConsultCard .cardSource { font-size: 12px; color: var(--text-dim); }
+  .shootConsultCard .consultWhy { font-size: 12px; color: var(--accent); line-height: 1.7; }
+  .shootConsultUse { align-self: flex-start; font-size: 13px; color: var(--accent); padding: 4px 0; }
+  .shootConsultUse:disabled { color: var(--text-faint); }
   .shootStageSlot { display: flex; flex-direction: column; gap: 12px; }
   .shootStageSlotHead { font-size: 15px; color: #8f9ba3; letter-spacing: 0.12em; border-bottom: 1px solid #1e262b; padding-bottom: 6px; }
   .shootStageSlot.s-break .shootStageSlotHead { color: #e0836b; border-bottom-color: #4a2c24; }
@@ -1609,6 +1612,17 @@
         <span class="fieldLabel">タイトル（任意）</span>
         <input type="text" id="shootTitleInput" placeholder="動画のタイトル" autocomplete="off">
       </div>
+      <div class="field" id="shootConsultField">
+        <span class="fieldLabel">相談する</span>
+        <p class="fieldNote">問いと仮の答えを相談に投げて、返ってきた札を「言葉」の枠に入れます。</p>
+        <button type="button" id="btnShootConsultOpen" class="tagFilterBtn">相談をひらく</button>
+        <div id="shootConsultPanel" hidden>
+          <textarea id="shootConsultInput" rows="3" placeholder="相談する文（問いと仮の答えが入ります。直せます）" autocomplete="off"></textarea>
+          <button type="button" id="btnShootConsultAsk" class="secondaryBtn">聞く</button>
+          <p class="fieldNote" id="shootConsultStatus"></p>
+          <div id="shootConsultResults"></div>
+        </div>
+      </div>
       <div class="field">
         <span class="fieldLabel">カード</span>
         <div class="medRow">
@@ -2049,6 +2063,15 @@
       out.questionText = typeof j.questionText === 'string' ? j.questionText : '';
       out.from = Array.isArray(j.from) ? j.from.filter(Boolean).map(String).slice(0, 8) : [];
       out.cards = (Array.isArray(j.cards) ? j.cards : []).map(normalizeDeckCard).filter(Boolean).slice(0, 40);
+      // v8.7: what was asked in this deck's own consult, and which cards it
+      // produced. The conversation itself is not stored (same posture as the
+      // 相談 tab); the picks keep the model's one-line why, which is the only
+      // later clue to why that word was chosen.
+      out.consult = (j.consult && typeof j.consult === 'object')
+        ? { input: typeof j.consult.input === 'string' ? j.consult.input.slice(0, 2000) : '',
+            at: typeof j.consult.at === 'string' ? j.consult.at : '',
+            picks: (Array.isArray(j.consult.picks) ? j.consult.picks : []).filter((x) => x && x.id).map((x) => ({ id: String(x.id), why: typeof x.why === 'string' ? x.why.slice(0, 200) : '' })).slice(0, 12) }
+        : null;
       out.status = j.status === 'shot' ? 'shot' : 'draft';
       out.shotAt = typeof j.shotAt === 'string' ? j.shotAt : '';
     }
@@ -5513,7 +5536,7 @@
             why.textContent = pick.why;
             card.appendChild(why);
           }
-          if (turn.journalId) { card.appendChild(makeHitButton(turn.journalId, note.id)); card.appendChild(makeUseButton(turn.journalId, note.id)); }
+          if (turn.journalId) card.appendChild(makeHitButton(turn.journalId, note.id));
           card.addEventListener('click', () => openDetail(note.id, 'consult'));
           wrap.appendChild(card);
         });
@@ -5665,30 +5688,10 @@
   }
 
   // ★ toggle for one pick of one journal entry (consult / morning / records)
-  // 「使う」 (v8.5): marks a consulted word as material for the next video.
-  // Separate from ★ - ★ is 刺さった, this is 今日これで話す.
-  function isPickUse(journalId, noteId) {
-    const j = data.journal.find((x) => x.id === journalId);
-    const p = j && j.picks.find((x) => x.id === noteId);
-    return !!(p && p.use);
-  }
-  function toggleJournalUse(journalId, noteId) {
-    const j = data.journal.find((x) => x.id === journalId);
-    if (!j) return null;
-    const p = j.picks.find((x) => x.id === noteId);
-    if (!p) return null;
-    if (p.use) delete p.use; else p.use = 1;
-    saveJournalEntry(j);
-    return p;
-  }
-  function makeUseButton(journalId, noteId) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    const paint = () => { const on = isPickUse(journalId, noteId); b.className = 'useBtn' + (on ? ' on' : ''); b.textContent = '使う'; b.title = on ? '撮るの材料にする（もう一度押すと外す）' : '撮るの材料にする'; };
-    paint();
-    b.addEventListener('click', (e) => { e.stopPropagation(); toggleJournalUse(journalId, noteId); paint(); });
-    return b;
-  }
+  // v8.7: the 「使う」 mark that used to live here moved into the deck - the
+  // deck's own consult adds the word as a card directly. A use flag left on old
+  // picks is kept by normalize (dropping it would bounce against a device on
+  // an older build) and simply ignored.
   function makeHitButton(journalId, noteId, onChange) {
     const b = document.createElement('button');
     b.type = 'button';
@@ -12151,7 +12154,7 @@
   const SHOOT_CARD_LABEL = { research: '研究', fun: 'わくわく', word: '言葉', record: '記録' };
   const SHOOT_BELIEF_LABEL = { yes: '信じている', half: '半信半疑', fun: 'エンタメだと思う' };
   const SHOOT_USED_PICK_DAYS = 30;
-  const shootState = { deckId: null, filledFor: null, saveTimer: null, pickerOpen: false, said: new Set() };
+  const shootState = { deckId: null, filledFor: null, saveTimer: null, pickerOpen: false, said: new Set(), consultOpen: false, consultBusy: false, consultFilledFor: null, consult: null };
   let shootWakeLock = null;
 
   // a card's URL is observed content (typed here, generated by the model in
@@ -12209,6 +12212,7 @@
   }
   function openDeck(id) {
     if (!findDeck(id)) return;
+    if (shootState.deckId !== id) { shootState.consult = null; shootState.consultOpen = false; shootState.consultFilledFor = null; }
     shootState.deckId = id; shootState.filledFor = null; shootState.pickerOpen = false;
     if (nav.screen !== 'shoot') showScreen('shoot');
     renderShoot();
@@ -12264,6 +12268,7 @@
       document.getElementById('shootTitleInput').value = deck.title || '';
     }
     renderShootQuestionChips(deck);
+    renderShootConsult(deck);
     renderShootCards(deck);
     renderShootWordPicker(deck);
     updateShootMeta(deck);
@@ -12336,13 +12341,11 @@
   }
   // words this deck can draw on: the consult picks marked 「使う」 in the last
   // 30 days, plus the words the deck's question stands on
+  // v8.7: the words this deck can draw on without asking again - what its own
+  // consult already returned, and what the question itself stands on
   function shootWordCandidates(deck) {
-    const cutoff = addDays(todayStr(), -SHOOT_USED_PICK_DAYS);
     const seen = new Set(), out = [];
-    data.journal.forEach((j) => {
-      if (j.date < cutoff) return;
-      (j.picks || []).forEach((p) => { if (p.use && !seen.has(p.id) && findNote(p.id)) { seen.add(p.id); out.push({ id: p.id, why: '使う印 ・ ' + dotDate(j.date) }); } });
-    });
+    ((deck.consult && deck.consult.picks) || []).forEach((x) => { if (!seen.has(x.id) && findNote(x.id)) { seen.add(x.id); out.push({ id: x.id, why: x.why || 'この相談から' }); } });
     (deck.from || []).forEach((id) => { if (!seen.has(id) && findNote(id)) { seen.add(id); out.push({ id, why: 'この問いの材料' }); } });
     return out;
   }
@@ -12353,7 +12356,7 @@
     panel.innerHTML = '';
     const used = new Set((deck.cards || []).map((c) => c.noteId).filter(Boolean));
     const list = shootWordCandidates(deck).filter((x) => !used.has(x.id));
-    if (!list.length) { const p = document.createElement('p'); p.className = 'emptyMsg'; p.textContent = '相談の札に「使う」印を付けると、ここに出ます。'; panel.appendChild(p); return; }
+    if (!list.length) { const p = document.createElement('p'); p.className = 'emptyMsg'; p.textContent = '「相談する」で返ってきた札か、問いの材料になった言葉がここに出ます。'; panel.appendChild(p); return; }
     list.forEach((x) => {
       const note = findNote(x.id);
       const row = document.createElement('div');
@@ -12361,7 +12364,7 @@
       const t = document.createElement('div'); t.className = 'liText'; t.textContent = noteSnippet(note.text, 60); row.appendChild(t);
       const b = document.createElement('div'); b.className = 'liBottomRow'; b.textContent = (note.source || '') + '　' + x.why; row.appendChild(b);
       row.addEventListener('click', () => {
-        deckAddCard(deck, { kind: 'word', fact: note.text, source: note.source || '自分の言葉', noteId: note.id });
+        deckAddCard(deck, { kind: 'word', fact: note.text, source: note.source || '自分の言葉', noteId: note.id, slot: 6 });
         shootState.pickerOpen = false;
         renderShootWordPicker(deck);
       });
@@ -12429,6 +12432,84 @@
       box.appendChild(acts);
       wrap.appendChild(box);
     });
+  }
+
+  // ---- デッキの中の相談 (v8.7) ----
+  // Same call as the 相談 tab (so ★ and 届いた回数 stay identical), but the
+  // answer lands here: a chosen word becomes a 言葉 card in frame 6.
+  function shootConsultSeed(deck) {
+    const q = (deck.questionText || '').trim();
+    const a = (deck.text || '').trim();
+    if (q && a) return q + '\n仮の答え：' + a;
+    return q || a;
+  }
+  function renderShootConsult(deck) {
+    document.getElementById('shootConsultPanel').hidden = !shootState.consultOpen;
+    if (!shootState.consultOpen) return;
+    const input = document.getElementById('shootConsultInput');
+    if (shootState.consultFilledFor !== deck.id) { shootState.consultFilledFor = deck.id; input.value = shootConsultSeed(deck); }
+    const wrap = document.getElementById('shootConsultResults');
+    wrap.innerHTML = '';
+    const res = shootState.consult;
+    if (!res || res.deckId !== deck.id) return;
+    const inDeck = new Set((deck.cards || []).map((c) => c.noteId).filter(Boolean));
+    res.picks.forEach((pick) => {
+      const note = findNote(pick.id);
+      if (!note) return;
+      const card = document.createElement('div');
+      card.className = 'shootConsultCard';
+      const t = document.createElement('div'); t.className = 'cardText'; t.textContent = note.text; card.appendChild(t);
+      if (note.source) { const sc = document.createElement('div'); sc.className = 'cardSource'; sc.textContent = note.source; card.appendChild(sc); }
+      if (note.myWords) { const mw = document.createElement('div'); mw.className = 'cardSource'; mw.textContent = note.myWords; card.appendChild(mw); }
+      if (pick.why) { const w = document.createElement('div'); w.className = 'consultWhy'; w.textContent = pick.why; card.appendChild(w); }
+      const use = document.createElement('button');
+      use.type = 'button'; use.className = 'shootConsultUse';
+      const already = inDeck.has(note.id);
+      use.textContent = already ? 'このデッキに入れた' : 'このデッキで使う';
+      use.disabled = already;
+      use.addEventListener('click', () => {
+        const d2 = findDeck(shootState.deckId); if (!d2) return;
+        deckAddCard(d2, { kind: 'word', fact: note.text, source: note.source || '自分の言葉', noteId: note.id, slot: 6 });
+        const prev = (d2.consult && Array.isArray(d2.consult.picks)) ? d2.consult.picks : [];
+        const picks = prev.filter((x) => x.id !== note.id).concat([{ id: note.id, why: pick.why || '' }]);
+        d2.consult = { input: res.input, at: nowIso(), picks };
+        shootTouch(d2);
+        renderShootConsult(d2);
+      });
+      card.appendChild(use);
+      if (res.journalId) card.appendChild(makeHitButton(res.journalId, note.id));
+      wrap.appendChild(card);
+    });
+    if (res.closing) { const cl = document.createElement('p'); cl.className = 'fieldNote'; cl.textContent = res.closing; wrap.appendChild(cl); }
+  }
+  async function shootConsultAsk() {
+    const deck = findDeck(shootState.deckId);
+    if (!deck || shootState.consultBusy) return;
+    const input = document.getElementById('shootConsultInput').value.trim();
+    const statusEl = document.getElementById('shootConsultStatus');
+    if (!input) { statusEl.textContent = '相談する文を書いてください。'; return; }
+    if (isUsageOverBudget() && !confirm('上限を超えています。続けますか？')) return;
+    shootState.consultBusy = true;
+    document.getElementById('btnShootConsultAsk').disabled = true;
+    statusEl.textContent = '言葉を探しています…';
+    try {
+      const result = await callChatApi(input, [], 3, 'consult');
+      const iso = nowIso();
+      const entry = { id: generateJournalId(), date: todayStr(), kind: 'consult', text: input, picks: result.picks, closing: result.closing, createdAt: iso, updatedAt: iso };
+      saveJournalEntry(entry);
+      shootState.consult = { deckId: deck.id, journalId: entry.id, input, picks: result.picks, closing: result.closing };
+      statusEl.textContent = '';
+    } catch (e) {
+      statusEl.textContent = (e && e.noKey) ? '設定画面で Claude API キーを入力してください。'
+        : (e && e.truncated) ? '応答が長すぎて途中で切れました。短く書き直してください。'
+        : '取得に失敗しました。もう一度お試しください。';
+      if (!(e && e.noKey)) recordFeatureError('撮るの相談', e);
+    } finally {
+      shootState.consultBusy = false;
+      document.getElementById('btnShootConsultAsk').disabled = false;
+      const d2 = findDeck(shootState.deckId);
+      if (d2) renderShootConsult(d2);
+    }
   }
 
   // ---- 撮影表示 (全画面、一覧を出しっぱなし) ----
@@ -12552,6 +12633,13 @@
   ['shootQuestionText', 'shootHookInput', 'shootAnswerInput', 'shootTitleInput'].forEach((id) => {
     document.getElementById(id).addEventListener('input', () => { if (id === 'shootAnswerInput' || id === 'shootHookInput') updateShootAddButtons(); shootScheduleSave(); });
   });
+  document.getElementById('btnShootConsultOpen').addEventListener('click', () => {
+    shootFlush();   // the seed is built from the deck, so take what is typed first
+    const deck = findDeck(shootState.deckId); if (!deck) return;
+    shootState.consultOpen = !shootState.consultOpen;
+    renderShootConsult(deck);
+  });
+  document.getElementById('btnShootConsultAsk').addEventListener('click', shootConsultAsk);
   document.getElementById('btnShootAddWord').addEventListener('click', () => { const deck = findDeck(shootState.deckId); if (!deck) return; shootState.pickerOpen = !shootState.pickerOpen; renderShootWordPicker(deck); });
   document.getElementById('btnShootAddRecord').addEventListener('click', () => { const deck = findDeck(shootState.deckId); if (deck) deckAddCard(deck, recordCardFor(deck.date)); });
   document.getElementById('btnShootAddResearch').addEventListener('click', () => { const deck = findDeck(shootState.deckId); if (deck) deckAddCard(deck, { kind: 'research' }); });
@@ -12578,7 +12666,7 @@
 
   const INPUT_DRAFT_KEY = 'kotoba_inputDraft';
   const INPUT_DRAFT_MAX_AGE_MS = 48 * 3600 * 1000;
-  const INPUT_DRAFT_SKIP = new Set(['trDate', 'trWeight', 'listSearch', 'walkShareTextInput', 'medMemoInput', 'medAlarmCustom', 'shootQuestionText', 'shootAnswerInput', 'shootTitleInput']); // medMemoInput autosaves itself   // own persistence / not worth restoring
+  const INPUT_DRAFT_SKIP = new Set(['trDate', 'trWeight', 'listSearch', 'walkShareTextInput', 'medMemoInput', 'medAlarmCustom', 'shootQuestionText', 'shootHookInput', 'shootAnswerInput', 'shootTitleInput', 'shootConsultInput']); // medMemoInput autosaves itself   // own persistence / not worth restoring
   let inputDraftTimer = null, inputDraftRestoring = false;
   function readInputDraft() { try { const raw = localStorage.getItem(INPUT_DRAFT_KEY); const d = raw ? JSON.parse(raw) : null; return (d && d.fields && d.ctx) ? d : null; } catch (e) { return null; } }
   function inputDraftContext() {
