@@ -571,6 +571,18 @@
   .shootCardKind.k-word { color: #a98fd0; border-color: #a98fd0; }
   .shootCardKind.k-record { color: #5aa89a; border-color: #5aa89a; }
   .shootCardActions { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 6px; }
+  .shootSlotRow { display: flex; gap: 6px; flex-wrap: wrap; margin: 2px 0 6px; }
+  .shootSlotRow .tagFilterBtn { font-size: 12px; padding: 4px 10px; }
+  .shootSlotNote { font-size: 11px; color: var(--text-faint); line-height: 1.6; }
+  .shootStageSlot { display: flex; flex-direction: column; gap: 12px; }
+  .shootStageSlotHead { font-size: 15px; color: #8f9ba3; letter-spacing: 0.12em; border-bottom: 1px solid #1e262b; padding-bottom: 6px; }
+  .shootStageSlot.s-break .shootStageSlotHead { color: #e0836b; border-bottom-color: #4a2c24; }
+  .shootHookLine { font-size: 25px; line-height: 1.7; color: #eef3f6; white-space: pre-wrap; }
+  .shootAnswerLine { font-size: 17px; line-height: 1.75; color: #9fb0ba; white-space: pre-wrap; margin-top: 10px; }
+  .shootRestate { font-size: 19px; color: #c8d2d8; line-height: 1.7; padding: 4px 0 8px; }
+  .shootCard.s-break { border-left-color: #e0836b; background: #16100e; }
+  .shootWordMy { font-size: 15px; color: #a98fd0; line-height: 1.8; white-space: pre-wrap; }
+  .shootCard.s-word .shootFact { font-size: 23px; }
   .shootCardActions button { font-size: 13px; color: var(--accent); padding: 4px 0; }
   #screen-shootStage { background: #06080a; }
   #screen-shootStage .drawTopBar { background: #06080a; }
@@ -1585,6 +1597,10 @@
         <textarea id="shootQuestionText" rows="2" placeholder="引いた問いを選ぶか、ここに書く" autocomplete="off"></textarea>
       </div>
       <div class="field">
+        <span class="fieldLabel">入り（0秒で言う1行）<span class="required">必須</span></span>
+        <textarea id="shootHookInput" rows="2" placeholder="断言か問いかけ。挨拶やチャンネル説明は書かない" autocomplete="off"></textarea>
+      </div>
+      <div class="field">
         <span class="fieldLabel">仮の答え<span class="required">必須</span></span>
         <textarea id="shootAnswerInput" rows="2" placeholder="今日はこう答える、を1文で" autocomplete="off"></textarea>
         <p class="fieldNote" id="shootAnswerHint" hidden>仮の答えを書くまで、カードは足せません。</p>
@@ -1606,6 +1622,7 @@
       </div>
       <div class="field">
         <button id="btnShootStart" class="primaryBtn">撮影表示をひらく</button>
+        <p class="fieldNote" id="shootStartHint" hidden>「入り」と「仮の答え」を書くと開けます。</p>
         <div class="medRow">
           <button type="button" id="btnShootDone" class="secondaryBtn" style="width:auto;">撮った印をつける</button>
           <button type="button" id="btnShootDelete" class="dangerBtn" style="width:auto;">このデッキを消す</button>
@@ -2027,6 +2044,7 @@
     // never a script; nothing here is generated in stage 1.
     if (kind === 'deck') {
       out.title = typeof j.title === 'string' ? j.title : '';
+      out.hook = typeof j.hook === 'string' ? j.hook : '';   // v8.6: 入り（0秒で言う1行）
       out.questionId = typeof j.questionId === 'string' ? j.questionId : '';
       out.questionText = typeof j.questionText === 'string' ? j.questionText : '';
       out.from = Array.isArray(j.from) ? j.from.filter(Boolean).map(String).slice(0, 8) : [];
@@ -3612,12 +3630,43 @@
   // Upserts by id (used both for a brand-new entry and for the same-day mood
   // overwrite case), stamps updatedAt, and goes through the normal
   // saveData()/scheduleSync() path so it merges/syncs exactly like a note.
+  // 話の型 (v8.6). One fixed shape: 入り → 先出し → 支え → 寄り道 → 壊す → 言葉
+  // → 言い直し. Answer first, hold it up, break it, say it again. Changing the
+  // frames (name, order, what they accept) is an edit of this array alone;
+  // the slot numbers are stored on cards, so add at the end and never reuse a
+  // number for a different meaning.
+  const TALK_SLOTS = [
+    { n: 1, key: 'hook', name: '入り', note: '0秒で言う1行。断言か問いかけ。挨拶・チャンネル説明は書かない', accepts: [] },
+    { n: 2, key: 'answer', name: '先出し', note: '仮の答えをそのまま言い切る', accepts: [] },
+    { n: 3, key: 'support', name: '支え', note: '仮の答えを支持する事実', accepts: ['research', 'record'] },
+    { n: 4, key: 'detour', name: '寄り道', note: 'わくわく。信じ度を添えて', accepts: ['fun'] },
+    { n: 5, key: 'break', name: '壊す', note: '仮の答えの前提と衝突する事実。ここが山', accepts: ['research', 'record'] },
+    { n: 6, key: 'word', name: '言葉', note: '相談から選んだ札と、自分の一言', accepts: ['word'] },
+    { n: 7, key: 'restate', name: '言い直し', note: 'ここで答えを言い直す（口で言う）', accepts: [] },
+  ];
+  const TALK_SLOT_BY_N = {};
+  TALK_SLOTS.forEach((x) => { TALK_SLOT_BY_N[x.n] = x; });
+  const ASSIGNABLE_SLOTS = TALK_SLOTS.filter((x) => x.accepts.length);
+  function slotDef(n) { return TALK_SLOT_BY_N[n] || TALK_SLOT_BY_N[3]; }
+  function slotName(n) { return slotDef(n).name; }
+  // the frame a new card lands in. The rule lives here, not in the model:
+  // the model only says whether the fact supports or breaks the answer.
+  function defaultSlotFor(kind, stance) {
+    if (kind === 'fun') return 4;
+    if (kind === 'word') return 6;
+    return stance === 'break' ? 5 : 3;
+  }
   function normalizeDeckCard(c, i) {
     if (!c || typeof c !== 'object') return null;
     const kind = ['research', 'fun', 'word', 'record'].includes(c.kind) ? c.kind : 'research';
     const str = (v, n) => (typeof v === 'string' ? v : '').slice(0, n);
     const order = Number(c.order);
-    const out = { id: String(c.id || ('c' + (i + 1))), kind, fact: str(c.fact, 400), source: str(c.source, 200), url: str(c.url, 500), breaks: str(c.breaks, 200), order: Number.isFinite(order) ? order : i, dropped: c.dropped === true };
+    const stance = (c.stance === 'support' || c.stance === 'break') ? c.stance : '';
+    const slotRaw = Math.round(Number(c.slot));
+    // v8.6: which frame of the talk this card belongs to. Decks made before
+    // the frames existed get the default for their kind.
+    const slot = (Number.isFinite(slotRaw) && slotRaw >= 1 && slotRaw <= 7) ? slotRaw : defaultSlotFor(kind, stance);
+    const out = { id: String(c.id || ('c' + (i + 1))), kind, fact: str(c.fact, 400), source: str(c.source, 200), url: str(c.url, 500), breaks: str(c.breaks, 200), slot, stance, order: Number.isFinite(order) ? order : i, dropped: c.dropped === true };
     if (kind === 'fun') {
       if (c.tag === '伝承' || c.tag === '噂') out.tag = c.tag;
       if (['yes', 'half', 'fun'].includes(c.belief)) out.belief = c.belief;
@@ -12118,6 +12167,9 @@
   function findDeck(id) { const j = findJournalEntry(id); return j && j.kind === 'deck' ? j : null; }
   function deckQuestionTextOf(q) { return q ? (q.scene ? q.scene + ' ' + (q.ask || '') : q.text || '') : ''; }
   function deckCards(deck) { return (deck.cards || []).slice().sort((a, b) => a.order - b.order || (a.id < b.id ? -1 : 1)); }
+  // the editor and the stage both read in frame order, then within the frame
+  function deckCardsBySlot(deck) { return (deck.cards || []).slice().sort((a, b) => a.slot - b.slot || a.order - b.order || (a.id < b.id ? -1 : 1)); }
+  function deckSlotCards(deck, n) { return deckCardsBySlot(deck).filter((c) => c.slot === n && !c.dropped); }
   function deckLiveCards(deck) { return deckCards(deck).filter((c) => !c.dropped); }
   function deckHeadline(deck) { return deck.title || noteSnippet(deck.questionText || deck.text || '', 46) || '（空のデッキ）'; }
   function deckNextCardId(deck) { const taken = new Set((deck.cards || []).map((c) => c.id)); let n = 1; while (taken.has('c' + n)) n++; return 'c' + n; }
@@ -12127,6 +12179,7 @@
   function shootCollect() {
     const deck = findDeck(shootState.deckId);
     if (!deck || document.getElementById('shootEditView').hidden) return null;
+    deck.hook = document.getElementById('shootHookInput').value.trim();
     deck.questionText = document.getElementById('shootQuestionText').value.trim();
     deck.text = document.getElementById('shootAnswerInput').value.trim();
     deck.title = document.getElementById('shootTitleInput').value.trim();
@@ -12206,6 +12259,7 @@
     if (shootState.filledFor !== deck.id) {
       shootState.filledFor = deck.id;
       document.getElementById('shootQuestionText').value = deck.questionText || '';
+      document.getElementById('shootHookInput').value = deck.hook || '';
       document.getElementById('shootAnswerInput').value = deck.text || '';
       document.getElementById('shootTitleInput').value = deck.title || '';
     }
@@ -12219,6 +12273,9 @@
     const ok = document.getElementById('shootAnswerInput').value.trim().length > 0;
     ['btnShootAddWord', 'btnShootAddRecord', 'btnShootAddResearch', 'btnShootAddFun'].forEach((id) => { document.getElementById(id).disabled = !ok; });
     document.getElementById('shootAnswerHint').hidden = ok;
+    const canShoot = ok && document.getElementById('shootHookInput').value.trim().length > 0;
+    document.getElementById('btnShootStart').disabled = !canShoot;
+    document.getElementById('shootStartHint').hidden = canShoot;
   }
   function updateShootMeta(deck) {
     const dropped = (deck.cards || []).filter((c) => c.dropped).length;
@@ -12247,20 +12304,24 @@
   // ---- cards ----
   function deckAddCard(deck, card) {
     if (!deck.cards) deck.cards = [];
-    const c = Object.assign({ id: deckNextCardId(deck), kind: 'research', fact: '', source: '', url: '', breaks: '', order: deckNextOrder(deck), dropped: false }, card);
+    const c = Object.assign({ id: deckNextCardId(deck), kind: 'research', fact: '', source: '', url: '', breaks: '', stance: '', order: deckNextOrder(deck), dropped: false }, card);
+    if (!c.slot) c.slot = defaultSlotFor(c.kind, c.stance);
     deck.cards.push(c);
     shootTouch(deck);
     renderShootCards(deck);
     return c;
   }
+  // ↑↓ move a card within its own frame; frames are changed with the chips
   function deckMoveCard(deck, id, dir) {
-    const list = deckCards(deck);
-    const i = list.findIndex((c) => c.id === id);
+    const card = (deck.cards || []).find((c) => c.id === id);
+    if (!card) return;
+    const sibs = deckCardsBySlot(deck).filter((c) => c.slot === card.slot);
+    const i = sibs.findIndex((c) => c.id === id);
     const j = i + dir;
-    if (i < 0 || j < 0 || j >= list.length) return;
-    const a = list[i].order, b = list[j].order;
-    list[i].order = b; list[j].order = a;
-    if (a === b) list.forEach((c, k) => { c.order = k; });
+    if (i < 0 || j < 0 || j >= sibs.length) return;
+    const a = sibs[i].order, b = sibs[j].order;
+    sibs[i].order = b; sibs[j].order = a;
+    if (a === b) sibs.forEach((c, k) => { c.order = k; });
     shootTouch(deck);
     renderShootCards(deck);
   }
@@ -12310,7 +12371,7 @@
   function renderShootCards(deck) {
     const wrap = document.getElementById('shootCardList');
     wrap.innerHTML = '';
-    const list = deckCards(deck);
+    const list = deckCardsBySlot(deck);
     if (!list.length) { const p = document.createElement('p'); p.className = 'emptyMsg'; p.textContent = 'まだカードがありません。'; wrap.appendChild(p); return; }
     list.forEach((c, i) => {
       const box = document.createElement('div');
@@ -12320,6 +12381,19 @@
       const k = document.createElement('span'); k.className = 'shootCardKind k-' + c.kind; k.textContent = SHOOT_CARD_LABEL[c.kind] || c.kind; head.appendChild(k);
       const no = document.createElement('span'); no.textContent = (i + 1) + ' / ' + list.length; head.appendChild(no);
       box.appendChild(head);
+
+      const slotRow = document.createElement('div');
+      slotRow.className = 'shootSlotRow';
+      ASSIGNABLE_SLOTS.forEach((sl) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'tagFilterBtn' + (c.slot === sl.n ? ' selected' : '');
+        b.textContent = sl.n + ' ' + sl.name;
+        b.addEventListener('click', () => { c.slot = sl.n; shootTouch(deck); renderShootCards(deck); });
+        slotRow.appendChild(b);
+      });
+      box.appendChild(slotRow);
+      const slotNote = document.createElement('div'); slotNote.className = 'shootSlotNote'; slotNote.textContent = slotDef(c.slot).note; box.appendChild(slotNote);
 
       const field = (label, value, rows, on) => {
         const l = document.createElement('span'); l.className = 'fieldLabel'; l.textContent = label; box.appendChild(l);
@@ -12380,15 +12454,35 @@
   function renderShootStage() {
     const deck = findDeck(shootState.deckId);
     if (!deck) { closeShootStage(); return; }
-    document.getElementById('shootStageQuestion').textContent = deck.questionText || '（問い未設定）';
-    document.getElementById('shootStageAnswer').textContent = deck.text ? '仮の答え ・ ' + deck.text : '';
+    // 1 入り and 2 先出し are the pinned head; the rest are frames of cards
+    document.getElementById('shootStageQuestion').textContent = deck.hook || '（入り未設定）';
+    document.getElementById('shootStageAnswer').textContent = deck.text ? '先出し ・ ' + deck.text : '';
     const wrap = document.getElementById('shootStageCards');
     wrap.innerHTML = '';
-    const list = deckLiveCards(deck);
-    if (!list.length) { const p = document.createElement('div'); p.className = 'shootEmpty'; p.textContent = 'カードがありません。'; wrap.appendChild(p); return; }
+    const live = deckLiveCards(deck);
+    if (!live.length) { const p = document.createElement('div'); p.className = 'shootEmpty'; p.textContent = 'カードがありません。'; wrap.appendChild(p); return; }
+    TALK_SLOTS.filter((sl) => sl.n >= 3).forEach((sl) => {
+      const cards = deckSlotCards(deck, sl.n);
+      if (sl.key === 'restate') {
+        const sec = document.createElement('div');
+        sec.className = 'shootStageSlot s-' + sl.key;
+        const h = document.createElement('div'); h.className = 'shootStageSlotHead'; h.textContent = sl.n + ' ' + sl.name; sec.appendChild(h);
+        const t = document.createElement('div'); t.className = 'shootRestate'; t.textContent = 'ここで答えを言い直す。'; sec.appendChild(t);
+        wrap.appendChild(sec);
+        return;
+      }
+      if (!cards.length) return;
+      const sec = document.createElement('div');
+      sec.className = 'shootStageSlot s-' + sl.key;
+      const h = document.createElement('div'); h.className = 'shootStageSlotHead'; h.textContent = sl.n + ' ' + sl.name; sec.appendChild(h);
+      renderShootStageCards(sec, cards, sl);
+      wrap.appendChild(sec);
+    });
+  }
+  function renderShootStageCards(wrap, list, sl) {
     list.forEach((c, i) => {
       const box = document.createElement('div');
-      box.className = 'shootCard k-' + c.kind + (shootState.said.has(c.id) ? ' said' : '');
+      box.className = 'shootCard k-' + c.kind + ' s-' + sl.key + (shootState.said.has(c.id) ? ' said' : '');
       const head = document.createElement('div');
       head.className = 'shootCardNo';
       const n = document.createElement('span'); n.textContent = String(i + 1); head.appendChild(n);
@@ -12397,6 +12491,9 @@
       if (c.belief) { const b = document.createElement('span'); b.className = 'shootBelief'; b.textContent = SHOOT_BELIEF_LABEL[c.belief]; head.appendChild(b); }
       box.appendChild(head);
       const fact = document.createElement('div'); fact.className = 'shootFact'; fact.textContent = c.fact || '（空）'; box.appendChild(fact);
+      // 言葉: the reader's own line belongs next to the words, and it is read
+      // live from the note so an edit to the note shows up here
+      if (c.kind === 'word' && c.noteId) { const note = findNote(c.noteId); if (note && note.myWords) { const my = document.createElement('div'); my.className = 'shootWordMy'; my.textContent = note.myWords; box.appendChild(my); } }
       if (c.source) { const s = document.createElement('div'); s.className = 'shootSource'; s.textContent = c.source; box.appendChild(s); }
       if (c.breaks) { const br = document.createElement('div'); br.className = 'shootBreaks'; br.textContent = '壊すもの ・ ' + c.breaks; box.appendChild(br); }
       const safeUrl = shootSafeUrl(c.url);
@@ -12452,8 +12549,8 @@
     saveJournalEntry(entry);
     openDeck(entry.id);
   });
-  ['shootQuestionText', 'shootAnswerInput', 'shootTitleInput'].forEach((id) => {
-    document.getElementById(id).addEventListener('input', () => { if (id === 'shootAnswerInput') updateShootAddButtons(); shootScheduleSave(); });
+  ['shootQuestionText', 'shootHookInput', 'shootAnswerInput', 'shootTitleInput'].forEach((id) => {
+    document.getElementById(id).addEventListener('input', () => { if (id === 'shootAnswerInput' || id === 'shootHookInput') updateShootAddButtons(); shootScheduleSave(); });
   });
   document.getElementById('btnShootAddWord').addEventListener('click', () => { const deck = findDeck(shootState.deckId); if (!deck) return; shootState.pickerOpen = !shootState.pickerOpen; renderShootWordPicker(deck); });
   document.getElementById('btnShootAddRecord').addEventListener('click', () => { const deck = findDeck(shootState.deckId); if (deck) deckAddCard(deck, recordCardFor(deck.date)); });

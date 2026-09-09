@@ -174,14 +174,18 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
 **デッキ 1 件（撮る。kind: 'deck'）**
 ```
 { id, date, kind: 'deck',
+  hook: 入り（0秒で言う1行。断言か問いかけ）,
   text: 仮の答え（1文。空のあいだはカードを足せない）, title: 動画のタイトル（任意）,
   questionId: 元の問いの記録 id（手書きなら ''）, questionText: 問いの写し, from: [材料の言葉 id],
   cards: [{ id: 'c1', kind: 'research'|'fun'|'word'|'record',
+            slot: 1〜7（話の型の枠）, stance: 'support'|'break'|''（事実が仮の答えを支持するか壊すか）,
             fact: 事実の1行, source: 誰がどこで, url, breaks: 仮の答えの何を壊すか,
             tag?: '伝承'|'噂'（わくわくのみ）, belief?: 'yes'|'half'|'fun'（自分が信じているか）,
             noteId?（言葉カード）, order, dropped }],
   status: 'draft'|'shot', shotAt, picks: [], createdAt, updatedAt }
 ```
+**話の型**：入り → 先出し（仮の答え） → 支え → 寄り道 → 壊す → 言葉 → 言い直し の 7 枠で固定。答えを先に言い、支えて、壊して、言い直す形。カードは枠（`slot`）に割り当てられ、撮影表示は作成順ではなく枠の順に出す。枠の定義は `TALK_SLOTS` の配列 1 か所（名前・説明・受け入れる種類・並び）。枠 1・2・7 はカードを持たない。`slot` はカードに保存されるので、既存の番号の意味を変えないこと（追加は末尾）。第1段のデッキ（`slot` なし）は読み込み時に種類ごとの既定（研究・記録 3／わくわく 4／言葉 6）が入る。
+
 カードは材料であって台本ではない。第1段では AI を通さず、言葉カードは相談の「使う」印から、記録カードはその日の朝の記録から作り、研究・わくわくは手で書く（第2段で web search 付きの生成に置き換える）。
 
 **月ファイル `journal/YYYY-MM.json`**: `{ version: 1, month, updatedAt, entries: [...], deletedIds: [] }`
@@ -257,6 +261,7 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
 | 網の見た目 | `GRAPH_FIT_FLOOR`, `graphPathsFrom` |
 | 画面のスクロール構造 | `#shell`（v7.3。この箱がスクロールし、ページ自体は動かない） |
 | 瞑想 | `MEDITATION_INDEX_PATH`, `MED_MIN_PRESETS`（5/10/15/20）, `MED_BELLS`（鈴の倍音。試聴ページと同じ計算）, `MED_BELL_DEFAULT`, `MED_BELL_KEY`（選んだ音）, `MED_TIMER_KEY`（計測中の開始時刻）, `MED_ALARM_CUSTOM_KEY`（任意分数の前回値）。時間帯の区切りは `medBandOf`（朝 5〜11 / 昼 11〜17 / 夜） |
+| 撮る（話の型の枠） | `TALK_SLOTS`（枠の定義。ここだけ直せば名前・並び・受け入れる種類が変わる）, `defaultSlotFor`（新しいカードがどの枠に入るか。判断はコード側、モデルは `stance` を返すだけ） |
 | 撮る（デッキ・カード・撮影表示） | `SHOOT_SAVE_MS`（自動保存 0.4 秒）, `SHOOT_CARD_LABEL`, `SHOOT_BELIEF_LABEL`, `SHOOT_USED_PICK_DAYS`（「使う」印を拾う日数、30）, `shootSafeUrl`（出典を開くのは http/https だけ）, `normalizeDeckCard` |
 | 振り返る（記録タブの入り口） | `LOOKBACK_SEARCH_DAYS`（記録のない日から近い日を探す範囲、400 日）, `DAY_NOTES_SHOWN`（その日に追加した言葉の表示枚数、5）, `dayPositionLine`（「一万日の N 日目 / 10000 ・ 言葉 ・ 筋トレ ・ 瞑想」の行）, `dayHeadlineNote`（その日の言葉：★ → 朝の最初の言葉） |
 | 入力の退避（未保存の下書き） | `INPUT_DRAFT_KEY`, `captureInputDraftNow`, `restoreInputDraft`（対象外にしたい欄は `INPUT_DRAFT_SKIP`） |
