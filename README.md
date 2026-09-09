@@ -278,10 +278,10 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
 | API の max_tokens | 各 `fetch('https://api.anthropic.com` の `max_tokens` |
 | 相談の画面の3層 | `renderConsultTurns`（上＝今返ってきた札だけ / 中＝入力。答えが出たら「続けて聞く」の1行に畳み、直前に聞いた文を出す / 下＝前のやり取り、既定は畳む）, `buildConsultTurn`, `consultInputOpen`, `consultHistoryOpen` |
 | 相談・朝の失敗の文言とタイムアウト | `chatErrorText`（種類ごとの文）, `CHAT_TIMEOUT_MS`（60 秒）。失敗の詳細（ステータス・応答の冒頭 200 字・モデル名）は設定の「最終エラー」に入る |
-| 筋トレの桁の警告 | `TR_OUTLIER_RATIO`（前回までの最大の 1.5 倍を超えたら警告）, `TR_MAX_PLAUSIBLE_REPS`（60 回）。止めずに警告だけ出す |
+| 筋トレの桁の警告 | 重量：`TR_OUTLIER_RATIO`（前回までの最大の 1.5 倍を超えたら警告）。回数：`TR_MAX_PLAUSIBLE_REPS`（60 回。上限）、`TR_REPS_RATIO` と `TR_MIN_SUSPECT_REPS`（20 回以上で、`exerciseMaxReps` が返す**その種目のこれまでの最多**の 1.8 倍を超えたら警告）、および重量と回数が同じ値のとき（入れ違いの疑い）。v9.10 で追加。60 だけでは 41kg × 41回 のような打ち間違いを黙って通していた。**止めずに警告だけ出す** |
 | 使用量の単価 | `MODEL_PRICING` |
 | 端末保存のキー | `KV_DB_NAME`, `STORAGE_KEY`, `BACKUP_MAX_CHARS` |
-| 筋トレ画像のデザイン | `TRD`（**余白と文字の大きさは全部ここ**。1か所直せば見た目が変わる）, `trLayout`, `trDrawPage`。v9.9 で散歩の画像に寄せるのをやめた：色は2色（黒地・白い数字。緑は部位名と kg と細い線1本だけ。NEW MAX の赤は残す）、書体は数字が `Inter`・日本語が `Noto Sans JP`（ドット風はやめた。walk と瞑想の画像は `DotGothic16` のまま）、枠は無し（部位は余白と線1本で分ける）、**強弱は2段階**（重量だけ大きく白。セット番号・回数・ドロップは一段小さく暗いが読める明るさ）、日付と体重は上に小さく添える。列の右端は `trLayout` が部位ごとに一番広い文字を実測して決め、`kgAt`（幅の何割の位置に重量を置くか）で行を広げる。1RM / NEW MAX と MAX は右端に揃える。入りきらないときは縮小 → それでも無理なら部位で改ページ（`trRenderImages`）。色は `TR_ACCENT` `TR_TEXT` `TR_BIG` `TR_SMALL` `TR_DROP` `TR_FAINT` `TR_RED` |
+| 筋トレ画像のデザイン | `TRD`（**余白と文字の大きさは全部ここ**。1か所直せば見た目が変わる）, `trLayout`, `trDrawPage`。v9.9 で散歩の画像に寄せるのをやめた：黒地に白い数字、書体は数字が `Inter`・日本語が `Noto Sans JP`（walk と瞑想の画像は `DotGothic16` のまま）、枠なし、日付と体重は上に小さく。v9.10 で強弱を調整：**緑は部位名と区切り線だけ**（kg は `TR_UNIT` のグレー。数字の横に緑があると白が毎回切られるため）、回数は `repSize`（重量の 1 段下。記録として重量と同格に読める大きさ・明るさ）、drop は `TR_DROP` / `TR_DROPNUM` で「読める暗さ」に、1RM / NEW MAX と MAX は右端ではなく**回数のすぐ右・種目名のすぐ右**（右端まで目を運ばせない）。列の右端は部位ごとに一番広い文字を実測して決め、`kgAt`（幅の何割の位置に重量を置くか）で行を広げる。入りきらないときは縮小 → それでも無理なら部位で改ページ（`trRenderImages`）。色は `TR_ACCENT` `TR_TEXT` `TR_BIG` `TR_REP` `TR_SET` `TR_UNIT` `TR_DROP` `TR_DROPNUM` `TR_FAINT` `TR_RED` |
 | 3D の色・モデル URL | `MUSCLE_COLORS`, `MUSCLE_BIN_URL`, `THREE_MODULE_URL` |
 | 筋肉一覧 | `MUSCLE_CATALOG`（`assets/muscles.json` と同じ） |
 | 網の見た目 | `GRAPH_FIT_FLOOR`, `graphPathsFrom` |

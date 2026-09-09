@@ -8206,6 +8206,23 @@
   // estimated 1RM) - the yardstick for "that looks like a typo".
   const TR_OUTLIER_RATIO = 1.5;
   const TR_MAX_PLAUSIBLE_REPS = 60;
+  // v9.10: 60 was too loose to catch a real typo - 41回 for a cable row slipped
+  // through in silence. What makes a rep count suspect is not an absolute
+  // number (calf raises really do go past 30) but this exercise's own history,
+  // so compare against the most reps ever done on it.
+  const TR_REPS_RATIO = 1.8;
+  const TR_MIN_SUSPECT_REPS = 20;
+  function exerciseMaxReps(name, excludeDate) {
+    let max = null;
+    trainingData.days.forEach((dd) => {
+      if (excludeDate && dd.date === excludeDate) return;
+      dd.parts.forEach((pp) => pp.exercises.forEach((e) => {
+        if (e.name !== name) return;
+        (e.sets || []).forEach((st) => { if (st.r && (max === null || st.r > max)) max = st.r; });
+      }));
+    });
+    return max;
+  }
   function exerciseHeaviest(name, excludeDate) {
     let max = null;
     trainingData.days.forEach((d) => {
@@ -8599,11 +8616,25 @@
       const heaviestBefore = exerciseHeaviest(ex.name, trState.date);
       const todayHeaviest = todaySets.reduce((m, st) => (st.w !== null && st.w > m ? st.w : m), 0);
       const odd = heaviestBefore !== null && todayHeaviest > heaviestBefore * TR_OUTLIER_RATIO;
-      const oddReps = ex.sets.some((st) => Number(st.r) > TR_MAX_PLAUSIBLE_REPS);
-      warn.hidden = !(odd || oddReps);
+      const repsBefore = exerciseMaxReps(ex.name, trState.date);
+      let repMsg = '';
+      ex.sets.forEach((st) => {
+        if (repMsg) return;
+        const r = Number(st.r), w = st.bw ? null : Number(st.w);
+        if (!Number.isFinite(r) || r <= 0) return;
+        // the weight typed into the reps box: the two end up identical
+        if (w !== null && Number.isFinite(w) && w === r && r >= TR_MIN_SUSPECT_REPS) {
+          repMsg = '重量と回数が同じ値（' + fmtKg(r) + '）です。入れ違いかもしれません。';
+        } else if (r > TR_MAX_PLAUSIBLE_REPS) {
+          repMsg = '回数が ' + TR_MAX_PLAUSIBLE_REPS + ' を超えています。確かめてください。';
+        } else if (r >= TR_MIN_SUSPECT_REPS && repsBefore !== null && r > repsBefore * TR_REPS_RATIO) {
+          repMsg = '回数 ' + r + ' は、この種目のこれまでの最多 ' + repsBefore + ' 回より多いです。確かめてください。';
+        }
+      });
+      warn.hidden = !(odd || repMsg);
       warn.textContent = odd
         ? '前回までの最大 ' + fmtKg(heaviestBefore) + 'kg より大きい値です。桁を確かめてください。'
-        : oddReps ? '回数が ' + TR_MAX_PLAUSIBLE_REPS + ' を超えています。確かめてください。' : '';
+        : repMsg;
     };
     ex.sets.forEach((st, i) => {
       const row = document.createElement('div');
@@ -8710,21 +8741,29 @@
   const TR_IMG_W = 1080, TR_IMG_H = 1920;
   const TR_JP = "'Noto Sans JP', system-ui, sans-serif";
   const TR_NUM = "'Inter', 'Noto Sans JP', system-ui, sans-serif";
-  const TR_ACCENT = '#5BD46A';  // part title, kg, the rule
-  const TR_TEXT = '#F2F2EF';    // exercise names
-  const TR_BIG = '#FFFFFF';     // the weights
-  const TR_SMALL = '#D2D2CC';   // set number, reps, drop weight
-  const TR_DROP = '#A8A8A2';    // the word drop and its unit
-  const TR_FAINT = '#95958F';   // date, MAX, 1RM, footer
-  const TR_RED = '#FF5B4A';     // NEW MAX
+  // v9.10: green is now only the part title and its rule. A green unit beside
+  // every weight cut the white numbers into pieces, so kg is grey. The reps
+  // are a record in their own right, not a suffix, so they are one step below
+  // the weight instead of three. The drop is dimmer than a working set but
+  // still readable - the old value was the difference between seen and unseen.
+  const TR_ACCENT = '#5BD46A';   // part title and its rule - nothing else
+  const TR_TEXT = '#F2F2EF';     // exercise names
+  const TR_BIG = '#FFFFFF';      // the weights
+  const TR_REP = '#E4E4DF';      // × reps
+  const TR_SET = '#B8B8B2';      // set number
+  const TR_UNIT = '#8E8E88';     // kg
+  const TR_DROP = '#B4B4AE';     // the word drop and its unit
+  const TR_DROPNUM = '#D6D6D0';  // the drop's own numbers
+  const TR_FAINT = '#95958F';    // date, MAX, 1RM, footer
+  const TR_RED = '#FF5B4A';      // NEW MAX
   // every size in one place: this object is the whole visual design
   const TRD = {
     margin: 84, headSize: 24, afterHead: 76,
     partSize: 34, partWeight: 500, partTrack: 5, afterPart: 56,
     nameSize: 34, nameWeight: 500, afterName: 58,
-    bigSize: 50, bigWeight: 600, smallSize: 34, dropSize: 30, tinySize: 25,
+    bigSize: 50, bigWeight: 600, repSize: 40, smallSize: 32, dropSize: 32, tinySize: 25,
     rowLead: 72, dropLead: 42, dropGap: 48, afterEx: 56, afterBlock: 66,
-    gapSet: 30, gapRep: 14, kgAt: 0.36,
+    gapSet: 30, gapRep: 16, gapMark: 30, kgAt: 0.34,
   };
   const trFont = (px, family, weight) => (weight || 400) + ' ' + px + 'px ' + family;
   // letter-spacing drawn by hand: ctx.letterSpacing is not on every Safari
@@ -8762,19 +8801,30 @@
       // one set of columns per part, measured from the widest entry, so the
       // numbers read as a single table however many digits the day holds
       let wSet = 0, wRep = 0, wKg = 0;
-      b.rows.forEach((r) => r.sets.forEach((st, i) => {
-        ctx.font = nu(s(d.smallSize));
-        wSet = Math.max(wSet, ctx.measureText(String(i + 1)).width);
-        wRep = Math.max(wRep, ctx.measureText('× ' + (st.r || '')).width);
-        ctx.font = st.w === null ? jp(s(d.bigSize * 0.62), d.bigWeight) : nu(s(d.bigSize), d.bigWeight);
-        wKg = Math.max(wKg, ctx.measureText(st.w === null ? '自重' : fmtKg(st.w)).width);
-      }));
+      let wMark = 0;
+      b.rows.forEach((r) => {
+        if (r.rm !== null && r.rm !== undefined) {
+          ctx.font = nu(s(d.tinySize), 600);
+          wMark = Math.max(wMark, ctx.measureText(r.isNewMax ? 'NEW MAX ' + fmtKg(r.rm) : '1RM ' + fmtKg(r.rm)).width);
+        }
+        r.sets.forEach((st, i) => {
+          ctx.font = nu(s(d.smallSize));
+          wSet = Math.max(wSet, ctx.measureText(String(i + 1)).width);
+          ctx.font = nu(s(d.repSize));
+          wRep = Math.max(wRep, ctx.measureText('× ' + (st.r || '')).width);
+          ctx.font = st.w === null ? jp(s(d.bigSize * 0.62), d.bigWeight) : nu(s(d.bigSize), d.bigWeight);
+          wKg = Math.max(wKg, ctx.measureText(st.w === null ? '自重' : fmtKg(st.w)).width);
+        });
+      });
       const unitW = s(d.smallSize * 1.6);
       const xSet = M + wSet;
       const xKg = Math.max(xSet + s(d.gapSet) + wKg, M + colW * d.kgAt);
       const xRep = xKg + s(d.gapRep) + unitW;
-      // the right edge carries NEW MAX; if the reps reach it, shrink instead
-      if (xRep + wRep > colR - s(d.tinySize * 6)) overflow = true;
+      // v9.10: the mark used to sit on the right margin, which left the eye to
+      // travel half the sheet to find which set earned it. It now follows the
+      // reps, and the row simply ends where it ends.
+      const xMark = xRep + wRep + s(d.gapMark);
+      if (xMark + wMark > colR) overflow = true;
 
       if (!dry) {
         ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
@@ -8788,15 +8838,17 @@
         if (!dry) {
           ctx.textAlign = 'left'; ctx.font = jp(s(d.nameSize), d.nameWeight); ctx.fillStyle = TR_TEXT;
           ctx.fillText(r.name, M, y);
+          // set count and all-time max follow the name instead of sitting on
+          // the right margin; the whole sheet then hangs off one left edge
+          let cx = M + ctx.measureText(r.name).width + s(20);
           if (!r.cardio) {
-            // how many sets, said once, so the column below has a count
-            const nw = ctx.measureText(r.name).width;
-            ctx.font = jp(s(d.smallSize * 0.86)); ctx.fillStyle = TR_SMALL;
-            ctx.fillText(r.sets.length + 'セット', M + nw + s(20), y);
+            ctx.font = jp(s(d.smallSize * 0.86)); ctx.fillStyle = TR_SET;
+            ctx.fillText(r.sets.length + 'セット', cx, y);
+            cx += ctx.measureText(r.sets.length + 'セット').width + s(20);
           }
           if (r.allMax !== null && r.allMax !== undefined && !r.isNewMax) {
-            ctx.textAlign = 'right'; ctx.font = nu(s(d.tinySize)); ctx.fillStyle = TR_FAINT;
-            ctx.fillText('MAX ' + fmtKg(r.allMax), colR, y);
+            ctx.font = nu(s(d.tinySize)); ctx.fillStyle = TR_FAINT;
+            ctx.fillText('MAX ' + fmtKg(r.allMax), cx, y);
           }
         }
         y += s(d.afterName);
@@ -8816,7 +8868,7 @@
             ctx.fillText(c.label, cx, y);
             ctx.font = nu(s(d.bigSize * 0.9), d.bigWeight); ctx.fillStyle = TR_BIG;
             ctx.fillText(c.value, cx, y + s(d.bigSize * 0.95));
-            ctx.font = nu(s(d.smallSize * 0.8)); ctx.fillStyle = TR_SMALL;
+            ctx.font = nu(s(d.smallSize * 0.8)); ctx.fillStyle = TR_UNIT;
             if (unit) ctx.fillText(unit, cx + vw + s(8), y + s(d.bigSize * 0.95));
           });
           y += s(d.bigSize * 0.95) + s(d.afterEx);
@@ -8826,23 +8878,22 @@
         r.sets.forEach((st, i) => {
           if (!dry) {
             ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'right';
-            ctx.font = nu(s(d.smallSize)); ctx.fillStyle = TR_SMALL;
+            ctx.font = nu(s(d.smallSize)); ctx.fillStyle = TR_SET;
             ctx.fillText(String(i + 1), xSet, y);
             ctx.fillStyle = TR_BIG;
             ctx.font = st.w === null ? jp(s(d.bigSize * 0.62), d.bigWeight) : nu(s(d.bigSize), d.bigWeight);
             ctx.fillText(st.w === null ? '自重' : fmtKg(st.w), xKg, y);
             ctx.textAlign = 'left';
             if (st.w !== null) {
-              ctx.font = nu(s(d.smallSize)); ctx.fillStyle = TR_ACCENT;
+              ctx.font = nu(s(d.smallSize)); ctx.fillStyle = TR_UNIT;
               ctx.fillText('kg', xKg + s(9), y);
             }
-            ctx.font = nu(s(d.smallSize)); ctx.fillStyle = TR_SMALL;
+            ctx.font = nu(s(d.repSize)); ctx.fillStyle = TR_REP;
             if (st.r) ctx.fillText('× ' + st.r, xRep, y);
             if (i === r.bestIdx && r.rm !== null) {
-              // right margin, the same column as MAX on the name row
-              ctx.textAlign = 'right'; ctx.font = nu(s(d.tinySize), 600);
+              ctx.font = nu(s(d.tinySize), 600);
               ctx.fillStyle = r.isNewMax ? TR_RED : TR_FAINT;
-              ctx.fillText(r.isNewMax ? 'NEW MAX ' + fmtKg(r.rm) : '1RM ' + fmtKg(r.rm), colR, y);
+              ctx.fillText(r.isNewMax ? 'NEW MAX ' + fmtKg(r.rm) : '1RM ' + fmtKg(r.rm), xMark, y);
             }
           }
           // a drop belongs to the set above it, so it sits close under it
@@ -8852,10 +8903,11 @@
             if (!dry) {
               ctx.textAlign = 'left'; ctx.font = nu(s(d.dropSize)); ctx.fillStyle = TR_DROP;
               if (di === 0) ctx.fillText('drop', M, y);
-              ctx.textAlign = 'right'; ctx.font = nu(s(d.dropSize), d.bigWeight); ctx.fillStyle = TR_SMALL;
+              ctx.textAlign = 'right'; ctx.font = nu(s(d.dropSize), d.bigWeight); ctx.fillStyle = TR_DROPNUM;
               ctx.fillText(fmtKg(dr.w), xKg, y);
-              ctx.textAlign = 'left'; ctx.font = nu(s(d.dropSize)); ctx.fillStyle = TR_DROP;
+              ctx.textAlign = 'left'; ctx.font = nu(s(d.dropSize)); ctx.fillStyle = TR_UNIT;
               ctx.fillText('kg', xKg + s(9), y);
+              ctx.fillStyle = TR_DROPNUM;
               ctx.fillText('× ' + dr.r, xRep, y);
             }
             y += di === drops.length - 1 ? s(d.rowLead * 0.72) : s(d.dropLead);
