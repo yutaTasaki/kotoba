@@ -449,6 +449,9 @@
   /* --- v5.2: 刺さった ★ --- */
   .hitBtn { position: absolute; top: 10px; right: 10px; background: none; border: none; font-size: 20px; line-height: 1; padding: 6px; color: var(--text-faint); font-family: inherit; cursor: pointer; }
   .hitBtn.on { color: #f0c04a; }
+  .detailHitToggleRow { display: flex; align-items: center; gap: 8px; margin: 4px 0 10px; }
+  .detailHitBtn { font-size: 24px; line-height: 1; padding: 4px 8px; color: var(--text-faint); }
+  .detailHitBtn.on { color: #f0c04a; }
   .journalCardMini.withHit { display: flex; align-items: center; gap: 8px; }
   .journalCardMini.withHit .lText { flex: 1 1 auto; min-width: 0; }
   .journalCardMini.withHit .hitBtn { position: static; padding: 2px 4px; font-size: 18px; flex: 0 0 auto; }
@@ -707,7 +710,7 @@
     padding-bottom: calc(16px + env(safe-area-inset-bottom));
     overflow-y: auto;
   }
-  .drawTopBar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-shrink: 0; flex-wrap: wrap; }
+  .drawTopBar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-shrink: 0; flex-wrap: wrap; position: sticky; top: calc(-16px - env(safe-area-inset-top)); z-index: 2; background: #000; padding-bottom: 4px; }
   .drawModeRow { flex-wrap: wrap; }
   .drawIconBtn { color: var(--text-dim); font-size: 15px; padding: 8px 6px; }
   .drawStage {
@@ -715,12 +718,14 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;   /* centring is done by the auto margins below, so a tall word scrolls instead of climbing over the top bar */
     text-align: center;
     gap: 20px;
     min-height: 40vh;
     cursor: pointer;
   }
+  .drawStage > .drawChoice, .drawStage > .drawShuffleText, .drawStage > .drawResult, .drawStage > .questionResult, .drawStage > #questionSearching { margin-top: auto; margin-bottom: auto; }
+  .drawResult.pop { transform-origin: center top; }
   .drawShuffleText { font-size: 22px; line-height: 1.8; padding: 0 12px; white-space: pre-wrap; }
   .drawResult {
     display: flex;
@@ -1010,6 +1015,7 @@
       </div>
       <div class="detailTags" id="detailTags"></div>
       <p class="fieldNote" id="detailPickStats" hidden></p>
+      <div class="detailHitToggleRow"><button type="button" id="btnDetailHit" class="detailHitBtn">☆</button><span class="fieldNote" id="detailHitToggleLabel" style="margin:0;">今読んで刺さった</span></div>
       <div class="detailLinksSection" id="detailHitSection" hidden>
         <h3>刺さった記録</h3>
         <div id="detailHitList" class="detailHitList"></div>
@@ -1867,7 +1873,7 @@
   // journal entries: kind 'morning' (今朝の言葉), 'consult' (相談の記録),
   // 'draw' (引く), or 'question' (問いを引く, v3.3). One per API response /
   // per 引く landing. Entry-level merge/tombstone, same pattern as notes.
-  const JOURNAL_KINDS = ['morning', 'consult', 'draw', 'question'];
+  const JOURNAL_KINDS = ['morning', 'consult', 'draw', 'question', 'read'];   // 'read' (v8.2.1): a ★ given on the detail screen, no delivery behind it
   function normalizeJournalEntry(j) {
     if (!j || !j.id) return null;
     const kind = JOURNAL_KINDS.includes(j.kind) ? j.kind : 'morning';
@@ -3554,7 +3560,7 @@
     const st = (id) => noteStats[id] || (noteStats[id] = { p: 0, h: 0, q: 0, last: '', lastHit: '' });
     const entries = journalEntriesOfMonth(m);
     entries.forEach((j) => {
-      (j.picks || []).forEach((p) => { const x = st(p.id); x.p++; if (j.date > x.last) x.last = j.date; if (p.hit) { x.h++; if (j.date > x.lastHit) x.lastHit = j.date; } });
+      (j.picks || []).forEach((p) => { const x = st(p.id); if (j.kind !== 'read') x.p++; if (j.date > x.last) x.last = j.date; if (p.hit) { x.h++; if (j.date > x.lastHit) x.lastHit = j.date; } });
       if (j.kind === 'question') (j.from || []).forEach((id) => { const x = st(id); x.q++; if (j.date > x.last) x.last = j.date; });
     });
     // keep the old stamp when nothing changed, so an untouched month does not look edited to other devices
@@ -3762,7 +3768,7 @@
     if (journalMonthly()) { const s0 = indexStatsForNote(noteId); return { count: s0.p, lastDate: s0.last }; }
     let count = 0, lastDate = '';
     data.journal.forEach((j) => {
-      if (j.picks.some((p) => p.id === noteId)) {
+      if (j.kind !== 'read' && j.picks.some((p) => p.id === noteId)) {
         count++;
         if (j.date > lastDate) lastDate = j.date;
       }
@@ -4372,12 +4378,13 @@
   // v3.2: text/myWords trimmed further (was 120/80) purely to shrink the
   // list that goes into the cached system block - every byte in there is
   // what gets re-billed (at 1.25x) on the first call after any note change.
+  const COMPACT_MYWORDS_CHARS = 120;   // v8.2.1: was 50 - the reader's own line often matters more than the text
   function buildCompactNote(n) {
     return {
       id: n.id,
       text: (n.text || '').slice(0, 80),
       source: n.source || '',
-      myWords: (n.myWords || '').slice(0, 50),
+      myWords: (n.myWords || '').slice(0, COMPACT_MYWORDS_CHARS),
       tags: n.tags,
       k: n.kind || 'quote',
     };
@@ -7135,6 +7142,35 @@
   }
 
   // "same word, a different me": every ★ with the state it was ★'d in
+  // ★ from the detail screen (v8.2.1). Today's journal already holding this
+  // word (朝・相談・引く) gets its pick toggled; otherwise a 'read' entry is
+  // written - the word was in front of the user and struck, nothing delivered it.
+  function detailTodayHit(noteId) {
+    const today = todayStr();
+    let hit = null, plain = null;
+    data.journal.forEach((j) => { if (j.date !== today) return; const p = j.picks.find((x) => x.id === noteId); if (!p) return; if (p.hit && !hit) hit = { entry: j, pick: p }; else if (!p.hit && !plain) plain = { entry: j, pick: p }; });
+    return hit ? { on: true, entry: hit.entry } : plain ? { on: false, entry: plain.entry } : { on: false, entry: null };
+  }
+  function renderDetailHitToggle(noteId) {
+    const st = detailTodayHit(noteId);
+    const b = document.getElementById('btnDetailHit');
+    b.classList.toggle('on', st.on); b.textContent = st.on ? '★' : '☆';
+    document.getElementById('detailHitToggleLabel').textContent = st.on ? '今日、刺さった（もう一度押すと外す）' : '今読んで刺さった';
+  }
+  function toggleDetailHit(noteId) {
+    const st = detailTodayHit(noteId);
+    if (st.on) {
+      if (st.entry.kind === 'read' && st.entry.picks.length === 1) deleteJournalEntry(st.entry.id);
+      else toggleJournalHit(st.entry.id, noteId);
+    } else if (st.entry) {
+      toggleJournalHit(st.entry.id, noteId);
+    } else {
+      const iso = nowIso();
+      saveJournalEntry({ id: generateJournalId(), date: todayStr(), kind: 'read', text: '', picks: [{ id: noteId, why: '', hit: 1, hitAt: iso }], closing: '', createdAt: iso, updatedAt: iso });
+    }
+    renderDetail();
+  }
+  document.getElementById('btnDetailHit').addEventListener('click', () => { if (nav.detailId && findNote(nav.detailId)) toggleDetailHit(nav.detailId); });
   function renderDetailHitList(stats) {
     const sec = document.getElementById('detailHitSection');
     const list = document.getElementById('detailHitList');
@@ -7146,7 +7182,7 @@
       row.className = 'detailHitRow';
       const head = document.createElement('div');
       head.className = 'detailHitHead';
-      head.textContent = dotDate(e.date) + '　' + (e.kind === 'morning' ? '朝' + (e.mood != null ? ' ' + MOOD_EMOJI[e.mood] : '') : e.kind === 'consult' ? '相談' : e.kind === 'draw' ? '引く' : e.kind === 'question' ? '問い' : e.kind);
+      head.textContent = dotDate(e.date) + '　' + (e.kind === 'morning' ? '朝' + (e.mood != null ? ' ' + MOOD_EMOJI[e.mood] : '') : e.kind === 'consult' ? '相談' : e.kind === 'draw' ? '引く' : e.kind === 'question' ? '問い' : e.kind === 'read' ? '読んで' : e.kind);
       row.appendChild(head);
       if (e.text) { const t = document.createElement('div'); t.className = 'detailHitText'; t.textContent = noteSnippet(e.text, 80); row.appendChild(t); }
       if (e.why) { const w = document.createElement('div'); w.className = 'detailHitWhy'; w.textContent = e.why; row.appendChild(w); }
@@ -7193,6 +7229,7 @@
     const hitStats = journalHitStatsForNote(note.id);
     if (pickStats.count > 0) pickStatsEl.textContent = `届いた回数: ${pickStats.count}回（直近 ${dotDate(pickStats.lastDate)}）` + (hitStats.count ? `　刺さった: ${hitStats.count}回` : '');
     renderDetailHitList(hitStats);
+    renderDetailHitToggle(note.id);
     if (hitStats.pendingMonths && hitStats.pendingMonths.length) ensureJournalMonths(hitStats.pendingMonths).then(() => { if (nav.screen === 'detail' && nav.detailId === note.id) renderDetailHitList(journalHitStatsForNote(note.id)); });
 
     const qStats = questionUseStatsForNote(note.id);
@@ -9063,7 +9100,7 @@
   }
   // the day's word: what got a ★ that day, else the first word the morning brought
   function dayHeadlineNote(dateStr) {
-    const entries = data.journal.filter((j) => j.date === dateStr && (j.kind === 'morning' || j.kind === 'consult' || j.kind === 'draw'));
+    const entries = data.journal.filter((j) => j.date === dateStr && (j.kind === 'morning' || j.kind === 'consult' || j.kind === 'draw' || j.kind === 'read'));
     let best = null;
     entries.forEach((j) => (j.picks || []).forEach((p) => { if (p.hit && findNote(p.id) && (!best || (p.hitAt || '') < (best.hitAt || ''))) best = { id: p.id, hitAt: p.hitAt, hit: true }; }));
     if (best) return { note: findNote(best.id), hit: true };
@@ -9212,6 +9249,23 @@
   // Same-day draws (one shuffle-stop + whatever links were tapped through
   // afterward) collapse into one card per (sessionId, or the entry's own id
   // as a fallback for entries synced in from before sessionId existed).
+  function renderDayReadCard(entries) {
+    const item = document.createElement('div'); item.className = 'recordEntry';
+    const top = document.createElement('div'); top.className = 'recordEntryTop';
+    const label = document.createElement('span'); label.className = 'recordEntryDate'; label.textContent = '読んで刺さった'; top.appendChild(label);
+    item.appendChild(top);
+    entries.forEach((j) => j.picks.forEach((p) => {
+      const note = findNote(p.id); if (!note) return;
+      const row = document.createElement('div'); row.className = 'journalCardMini withHit';
+      const t = document.createElement('div'); t.className = 'listItem'; t.style.cursor = 'pointer'; t.style.flex = '1';
+      const tx = document.createElement('div'); tx.className = 'liText'; tx.textContent = noteSnippet(note.text, 50); t.appendChild(tx);
+      t.addEventListener('click', () => openDetail(note.id, 'records'));
+      row.appendChild(t);
+      row.appendChild(makeHitButton(j.id, note.id));
+      item.appendChild(row);
+    }));
+    return item;
+  }
   function renderDayDrawCard(entries) {
     const wrapper = document.createElement('div');
     wrapper.className = 'dayDrawGroups';
@@ -9405,6 +9459,8 @@
 
     const drawEntries = data.journal.filter((j) => j.kind === 'draw' && j.date === dateStr);
     if (drawEntries.length) { any = true; body.appendChild(renderDayDrawCard(drawEntries)); }
+    const readEntries = data.journal.filter((j) => j.kind === 'read' && j.date === dateStr);
+    if (readEntries.length) { any = true; body.appendChild(renderDayReadCard(readEntries)); }
 
     const added = notesAddedOn(dateStr);
     if (added.length) { any = true; body.appendChild(renderDayNotesCard(added)); }

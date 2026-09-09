@@ -164,7 +164,7 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
 
 **記録 1 件**
 ```
-{ id: 'j_YYYYMMDD_連番', date: 'YYYY-MM-DD', kind: 'morning'|'consult'|'draw'|'question',
+{ id: 'j_YYYYMMDD_連番', date: 'YYYY-MM-DD', kind: 'morning'|'consult'|'draw'|'question'|'read'（read = 言葉の詳細で押した★。届いた回数には数えない）,
   text: 入力文, picks: [{ id: ノートid, why, hit?: 1, hitAt? }], closing, mood?（朝）, sessionId?（引く）,
   from[] / why_now / tension / for_viewer / used?（問い）, createdAt, updatedAt }
 ```
@@ -223,7 +223,7 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
 |---|---|
 | リポジトリ名・ファイル名 | `GITHUB_OWNER`, `GITHUB_REPO`, `GITHUB_PATH`, `TRAINING_PATH`, `JOURNAL_INDEX_PATH`, `NOTES_INDEX_PATH` |
 | GitHub の待ち時間 | `GH_TIMEOUT_MS`（30 秒） |
-| 候補の言葉の上限・選び方 | `DEFAULT_COMPRESS_THRESHOLD`（200）, `selectCandidateNotes` |
+| 候補の言葉の上限・選び方 | `DEFAULT_COMPRESS_THRESHOLD`（200）, `selectCandidateNotes`（本文＋自分の言葉の 2-gram 一致）, `COMPACT_MYWORDS_CHARS`（AI に渡す「自分の言葉」の文字数、120） |
 | 種類（名言/本/自分） | `NOTE_KINDS`, `inferNoteKind` |
 | 刺さった★の重み（減衰・飽和・休み・探索） | `HIT_TUNING` |
 | 「残したい」の効き（倍率 1 + boost ÷ (1 + ★累計)） | `KEEP_TUNING`（boost 0.5）, `keepMultiplier` |
