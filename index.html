@@ -8710,111 +8710,194 @@
         const v = b ? est1RM(b) : null;
         const prevMax = exerciseMax(e.name, day.date).max;
         const allMax = prevMax === null ? v : (v === null ? prevMax : Math.max(prevMax, v));
-        return { name: e.name, sets: e.sets.map((st) => ({ w: st.w, r: st.r, drops: st.drops || [] })), cardio: null, rm: v, isNewMax: v !== null && (prevMax === null || v > prevMax), allMax };
+        let bestIdx = -1, bestV = -1;
+        e.sets.forEach((st, i) => { const vv = est1RM(st); if (vv !== null && vv > bestV) { bestV = vv; bestIdx = i; } });
+        return { name: e.name, sets: e.sets.map((st) => ({ w: st.w, r: st.r, drops: st.drops || [] })), cardio: null, rm: v, isNewMax: v !== null && (prevMax === null || v > prevMax), allMax, bestIdx };
       }),
     }));
   }
-  // Ruled table: big part title with a double rule, one set per line with
-  // hairlines, numbers larger than names, 1RM right-aligned on the name line
-  // (red + NEW MAX when it beats every earlier day). `compact` puts all sets
-  // of an exercise on one wrapped line and is only used when nothing else fits.
+  // v9.8. Three things made the old sheet hard to read: the size changed
+  // three times inside one line (huge weight, tiny unit, medium reps), the
+  // exercises had no visible grouping, and the columns did not line up. Now
+  // every number on a set line is the same size and every column is
+  // right-aligned at a fixed x, so the digits stack; the units live once in
+  // a small header row instead of beside each number; each exercise sits in
+  // its own bordered box; drop rows are smaller AND dimmer so they cannot be
+  // mistaken for sets; the NEW MAX mark sits on the row that earned it.
   // Runs as the measurer (dry) and the painter; returns the height used.
   function trLayout(ctx, blocks, scale, x0, y0, colW, dry, compact) {
     const F = (px) => `${px}px 'DotGothic16'`;
-    const partF = 60 * scale, nameF = 34 * scale, setF = (compact ? 40 : 58) * scale, rmF = 44 * scale, smallF = 26 * scale;
-    const rowH = setF * 1.32;
+    const partF = 54 * scale, nameF = 32 * scale, numF = (compact ? 38 : 48) * scale;
+    const headF = 21 * scale, markF = 23 * scale, smallF = 23 * scale;
+    const dropF = numF * 0.7;
+    const rowH = numF * 1.2, dropH = dropF * 1.22;
+    const pad = 16 * scale, boxGap = 14 * scale;
+    const inner = colW - pad * 2;
+    // column stops (right edges), measured from the widest entry in each column
+    function setCols(r) {
+      ctx.font = F(headF);
+      let wSet = ctx.measureText('SET').width, wKg = ctx.measureText('kg').width, wRep = ctx.measureText('回').width;
+      ctx.font = F(dropF);
+      const hasDrop = r.sets.some((st) => (st.drops || []).length);
+      if (hasDrop) wSet = Math.max(wSet, ctx.measureText('drop').width);
+      ctx.font = F(numF);
+      const wX = ctx.measureText('×').width;
+      r.sets.forEach((st, i) => {
+        wSet = Math.max(wSet, ctx.measureText(String(i + 1)).width);
+        wKg = Math.max(wKg, ctx.measureText(st.w === null ? '自重' : fmtKg(st.w)).width);
+        if (st.r) wRep = Math.max(wRep, ctx.measureText(String(st.r)).width);
+      });
+      ctx.font = F(dropF);
+      r.sets.forEach((st) => (st.drops || []).forEach((d) => {
+        wKg = Math.max(wKg, ctx.measureText(fmtKg(d.w)).width);
+        wRep = Math.max(wRep, ctx.measureText(String(d.r)).width);
+      }));
+      let markW = 0;
+      if (r.rm !== null && r.rm !== undefined) {
+        ctx.font = F(markF);
+        markW = ctx.measureText(r.isNewMax ? 'NEW MAX ' + fmtKg(r.rm) : '1RM ' + fmtKg(r.rm)).width;
+      }
+      // tight columns alone leave the right half of the box empty, so whatever
+      // width is left over is given back to the gaps between the columns
+      const baseS = numF * 0.55, baseX = numF * 0.26, markGap = numF * 0.4;
+      const used = wSet + baseS + wKg + baseX + wX + baseX + wRep + markGap + markW;
+      const extra = Math.max(0, inner - used);
+      const gapS = baseS + Math.min(extra * 0.5, numF * 1.4);
+      const gapX = baseX + Math.min(extra * 0.12, numF * 0.45);
+      const cSet = pad + wSet;
+      const cW = cSet + gapS + wKg;
+      const cX = cW + gapX;
+      const cR = cX + wX + gapX + wRep;
+      const cMark = cR + markGap;
+      // the mark sits beside the row it belongs to; if it no longer fits, the
+      // whole sheet is drawn one step smaller rather than letting it overlap
+      return { cSet, cW, cX, cR, cMark, fits: cMark + markW <= pad + inner };
+    }
     let y = y0, overflow = false;
+
+    const compactLines = (r) => {
+      ctx.font = F(numF);
+      const words = fmtSetsCompact(r.sets).replace(/ ↓/g, ' drop ').split(', ');
+      const lines = [];
+      let line = '';
+      words.forEach((w) => { const t = line ? line + ', ' + w : w; if (ctx.measureText(t).width > inner && line) { lines.push(line); line = w; } else line = t; });
+      if (line) lines.push(line);
+      return lines;
+    };
+    const exHeight = (r) => {
+      let h = pad + nameF * 1.3;
+      if (r.cardio && compact) return h + rowH + pad;
+      if (r.cardio) return h + smallF * 1.05 + numF * 0.95 + pad;
+      if (compact) return h + compactLines(r).length * rowH + pad;
+      h += headF * 1.25;
+      r.sets.forEach((st) => { h += rowH; (st.drops || []).forEach(() => { h += dropH; }); });
+      return h + pad;
+    };
+
     blocks.forEach((b) => {
       if (!dry) {
-        ctx.fillStyle = TR_GREEN; ctx.font = F(partF); ctx.textAlign = 'left';
+        ctx.fillStyle = TR_GREEN; ctx.font = F(partF); ctx.textAlign = 'left'; ctx.textBaseline = 'top';
         ctx.fillText(b.part, x0, y);
-        ctx.fillRect(x0, y + partF + 10 * scale, colW, 4); ctx.fillRect(x0, y + partF + 20 * scale, colW, 2);
+        ctx.fillRect(x0, y + partF + 8 * scale, colW, 3);
       }
-      y += partF + 40 * scale;
+      y += partF + 26 * scale;
+
       b.rows.forEach((r) => {
-        // name line: name left (shrink, then ellipsize), 1RM block right
+        const h = exHeight(r);
         if (!dry) {
-          let rmW = 0;
-          if (r.rm !== null) {
-            ctx.textAlign = 'right';
-            ctx.font = F(rmF); ctx.fillStyle = r.isNewMax ? TR_RED : TR_GREEN;
-            const num = fmtKg(r.rm);
-            ctx.fillText(num, x0 + colW, y - 8 * scale);
-            const nw = ctx.measureText(num).width;
-            ctx.font = F(24 * scale); ctx.fillStyle = r.isNewMax ? TR_RED : TR_DIM;
-            const lab = r.isNewMax ? 'NEW MAX  1RM' : '1RM  (MAX ' + fmtKg(r.allMax) + ')';
-            ctx.fillText(lab, x0 + colW - nw - 16 * scale, y + 12 * scale);
-            rmW = nw + 16 * scale + ctx.measureText(lab).width + 24 * scale;
-          }
+          // the box is what makes "four exercises" readable at a glance
+          ctx.fillStyle = '#081705';
+          roundRectPath(ctx, x0, y, colW, h, 14 * scale);
+          ctx.fill();
+          ctx.lineWidth = 2; ctx.strokeStyle = '#1f4d1a';
+          roundRectPath(ctx, x0 + 1, y + 1, colW - 2, h - 2, 13 * scale);
+          ctx.stroke();
+        }
+        let yy = y + pad;
+
+        // name line: name left, all-time MAX right (small, dim)
+        if (!dry) {
           ctx.textAlign = 'left'; ctx.fillStyle = '#F2EFEA';
-          const maxNameW = colW - rmW;
+          let maxW = inner;
+          if (r.allMax !== null && r.allMax !== undefined && !r.isNewMax) {
+            ctx.textAlign = 'right'; ctx.font = F(markF); ctx.fillStyle = TR_DIM;
+            const lab = 'MAX ' + fmtKg(r.allMax);
+            ctx.fillText(lab, x0 + pad + inner, yy + (nameF - markF) * 0.6);
+            maxW = inner - ctx.measureText(lab).width - 16 * scale;
+            ctx.textAlign = 'left'; ctx.fillStyle = '#F2EFEA';
+          }
           let nf = nameF, name = r.name;
           ctx.font = F(nf);
-          while (ctx.measureText(name).width > maxNameW && nf > nameF * 0.72) { nf -= 2; ctx.font = F(nf); }
-          while (ctx.measureText(name).width > maxNameW && name.length > 2) { name = name.slice(0, -2) + '…'; }
-          ctx.fillText(name, x0, y + (nameF - nf) * 0.5);
+          while (ctx.measureText(name).width > maxW && nf > nameF * 0.72) { nf -= 2; ctx.font = F(nf); }
+          while (ctx.measureText(name).width > maxW && name.length > 2) { name = name.slice(0, -2) + '…'; }
+          ctx.fillText(name, x0 + pad, yy + (nameF - nf) * 0.5);
         }
-        y += nameF * 1.6;
-        const hair = (yy) => { if (!dry) { ctx.fillStyle = '#1f4d1a'; ctx.fillRect(x0, yy, colW, 2); } };
+        yy += nameF * 1.3;
+
         if (r.cardio && compact) {
-          if (!dry) { ctx.fillStyle = TR_GREEN; ctx.font = F(setF); ctx.textAlign = 'left'; ctx.fillText(r.cardio.map((c) => c.value + (c.value === '-' ? '' : c.unit)).join('  '), x0 + 16 * scale, y); }
-          hair(y + rowH - 6 * scale);
-          y += rowH;
+          if (!dry) { ctx.fillStyle = TR_GREEN; ctx.font = F(numF); ctx.textAlign = 'left'; ctx.fillText(r.cardio.map((c) => c.value + (c.value === '-' ? '' : c.unit)).join('  '), x0 + pad, yy); }
         } else if (r.cardio) {
-          // 距離 / 時間 / 速さ / kcal: number big, unit small, label above
-          const fr = [0, 0.24, 0.48, 0.76], wf = [0.24, 0.24, 0.28, 0.24];
+          // 距離 / 時間 / 速さ / kcal: label above in small, value below - all
+          // four values on one baseline, one size
+          const fr = [0, 0.26, 0.52, 0.78];
           r.cardio.forEach((c, i) => {
-            const cx = x0 + colW * fr[i] + 8 * scale, cw = colW * wf[i] - 12 * scale;
-            ctx.font = F(setF); const vw = ctx.measureText(c.value).width;
-            ctx.font = F(smallF); const uw = c.value === '-' ? 0 : ctx.measureText(c.unit).width + 6 * scale;
-            if (vw + uw > cw) overflow = true;
+            const cx = x0 + pad + inner * fr[i];
+            ctx.font = F(numF * 0.85); const vw = ctx.measureText(c.value + (c.value === '-' ? '' : c.unit)).width;
+            if (vw > inner * 0.23) overflow = true;
             if (!dry) {
-              ctx.textAlign = 'left'; ctx.fillStyle = TR_GREEN; ctx.font = F(smallF * 0.85);
-              ctx.fillText(c.label, cx, y);
-              ctx.font = F(setF); ctx.fillText(c.value, cx, y + smallF * 1.2);
-              if (c.value !== '-') { ctx.fillStyle = TR_DIM; ctx.font = F(smallF); ctx.fillText(c.unit, cx + vw + 6 * scale, y + smallF * 1.2 + setF - smallF); }
+              ctx.textAlign = 'left'; ctx.fillStyle = TR_DIM; ctx.font = F(smallF * 0.9);
+              ctx.fillText(c.label, cx, yy);
+              ctx.fillStyle = TR_GREEN; ctx.font = F(numF * 0.85);
+              ctx.fillText(c.value === '-' ? '-' : c.value + c.unit, cx, yy + smallF * 1.05);
             }
           });
-          hair(y + rowH + smallF * 1.2 - 6 * scale);
-          y += rowH + smallF * 1.2;
         } else if (compact) {
-          // last resort: '65×5, 65×5, 62.5×6' wrapped
-          ctx.font = F(setF);
-          const words = fmtSetsCompact(r.sets).replace(/ ↓/g, ' drop ').split(', ');
-          let line = '';
-          const flush = () => { if (!dry) { ctx.fillStyle = TR_GREEN; ctx.textAlign = 'left'; ctx.fillText(line, x0 + 16 * scale, y); } y += rowH; };
-          words.forEach((w) => { const t = line ? line + ', ' + w : w; if (ctx.measureText(t).width > colW - 20 * scale && line) { flush(); line = w; } else line = t; });
-          if (line) flush();
-          hair(y - 6 * scale);
+          const lines = compactLines(r);
+          if (!dry) { ctx.fillStyle = TR_GREEN; ctx.font = F(numF); ctx.textAlign = 'left'; lines.forEach((ln, i) => ctx.fillText(ln, x0 + pad, yy + i * rowH)); }
         } else {
-          const wR = 0.46, xX = 0.575, rX = 0.65;
-          // Drop rows sit under their set, shifted right and a size smaller, so
-          // they line up with each other; 'drop' is written once per set.
-          const setLine = (label, w, rr, drop) => {
-            const f = drop ? setF * 0.78 : setF, sf = drop ? smallF * 0.85 : smallF, off = drop ? colW * 0.1 : 0, rh = drop ? rowH * 0.88 : rowH;
-            if (!dry) {
-              ctx.textAlign = 'left'; ctx.fillStyle = TR_GREEN; ctx.font = F(sf);
-              if (label) ctx.fillText(label, x0 + off + 8 * scale, y + (f - sf) * 0.5 + 4 * scale);
-              const wt = w === null ? '自重' : fmtKg(w);
-              ctx.font = F(f); ctx.textAlign = 'right'; ctx.fillText(wt, x0 + off + colW * wR, y);
-              ctx.textAlign = 'left'; ctx.fillStyle = TR_DIM; ctx.font = F(sf);
-              if (w !== null) ctx.fillText('kg', x0 + off + colW * wR + 10 * scale, y + f - sf);
-              ctx.font = F(36 * scale * (drop ? 0.8 : 1)); ctx.fillText('×', x0 + off + colW * xX, y + (f - 36 * scale * (drop ? 0.8 : 1)) * 0.5);
-              ctx.fillStyle = TR_GREEN; ctx.font = F(f); ctx.fillText(String(rr), x0 + off + colW * rX, y);
-              const rw = ctx.measureText(String(rr)).width;
-              ctx.fillStyle = TR_DIM; ctx.font = F(sf); ctx.fillText('回', x0 + off + colW * rX + rw + 8 * scale, y + f - sf);
-            }
-            hair(y + rh - 6 * scale);
-            y += rh;
-          };
+          // one small header row carries the units, so no line has to change
+          // size to say "kg" or "回"
+          const { cSet, cW, cX, cR, cMark, fits } = setCols(r);
+          if (!fits) overflow = true;
+          if (!dry) {
+            ctx.fillStyle = TR_DIM; ctx.font = F(headF); ctx.textAlign = 'right';
+            ctx.fillText('SET', x0 + cSet, yy);
+            ctx.fillText('kg', x0 + cW, yy);
+            ctx.fillText('回', x0 + cR, yy);
+          }
+          yy += headF * 1.25;
           r.sets.forEach((st, i) => {
-            setLine('SET ' + (i + 1), st.w, st.r, false);
-            (st.drops || []).forEach((d, di) => setLine(di === 0 ? 'drop' : '', d.w, d.r, true));
+            if (!dry) {
+              const mark = (i === r.bestIdx && r.rm !== null);
+              ctx.font = F(numF); ctx.textAlign = 'right';
+              ctx.fillStyle = TR_DIM; ctx.fillText(String(i + 1), x0 + cSet, yy);
+              ctx.fillStyle = TR_GREEN;
+              ctx.fillText(st.w === null ? '自重' : fmtKg(st.w), x0 + cW, yy);
+              ctx.textAlign = 'left'; ctx.fillStyle = TR_DIM; ctx.fillText('×', x0 + cX, yy);
+              ctx.textAlign = 'right'; ctx.fillStyle = TR_GREEN;
+              if (st.r) ctx.fillText(String(st.r), x0 + cR, yy);
+              if (mark) {
+                ctx.textAlign = 'left'; ctx.font = F(markF);
+                ctx.fillStyle = r.isNewMax ? TR_RED : TR_DIM;
+                ctx.fillText(r.isNewMax ? 'NEW MAX ' + fmtKg(r.rm) : '1RM ' + fmtKg(r.rm), x0 + cMark, yy + (numF - markF) * 0.55);
+              }
+            }
+            yy += rowH;
+            (st.drops || []).forEach((d, di) => {
+              if (!dry) {
+                ctx.font = F(dropF); ctx.textAlign = 'right'; ctx.fillStyle = TR_DIM;
+                if (di === 0) ctx.fillText('drop', x0 + cSet, yy);
+                ctx.fillText(fmtKg(d.w), x0 + cW, yy);
+                ctx.textAlign = 'left'; ctx.fillText('×', x0 + cX, yy);
+                ctx.textAlign = 'right'; ctx.fillText(String(d.r), x0 + cR, yy);
+              }
+              yy += dropH;
+            });
           });
         }
-        y += 24 * scale;
+        y += h + boxGap;
       });
-      y += 26 * scale;
+      y += 14 * scale;
     });
     return overflow ? Infinity : y - y0;
   }

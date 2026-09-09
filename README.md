@@ -281,7 +281,7 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
 | 筋トレの桁の警告 | `TR_OUTLIER_RATIO`（前回までの最大の 1.5 倍を超えたら警告）, `TR_MAX_PLAUSIBLE_REPS`（60 回）。止めずに警告だけ出す |
 | 使用量の単価 | `MODEL_PRICING` |
 | 端末保存のキー | `KV_DB_NAME`, `STORAGE_KEY`, `BACKUP_MAX_CHARS` |
-| 筋トレ画像のデザイン | `trLayout`, `trDrawPage`（`TR_GREEN` など） |
+| 筋トレ画像のデザイン | `trLayout`, `trDrawPage`（`TR_GREEN` など）。v9.8 で作り直した：**1 行の中で文字の大きさを変えない**（重量も回数も `numF`。単位の kg・回 は種目ごとに小さい見出し行として 1 回だけ出す）、**種目を枠で囲む**（`#081705` 塗り＋`#1f4d1a` の線。高さは `exHeight`）、**桁を縦に揃える**（列の右端は `setCols` がその種目の一番広い文字を実測して決める。余った幅は列の間に配ってから描くので、57.5 のような日でも×とぶつからない）、drop は `dropF`（本セットの 0.7 倍）で薄く、NEW MAX / 1RM は**それを出したセットの行**の右（`bestIdx`）。入りきらないときは `fits` が false になり、全体が一段小さく描き直される |
 | 3D の色・モデル URL | `MUSCLE_COLORS`, `MUSCLE_BIN_URL`, `THREE_MODULE_URL` |
 | 筋肉一覧 | `MUSCLE_CATALOG`（`assets/muscles.json` と同じ） |
 | 網の見た目 | `GRAPH_FIT_FLOOR`, `graphPathsFrom` |
