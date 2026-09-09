@@ -149,6 +149,7 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
 **ノート 1 枚**
 ```
 { id: 'n_YYYYMMDD_連番', text, source, myWords, tags: [], kind: 'quote'|'book'|'self', book?: {title, author},
+  keep?: 1（「残したい」の印。普通は項目なし）, lastViewedAt?（一覧の「眠っている順」から詳細を開いた最終日時。眠り順の計算にだけ使う）,
   context?: [{text, at}]（周辺のメモ。AI には渡さない）,
   links: [{id, kind: 'auto'|'manual', relation?: 'similar'|'opposite'|'supplement', reason?}], rejectedLinks: [],
   textHistory?: [], myWordsHistory?: [], video?: {batchId, title, questionId, filmedAt}, autoLinkedAt, createdAt, updatedAt }
@@ -201,6 +202,7 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
 - **筋トレ**: 日ごとに `updatedAt` 新しい方＋墓標。種目カタログと筋肉対応は和集合。
 - **瞑想（年ファイル）**: 言葉の月ファイルと同じ作り。`meditation/index.json` を読む → 端末で変えた年・他端末が変えた年・端末に無い年を読む → `mergeMedSets`（1 回ごとに `updatedAt` の新しい方＋墓標）→ 変わっていれば書く → 索引を書く。
 - **散歩**: walk10000 と同じ「歩いた日数が多い方が勝つ」（ファイル単位）。
+- **引くの順番（v8.2）**: 引くたびに端末のカウンタ（`kotoba_drawExploreN`）が 1 増える。6 の倍数の回は「眠っている言葉」（最後に見た日が古い方から 10%、最低 10 枚、★の有無は問わない）から。それ以外で 3 の倍数の回は「今月」モードで未★の言葉から。残りは重み付き（「今月」）か一様ランダム（「全部」）。相談の候補選びに「残したい」と眠りは入れない。朝の候補にだけ、眠っている言葉を 5 枚足す（選ぶのは AI）。
 - 同期バーの文言は `renderSyncBar`。エラーは localStorage の `kotoba_lastSyncError` などに残り、設定の「最終同期エラー」に出る。
 
 ### 3.3 AI（Claude API）の使い方
@@ -224,6 +226,8 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
 | 候補の言葉の上限・選び方 | `DEFAULT_COMPRESS_THRESHOLD`（200）, `selectCandidateNotes` |
 | 種類（名言/本/自分） | `NOTE_KINDS`, `inferNoteKind` |
 | 刺さった★の重み（減衰・飽和・休み・探索） | `HIT_TUNING` |
+| 「残したい」の効き（倍率 1 + boost ÷ (1 + ★累計)） | `KEEP_TUNING`（boost 0.5）, `keepMultiplier` |
+| 眠っている言葉の枠（引くの何回に 1 回・古い方の何割・朝の候補に何枚） | `SLEEP_TUNING`, `sleepingPool`, `lastSeenMap`（「最後に見た日」＝朝・相談・引くで届いた日、問いの材料になった日、眠り順から詳細を開いた日） |
 | 問いの角度・プロンプト | `QUESTION_MODES`, `buildQuestionSystemBlocks` |
 | 相談・朝のプロンプト | `buildChatSystemBlocks` |
 | 自動関連づけのプロンプト | `buildAutoLinkSystemBlocks` |

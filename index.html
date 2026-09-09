@@ -367,6 +367,15 @@
   .liBottomRow { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 6px; }
   .listItem .liSource { font-size: 12px; color: var(--text-faint); }
   .liLinkCount { font-size: 12px; color: var(--text-faint); white-space: nowrap; }
+  /* 段階（残したい）・眠っている言葉 (v8.2) */
+  .keepMark { color: #d9b45a; margin-right: 4px; }
+  .liSeen { font-size: 12px; color: var(--text-faint); white-space: nowrap; }
+  .liKeepBtn { font-size: 18px; padding: 2px 8px; color: var(--text-faint); line-height: 1; }
+  .liKeepBtn.on { color: #d9b45a; }
+  .graphCard.keep { box-shadow: 0 0 0 1.5px #c9a86a; }
+  .keepBadge { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 999px; border: 1px solid #c9a86a; color: #d9b45a; margin-left: 6px; vertical-align: middle; }
+  .drawResultSleep { color: #7fb3a5; font-size: 13px; margin-top: 6px; }
+  .drawResultKeep { color: #d9b45a; font-size: 13px; margin-top: 4px; }
   .listGroupHeaderRow { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); }
   .listGroupHeader {
     flex: 1 1 auto;
@@ -944,6 +953,11 @@
     <div id="listSortRow" class="tagFilterRow">
       <button type="button" class="tagFilterBtn" data-sort="new">新しい順</button>
       <button type="button" class="tagFilterBtn" data-sort="links">つながりが多い順</button>
+      <button type="button" class="tagFilterBtn" data-sort="sleep">眠っている順</button>
+    </div>
+    <div id="listKeepRow" class="tagFilterRow">
+      <button type="button" class="tagFilterBtn" id="btnListKeepOnly">◆ 残したいだけ</button>
+      <button type="button" class="tagFilterBtn" id="btnListMarkMode">印を付ける</button>
     </div>
     <div id="listKindRow" class="tagFilterRow">
       <button type="button" class="tagFilterBtn" data-kind="all">全部</button>
@@ -1056,6 +1070,13 @@
           <button type="button" class="tagFilterBtn" data-kind="self">自分</button>
         </div>
         <input id="editBookAuthor" type="text" placeholder="著者（任意）" autocomplete="off" hidden>
+      </div>
+      <div class="field">
+        <span class="fieldLabel">印</span>
+        <div class="tagFilterRow" id="editKeepRow">
+          <button type="button" class="tagFilterBtn" data-keep="0">普通</button>
+          <button type="button" class="tagFilterBtn" data-keep="1">◆ 残したい</button>
+        </div>
       </div>
       <label class="field">
         <span class="fieldLabel">自分の言葉での一言<span class="required">必須</span></span>
@@ -1582,6 +1603,13 @@
           <button type="button" id="btnDraftSimilarReplace" class="secondaryBtn">既存を置き換える</button>
         </div>
       </div>
+      <div class="field" id="draftKeepField" hidden>
+        <span class="fieldLabel">印</span>
+        <div class="tagFilterRow" id="draftKeepRow">
+          <button type="button" class="tagFilterBtn" data-keep="0">普通</button>
+          <button type="button" class="tagFilterBtn" data-keep="1">◆ 残したい</button>
+        </div>
+      </div>
       <div class="field" id="draftTagsField" hidden>
         <span class="fieldLabel">タグ<span class="fieldNote inlineNote">（最大3つ）</span></span>
         <div class="tagInputRow">
@@ -1658,6 +1686,8 @@
         <div class="drawResultSource" id="drawResultSource"></div>
         <div class="drawResultMyWords" id="drawResultMyWords"></div>
         <div class="drawResultHit" id="drawResultHit" hidden></div>
+        <div class="drawResultSleep" id="drawResultSleep" hidden></div>
+        <div class="drawResultKeep" id="drawResultKeep" hidden></div>
         <div class="drawResultStar" id="drawResultStar"></div>
       </div>
       <div id="questionResult" class="questionResult" hidden>
@@ -1957,6 +1987,11 @@
     if (out.kind === 'book') { const b = normalizeBook(n.book, out.source); if (b) out.book = b; }
     const ctx = normalizeContextList(n.context);
     if (ctx.length) out.context = ctx;
+    // v8.2: 段階 - 「残したい」 is keep: 1, 普通 has no key. lastViewedAt is the
+    // last time the detail was opened from the 眠っている順 list (feeds the
+    // sleeping order only, never the weights).
+    if (n.keep) out.keep = 1;
+    if (typeof n.lastViewedAt === 'string' && n.lastViewedAt) out.lastViewedAt = n.lastViewedAt;
     // v3.4: notes that came out of a video transcript remember which batch
     // (= which video) and which 問い that video was spoken from. Optional -
     // every note that predates this simply has no `video` key.
@@ -3747,6 +3782,20 @@
     exploreEvery: 3,   // every Nth monthly draw comes from words never ★'d
     windowDays: 30,    // how far back 今月 looks
   };
+  // 自己申告 (v8.2): a 「残したい」 word is weighted × (1 + boost / (1 + ★ total)),
+  // so the flag matters most before any ★ and fades as real ★ accumulate.
+  const KEEP_TUNING = { boost: 0.5 };
+  // 眠っている言葉 (v8.2): the words not put in front of the user for the
+  // longest time get a guaranteed turn - not a full rotation of every word
+  // (30,000 words at one draw a day would take centuries), but the most
+  // forgotten ones always come first.
+  const SLEEP_TUNING = {
+    every: 6,          // every Nth 引く (either mode) comes from the sleeping pool
+    share: 0.1,        // the pool is the oldest 10% by "last seen" ...
+    minPool: 10,       // ... but never fewer than this many
+    badgeDays: 365,    // "N 年ぶり" phrasing from here
+    morningSlots: 5,   // dormant words added to the 朝 candidate list (the AI still chooses by fit)
+  };
   function toggleJournalHit(journalId, noteId) {
     const j = data.journal.find((x) => x.id === journalId);
     if (!j) return null;
@@ -3812,6 +3861,51 @@
     if (journalMonthly() && jm.index) { Object.values(jm.index.months).forEach((row) => Object.entries(row.noteStats).forEach(([id, st]) => { if (st.h) ids.add(id); })); return ids; }
     data.journal.forEach((j) => j.picks.forEach((p) => { if (p.hit) ids.add(p.id); }));
     return ids;
+  }
+  function noteHitTotal(id) {
+    if (journalMonthly() && jm.index) return indexStatsForNote(id).h;
+    let h = 0; data.journal.forEach((j) => (j.picks || []).forEach((p) => { if (p.id === id && p.hit) h++; }));
+    return h;
+  }
+  function keepMultiplier(note) { return (note && note.keep) ? 1 + KEEP_TUNING.boost / (1 + noteHitTotal(note.id)) : 1; }
+  function weightWithKeep(w, note) { return (w.get(note.id) || 0) * keepMultiplier(note); }
+  // "last seen" per note: any journal pick (朝・相談・引く), being a 問い's
+  // material, or the detail opened from the 眠っている順 list. Never seen -> ''.
+  function lastSeenMap() {
+    const m = new Map();
+    const bump = (id, d) => { if (d && d > (m.get(id) || '')) m.set(id, d); };
+    if (journalMonthly() && jm.index) Object.values(jm.index.months).forEach((row) => Object.entries(row.noteStats).forEach(([id, st]) => bump(id, st.last)));
+    data.journal.forEach((j) => { (j.picks || []).forEach((p) => bump(p.id, j.date)); (j.from || []).forEach((id) => bump(id, j.date)); });
+    data.notes.forEach((n) => { if (n.lastViewedAt) bump(n.id, n.lastViewedAt.slice(0, 10)); });
+    return m;
+  }
+  // sort key: last seen, else the day the word was added (a never-seen word sleeps since its creation)
+  function sleepingOrder(list, seen) {
+    seen = seen || lastSeenMap();
+    const key = (n) => seen.get(n.id) || localDateOfIso(n.createdAt) || '';
+    return [...list].sort((a, b) => { const ka = key(a), kb = key(b); return ka < kb ? -1 : ka > kb ? 1 : 0; });
+  }
+  function sleepingPool(list) {
+    const sorted = sleepingOrder(list);
+    return sorted.slice(0, Math.max(SLEEP_TUNING.minPool, Math.ceil(sorted.length * SLEEP_TUNING.share)));
+  }
+  function sleepInfo(note, seen) {
+    seen = seen || lastSeenMap();
+    const last = seen.get(note.id) || '';
+    const base = last || localDateOfIso(note.createdAt);
+    const days = base ? Math.max(0, Math.round((parseDateStr(todayStr()) - parseDateStr(base)) / 86400000)) : 0;
+    return { never: !last, days };
+  }
+  function sleepLabel(info) {
+    if (info.never) return '初めて';
+    if (info.days >= SLEEP_TUNING.badgeDays) return (info.days / 365).toFixed(1).replace(/\.0$/, '') + ' 年ぶり';
+    if (info.days >= 60) return Math.round(info.days / 30) + ' か月ぶり';
+    return info.days + ' 日ぶり';
+  }
+  function markNoteViewed(note) {
+    if (!note) return;
+    note.lastViewedAt = nowIso(); note.updatedAt = note.lastViewedAt;
+    saveData(data);
   }
   // weighted sample without replacement
   function weightedSample(items, weightOf, n) {
@@ -3891,6 +3985,8 @@
       const picked = new Set((history || []).flatMap((h) => h.picks || []));
       const cands = selectCandidateNotes({ text: input, tags: [] }, { useWeights: true });
       picked.forEach((id) => { const n = findNote(id); if (n && !cands.includes(n)) cands.push(n); });
+      // 朝 only: a few of the longest-unseen words ride along; the model still picks by fit
+      if (usageKind === 'morning') sleepingOrder(data.notes.filter((n) => !cands.includes(n))).slice(0, SLEEP_TUNING.morningSlots).forEach((n) => cands.push(n));
       inlineList = '候補の言葉:\n' + JSON.stringify(cands.map(buildCompactNote)) + '\n\n';
     }
     const promptText =
@@ -4787,7 +4883,7 @@
       notes = pairs[Math.floor(Math.random() * pairs.length)];
     } else if (mode === 'core') {
       const w = noteWeightsInWindow();
-      notes = weightedSample(topMonthlyPickedNoteIds(5).map(findNote).filter(Boolean), (n) => w.get(n.id) || 0, 2);
+      notes = weightedSample(topMonthlyPickedNoteIds(5).map(findNote).filter(Boolean), (n) => weightWithKeep(w, n), 2);
     } else if (mode === 'far') {
       const ranked = rankFarTriples(allFarOppositionTriples());
       if (!ranked.length) return null;
@@ -5698,7 +5794,9 @@
     tags: new Set(),
     noLinksOnly: false,
     viewMode: 'all', // 'all' | 'source' | 'tag'
-    sortMode: 'new', // 'new' | 'links' (meaningful only in 'all' mode)
+    sortMode: 'new', // 'new' | 'links' | 'sleep' (meaningful only in 'all' mode)
+    keepOnly: false, // v8.2: only 「残したい」
+    markMode: false, // v8.2: rows show a ◆ toggle instead of opening
   };
 
   const LIST_COLLAPSED_KEY = 'kotoba_listCollapsedGroups';
@@ -5781,11 +5879,13 @@
     if (listState.noLinksOnly) {
       results = results.filter((n) => n.links.length === 0);
     }
+    if (listState.keepOnly) results = results.filter((n) => n.keep);
     return results;
   }
 
   function sortNotesForFlatList(notes) {
     const arr = [...notes];
+    if (listState.sortMode === 'sleep') return sleepingOrder(arr);
     if (listState.sortMode === 'links') {
       arr.sort((a, b) => b.links.length - a.links.length || (a.createdAt < b.createdAt ? 1 : -1));
     } else {
@@ -5826,7 +5926,8 @@
     el.className = 'listItem';
     const textEl = document.createElement('div');
     textEl.className = 'liText';
-    textEl.textContent = noteSnippet(n.text, 80);
+    if (n.keep) { const k = document.createElement('span'); k.className = 'keepMark'; k.textContent = '◆'; textEl.appendChild(k); }
+    textEl.appendChild(document.createTextNode(noteSnippet(n.text, 80)));
     el.appendChild(textEl);
 
     const bottomRow = document.createElement('div');
@@ -5841,11 +5942,28 @@
       linkCountEl.textContent = `⇄ ${n.links.length}`;
       bottomRow.appendChild(linkCountEl);
     }
+    if (listState.viewMode === 'all' && listState.sortMode === 'sleep') {
+      const seen = document.createElement('span'); seen.className = 'liSeen';
+      const info = sleepInfo(n, listSleepSeen || (listSleepSeen = lastSeenMap()));
+      seen.textContent = info.never ? '未' : sleepLabel(info).replace('ぶり', '');
+      bottomRow.appendChild(seen);
+    }
+    if (listState.markMode) {
+      const kb = document.createElement('button'); kb.type = 'button'; kb.className = 'liKeepBtn' + (n.keep ? ' on' : ''); kb.textContent = n.keep ? '◆' : '◇'; kb.title = n.keep ? '残したい（押すと普通に戻す）' : '残したい';
+      kb.addEventListener('click', (e) => { e.stopPropagation(); if (n.keep) delete n.keep; else n.keep = 1; n.updatedAt = nowIso(); saveData(data); renderList(); });
+      bottomRow.appendChild(kb);
+    }
     el.appendChild(bottomRow);
 
-    el.addEventListener('click', () => openDetail(n.id, 'list'));
+    el.addEventListener('click', () => {
+      if (listState.markMode) { if (n.keep) delete n.keep; else n.keep = 1; n.updatedAt = nowIso(); saveData(data); renderList(); return; }
+      // 眠っている順から開いた = 見た（スクロールだけでは数えない）
+      if (listState.viewMode === 'all' && listState.sortMode === 'sleep') markNoteViewed(n);
+      openDetail(n.id, 'list');
+    });
     return el;
   }
+  let listSleepSeen = null;   // lastSeenMap() cached for one render of the 眠っている順 list
 
   // v7.4: never put thousands of cards into the DOM at once - 200 per page,
   // 「もっと見る」 adds the next 200. A change of filter/search/sort starts over.
@@ -5854,8 +5972,9 @@
     const listEl = document.getElementById('listItems');
     listEl.innerHTML = '';
     document.getElementById('listEmpty').hidden = notes.length > 0;
-    const sig = [listState.search, listState.kind, [...listState.tags].join(','), listState.sortMode, listState.noLinksOnly].join('|');
+    const sig = [listState.search, listState.kind, [...listState.tags].join(','), listState.sortMode, listState.noLinksOnly, listState.keepOnly].join('|');
     if (listState.pageSig !== sig) { listState.pageSig = sig; listState.pageLimit = LIST_PAGE; }
+    listSleepSeen = null;
     const sorted = sortNotesForFlatList(notes);
     sorted.slice(0, listState.pageLimit).forEach((n) => listEl.appendChild(renderListItemRow(n)));
     if (sorted.length > listState.pageLimit) {
@@ -6212,6 +6331,9 @@
       b.classList.toggle('selected', b.dataset.sort === listState.sortMode);
     });
     document.getElementById('noLinksFilter').checked = listState.noLinksOnly;
+    document.getElementById('btnListKeepOnly').classList.toggle('selected', listState.keepOnly);
+    document.getElementById('btnListKeepOnly').textContent = '◆ 残したいだけ ' + data.notes.filter((n) => n.keep).length;
+    document.getElementById('btnListMarkMode').classList.toggle('selected', listState.markMode);
 
     const filtered = computeFilteredNotes();
     if (listState.viewMode === 'source') {
@@ -6234,6 +6356,8 @@
     b.addEventListener('click', () => { listState.sortMode = b.dataset.sort; renderList(); });
   });
   document.querySelectorAll('#listKindRow button').forEach((b) => b.addEventListener('click', () => { listState.kind = b.dataset.kind; renderList(); }));
+  document.getElementById('btnListKeepOnly').addEventListener('click', () => { listState.keepOnly = !listState.keepOnly; renderList(); });
+  document.getElementById('btnListMarkMode').addEventListener('click', () => { listState.markMode = !listState.markMode; renderList(); });
   document.getElementById('noLinksFilter').addEventListener('change', (e) => {
     listState.noLinksOnly = e.target.checked;
     renderList();
@@ -6598,7 +6722,9 @@
   // starts fresh from data.drafts' own order again.
   let draftQueue = [];
   let draftQueueIndex = 0;
-  const draftEditorState = { tags: [] };
+  const draftEditorState = { tags: [], keep: 0 };
+  function renderDraftKeepRow() { document.querySelectorAll('#draftKeepRow button').forEach((b) => b.classList.toggle('selected', Number(b.dataset.keep) === (draftEditorState.keep ? 1 : 0))); }
+  document.querySelectorAll('#draftKeepRow button').forEach((b) => b.addEventListener('click', () => { draftEditorState.keep = Number(b.dataset.keep); renderDraftKeepRow(); }));
   // Draft ids where the user chose "両方残す" for the similar-note panel;
   // suppresses re-showing that panel for the rest of this review session.
   let draftSimilarDismissed = new Set();
@@ -6617,6 +6743,7 @@
     document.getElementById('draftEmpty').hidden = has;
     document.getElementById('draftCard').hidden = !has;
     document.getElementById('draftTagsField').hidden = !has;
+    document.getElementById('draftKeepField').hidden = !has;
     document.getElementById('draftMyWordsField').hidden = !has;
     document.getElementById('btnDraftSave').hidden = !has;
     document.getElementById('draftActionsRow').hidden = !has;
@@ -6654,6 +6781,7 @@
     }
 
     draftEditorState.tags = [...draft.tags];
+    draftEditorState.keep = 0; renderDraftKeepRow();
     document.getElementById('draftTagInput').value = '';
     document.getElementById('draftMyWordsInput').value = '';
     clearDraftTagLimitMessage();
@@ -6879,6 +7007,7 @@
     };
     if (draft.video) note.video = { ...draft.video };
     note.kind = draft.kind || inferNoteKind(draft.source);
+    if (draftEditorState.keep) note.keep = 1;
     if (note.kind === 'book') note.book = normalizeBook(draft.book, draft.source) || { title: draft.source, author: '' };
     if (draft.context && draft.context.length) note.context = draft.context.map((c) => ({ ...c }));
     data.notes.push(note);
@@ -7054,7 +7183,7 @@
     const note = findNote(nav.detailId);
     if (!note) { backFromDetail(); return; }
     document.getElementById('detailText').textContent = note.text;
-    { const el = document.getElementById('detailSource'); el.textContent = note.source || '-'; if (note.kind === 'book' && note.book && note.book.author) el.textContent += '（' + note.book.author + '）'; const badge = document.createElement('span'); badge.className = 'kindBadge'; badge.textContent = NOTE_KIND_LABEL[note.kind || 'quote']; el.appendChild(badge); }
+    { const el = document.getElementById('detailSource'); el.textContent = note.source || '-'; if (note.kind === 'book' && note.book && note.book.author) el.textContent += '（' + note.book.author + '）'; const badge = document.createElement('span'); badge.className = 'kindBadge'; badge.textContent = NOTE_KIND_LABEL[note.kind || 'quote']; el.appendChild(badge); if (note.keep) { const kb = document.createElement('span'); kb.className = 'keepBadge'; kb.textContent = '◆ 残したい'; el.appendChild(kb); } }
     document.getElementById('detailMyWords').textContent = note.myWords;
     renderTagPills(document.getElementById('detailTags'), note.tags);
 
@@ -9452,21 +9581,27 @@
   // Returns null only for 'monthly' mode with an empty pool - the caller
   // treats that as "nothing to draw from" and falls back to 'all'.
   function pickDrawTargetNote() {
+    const n = (Number(localStorage.getItem(DRAW_EXPLORE_KEY)) || 0) + 1;
+    localStorage.setItem(DRAW_EXPLORE_KEY, String(n));
+    const resting = recentlyHitIds(HIT_TUNING.restDays);
+    drawState.sleepPick = null;
+    // every 6th draw, in either mode: one of the words left alone the longest
+    if (n % SLEEP_TUNING.every === 0) {
+      const pool = sleepingPool(drawKindFilter(data.notes.filter((x) => !resting.has(x.id))));
+      if (pool.length) { const pick = pool[Math.floor(Math.random() * pool.length)]; drawState.sleepPick = { id: pick.id, info: sleepInfo(pick) }; return pick; }
+    }
     if (getDrawMode() === 'monthly') {
-      const resting = recentlyHitIds(HIT_TUNING.restDays);
       const w = noteWeightsInWindow();
       let pool = drawKindFilter(topMonthlyPickedNoteIds(10).map(findNote).filter((n) => n && !resting.has(n.id)));
       if (!pool.length) return null;
-      // every Nth draw: a word from this month that was never ★'d (else any never-★'d word)
-      const n = (Number(localStorage.getItem(DRAW_EXPLORE_KEY)) || 0) + 1;
-      localStorage.setItem(DRAW_EXPLORE_KEY, String(n));
+      // every 3rd draw (when not the sleeping turn): a word from this month that was never ★'d (else any never-★'d word)
       if (n % HIT_TUNING.exploreEvery === 0) {
         const hitEver = everHitIds();
         let fresh = pool.filter((x) => !hitEver.has(x.id));
         if (!fresh.length) fresh = data.notes.filter((x) => !hitEver.has(x.id) && !resting.has(x.id));
         if (fresh.length) return fresh[Math.floor(Math.random() * fresh.length)];
       }
-      return weightedSample(pool, (x) => w.get(x.id) || 0, 1)[0];
+      return weightedSample(pool, (x) => weightWithKeep(w, x), 1)[0];
     }
     const excluded = recentDrawExcludedIds();
     let pool = drawKindFilter(data.notes.filter((n) => !excluded.has(n.id)));
@@ -9574,6 +9709,8 @@
     document.getElementById('drawResultText').textContent = note.text;
     document.getElementById('drawResultSource').textContent = note.source || '';
     document.getElementById('drawResultMyWords').textContent = note.myWords || '';
+    { const sp = drawState.sleepPick; const el = document.getElementById('drawResultSleep'); const on = !!(sp && sp.id === note.id); el.hidden = !on; if (on) el.textContent = '眠っていた言葉 ・ ' + sleepLabel(sp.info); }
+    { const el = document.getElementById('drawResultKeep'); el.hidden = !note.keep; if (note.keep) el.textContent = '◆ 残したい'; }
     { const hs = journalHitStatsForNote(note.id); const el = document.getElementById('drawResultHit'); el.hidden = !hs.count; if (hs.count) el.textContent = '★ 刺さった ' + hs.count + '回（直近 ' + dotDate(hs.lastDate) + '）'; }
     document.getElementById('drawLinks').innerHTML = '';
     resultEl.hidden = false;
@@ -9915,7 +10052,7 @@
 
   function graphCardEl(note, cls) {
     const el = document.createElement('div');
-    el.className = 'graphCard' + (cls ? ' ' + cls : '') + ' k-' + (note.kind || 'quote');
+    el.className = 'graphCard' + (cls ? ' ' + cls : '') + ' k-' + (note.kind || 'quote') + (note.keep ? ' keep' : '');
     el.dataset.noteId = note.id;
     const t = document.createElement('div');
     t.className = 'gcText';
@@ -10182,12 +10319,14 @@
   })();
 
   // --- Editor -----------------------------------------------------------
-  const editorState = { tags: [], links: [], kind: 'quote' };
+  const editorState = { tags: [], links: [], kind: 'quote', keep: 0 };
   const editBookAuthorEl = document.getElementById('editBookAuthor');
   function renderEditKindRow() {
     document.querySelectorAll('#editKindRow button').forEach((b) => b.classList.toggle('selected', b.dataset.kind === editorState.kind));
     editBookAuthorEl.hidden = editorState.kind !== 'book';
+    document.querySelectorAll('#editKeepRow button').forEach((b) => b.classList.toggle('selected', Number(b.dataset.keep) === (editorState.keep ? 1 : 0)));
   }
+  document.querySelectorAll('#editKeepRow button').forEach((b) => b.addEventListener('click', () => { editorState.keep = Number(b.dataset.keep); renderEditKindRow(); scheduleInputDraft(); }));
   document.querySelectorAll('#editKindRow button').forEach((b) => b.addEventListener('click', () => { editorState.kind = b.dataset.kind; renderEditKindRow(); }));
   const editTextEl = document.getElementById('editText');
   const editSourceEl = document.getElementById('editSource');
@@ -10211,6 +10350,7 @@
       editorState.tags = [...note.tags];
       editorState.links = note.links.filter((l) => l.kind === 'manual').map((l) => l.id);
       editorState.kind = note.kind || inferNoteKind(note.source);
+      editorState.keep = note.keep ? 1 : 0;
       editBookAuthorEl.value = (note.book && note.book.author) || '';
     } else {
       editTextEl.value = '';
@@ -10219,6 +10359,7 @@
       editorState.tags = [];
       editorState.links = [];
       editorState.kind = 'quote';
+      editorState.keep = 0;
       editBookAuthorEl.value = '';
     }
     renderEditKindRow();
@@ -10275,6 +10416,7 @@
   }
 
   function applyEditorKind(note, source) {
+    if (editorState.keep) note.keep = 1; else delete note.keep;
     note.kind = editorState.kind;
     if (note.kind === 'book') note.book = { title: source, author: editBookAuthorEl.value.trim() }; else delete note.book;
   }
@@ -11622,7 +11764,7 @@
   function readInputDraft() { try { const raw = localStorage.getItem(INPUT_DRAFT_KEY); const d = raw ? JSON.parse(raw) : null; return (d && d.fields && d.ctx) ? d : null; } catch (e) { return null; } }
   function inputDraftContext() {
     const ctx = { screen: nav.screen };
-    if (nav.screen === 'editor') ctx.editor = { mode: nav.editorMode, editId: nav.editorEditId, ret: nav.editorReturnScreen, tags: [...editorState.tags], links: [...editorState.links], kind: editorState.kind };
+    if (nav.screen === 'editor') ctx.editor = { mode: nav.editorMode, editId: nav.editorEditId, ret: nav.editorReturnScreen, tags: [...editorState.tags], links: [...editorState.links], kind: editorState.kind, keep: editorState.keep ? 1 : 0 };
     if (nav.screen === 'bulk') ctx.bulk = { kind: bulkState.kind, noteKind: bulkState.noteKind, questionId: bulkState.questionId };
     if (nav.screen === 'draftreview') ctx.draftId = draftQueue[draftQueueIndex] || null;
     if (nav.screen === 'detail') ctx.detailId = nav.detailId;
@@ -11683,7 +11825,7 @@
       if (c.screen === 'editor' && c.editor) {
         if (c.editor.mode === 'edit' && !findNote(c.editor.editId)) { clearInputDraft(); return; }
         openEditor(c.editor.mode, c.editor.editId, c.editor.ret || 'list');
-        editorState.tags = [...(c.editor.tags || [])]; editorState.links = (c.editor.links || []).filter(findNote); editorState.kind = NOTE_KINDS.includes(c.editor.kind) ? c.editor.kind : editorState.kind;
+        editorState.tags = [...(c.editor.tags || [])]; editorState.links = (c.editor.links || []).filter(findNote); editorState.kind = NOTE_KINDS.includes(c.editor.kind) ? c.editor.kind : editorState.kind; editorState.keep = c.editor.keep ? 1 : 0;
         renderTagChips(); renderLinkChips(); renderEditKindRow();
       } else if (c.screen === 'bulk') {
         openBulk();
