@@ -2496,7 +2496,7 @@
       const body = noteMonthDocBody(doc);
       if (nm.monthJson[y] === body) return;
       nm.monthJson[y] = body;
-      kvSet('notes:' + y, JSON.stringify(doc)).catch(() => { localSaveError = '端末の保存に失敗しました（クラウドには同期します）'; recordSyncError(LAST_SYNC_ERROR_KEY, localSaveError); });
+      kvSet('notes:' + y, JSON.stringify(doc)).catch(() => { localSaveError = '端末に保存できませんでした（クラウドには同期します）'; recordSyncError(LAST_SYNC_ERROR_KEY, localSaveError); });
       nm.dirty.add(y); changed = true;
     });
     if (changed) persistNotesDirty();
@@ -2600,7 +2600,7 @@
     try {
       notesMigrationStatus('最新の状態を取得中…');
       await syncNow();
-      if (noteSyncState === 'error') throw new Error('同期に失敗したため中止しました');
+      if (noteSyncState === 'error') throw new Error('同期できなかったので中止しました');
       nm.dirty = new Set(); nm.stamps = {}; nm.monthJson = {};
       const years = notesMonthsOf(data);
       const index = emptyNotesIndex();
@@ -2624,7 +2624,7 @@
       notesMigrationStatus('移行が完了しました（' + years.length + ' か月分）');
       openSettings();
     } catch (e) {
-      notesMigrationStatus('移行に失敗しました: ' + (e.message || e) + '。data.json は変更していないので、そのまま使えます。');
+      notesMigrationStatus('移行できませんでした：' + (e.message || e) + '。data.json は変更していないので、そのまま使えます。');
     }
   }
   async function revertNotesToLegacy() {
@@ -2643,7 +2643,7 @@
       notesMigrationStatus('data.json 方式に戻しました（言葉 ' + data.notes.length + ' 枚）。月ファイルは残っていますが使われません。');
       openSettings();
     } catch (e) {
-      notesMigrationStatus('戻しに失敗しました: ' + (e.message || e));
+      notesMigrationStatus('戻せませんでした：' + (e.message || e));
     }
   }
 
@@ -2687,7 +2687,7 @@
     let json;
     try { json = JSON.stringify(dataForStorage(d)); } catch (e) { return; }
     kvSet('data', json).then(() => { localSaveError = ''; }).catch(() => {
-      localSaveError = '端末の保存に失敗しました（クラウドには同期します）';
+      localSaveError = '端末に保存できませんでした（クラウドには同期します）';
       recordSyncError(LAST_SYNC_ERROR_KEY, localSaveError);
       renderSyncBar();
     });
@@ -3028,10 +3028,10 @@
     const status = e && e.status;
     if (status === 401 || status === 403) return `${repoLabel}にアクセスできません。トークンの権限を確認してください（${status}）`;
     if (status === 404) return `${repoLabel}が見つかりません（404）`;
-    if (status) return `${repoLabel}への同期に失敗しました（${status}）`;
+    if (status) return `${repoLabel}に同期できませんでした（${status}）`;
     // no HTTP status: a network failure, or a bug in the sync code - keep the raw message so it can be read in 設定
     const detail = (e && e.message && e.message !== 'Failed to fetch') ? '：' + String(e.message).slice(0, 120) : '';
-    return `${repoLabel}への同期に失敗しました（通信エラー${detail}）`;
+    return `${repoLabel}に同期できませんでした（通信できません${detail}）`;
   }
   function recordSyncError(key, message) { localStorage.setItem(key, JSON.stringify({ message, at: nowIso() })); }
   function clearSyncError(key) { localStorage.removeItem(key); }
@@ -3234,7 +3234,7 @@
     return walkDefaultData();
   }
 
-  function persistWalkLocal(d) { kvSet('walk', JSON.stringify(d)).catch(() => { recordSyncError(WALK_LAST_SYNC_ERROR_KEY, '端末の保存に失敗しました'); renderSyncBar(); }); }
+  function persistWalkLocal(d) { kvSet('walk', JSON.stringify(d)).catch(() => { recordSyncError(WALK_LAST_SYNC_ERROR_KEY, '端末に保存できませんでした'); renderSyncBar(); }); }
   function backupWalkData(d) { kvSet('walkBackup', JSON.stringify(d)).catch(() => {}); }
 
   let walkData = loadWalkData();
@@ -3921,7 +3921,7 @@
     if (prev && prev.count === entries.length && JSON.stringify(prev.noteStats) === JSON.stringify(noteStats)) return prev;
     return { updatedAt: nowIso(), count: entries.length, noteStats };
   }
-  function persistMonth(m) { return kvSet('journal:' + m, JSON.stringify(journalMonthDoc(m))).catch(() => { localSaveError = '端末の保存に失敗しました（クラウドには同期します）'; recordSyncError(LAST_SYNC_ERROR_KEY, localSaveError); renderSyncBar(); }); }
+  function persistMonth(m) { return kvSet('journal:' + m, JSON.stringify(journalMonthDoc(m))).catch(() => { localSaveError = '端末に保存できませんでした（クラウドには同期します）'; recordSyncError(LAST_SYNC_ERROR_KEY, localSaveError); renderSyncBar(); }); }
   function persistIndex() { return kvSet('journalIndex', JSON.stringify(jm.index)).catch(() => {}); }
   function persistDirty() { return kvSet('journalDirty', JSON.stringify([...jm.dirty])).catch(() => {}); }
   function updateIndexMonth(m) {
@@ -4054,7 +4054,7 @@
     try {
       journalMigrationStatus('最新の状態を取得中…');
       await syncNow();
-      if (noteSyncState === 'error') throw new Error('同期に失敗したため中止しました');
+      if (noteSyncState === 'error') throw new Error('同期できなかったので中止しました');
       const months = new Set(data.journal.map((j) => monthOfDate(j.date)));
       (data.deletedJournalIds || []).forEach((t) => months.add(monthOfJournalId(t.id) || monthOfDate(todayStr())));
       jm.index = emptyJournalIndex(); jm.tombs = new Map(); jm.loaded = new Set(); jm.dirty = new Set();
@@ -4084,7 +4084,7 @@
       journalMigrationStatus('移行が完了しました（' + list.length + ' か月）');
       openSettings();
     } catch (e) {
-      journalMigrationStatus('移行に失敗しました: ' + (e.message || e) + '。data.json は変更していないので、そのまま使えます。');
+      journalMigrationStatus('移行できませんでした：' + (e.message || e) + '。data.json は変更していないので、そのまま使えます。');
     }
   }
   async function revertJournalToLegacy() {
@@ -4111,7 +4111,7 @@
       journalMigrationStatus('data.json 方式に戻しました（記録 ' + data.journal.length + ' 件）。月ファイルは残っていますが使われません。');
       openSettings();
     } catch (e) {
-      journalMigrationStatus('戻しに失敗しました: ' + (e.message || e));
+      journalMigrationStatus('戻せませんでした：' + (e.message || e));
     }
   }
 
@@ -4338,26 +4338,84 @@
   // a hung request just spun forever. Each kind is now separated, and the
   // status plus the first 200 characters of the response body go into the
   // settings error log so the next failure explains itself.
-  const CHAT_TIMEOUT_MS = 60000;
-  function chatErrorText(e) {
-    if (!e) return '失敗しました。もう一度お試しください。';
-    if (e.noKey) return '設定画面で Claude API キーを入力してください。';
-    if (e.offline) return 'オフラインです。電波のある場所でもう一度お試しください。';
-    if (e.timeout) return '時間がかかりすぎました（60秒で打ち切り）。もう一度お試しください。';
-    if (e.truncated) return '応答が長すぎて途中で切れました。短く書き直すか、もう一度お試しください。';
-    if (e.status === 401 || e.status === 403) return 'API キーが使えません（' + e.status + '）。設定でキーを入れ直してください。';
-    if (e.status === 429) return '混みあっています（429）。少し待ってからもう一度お試しください。';
-    if (e.status === 400) return 'リクエストが受け付けられませんでした（400）。設定のモデル名を確かめてください。詳しくは設定の「最終エラー」に出ています。';
-    if (e.status === 404) return 'モデルが見つかりません（404）。設定のモデル名を確かめてください。';
-    if (e.status >= 500) return 'Claude 側で問題が起きています（' + e.status + '）。少し待ってからもう一度お試しください。';
-    if (e.status) return 'API エラー（' + e.status + '）。詳しくは設定の「最終エラー」に出ています。';
-    if (e.network) return '通信できませんでした。電波を確かめてもう一度お試しください。';
-    return '応答を読み取れませんでした。もう一度お試しください。（設定の「最終エラー」に応答の冒頭が残ります）';
-  }
-  async function callChatApi(input, history, maxPicks, usageKind, is429Retry, isParseRetry) {
+  // v9.12: one door for every Claude call. Before this only 相談 and 読書メモ
+  // had a timeout - 一括入力・自動関連づけ・問い（2回）・筋肉 could hang forever
+  // with the button left disabled - and only 相談 kept the response body, so the
+  // error log could not say which of the many 400s it was. All of them now share
+  // the key check, the offline check, a timeout, one 429 retry, and the same
+  // error shape: noKey / offline / timeout / network / status (+ body).
+  const AI_TIMEOUT_MS = 60000;
+  async function aiFetch(body, opts) {
+    opts = opts || {};
     const apiKey = getClaudeApiKey();
     if (!apiKey) { const e = new Error('no-api-key'); e.noKey = true; throw e; }
     if (!navigator.onLine) { const e = new Error('offline'); e.offline = true; throw e; }
+    const ms = opts.timeoutMs || AI_TIMEOUT_MS;
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), ms);
+    let res;
+    try {
+      res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        signal: ctl.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify(body),
+      });
+    } catch (err) {
+      if (err && err.name === 'AbortError') {
+        const e = new Error('timeout after ' + Math.round(ms / 1000) + 's');
+        e.timeout = true; e.timeoutSec = Math.round(ms / 1000);
+        throw e;
+      }
+      const e = new Error('network: ' + ((err && err.message) ? err.message : String(err)));
+      e.network = true;
+      throw e;
+    } finally { clearTimeout(timer); }
+    if (res.status === 429 && !opts.retried429) {
+      await sleep(2000);
+      return aiFetch(body, Object.assign({}, opts, { retried429: true }));
+    }
+    if (!res.ok) {
+      // the body says which of the many 400s this is (a bad model name, a
+      // request that is too large, ...); it never contains the key
+      let text = '';
+      try { text = (await res.text()).replace(/\s+/g, ' ').slice(0, 200); } catch (e2) {}
+      const e = new Error('Claude API ' + res.status + (text ? ' / ' + text : '') + '（model: ' + body.model + '）');
+      e.status = res.status;
+      e.body = text;
+      throw e;
+    }
+    return res.json();
+  }
+
+  // --- how a failure is described, in one place ---------------------------
+  // The rule: one sentence for what happened (with the number when there is
+  // one), one for what to do next. Never the word 失敗 on screen - 「〜できま
+  // せんでした」. The technical detail (status, the first 200 characters of the
+  // body) never reaches the screen; it goes to 設定 → 最終エラー.
+  function aiReasonText(e) {
+    if (!e) return 'もう一度お試しください。';
+    if (e.noKey) return '設定で Claude API キーを入れてください。';
+    if (e.offline) return 'オフラインです。電波のある場所でもう一度お試しください。';
+    if (e.timeout) return '時間がかかりすぎました（' + (e.timeoutSec || 60) + '秒で打ち切り）。もう一度お試しください。';
+    if (e.truncated) return '応答が長すぎて途中で切れました。短く分けてもう一度お試しください。';
+    if (e.status === 401 || e.status === 403) return 'API キーが使えません（' + e.status + '）。設定でキーを入れ直してください。';
+    if (e.status === 429) return '混みあっています（429）。少し待ってからもう一度お試しください。';
+    if (e.status === 400) return 'リクエストが受け付けられませんでした（400）。設定のモデル名を確かめてください。';
+    if (e.status === 404) return 'モデルが見つかりません（404）。設定のモデル名を確かめてください。';
+    if (e.status >= 500) return 'Claude 側で問題が起きています（' + e.status + '）。少し待ってからもう一度お試しください。';
+    if (e.status) return 'API エラー（' + e.status + '）。設定の「最終エラー」に詳しく出ています。';
+    if (e.network) return '通信できませんでした。電波を確かめてもう一度お試しください。';
+    return '応答を読み取れませんでした。もう一度お試しください。設定の「最終エラー」に応答の冒頭が残ります。';
+  }
+  // subject = この機能で何ができなかったか（「言葉を探せませんでした」など）
+  function aiErrorText(subject, e) { return subject + '。' + aiReasonText(e); }
+  async function callChatApi(input, history, maxPicks, usageKind, is429Retry, isParseRetry) {
     const model = getClaudeChatModel();
     const system = buildChatSystemBlocks();
     const historyText = history && history.length ? '直近のやり取り:\n' + JSON.stringify(history) + '\n\n' : '';
@@ -4376,53 +4434,17 @@
       '今の状態:\n' + input +
       '\n\n最大' + maxPicks + '件まで選んでください。';
 
-    const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), CHAT_TIMEOUT_MS);
-    let res;
-    try {
-      res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        signal: ctl.signal,
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
-        },
-        // 2048 before v3.3. The answer itself is small (up to 3 picks with a
-        // ~30字 why, plus a 3-line closing - roughly 400-700 tokens), but the
-        // thinking pass that chooses them weighs the whole notes list, so that
-        // is the part needing room. 8192 leaves ~7.4k for it.
-        body: JSON.stringify({ model, max_tokens: 8192, system, messages: [{ role: 'user', content: promptText }] }),
-      });
-    } catch (err) {
-      if (err && err.name === 'AbortError') { const e = new Error('timeout after ' + (CHAT_TIMEOUT_MS / 1000) + 's'); e.timeout = true; throw e; }
-      const e = new Error('network: ' + ((err && err.message) ? err.message : String(err)));
-      e.network = true;
-      throw e;
-    } finally { clearTimeout(timer); }
-
-    if (res.status === 429 && !is429Retry) {
-      await sleep(2000);
-      return callChatApi(input, history, maxPicks, usageKind, true, isParseRetry);
-    }
-    if (!res.ok) {
-      // the body says which of the many 400s this is (a bad model name, a
-      // request that is too large, ...); it never contains the key
-      let body = '';
-      try { body = (await res.text()).replace(/\s+/g, ' ').slice(0, 200); } catch (e2) {}
-      const err = new Error('Claude API failed: ' + res.status + (body ? ' / ' + body : '') + '（model: ' + model + '）');
-      err.status = res.status;
-      err.body = body;
-      throw err;
-    }
-    const json = await res.json();
+    // 2048 before v3.3. The answer itself is small (up to 3 picks with a
+    // ~30字 why, plus a 3-line closing - roughly 400-700 tokens), but the
+    // thinking pass that chooses them weighs the whole notes list, so that
+    // is the part needing room. 8192 leaves ~7.4k for it.
+    const json = await aiFetch({ model, max_tokens: 8192, system, messages: [{ role: 'user', content: promptText }] });
     recordApiUsage(usageKind, json.usage);
     const textOut = (json.content || []).map((b) => b.text || '').join('');
     const parsed = parseConsultResponseLoose(textOut);
     if (!parsed) {
       if (isTruncated(json)) throw truncatedResponseError();
-      if (!isParseRetry) return callChatApi(input, history, maxPicks, usageKind, false, true);
+      if (!isParseRetry) return callChatApi(input, history, maxPicks, usageKind, true, true);
       throw new Error('応答を JSON として読めません / stop_reason: ' + (json.stop_reason || '?') + ' / ' + textOut.replace(/\s+/g, ' ').slice(0, 200));
     }
     const validIds = new Set(data.notes.map((n) => n.id));
@@ -4893,39 +4915,18 @@
   }
 
   async function callBulkDecomposeApi(rawText, kind, is429Retry, isParseRetry) {
-    const apiKey = getClaudeApiKey();
-    if (!apiKey) { const e = new Error('no-api-key'); e.noKey = true; throw e; }
     const model = getClaudeChatModel();
     const system = buildBulkDecomposeSystemBlocks(kind);
     const promptText = '元のテキスト:\n' + rawText;
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      // 8192 before v3.3, and this is the call most likely to need more:
-      // book mode has no per-item cap, so a full 20,000字 paste can come back
-      // as ~100 items of up to 200字 each - well over 8k tokens of JSON on its
-      // own, before the thinking pass that reads the whole paste. 32000 is
-      // sized so the answer is never what runs out; unused budget costs
-      // nothing, and a longer wait beats losing the whole decomposition.
-      body: JSON.stringify({ model, max_tokens: 32000, system, messages: [{ role: 'user', content: promptText }] }),
-    });
-
-    if (res.status === 429 && !is429Retry) {
-      await sleep(2000);
-      return callBulkDecomposeApi(rawText, kind, true, isParseRetry);
-    }
-    if (!res.ok) {
-      const err = new Error('Claude API failed: ' + res.status);
-      err.status = res.status;
-      throw err;
-    }
-    const json = await res.json();
+    // 8192 before v3.3, and this is the call most likely to need more:
+    // book mode has no per-item cap, so a full 20,000字 paste can come back
+    // as ~100 items of up to 200字 each - well over 8k tokens of JSON on its
+    // own, before the thinking pass that reads the whole paste. 32000 is
+    // sized so the answer is never what runs out; unused budget costs
+    // nothing, and a longer wait beats losing the whole decomposition.
+    // The wait is the reason for the longer timeout.
+    const json = await aiFetch({ model, max_tokens: 32000, system, messages: [{ role: 'user', content: promptText }] }, { timeoutMs: 180000 });
     recordApiUsage('bulk', json.usage);
     const textOut = (json.content || []).map((b) => b.text || '').join('');
     const parsed = parseJsonArrayLoose(textOut);
@@ -4952,8 +4953,6 @@
   // only after both the loose-array recovery and that single re-call fail
   // does this actually throw.
   async function callClaudeApi(note, excludeIds, usageKind, is429Retry, isParseRetry) {
-    const apiKey = getClaudeApiKey();
-    if (!apiKey) { const e = new Error('no-api-key'); e.noKey = true; throw e; }
     const model = getClaudeAutoLinkModel();
     const system = buildAutoLinkSystemBlocks();
     const inlineList = notesInlineMode() ? '候補ノートの一覧:\n' + JSON.stringify(selectCandidateNotes(note, { excludeIds }).map(buildCompactNote)) + '\n\n' : '';
@@ -4963,32 +4962,7 @@
       JSON.stringify({ text: note.text, source: note.source, myWords: note.myWords, tags: note.tags, k: note.kind || 'quote' }) +
       '\n\n除外するid（対象自身・既にリンク済み・却下済み。これらは選ばないこと）:\n' + JSON.stringify(excludeIds);
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 2048,
-        system,
-        messages: [{ role: 'user', content: promptText }],
-      }),
-    });
-
-    if (res.status === 429 && !is429Retry) {
-      await sleep(2000);
-      return callClaudeApi(note, excludeIds, usageKind, true, isParseRetry);
-    }
-    if (!res.ok) {
-      const err = new Error('Claude API failed: ' + res.status);
-      err.status = res.status;
-      throw err;
-    }
-    const json = await res.json();
+    const json = await aiFetch({ model, max_tokens: 2048, system, messages: [{ role: 'user', content: promptText }] });
     recordApiUsage(usageKind, json.usage);
     const textOut = (json.content || []).map((b) => b.text || '').join('');
     const parsed = parseJsonArrayLoose(textOut);
@@ -5080,7 +5054,7 @@
   async function runBatchAutoLink(opts) {
     opts = opts || {};
     if (batchState.running) return;
-    if (!getClaudeApiKey()) { alert('先にAPIキーを設定してください'); return; }
+    if (!getClaudeApiKey()) { alert('先に設定で Claude API キーを入れてください'); return; }
     const pending = data.notes.filter((n) => !n.autoLinkedAt).sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
     if (!pending.length) { alert('未処理のノートはありません（全ノートが処理済みです）'); return; }
     if (!opts.skipConfirm && !confirm(`未処理のノート ${pending.length} 件に自動関連づけを実行します（API呼び出し概算 ${pending.length} 回）。よろしいですか？`)) return;
@@ -5120,7 +5094,7 @@
   // come back except by re-running.
   document.getElementById('btnRelinkAll').addEventListener('click', async () => {
     if (batchState.running) return;
-    if (!getClaudeApiKey()) { alert('先にAPIキーを設定してください'); return; }
+    if (!getClaudeApiKey()) { alert('先に設定で Claude API キーを入れてください'); return; }
     const autoEnds = data.notes.reduce((a, n) => a + n.links.filter((l) => l.kind === 'auto').length, 0);
     if (!confirm(`自動リンク約 ${Math.round(autoEnds / 2)} 本を消して、${data.notes.length} 枚すべてを関連づけ直します。手動リンクと却下済みは残ります。よろしいですか？`)) return;
     if (!confirm(`本当に実行しますか？ API 呼び出しは約 ${data.notes.length} 回（自動関連づけのモデル）です。消した自動リンクは、やり直しの結果でしか戻りません。`)) return;
@@ -5440,16 +5414,8 @@
   // a question that scolds gets one rewrite; after that whatever came back is shown
   const ASK_BANNED = /いつまで|いつになったら|なぜ[^。]*ない|つもり|すべき|べきだ/;
   async function callQuestionAskApi(scene, sides, attempt) {
-    const apiKey = getClaudeApiKey();
     const note = attempt && attempt.note ? attempt.note : '';
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-      body: JSON.stringify({ model: getClaudeQuestionModel(), max_tokens: 4096, system: buildQuestionAskSystemBlocks(), messages: [{ role: 'user', content: buildQuestionAskUserPrompt(scene, sides, note) }] }),
-    });
-    if (res.status === 429 && !(attempt && attempt.retried429)) { await sleep(2000); return callQuestionAskApi(scene, sides, { note, retried429: true, parseRetried: attempt && attempt.parseRetried, banRetried: attempt && attempt.banRetried }); }
-    if (!res.ok) { const err = new Error('Claude API failed: ' + res.status); err.status = res.status; throw err; }
-    const json = await res.json();
+    const json = await aiFetch({ model: getClaudeQuestionModel(), max_tokens: 4096, system: buildQuestionAskSystemBlocks(), messages: [{ role: 'user', content: buildQuestionAskUserPrompt(scene, sides, note) }] }, { timeoutMs: 90000 });
     recordApiUsage('question', json.usage);
     const textOut = (json.content || []).map((b) => b.text || '').join('');
     const parsed = parseQuestionResponseLoose(textOut);
@@ -5517,44 +5483,23 @@
   }
 
   async function callQuestionApi(materials, is429Retry, isParseRetry, sceneNote) {
-    const apiKey = getClaudeApiKey();
-    if (!apiKey) { const e = new Error('no-api-key'); e.noKey = true; throw e; }
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify({
-        model: getClaudeQuestionModel(),
-        // Sonnet 5 / Opus 5 run adaptive thinking by default, and those
-        // thinking tokens come out of max_tokens. Observed runs spend
-        // 400-1000+ tokens finding the 食い違い before writing anything, so a
-        // 1024 budget silently returned an empty text block (stop_reason
-        // max_tokens) about half the time. The JSON itself is ~250 tokens;
-        // the rest of this is headroom for the thinking pass, which is
-        // exactly the part that makes the question specific.
-        // v3.3.2: raised from 4096 after a real run spent 4095 tokens thinking
-        // and returned nothing - the for_viewer rules lengthened the pass, and
-        // the dedup against recent questions makes the fixed 今月の核 pair
-        // harder each time. Same budget as 相談 now.
-        max_tokens: 8192,
-        system: buildQuestionSystemBlocks(),
-        messages: [{ role: 'user', content: buildQuestionUserPrompt(materials, sceneNote) }],
-      }),
-    });
-    if (res.status === 429 && !is429Retry) {
-      await sleep(2000);
-      return callQuestionApi(materials, true, isParseRetry, sceneNote);
-    }
-    if (!res.ok) {
-      const err = new Error('Claude API failed: ' + res.status);
-      err.status = res.status;
-      throw err;
-    }
-    const json = await res.json();
+    const json = await aiFetch({
+      model: getClaudeQuestionModel(),
+      // Sonnet 5 / Opus 5 run adaptive thinking by default, and those
+      // thinking tokens come out of max_tokens. Observed runs spend
+      // 400-1000+ tokens finding the 食い違い before writing anything, so a
+      // 1024 budget silently returned an empty text block (stop_reason
+      // max_tokens) about half the time. The JSON itself is ~250 tokens;
+      // the rest of this is headroom for the thinking pass, which is
+      // exactly the part that makes the question specific.
+      // v3.3.2: raised from 4096 after a real run spent 4095 tokens thinking
+      // and returned nothing - the for_viewer rules lengthened the pass, and
+      // the dedup against recent questions makes the fixed 今月の核 pair
+      // harder each time. Same budget as 相談 now.
+      max_tokens: 8192,
+      system: buildQuestionSystemBlocks(),
+      messages: [{ role: 'user', content: buildQuestionUserPrompt(materials, sceneNote) }],
+    }, { timeoutMs: 90000 });
     recordApiUsage('question', json.usage);
     const textOut = (json.content || []).map((b) => b.text || '').join('');
     const parsed = parseQuestionResponseLoose(textOut);
@@ -5683,7 +5628,7 @@
     } else if (turn.status === 'error') {
       const s2 = document.createElement('p');
       s2.className = 'fieldNote warn';
-      s2.textContent = turn.errorText || '言葉を探せませんでした。もう一度お試しください。';
+      s2.textContent = turn.errorText || aiErrorText('言葉を探せませんでした', null);
       wrap.appendChild(s2);
     } else if (turn.status === 'done' && turn.picks.length === 0) {
       const s2 = document.createElement('p');
@@ -5811,7 +5756,7 @@
       consultInputOpen = false;   // the answer takes the top; the box folds away
     } catch (e) {
       turn.status = 'error';
-      turn.errorText = chatErrorText(e);
+      turn.errorText = aiErrorText('言葉を探せませんでした', e);
       if (!(e && e.noKey)) recordFeatureError('相談', e);
     }
     consultBusy = false;
@@ -6252,7 +6197,7 @@
       // v3.3: no longer silently. The fallback word is still shown; the
       // reason is shown above it and written to the settings error log.
       morningSkippedDate = today;
-      morningLastError = chatErrorText(e) + '　下は今朝の代わりの一枚です。';
+      morningLastError = aiErrorText('今朝の言葉を受け取れませんでした', e) + '　下は代わりの一枚です。';
       if (!(e && e.noKey)) recordFeatureError('朝の言葉', e);
     }
     btn.disabled = false;
@@ -6312,7 +6257,7 @@
         setStatus('');
       } catch (e) {
         if (e && e.name === 'AbortError') { setStatus(''); return; }
-        setStatus(`共有に失敗しました（${e && e.message ? e.message : e}）。画像をダウンロードします。`, true);
+        setStatus(`共有できませんでした。画像をダウンロードします。`, true);
         downloadFile(file);
       }
       return;
@@ -6326,7 +6271,7 @@
         setStatus(copied ? 'テキストをコピーしました。共有画面に貼り付けてください。' : '');
       } catch (e) {
         if (e && e.name === 'AbortError') { setStatus(''); return; }
-        setStatus(`共有に失敗しました（${e && e.message ? e.message : e}）。画像をダウンロードします。`, true);
+        setStatus(`共有できませんでした。画像をダウンロードします。`, true);
         downloadFile(file);
       }
       return;
@@ -7060,7 +7005,7 @@
       const title = document.getElementById('bulkTitleInput').value.trim();
       source = title ? `自分（動画: ${title}）` : '自分（動画）';
     }
-    if (!getClaudeApiKey()) { statusEl.textContent = '設定画面でClaude APIキーを入力してください。'; return; }
+    if (!getClaudeApiKey()) { statusEl.textContent = aiErrorText('分けられませんでした', { noKey: true }); return; }
     const btn = document.getElementById('btnBulkDecompose');
     btn.disabled = true;
     statusEl.textContent = '分解しています…';
@@ -7102,11 +7047,7 @@
       openDraftReview();
     } catch (e) {
       btn.disabled = false;
-      statusEl.textContent = (e && e.noKey)
-        ? '設定画面でClaude APIキーを入力してください。'
-        : (e && e.truncated)
-          ? '応答が長すぎて途中で切れました。テキストを分けて貼り付けてください。'
-          : '分解に失敗しました。もう一度お試しください。';
+      statusEl.textContent = aiErrorText('分けられませんでした', e);
       if (!(e && e.noKey)) recordFeatureError('一括入力', e);
     }
   });
@@ -7180,29 +7121,7 @@
   const READING_TIMEOUT_MS = 120000;
   const LAST_READING_REPLY_KEY = 'kotoba_lastReadingReply';
   async function callReadingDecomposeApi(rawText, bookHint, is429Retry, isParseRetry) {
-    const apiKey = getClaudeApiKey();
-    if (!apiKey) { const e = new Error('no-api-key'); e.noKey = true; throw e; }
-    const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), READING_TIMEOUT_MS);
-    let res;
-    try {
-      res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-        body: JSON.stringify({ model: getClaudeChatModel(), max_tokens: 16000, system: buildReadingSystemBlocks(), messages: [{ role: 'user', content: (bookHint ? '本の手がかり: ' + bookHint + '\n\n' : '') + '入力:\n' + rawText }] }),
-        signal: ctl.signal,
-      });
-    } catch (e) {
-      if (e && e.name === 'AbortError') { const err = new Error('時間切れ（' + Math.round(READING_TIMEOUT_MS / 1000) + ' 秒）'); err.timeout = true; throw err; }
-      const err = new Error('通信エラー：' + (e && e.message ? e.message : e)); err.network = true; throw err;
-    } finally { clearTimeout(timer); }
-    if (res.status === 429 && !is429Retry) { await sleep(2000); return callReadingDecomposeApi(rawText, bookHint, true, isParseRetry); }
-    if (!res.ok) {
-      let detail = '';
-      try { const j = await res.json(); detail = (j.error && j.error.message) ? '：' + String(j.error.message).slice(0, 120) : ''; } catch (e) {}
-      const err = new Error('API エラー ' + res.status + detail); err.status = res.status; throw err;
-    }
-    const json = await res.json();
+    const json = await aiFetch({ model: getClaudeChatModel(), max_tokens: 16000, system: buildReadingSystemBlocks(), messages: [{ role: 'user', content: (bookHint ? '本の手がかり: ' + bookHint + '\n\n' : '') + '入力:\n' + rawText }] }, { timeoutMs: READING_TIMEOUT_MS });
     recordApiUsage('reading', json.usage);
     const textOut = (json.content || []).map((b) => b.text || '').join('');
     try { localStorage.setItem(LAST_READING_REPLY_KEY, JSON.stringify({ at: nowIso(), stop: json.stop_reason, text: textOut.slice(0, 4000) })); } catch (e) {}
@@ -7228,7 +7147,7 @@
   }
   document.getElementById('bulkReadingBookInput').addEventListener('input', renderBulkReadingBookCandidates);
   async function runReadingDecompose(text, statusEl) {
-    if (!getClaudeApiKey()) { statusEl.textContent = '設定画面でClaude APIキーを入力してください。'; return; }
+    if (!getClaudeApiKey()) { statusEl.textContent = aiErrorText('引用と考えに分けられませんでした', { noKey: true }); return; }
     const btn = document.getElementById('btnBulkDecompose');
     btn.disabled = true;
     statusEl.textContent = '引用・周辺・自分の考えに分けています…（長い文章は 30〜60 秒かかります）';
@@ -7259,14 +7178,7 @@
       openDraftReview();
     } catch (e) {
       btn.disabled = false;
-      let msg;
-      if (e && e.noKey) msg = '設定画面でClaude APIキーを入力してください。';
-      else if (e && e.truncated) msg = '応答が長すぎて途中で切れました。文章を分けて入れてください。';
-      else if (e && e.timeout) msg = '分解に失敗：' + e.message + '。文章を短くするか、もう一度お試しください。';
-      else if (e && e.status) msg = '分解に失敗：' + e.message + (e.status === 429 ? '（混み合っています。少し待ってから）' : e.status === 401 ? '（API キーを確認）' : '');
-      else if (e && e.parse) msg = '分解に失敗：' + e.message + '。もう一度お試しください（設定の最終エラーに応答を残しています）。';
-      else msg = '分解に失敗：' + ((e && e.message) || e) + '。';
-      statusEl.textContent = msg;
+      statusEl.textContent = aiErrorText('引用と考えに分けられませんでした', e);
       if (!(e && e.noKey)) recordFeatureError('読書メモ', e);
     }
   }
@@ -7971,7 +7883,7 @@
         return;
       } catch (e) {
         if (e && e.name === 'AbortError') { setStatus(''); return; }
-        setStatus(`共有に失敗しました（${e && e.message ? e.message : e}）。画像をダウンロードします。`, true);
+        setStatus(`共有できませんでした。画像をダウンロードします。`, true);
       }
     } else {
       setStatus('この端末は画像の共有に対応していないため、ダウンロードしました。');
@@ -8089,7 +8001,7 @@
     if (p) { persistTrainingLocal(p); return p; }
     return trainingDefaultData();
   }
-  function persistTrainingLocal(d) { kvSet('training', JSON.stringify(d)).catch(() => { recordSyncError(TRAINING_LAST_SYNC_ERROR_KEY, '端末の保存に失敗しました'); renderSyncBar(); }); }
+  function persistTrainingLocal(d) { kvSet('training', JSON.stringify(d)).catch(() => { recordSyncError(TRAINING_LAST_SYNC_ERROR_KEY, '端末に保存できませんでした'); renderSyncBar(); }); }
   function saveTrainingData(d) {
     d.updatedAt = nowIso();
     persistTrainingLocal(d);
@@ -9177,20 +9089,12 @@
     return null;
   }
   async function generateMuscleMaps(names) {
-    const apiKey = getClaudeApiKey();
-    if (!apiKey) { const e = new Error('no-api-key'); e.noKey = true; throw e; }
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-      body: JSON.stringify({ model: getClaudeChatModel(), max_tokens: 8192, system: buildMuscleSystemBlocks(), messages: [{ role: 'user', content: '種目名（name）と本人の部位（part）:\n' + JSON.stringify(names.map((n) => ({ name: n, part: partOfExercise(n) }))) + '\n\n出力のキーは name をそのまま使うこと。' }] }),
-    });
-    if (!res.ok) { const err = new Error('API ' + res.status); err.status = res.status; throw err; }
-    const json = await res.json();
+    const json = await aiFetch({ model: getClaudeChatModel(), max_tokens: 8192, system: buildMuscleSystemBlocks(), messages: [{ role: 'user', content: '種目名（name）と本人の部位（part）:\n' + JSON.stringify(names.map((n) => ({ name: n, part: partOfExercise(n) }))) + '\n\n出力のキーは name をそのまま使うこと。' }] });
     recordApiUsage('muscle', json.usage);
     saveData(data);
     const text = (json.content || []).map((b) => b.text || '').join('');
     const parsed = parseMuscleReply(text);
-    if (!parsed) { if (isTruncated(json)) throw truncatedResponseError(); throw new Error('応答を読めませんでした'); }
+    if (!parsed) { if (isTruncated(json)) throw truncatedResponseError(); const e = new Error('応答を JSON として読めませんでした'); e.parse = true; throw e; }
     const out = {};
     names.forEach((n) => { const v = parsed[n]; out[n] = (v && typeof v === 'object') ? { p: Array.isArray(v.p) ? v.p : [], s: Array.isArray(v.s) ? v.s : [] } : null; });
     return out;
@@ -9207,7 +9111,7 @@
       if (statusEl) statusEl.textContent = still.length ? '対応が決まらない種目: ' + still.join('、') + '（編集で指定）' : '';
       return still;
     } catch (e) {
-      if (statusEl) statusEl.textContent = e.noKey ? 'API キー未設定のため自動対応なし（編集で指定できます）' : '対応の生成に失敗: ' + (e.message || e);
+      if (statusEl) statusEl.textContent = aiErrorText('筋肉の対応を決められませんでした', e) + '　編集で指定できます。';
       if (!e.noKey) recordFeatureError('筋肉', e);
       return missing;
     }
@@ -9525,7 +9429,7 @@
       const statusEl = document.getElementById('muscleStatus');
       statusEl.textContent = '生成中…';
       try { const maps = await generateMuscleMaps([name]); const v = maps[name]; if (v && v.p.length) { setMuscleMap(name, v.p, v.s, 'ai'); statusEl.textContent = ''; } else statusEl.textContent = '対応が決まりませんでした'; }
-      catch (e) { statusEl.textContent = e.noKey ? 'API キーが未設定です' : '失敗: ' + (e.message || e); if (!e.noKey) recordFeatureError('筋肉', e); }
+      catch (e) { statusEl.textContent = aiErrorText('筋肉の対応を決められませんでした', e); if (!e.noKey) recordFeatureError('筋肉', e); }
       renderMuscleList(); muscleApplyHighlights();
     });
     actions.appendChild(ai);
@@ -10754,7 +10658,7 @@
     if (questionState.busy || !data.notes.length) return;
     if (!getClaudeApiKey()) {
       document.getElementById('drawChoice').hidden = false;
-      setDrawChoiceHint('設定画面でClaude APIキーを入力してください。');
+      setDrawChoiceHint(aiErrorText('問いを作れませんでした', { noKey: true }));
       return;
     }
     if (isUsageOverBudget() && !confirm('上限を超えています。続けますか？')) return;
@@ -10807,11 +10711,7 @@
     } catch (e) {
       document.getElementById('questionSearching').hidden = true;
       document.getElementById('drawChoice').hidden = false;
-      setDrawChoiceHint(e && e.noKey
-        ? '設定画面でClaude APIキーを入力してください。'
-        : e && e.truncated
-          ? '応答が長すぎて途中で切れました。もう一度お試しください。'
-          : '問いを作れませんでした。もう一度お試しください。');
+      setDrawChoiceHint(aiErrorText('問いを作れませんでした', e));
       if (!(e && e.noKey)) recordFeatureError('問い', e);
     } finally {
       questionState.busy = false;
@@ -11910,7 +11810,7 @@
       openSettings();
       alert('インポートしました');
     } catch (err) {
-      alert('JSONの読み込みに失敗しました');
+      alert('JSON を読み込めませんでした');
     }
   });
 
@@ -11960,7 +11860,7 @@
 
   document.getElementById('btnReloadFromRemote').addEventListener('click', async () => {
     const token = getGhToken();
-    if (!token) { alert('先にGitHub tokenを設定してください'); return; }
+    if (!token) { alert('先に設定で GitHub のトークンを入れてください'); return; }
     if (!confirm('ローカルのデータ（言葉・散歩の両方）を破棄して、リモートの内容で置き換えます。よろしいですか？この操作は取り消せません。')) return;
     if (!confirm('本当によろしいですか？ローカルにしかない変更があれば失われます。')) return;
     setSyncStatus('syncing');
@@ -11991,7 +11891,7 @@
       failed = true;
     }
     openSettings();
-    alert(failed ? '一部の読み込みに失敗しました' : 'リモートの内容を読み込みました');
+    alert(failed ? '一部を読み込めませんでした' : 'リモートの内容を読み込みました');
   });
 
   document.getElementById('btnExport').addEventListener('click', () => {
@@ -12024,7 +11924,7 @@
       openSettings();
       alert('インポートしました');
     } catch (err) {
-      alert('JSONの読み込みに失敗しました');
+      alert('JSON を読み込めませんでした');
     }
   });
 
@@ -12094,7 +11994,7 @@
       const body = medYearDocBody(doc);
       if (md.yearJson[y] === body) return;
       md.yearJson[y] = body;
-      kvSet('meditation:' + y, JSON.stringify(doc)).catch(() => { recordSyncError(MEDITATION_LAST_SYNC_ERROR_KEY, '端末の保存に失敗しました'); renderSyncBar(); });
+      kvSet('meditation:' + y, JSON.stringify(doc)).catch(() => { recordSyncError(MEDITATION_LAST_SYNC_ERROR_KEY, '端末に保存できませんでした'); renderSyncBar(); });
       md.dirty.add(y); changed = true;
     });
     if (changed) persistMedDirty();
@@ -13029,7 +12929,7 @@
       shootState.consult = { deckId: deck.id, journalId: entry.id, input, picks: result.picks, closing: result.closing };
       statusEl.textContent = '';
     } catch (e) {
-      statusEl.textContent = chatErrorText(e);
+      statusEl.textContent = aiErrorText('言葉を探せませんでした', e);
       if (!(e && e.noKey)) recordFeatureError('撮るの相談', e);
     } finally {
       shootState.consultBusy = false;
