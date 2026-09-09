@@ -281,7 +281,7 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
 | 筋トレの桁の警告 | `TR_OUTLIER_RATIO`（前回までの最大の 1.5 倍を超えたら警告）, `TR_MAX_PLAUSIBLE_REPS`（60 回）。止めずに警告だけ出す |
 | 使用量の単価 | `MODEL_PRICING` |
 | 端末保存のキー | `KV_DB_NAME`, `STORAGE_KEY`, `BACKUP_MAX_CHARS` |
-| 筋トレ画像のデザイン | `trLayout`, `trDrawPage`（`TR_GREEN` など）。v9.8 で作り直した：**1 行の中で文字の大きさを変えない**（重量も回数も `numF`。単位の kg・回 は種目ごとに小さい見出し行として 1 回だけ出す）、**種目を枠で囲む**（`#081705` 塗り＋`#1f4d1a` の線。高さは `exHeight`）、**桁を縦に揃える**（列の右端は `setCols` がその種目の一番広い文字を実測して決める。余った幅は列の間に配ってから描くので、57.5 のような日でも×とぶつからない）、drop は `dropF`（本セットの 0.7 倍）で薄く、NEW MAX / 1RM は**それを出したセットの行**の右（`bestIdx`）。入りきらないときは `fits` が false になり、全体が一段小さく描き直される |
+| 筋トレ画像のデザイン | `TRD`（**余白と文字の大きさは全部ここ**。1か所直せば見た目が変わる）, `trLayout`, `trDrawPage`。v9.9 で散歩の画像に寄せるのをやめた：色は2色（黒地・白い数字。緑は部位名と kg と細い線1本だけ。NEW MAX の赤は残す）、書体は数字が `Inter`・日本語が `Noto Sans JP`（ドット風はやめた。walk と瞑想の画像は `DotGothic16` のまま）、枠は無し（部位は余白と線1本で分ける）、**強弱は2段階**（重量だけ大きく白。セット番号・回数・ドロップは一段小さく暗いが読める明るさ）、日付と体重は上に小さく添える。列の右端は `trLayout` が部位ごとに一番広い文字を実測して決め、`kgAt`（幅の何割の位置に重量を置くか）で行を広げる。1RM / NEW MAX と MAX は右端に揃える。入りきらないときは縮小 → それでも無理なら部位で改ページ（`trRenderImages`）。色は `TR_ACCENT` `TR_TEXT` `TR_BIG` `TR_SMALL` `TR_DROP` `TR_FAINT` `TR_RED` |
 | 3D の色・モデル URL | `MUSCLE_COLORS`, `MUSCLE_BIN_URL`, `THREE_MODULE_URL` |
 | 筋肉一覧 | `MUSCLE_CATALOG`（`assets/muscles.json` と同じ） |
 | 網の見た目 | `GRAPH_FIT_FLOOR`, `graphPathsFrom` |

@@ -12,6 +12,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
+<!-- v9.9: the training log image only. Everything else keeps DotGothic16. -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Noto+Sans+JP:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #121212;
@@ -8695,11 +8697,43 @@
   });
 
   // --- the log image (1080x1920: it closes a vertical video) --------------
-  // Content is measured first; if it does not fit, the type shrinks (to a
-  // floor), then goes to two columns, then - only then - splits into pages
-  // by part. Nothing is ever clipped.
-  const TR_IMG_W = 1080, TR_IMG_H = 1920, TR_IMG_MARGIN = 70;
-  const TR_GREEN = '#39FF14', TR_RED = '#FF4A3D', TR_DIM = '#8FBF86';
+  // v9.9. Until now this sheet copied the walk image: one green, one dot
+  // font, every number the same weight. That reads fine for two numbers and
+  // fails for fifty - nothing stands out, so there is no place to look. The
+  // rules now are: two colours (white numbers on black, green only for the
+  // part title, the kg unit and the one rule), two levels (the weight is big
+  // and white; the set number, the reps and the drop are a step smaller and
+  // a step darker but still meant to be read), no boxes - parts are
+  // separated by air - and a small date instead of a headline date.
+  // Content is measured first; if it does not fit the type shrinks to a
+  // floor, then the page splits by part. Nothing is ever clipped.
+  const TR_IMG_W = 1080, TR_IMG_H = 1920;
+  const TR_JP = "'Noto Sans JP', system-ui, sans-serif";
+  const TR_NUM = "'Inter', 'Noto Sans JP', system-ui, sans-serif";
+  const TR_ACCENT = '#5BD46A';  // part title, kg, the rule
+  const TR_TEXT = '#F2F2EF';    // exercise names
+  const TR_BIG = '#FFFFFF';     // the weights
+  const TR_SMALL = '#D2D2CC';   // set number, reps, drop weight
+  const TR_DROP = '#A8A8A2';    // the word drop and its unit
+  const TR_FAINT = '#95958F';   // date, MAX, 1RM, footer
+  const TR_RED = '#FF5B4A';     // NEW MAX
+  // every size in one place: this object is the whole visual design
+  const TRD = {
+    margin: 84, headSize: 24, afterHead: 76,
+    partSize: 34, partWeight: 500, partTrack: 5, afterPart: 56,
+    nameSize: 34, nameWeight: 500, afterName: 58,
+    bigSize: 50, bigWeight: 600, smallSize: 34, dropSize: 30, tinySize: 25,
+    rowLead: 72, dropLead: 42, dropGap: 48, afterEx: 56, afterBlock: 66,
+    gapSet: 30, gapRep: 14, kgAt: 0.36,
+  };
+  const trFont = (px, family, weight) => (weight || 400) + ' ' + px + 'px ' + family;
+  // letter-spacing drawn by hand: ctx.letterSpacing is not on every Safari
+  function trTracked(ctx, text, x, y, track) {
+    if (!track) { ctx.fillText(text, x, y); return ctx.measureText(text).width; }
+    let cx = x;
+    for (const ch of text) { ctx.fillText(ch, cx, y); cx += ctx.measureText(ch).width + track; }
+    return cx - x - track;
+  }
   function trBuildLines(day) {
     // one part -> { part, rows: [{name, sets:[{w,r}] | cardio:text, rm, isNewMax, allMax}] }
     return day.parts.map((p) => ({
@@ -8716,241 +8750,153 @@
       }),
     }));
   }
-  // v9.8. Three things made the old sheet hard to read: the size changed
-  // three times inside one line (huge weight, tiny unit, medium reps), the
-  // exercises had no visible grouping, and the columns did not line up. Now
-  // every number on a set line is the same size and every column is
-  // right-aligned at a fixed x, so the digits stack; the units live once in
-  // a small header row instead of beside each number; each exercise sits in
-  // its own bordered box; drop rows are smaller AND dimmer so they cannot be
-  // mistaken for sets; the NEW MAX mark sits on the row that earned it.
   // Runs as the measurer (dry) and the painter; returns the height used.
-  function trLayout(ctx, blocks, scale, x0, y0, colW, dry, compact) {
-    const F = (px) => `${px}px 'DotGothic16'`;
-    const partF = 54 * scale, nameF = 32 * scale, numF = (compact ? 38 : 48) * scale;
-    const headF = 21 * scale, markF = 23 * scale, smallF = 23 * scale;
-    const dropF = numF * 0.7;
-    const rowH = numF * 1.2, dropH = dropF * 1.22;
-    const pad = 16 * scale, boxGap = 14 * scale;
-    const inner = colW - pad * 2;
-    // column stops (right edges), measured from the widest entry in each column
-    function setCols(r) {
-      ctx.font = F(headF);
-      let wSet = ctx.measureText('SET').width, wKg = ctx.measureText('kg').width, wRep = ctx.measureText('回').width;
-      ctx.font = F(dropF);
-      const hasDrop = r.sets.some((st) => (st.drops || []).length);
-      if (hasDrop) wSet = Math.max(wSet, ctx.measureText('drop').width);
-      ctx.font = F(numF);
-      const wX = ctx.measureText('×').width;
-      r.sets.forEach((st, i) => {
-        wSet = Math.max(wSet, ctx.measureText(String(i + 1)).width);
-        wKg = Math.max(wKg, ctx.measureText(st.w === null ? '自重' : fmtKg(st.w)).width);
-        if (st.r) wRep = Math.max(wRep, ctx.measureText(String(st.r)).width);
-      });
-      ctx.font = F(dropF);
-      r.sets.forEach((st) => (st.drops || []).forEach((d) => {
-        wKg = Math.max(wKg, ctx.measureText(fmtKg(d.w)).width);
-        wRep = Math.max(wRep, ctx.measureText(String(d.r)).width);
-      }));
-      let markW = 0;
-      if (r.rm !== null && r.rm !== undefined) {
-        ctx.font = F(markF);
-        markW = ctx.measureText(r.isNewMax ? 'NEW MAX ' + fmtKg(r.rm) : '1RM ' + fmtKg(r.rm)).width;
-      }
-      // tight columns alone leave the right half of the box empty, so whatever
-      // width is left over is given back to the gaps between the columns
-      const baseS = numF * 0.55, baseX = numF * 0.26, markGap = numF * 0.4;
-      const used = wSet + baseS + wKg + baseX + wX + baseX + wRep + markGap + markW;
-      const extra = Math.max(0, inner - used);
-      const gapS = baseS + Math.min(extra * 0.5, numF * 1.4);
-      const gapX = baseX + Math.min(extra * 0.12, numF * 0.45);
-      const cSet = pad + wSet;
-      const cW = cSet + gapS + wKg;
-      const cX = cW + gapX;
-      const cR = cX + wX + gapX + wRep;
-      const cMark = cR + markGap;
-      // the mark sits beside the row it belongs to; if it no longer fits, the
-      // whole sheet is drawn one step smaller rather than letting it overlap
-      return { cSet, cW, cX, cR, cMark, fits: cMark + markW <= pad + inner };
-    }
+  function trLayout(ctx, blocks, scale, x0, y0, colW, dry) {
+    const d = TRD, s = (px) => px * scale;
+    const jp = (px, wt) => trFont(px, TR_JP, wt);
+    const nu = (px, wt) => trFont(px, TR_NUM, wt);
+    const M = x0, colR = x0 + colW;
     let y = y0, overflow = false;
 
-    const compactLines = (r) => {
-      ctx.font = F(numF);
-      const words = fmtSetsCompact(r.sets).replace(/ ↓/g, ' drop ').split(', ');
-      const lines = [];
-      let line = '';
-      words.forEach((w) => { const t = line ? line + ', ' + w : w; if (ctx.measureText(t).width > inner && line) { lines.push(line); line = w; } else line = t; });
-      if (line) lines.push(line);
-      return lines;
-    };
-    const exHeight = (r) => {
-      let h = pad + nameF * 1.3;
-      if (r.cardio && compact) return h + rowH + pad;
-      if (r.cardio) return h + smallF * 1.05 + numF * 0.95 + pad;
-      if (compact) return h + compactLines(r).length * rowH + pad;
-      h += headF * 1.25;
-      r.sets.forEach((st) => { h += rowH; (st.drops || []).forEach(() => { h += dropH; }); });
-      return h + pad;
-    };
-
     blocks.forEach((b) => {
+      // one set of columns per part, measured from the widest entry, so the
+      // numbers read as a single table however many digits the day holds
+      let wSet = 0, wRep = 0, wKg = 0;
+      b.rows.forEach((r) => r.sets.forEach((st, i) => {
+        ctx.font = nu(s(d.smallSize));
+        wSet = Math.max(wSet, ctx.measureText(String(i + 1)).width);
+        wRep = Math.max(wRep, ctx.measureText('× ' + (st.r || '')).width);
+        ctx.font = st.w === null ? jp(s(d.bigSize * 0.62), d.bigWeight) : nu(s(d.bigSize), d.bigWeight);
+        wKg = Math.max(wKg, ctx.measureText(st.w === null ? '自重' : fmtKg(st.w)).width);
+      }));
+      const unitW = s(d.smallSize * 1.6);
+      const xSet = M + wSet;
+      const xKg = Math.max(xSet + s(d.gapSet) + wKg, M + colW * d.kgAt);
+      const xRep = xKg + s(d.gapRep) + unitW;
+      // the right edge carries NEW MAX; if the reps reach it, shrink instead
+      if (xRep + wRep > colR - s(d.tinySize * 6)) overflow = true;
+
       if (!dry) {
-        ctx.fillStyle = TR_GREEN; ctx.font = F(partF); ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-        ctx.fillText(b.part, x0, y);
-        ctx.fillRect(x0, y + partF + 8 * scale, colW, 3);
+        ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+        ctx.font = jp(s(d.partSize), d.partWeight); ctx.fillStyle = TR_ACCENT;
+        const tw = trTracked(ctx, b.part, M, y, s(d.partTrack));
+        ctx.fillRect(M + tw + s(26), y - s(d.partSize) * 0.32, colW - tw - s(26), Math.max(1, Math.round(scale)));
       }
-      y += partF + 26 * scale;
+      y += s(d.afterPart);
 
       b.rows.forEach((r) => {
-        const h = exHeight(r);
         if (!dry) {
-          // the box is what makes "four exercises" readable at a glance
-          ctx.fillStyle = '#081705';
-          roundRectPath(ctx, x0, y, colW, h, 14 * scale);
-          ctx.fill();
-          ctx.lineWidth = 2; ctx.strokeStyle = '#1f4d1a';
-          roundRectPath(ctx, x0 + 1, y + 1, colW - 2, h - 2, 13 * scale);
-          ctx.stroke();
-        }
-        let yy = y + pad;
-
-        // name line: name left, all-time MAX right (small, dim)
-        if (!dry) {
-          ctx.textAlign = 'left'; ctx.fillStyle = '#F2EFEA';
-          let maxW = inner;
+          ctx.textAlign = 'left'; ctx.font = jp(s(d.nameSize), d.nameWeight); ctx.fillStyle = TR_TEXT;
+          ctx.fillText(r.name, M, y);
+          if (!r.cardio) {
+            // how many sets, said once, so the column below has a count
+            const nw = ctx.measureText(r.name).width;
+            ctx.font = jp(s(d.smallSize * 0.86)); ctx.fillStyle = TR_SMALL;
+            ctx.fillText(r.sets.length + 'セット', M + nw + s(20), y);
+          }
           if (r.allMax !== null && r.allMax !== undefined && !r.isNewMax) {
-            ctx.textAlign = 'right'; ctx.font = F(markF); ctx.fillStyle = TR_DIM;
-            const lab = 'MAX ' + fmtKg(r.allMax);
-            ctx.fillText(lab, x0 + pad + inner, yy + (nameF - markF) * 0.6);
-            maxW = inner - ctx.measureText(lab).width - 16 * scale;
-            ctx.textAlign = 'left'; ctx.fillStyle = '#F2EFEA';
+            ctx.textAlign = 'right'; ctx.font = nu(s(d.tinySize)); ctx.fillStyle = TR_FAINT;
+            ctx.fillText('MAX ' + fmtKg(r.allMax), colR, y);
           }
-          let nf = nameF, name = r.name;
-          ctx.font = F(nf);
-          while (ctx.measureText(name).width > maxW && nf > nameF * 0.72) { nf -= 2; ctx.font = F(nf); }
-          while (ctx.measureText(name).width > maxW && name.length > 2) { name = name.slice(0, -2) + '…'; }
-          ctx.fillText(name, x0 + pad, yy + (nameF - nf) * 0.5);
         }
-        yy += nameF * 1.3;
+        y += s(d.afterName);
 
-        if (r.cardio && compact) {
-          if (!dry) { ctx.fillStyle = TR_GREEN; ctx.font = F(numF); ctx.textAlign = 'left'; ctx.fillText(r.cardio.map((c) => c.value + (c.value === '-' ? '' : c.unit)).join('  '), x0 + pad, yy); }
-        } else if (r.cardio) {
-          // 距離 / 時間 / 速さ / kcal: label above in small, value below - all
-          // four values on one baseline, one size
-          const fr = [0, 0.26, 0.52, 0.78];
+        if (r.cardio) {
+          const cw = colW / 4;
           r.cardio.forEach((c, i) => {
-            const cx = x0 + pad + inner * fr[i];
-            ctx.font = F(numF * 0.85); const vw = ctx.measureText(c.value + (c.value === '-' ? '' : c.unit)).width;
-            if (vw > inner * 0.23) overflow = true;
-            if (!dry) {
-              ctx.textAlign = 'left'; ctx.fillStyle = TR_DIM; ctx.font = F(smallF * 0.9);
-              ctx.fillText(c.label, cx, yy);
-              ctx.fillStyle = TR_GREEN; ctx.font = F(numF * 0.85);
-              ctx.fillText(c.value === '-' ? '-' : c.value + c.unit, cx, yy + smallF * 1.05);
-            }
+            const unit = (c.unit === c.label || c.value === '-') ? '' : c.unit;
+            ctx.font = nu(s(d.bigSize * 0.9), d.bigWeight);
+            const vw = ctx.measureText(c.value).width;
+            ctx.font = nu(s(d.smallSize * 0.8));
+            if (vw + ctx.measureText(unit).width > cw - s(18)) overflow = true;
+            if (dry) return;
+            const cx = M + cw * i;
+            ctx.textAlign = 'left';
+            ctx.font = jp(s(d.tinySize)); ctx.fillStyle = TR_FAINT;
+            ctx.fillText(c.label, cx, y);
+            ctx.font = nu(s(d.bigSize * 0.9), d.bigWeight); ctx.fillStyle = TR_BIG;
+            ctx.fillText(c.value, cx, y + s(d.bigSize * 0.95));
+            ctx.font = nu(s(d.smallSize * 0.8)); ctx.fillStyle = TR_SMALL;
+            if (unit) ctx.fillText(unit, cx + vw + s(8), y + s(d.bigSize * 0.95));
           });
-        } else if (compact) {
-          const lines = compactLines(r);
-          if (!dry) { ctx.fillStyle = TR_GREEN; ctx.font = F(numF); ctx.textAlign = 'left'; lines.forEach((ln, i) => ctx.fillText(ln, x0 + pad, yy + i * rowH)); }
-        } else {
-          // one small header row carries the units, so no line has to change
-          // size to say "kg" or "回"
-          const { cSet, cW, cX, cR, cMark, fits } = setCols(r);
-          if (!fits) overflow = true;
-          if (!dry) {
-            ctx.fillStyle = TR_DIM; ctx.font = F(headF); ctx.textAlign = 'right';
-            ctx.fillText('SET', x0 + cSet, yy);
-            ctx.fillText('kg', x0 + cW, yy);
-            ctx.fillText('回', x0 + cR, yy);
-          }
-          yy += headF * 1.25;
-          r.sets.forEach((st, i) => {
-            if (!dry) {
-              const mark = (i === r.bestIdx && r.rm !== null);
-              ctx.font = F(numF); ctx.textAlign = 'right';
-              ctx.fillStyle = TR_DIM; ctx.fillText(String(i + 1), x0 + cSet, yy);
-              ctx.fillStyle = TR_GREEN;
-              ctx.fillText(st.w === null ? '自重' : fmtKg(st.w), x0 + cW, yy);
-              ctx.textAlign = 'left'; ctx.fillStyle = TR_DIM; ctx.fillText('×', x0 + cX, yy);
-              ctx.textAlign = 'right'; ctx.fillStyle = TR_GREEN;
-              if (st.r) ctx.fillText(String(st.r), x0 + cR, yy);
-              if (mark) {
-                ctx.textAlign = 'left'; ctx.font = F(markF);
-                ctx.fillStyle = r.isNewMax ? TR_RED : TR_DIM;
-                ctx.fillText(r.isNewMax ? 'NEW MAX ' + fmtKg(r.rm) : '1RM ' + fmtKg(r.rm), x0 + cMark, yy + (numF - markF) * 0.55);
-              }
-            }
-            yy += rowH;
-            (st.drops || []).forEach((d, di) => {
-              if (!dry) {
-                ctx.font = F(dropF); ctx.textAlign = 'right'; ctx.fillStyle = TR_DIM;
-                if (di === 0) ctx.fillText('drop', x0 + cSet, yy);
-                ctx.fillText(fmtKg(d.w), x0 + cW, yy);
-                ctx.textAlign = 'left'; ctx.fillText('×', x0 + cX, yy);
-                ctx.textAlign = 'right'; ctx.fillText(String(d.r), x0 + cR, yy);
-              }
-              yy += dropH;
-            });
-          });
+          y += s(d.bigSize * 0.95) + s(d.afterEx);
+          return;
         }
-        y += h + boxGap;
+
+        r.sets.forEach((st, i) => {
+          if (!dry) {
+            ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'right';
+            ctx.font = nu(s(d.smallSize)); ctx.fillStyle = TR_SMALL;
+            ctx.fillText(String(i + 1), xSet, y);
+            ctx.fillStyle = TR_BIG;
+            ctx.font = st.w === null ? jp(s(d.bigSize * 0.62), d.bigWeight) : nu(s(d.bigSize), d.bigWeight);
+            ctx.fillText(st.w === null ? '自重' : fmtKg(st.w), xKg, y);
+            ctx.textAlign = 'left';
+            if (st.w !== null) {
+              ctx.font = nu(s(d.smallSize)); ctx.fillStyle = TR_ACCENT;
+              ctx.fillText('kg', xKg + s(9), y);
+            }
+            ctx.font = nu(s(d.smallSize)); ctx.fillStyle = TR_SMALL;
+            if (st.r) ctx.fillText('× ' + st.r, xRep, y);
+            if (i === r.bestIdx && r.rm !== null) {
+              // right margin, the same column as MAX on the name row
+              ctx.textAlign = 'right'; ctx.font = nu(s(d.tinySize), 600);
+              ctx.fillStyle = r.isNewMax ? TR_RED : TR_FAINT;
+              ctx.fillText(r.isNewMax ? 'NEW MAX ' + fmtKg(r.rm) : '1RM ' + fmtKg(r.rm), colR, y);
+            }
+          }
+          // a drop belongs to the set above it, so it sits close under it
+          const drops = st.drops || [];
+          y += drops.length ? s(d.dropGap) : s(d.rowLead);
+          drops.forEach((dr, di) => {
+            if (!dry) {
+              ctx.textAlign = 'left'; ctx.font = jp(s(d.dropSize)); ctx.fillStyle = TR_DROP;
+              if (di === 0) ctx.fillText('ドロップ', M, y);
+              ctx.textAlign = 'right'; ctx.font = nu(s(d.dropSize), d.bigWeight); ctx.fillStyle = TR_SMALL;
+              ctx.fillText(fmtKg(dr.w), xKg, y);
+              ctx.textAlign = 'left'; ctx.font = nu(s(d.dropSize)); ctx.fillStyle = TR_DROP;
+              ctx.fillText('kg', xKg + s(9), y);
+              ctx.fillText('× ' + dr.r, xRep, y);
+            }
+            y += di === drops.length - 1 ? s(d.rowLead * 0.72) : s(d.dropLead);
+          });
+        });
+        y += s(d.afterEx);
       });
-      y += 14 * scale;
+      y += s(d.afterBlock);
     });
     return overflow ? Infinity : y - y0;
   }
-  function trMeasure(ctx, blocks, scale, colW, compact) { return trLayout(ctx, blocks, scale, 0, 0, colW, true, compact); }
-  function trDrawBlocks(ctx, blocks, scale, x0, y0, colW, compact) { return trLayout(ctx, blocks, scale, x0, y0, colW, false, compact); }
+  function trMeasure(ctx, blocks, scale, colW) { return trLayout(ctx, blocks, scale, 0, 0, colW, true); }
+  function trDrawBlocks(ctx, blocks, scale, x0, y0, colW) { return trLayout(ctx, blocks, scale, x0, y0, colW, false); }
   function trDrawPage(canvas, day, blocks, pageNo, pageCount) {
     const ctx = canvas.getContext('2d');
-    const W = TR_IMG_W, H = TR_IMG_H, M = TR_IMG_MARGIN;
+    const d = TRD, W = TR_IMG_W, H = TR_IMG_H, M = d.margin;
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = '#000'; roundRectPath(ctx, 0, 0, W, H, 24); ctx.fill();
-    ctx.lineWidth = 6; ctx.strokeStyle = TR_GREEN; roundRectPath(ctx, 3, 3, W - 6, H - 6, 21); ctx.stroke();
-    ctx.textBaseline = 'top';
-    // header
-    ctx.fillStyle = TR_GREEN; ctx.font = "56px 'DotGothic16'"; ctx.textAlign = 'left';
-    ctx.fillText(dotDate(day.date), M, M);
-    ctx.font = "30px 'DotGothic16'"; ctx.textAlign = 'right'; ctx.fillStyle = TR_DIM;
-    const right = [day.weight !== null ? '体重 ' + fmtKg(day.weight) + 'kg' : '', pageCount > 1 ? (pageNo + 1) + '/' + pageCount : ''].filter(Boolean).join('　');
-    if (right) ctx.fillText(right, W - M, M + 18);
-    ctx.fillStyle = TR_GREEN; ctx.fillRect(M, M + 80, W - 2 * M, 3);
-    const top = M + 110, bottom = H - M - 40;
-    const avail = bottom - top;
-    const fullW = W - 2 * M;
-    const colW2 = (fullW - 40) / 2;
-    // Order of preference: one column that fits at full size (then grown to
-    // fill the height, up to 2x) -> the larger of shrunken one/two columns
-    // (floor 0.62) -> the caller pages by part. Compact rows are the last
-    // resort: only when a single part on its own page still does not fit.
-    const fitScale = (measure, maxSc) => { let sc = maxSc; while (sc > 0.62 && measure(sc) > avail) sc -= 0.04; return measure(sc) > avail ? null : sc; };
-    const s1 = fitScale((sc) => trMeasure(ctx, blocks, sc, fullW, false), 2);
-    const split = trSplitColumns(ctx, blocks, 1, colW2);
-    const s2 = blocks.length > 1 ? fitScale((sc) => Math.max(trMeasure(ctx, split[0], sc, colW2, false), trMeasure(ctx, split[1], sc, colW2, false)), 1) : null;
-    let drawn = false;
-    if (s1 !== null && (s1 >= 1 || s2 === null || s1 >= s2 - 0.001)) { trDrawBlocks(ctx, blocks, s1, M, top, fullW, false); drawn = true; }
-    else if (s2 !== null) { trDrawBlocks(ctx, split[0], s2, M, top, colW2, false); trDrawBlocks(ctx, split[1], s2, M + colW2 + 40, top, colW2, false); drawn = true; }
-    else if (blocks.length === 1) {
-      const c1 = fitScale((sc) => trMeasure(ctx, blocks, sc, fullW, true), 1);
-      const c2 = blocks.length > 1 ? fitScale((sc) => Math.max(trMeasure(ctx, split[0], sc, colW2, true), trMeasure(ctx, split[1], sc, colW2, true)), 1) : null;
-      if (c1 !== null && (c2 === null || c1 >= c2 - 0.001)) { trDrawBlocks(ctx, blocks, c1, M, top, fullW, true); drawn = true; }
-      else if (c2 !== null) { trDrawBlocks(ctx, split[0], c2, M, top, colW2, true); trDrawBlocks(ctx, split[1], c2, M + colW2 + 40, top, colW2, true); drawn = true; }
-    }
-    if (!drawn) return false; // needs paging
-    ctx.fillStyle = TR_DIM; ctx.font = "24px 'DotGothic16'"; ctx.textAlign = 'right';
-    ctx.fillText('一万日', W - M, H - M + 20);
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+    ctx.textBaseline = 'alphabetic';
+    // the date is a caption. The numbers are the headline.
+    ctx.textAlign = 'left'; ctx.fillStyle = TR_FAINT;
+    ctx.font = trFont(d.headSize, TR_NUM, 400);
+    ctx.fillText(dotDate(day.date), M, M + d.headSize);
+    const dw = ctx.measureText(dotDate(day.date)).width;
+    ctx.font = trFont(d.headSize, TR_JP, 400);
+    const right = [
+      day.weight !== null ? '体重 ' + fmtKg(day.weight) + 'kg' : '',
+      pageCount > 1 ? (pageNo + 1) + '/' + pageCount : '',
+    ].filter(Boolean).join('　');
+    if (right) ctx.fillText(right, M + dw + 30, M + d.headSize);
+
+    const top = M + d.headSize + d.afterHead, bottom = H - M - 40;
+    const avail = bottom - top, fullW = W - 2 * M;
+    let sc = 1.3;
+    while (sc > 0.62 && trMeasure(ctx, blocks, sc, fullW) > avail) sc -= 0.03;
+    const used = trMeasure(ctx, blocks, sc, fullW);
+    if (used > avail) return false; // needs paging
+    trDrawBlocks(ctx, blocks, sc, M, top + Math.max(0, (avail - used) * 0.34), fullW);
+    ctx.textAlign = 'right'; ctx.font = trFont(d.tinySize, TR_JP, 400); ctx.fillStyle = TR_FAINT;
+    ctx.fillText('一万日', W - M, H - M);
     return true;
-  }
-  // Greedy: fill column 1 with whole parts until half the height, rest to column 2.
-  function trSplitColumns(ctx, blocks, scale, colW) {
-    const total = trMeasure(ctx, blocks, scale, colW);
-    const a = [], b = [];
-    let acc = 0;
-    blocks.forEach((blk) => { const h = trMeasure(ctx, [blk], scale, colW); if (acc + h <= total / 2 + h / 2 && !b.length) { a.push(blk); acc += h; } else b.push(blk); });
-    if (!a.length && b.length) a.push(b.shift());
-    return [a, b];
   }
   // Returns one canvas per page. Pages are cut by part; a single part that
   // still cannot fit is cut by exercise.
@@ -8992,7 +8938,16 @@
     trPersist();
     const day = findTrainingDay(trState.date);
     if (!day || !day.parts.length) { statusEl.textContent = '種目がありません'; return; }
-    try { if (document.fonts && document.fonts.load) await document.fonts.load("32px 'DotGothic16'"); } catch (e) {}
+    // canvas draws in a fallback face unless the font is loaded first
+    try {
+      if (document.fonts && document.fonts.load) {
+        await Promise.all([
+          document.fonts.load("400 40px 'Inter'"), document.fonts.load("600 40px 'Inter'"),
+          document.fonts.load("400 40px 'Noto Sans JP'", '自重胸背中'),
+          document.fonts.load("500 40px 'Noto Sans JP'", '自重胸背中'),
+        ]);
+      }
+    } catch (e) {}
     const canvases = trRenderImages(day);
     const files = [];
     for (let i = 0; i < canvases.length; i++) {
