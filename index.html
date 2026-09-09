@@ -8929,7 +8929,7 @@
     const notes = data.notes.filter((n) => { const d = localDateOfIso(n.createdAt); return d && d <= dateStr; }).length;
     const tr = trainingData.days.filter((d) => d.date <= dateStr).length;
     const medMin = medSum(medData.sessions.filter((x) => x.date <= dateStr));
-    const parts = [`一万日の ${walk} 日目`, `言葉 ${notes} 枚`, `散歩 ${walk} 日`, `筋トレ ${tr} 日`, `瞑想 ${medMin >= 60 ? (medMin / 60).toFixed(1) + ' 時間' : medMin + ' 分'}`];
+    const parts = [`一万日の ${walk} 日目 / 10000`, `言葉 ${notes} 枚`, `筋トレ ${tr} 日`, `瞑想 ${medMin >= 60 ? (medMin / 60).toFixed(1) + ' 時間' : medMin + ' 分'}`];
     return parts.join(' ・ ') + (dateStr < todayStr() ? '（当時）' : '');
   }
   // the day's word: what got a ★ that day, else the first word the morning brought
