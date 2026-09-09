@@ -1074,6 +1074,7 @@
     </header>
     <div class="field">
       <textarea id="consultInput" rows="3" placeholder="今の状態や考えていることを書いてください" autocomplete="off"></textarea>
+      <p class="fieldNote warn" id="consultBudgetNote" hidden></p>
       <button id="btnConsultAsk" class="primaryBtn">聞く</button>
     </div>
     <div id="consultTurns" class="consultTurns"></div>
@@ -4309,9 +4310,31 @@
   // Shared by the morning flow and the consult screen - same model, same
   // cached system block (see buildChatSystemBlocks); only maxPicks, the
   // input/history, and which usage bucket to bill differ per caller.
+  // Until v9.5 every failure here (401 / 429 / 400 / 5xx / network / parse)
+  // reached the screen as one sentence, and the call had no timeout at all -
+  // a hung request just spun forever. Each kind is now separated, and the
+  // status plus the first 200 characters of the response body go into the
+  // settings error log so the next failure explains itself.
+  const CHAT_TIMEOUT_MS = 60000;
+  function chatErrorText(e) {
+    if (!e) return '失敗しました。もう一度お試しください。';
+    if (e.noKey) return '設定画面で Claude API キーを入力してください。';
+    if (e.offline) return 'オフラインです。電波のある場所でもう一度お試しください。';
+    if (e.timeout) return '時間がかかりすぎました（60秒で打ち切り）。もう一度お試しください。';
+    if (e.truncated) return '応答が長すぎて途中で切れました。短く書き直すか、もう一度お試しください。';
+    if (e.status === 401 || e.status === 403) return 'API キーが使えません（' + e.status + '）。設定でキーを入れ直してください。';
+    if (e.status === 429) return '混みあっています（429）。少し待ってからもう一度お試しください。';
+    if (e.status === 400) return 'リクエストが受け付けられませんでした（400）。設定のモデル名を確かめてください。詳しくは設定の「最終エラー」に出ています。';
+    if (e.status === 404) return 'モデルが見つかりません（404）。設定のモデル名を確かめてください。';
+    if (e.status >= 500) return 'Claude 側で問題が起きています（' + e.status + '）。少し待ってからもう一度お試しください。';
+    if (e.status) return 'API エラー（' + e.status + '）。詳しくは設定の「最終エラー」に出ています。';
+    if (e.network) return '通信できませんでした。電波を確かめてもう一度お試しください。';
+    return '応答を読み取れませんでした。もう一度お試しください。（設定の「最終エラー」に応答の冒頭が残ります）';
+  }
   async function callChatApi(input, history, maxPicks, usageKind, is429Retry, isParseRetry) {
     const apiKey = getClaudeApiKey();
     if (!apiKey) { const e = new Error('no-api-key'); e.noKey = true; throw e; }
+    if (!navigator.onLine) { const e = new Error('offline'); e.offline = true; throw e; }
     const model = getClaudeChatModel();
     const system = buildChatSystemBlocks();
     const historyText = history && history.length ? '直近のやり取り:\n' + JSON.stringify(history) + '\n\n' : '';
@@ -4330,28 +4353,44 @@
       '今の状態:\n' + input +
       '\n\n最大' + maxPicks + '件まで選んでください。';
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      // 2048 before v3.3. The answer itself is small (up to 3 picks with a
-      // ~30字 why, plus a 3-line closing - roughly 400-700 tokens), but the
-      // thinking pass that chooses them weighs the whole notes list, so that
-      // is the part needing room. 8192 leaves ~7.4k for it.
-      body: JSON.stringify({ model, max_tokens: 8192, system, messages: [{ role: 'user', content: promptText }] }),
-    });
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), CHAT_TIMEOUT_MS);
+    let res;
+    try {
+      res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        signal: ctl.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        // 2048 before v3.3. The answer itself is small (up to 3 picks with a
+        // ~30字 why, plus a 3-line closing - roughly 400-700 tokens), but the
+        // thinking pass that chooses them weighs the whole notes list, so that
+        // is the part needing room. 8192 leaves ~7.4k for it.
+        body: JSON.stringify({ model, max_tokens: 8192, system, messages: [{ role: 'user', content: promptText }] }),
+      });
+    } catch (err) {
+      if (err && err.name === 'AbortError') { const e = new Error('timeout after ' + (CHAT_TIMEOUT_MS / 1000) + 's'); e.timeout = true; throw e; }
+      const e = new Error('network: ' + ((err && err.message) ? err.message : String(err)));
+      e.network = true;
+      throw e;
+    } finally { clearTimeout(timer); }
 
     if (res.status === 429 && !is429Retry) {
       await sleep(2000);
       return callChatApi(input, history, maxPicks, usageKind, true, isParseRetry);
     }
     if (!res.ok) {
-      const err = new Error('Claude API failed: ' + res.status);
+      // the body says which of the many 400s this is (a bad model name, a
+      // request that is too large, ...); it never contains the key
+      let body = '';
+      try { body = (await res.text()).replace(/\s+/g, ' ').slice(0, 200); } catch (e2) {}
+      const err = new Error('Claude API failed: ' + res.status + (body ? ' / ' + body : '') + '（model: ' + model + '）');
       err.status = res.status;
+      err.body = body;
       throw err;
     }
     const json = await res.json();
@@ -4361,7 +4400,7 @@
     if (!parsed) {
       if (isTruncated(json)) throw truncatedResponseError();
       if (!isParseRetry) return callChatApi(input, history, maxPicks, usageKind, false, true);
-      throw new Error('invalid response shape');
+      throw new Error('応答を JSON として読めません / stop_reason: ' + (json.stop_reason || '?') + ' / ' + textOut.replace(/\s+/g, ' ').slice(0, 200));
     }
     const validIds = new Set(data.notes.map((n) => n.id));
     const picks = (Array.isArray(parsed.picks) ? parsed.picks : [])
@@ -5566,6 +5605,14 @@
     document.getElementById('consultInput').value = '';
     renderConsultTurns();
   }
+  // the cap is worth knowing before the button is pressed, not after
+  function renderConsultBudgetNote() {
+    const el = document.getElementById('consultBudgetNote');
+    if (!el) return;
+    const over = isUsageOverBudget();
+    el.hidden = !over;
+    if (over) el.textContent = '今月の API 使用が上限（$' + getUsageBudget().toFixed(2) + '）を超えています。押すと確認が出ます。上限は設定で変えられます。';
+  }
 
   function openEditorFromConsult(inputText) {
     openEditor('new', null, 'consult');
@@ -5575,6 +5622,7 @@
   }
 
   function renderConsultTurns() {
+    renderConsultBudgetNote();
     const container = document.getElementById('consultTurns');
     container.innerHTML = '';
     consultTurns.forEach((turn) => {
@@ -5607,20 +5655,10 @@
         s.className = 'fieldNote';
         s.textContent = '言葉を探しています…';
         wrap.appendChild(s);
-      } else if (turn.status === 'no-key') {
-        const s = document.createElement('p');
-        s.className = 'fieldNote warn';
-        s.textContent = '設定画面でClaude APIキーを入力してください。';
-        wrap.appendChild(s);
-      } else if (turn.status === 'truncated') {
-        const s = document.createElement('p');
-        s.className = 'fieldNote warn';
-        s.textContent = '応答が長すぎて途中で切れました。短く書き直すか、もう一度お試しください。';
-        wrap.appendChild(s);
       } else if (turn.status === 'error') {
         const s = document.createElement('p');
         s.className = 'fieldNote warn';
-        s.textContent = '言葉を探せませんでした。もう一度お試しください。';
+        s.textContent = turn.errorText || '言葉を探せませんでした。もう一度お試しください。';
         wrap.appendChild(s);
       } else if (turn.status === 'done' && turn.picks.length === 0) {
         const s = document.createElement('p');
@@ -5704,7 +5742,8 @@
       saveJournalEntry(entry);
       turn.journalId = entry.id;
     } catch (e) {
-      turn.status = e && e.noKey ? 'no-key' : e && e.truncated ? 'truncated' : 'error';
+      turn.status = 'error';
+      turn.errorText = chatErrorText(e);
       if (!(e && e.noKey)) recordFeatureError('相談', e);
     }
     consultBusy = false;
@@ -6134,9 +6173,7 @@
       // v3.3: no longer silently. The fallback word is still shown; the
       // reason is shown above it and written to the settings error log.
       morningSkippedDate = today;
-      morningLastError = (e && e.truncated)
-        ? '応答が長すぎて途中で切れました。下は今朝の代わりの一枚です。'
-        : '言葉を受け取れませんでした。下は今朝の代わりの一枚です。';
+      morningLastError = chatErrorText(e) + '　下は今朝の代わりの一枚です。';
       if (!(e && e.noKey)) recordFeatureError('朝の言葉', e);
     }
     btn.disabled = false;
@@ -12720,9 +12757,7 @@
       shootState.consult = { deckId: deck.id, journalId: entry.id, input, picks: result.picks, closing: result.closing };
       statusEl.textContent = '';
     } catch (e) {
-      statusEl.textContent = (e && e.noKey) ? '設定画面で Claude API キーを入力してください。'
-        : (e && e.truncated) ? '応答が長すぎて途中で切れました。短く書き直してください。'
-        : '取得に失敗しました。もう一度お試しください。';
+      statusEl.textContent = chatErrorText(e);
       if (!(e && e.noKey)) recordFeatureError('撮るの相談', e);
     } finally {
       shootState.consultBusy = false;
