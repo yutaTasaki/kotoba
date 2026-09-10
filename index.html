@@ -1705,6 +1705,18 @@
         <p class="emptyMsg" id="worldSourceEmpty" hidden>ソースがありません。</p>
       </div>
       <div class="field">
+        <span class="fieldLabel">まとめて貼る（ソースの立場・地層の確認先）</span>
+        <p class="fieldNote">1行1件。先頭が地層の id（st_…）なら地層、そうでなければソースの名前として読みます。<br>
+          ソース：<code>名前［タブかコロン］この発信者が欲しいもの</code><br>
+          地層（3列）：<code>id［タブ］確認先の名前［タブ］URL</code><br>
+          地層（5列）：<code>id［タブ］名前［タブ］説明［タブ］確認先の名前［タブ］URL</code><br>
+          ソースの立場は空欄のものだけ埋めます。地層の確認先は差し替えが目的なので上書きします。新しいソースや地層は作りません。当たらなかった行は下に出します。</p>
+        <textarea id="worldBulkPaste" rows="4" placeholder="日本銀行&#9;物価目標への信認。市場に織り込まれた状態で動きたい" autocomplete="off"></textarea>
+        <label class="checkboxRow"><input type="checkbox" id="worldBulkOverwrite"> すでに入っている立場も上書きする</label>
+        <button id="btnWorldBulkApply" class="secondaryBtn">取り込む</button>
+        <p class="fieldNote" id="worldBulkStatus"></p>
+      </div>
+      <div class="field">
         <span class="fieldLabel">ソースを足す</span>
         <input type="text" id="worldSourceNameInput" placeholder="名前（例：日本銀行）" autocomplete="off">
         <input type="text" id="worldSourceUrlInput" placeholder="https://www.boj.or.jp/" autocomplete="off">
@@ -2239,6 +2251,7 @@
           <p class="fieldNote" id="worldProbeStatus"></p>
         </div>
         <div id="worldStratumListBody"></div>
+        <p class="fieldNote">確認先や名前をまとめて直すには、設定 → 世界 →「まとめて貼る」から。</p>
       </div>
     </div>
 
@@ -16327,6 +16340,93 @@
     };
   }
 
+  // ---- まとめて貼る (v17.1) --------------------------------------------------
+  // ソースの立場22件と地層の確認先13件を手で入れるのは現実的でないので、
+  // 「コピー → 貼る → 取り込む」の形で一度に入れる。
+  // 行き先は先頭の列で決まる。地層の id は st_ で始まる閉じたリストなので、
+  // ソース名と衝突しない。判別が曖昧になる概念・用語・アクターは入れない
+  // ——同じ名前が複数のストアにあるとき、黙って違うものに入るため。
+  function worldBulkColumns(raw) {
+    const line = String(raw || '').replace(/\r/g, '').trim();
+    if (!line) return [];
+    let cols = line.split('\t').map((c) => c.trim());
+    while (cols.length && cols[cols.length - 1] === '') cols.pop();
+    // タブが無ければ最初のコロンで2つに割る（立場の文中のコロンでは割らない）
+    if (cols.length < 2) {
+      const m = /^([^：:]+)[：:]\s*(.+)$/.exec(line);
+      cols = m ? [m[1].trim(), m[2].trim()] : [line];
+    }
+    return cols;
+  }
+  // ソースは aka を持たないので、当たらなければアクター・用語の別名を通して寄せる
+  function worldFindSourceByName(name) {
+    const k = worldNormName(name);
+    if (!k) return null;
+    const direct = worldSources().find((x) => worldNormName(x.name) === k);
+    if (direct) return direct;
+    for (const store of [WORLD_STORES.actor, WORLD_STORES.term]) {
+      const hit = worldFindIn(store, name);
+      if (!hit) continue;
+      const via = worldSources().find((x) => worldNormName(x.name) === worldNormName(hit.name));
+      if (via) return via;
+    }
+    return null;
+  }
+  function worldApplyBulk(text, overwrite) {
+    const out = { stance: 0, stanceKept: 0, strata: 0, strataNamed: 0,
+      notFound: [], badId: [], badShape: [], badUrl: 0 };
+    let touchedSources = false, touchedStrata = false;
+    String(text || '').split('\n').forEach((raw) => {
+      const cols = worldBulkColumns(raw);
+      if (!cols.length || (cols.length === 1 && !cols[0])) return;   // 空行は黙って飛ばす
+      const st = worldStratumById(cols[0]);
+      if (st) {
+        // 3列＝id・確認先名・URL ／ 5列＝id・名前・説明・確認先名・URL
+        let name = '', line = '', src = '', url = '';
+        if (cols.length === 3) { src = cols[1]; url = cols[2]; }
+        else if (cols.length === 5) { name = cols[1]; line = cols[2]; src = cols[3]; url = cols[4]; }
+        else { out.badShape.push(cols[0]); return; }
+        const safe = shootSafeUrl(String(url || '').trim()) || '';
+        if (!safe) { out.badUrl++; return; }
+        // 確認先は差し替えが目的なので上書きする
+        st.where = { source: worldStr(src, 80), url: safe };
+        if (name) { st.name = worldStr(name, 60); st.short = worldStr(st.short, 8) || worldStr(name, 8); }
+        if (line) st.line = worldStr(line, 120);
+        if (name || line) out.strataNamed++;
+        st.updatedAt = nowIso();
+        out.strata++; touchedStrata = true;
+        return;
+      }
+      // st_ で始まるのに一覧に無いのは、地層 id の打ち間違い。ソースとして説明しない
+      if (/^st_/.test(cols[0])) { out.badId.push(cols[0]); return; }
+      if (cols.length < 2 || !cols[1]) { out.badShape.push(cols[0]); return; }
+      const so = worldFindSourceByName(cols[0]);
+      if (!so) { out.notFound.push(cols[0]); return; }
+      // 既定は空欄だけ埋める。既に書いたものを黙って消さない
+      if (so.stance && !overwrite) { out.stanceKept++; return; }
+      so.stance = worldStr(cols[1], WORLD_STANCE_MAX);
+      so.updatedAt = nowIso();
+      out.stance++; touchedSources = true;
+    });
+    if (touchedSources) worldSaveSources();
+    if (touchedStrata) worldSaveStrata();
+    return out;
+  }
+  function worldBulkMessage(res) {
+    let msg = '';
+    if (res.stance) msg += 'ソースの立場 ' + res.stance + '件を入れました。';
+    if (res.stanceKept) msg += '　既に入っていた ' + res.stanceKept + '件はそのままです（上書きするにはチェックを入れてください）。';
+    if (res.strata) msg += '　地層 ' + res.strata + '件の確認先を直しました'
+      + (res.strataNamed ? '（うち名前と説明も ' + res.strataNamed + '件）' : '') + '。';
+    if (!res.stance && !res.strata) msg = (res.stanceKept ? '入ったものはありません。' : '入ったものがありません。') + msg;
+    if (res.notFound.length) msg += '　※ 見つからなかった ' + res.notFound.length + '件：' + res.notFound.slice(0, 6).join(' ・ ')
+      + (res.notFound.length > 6 ? ' ほか' : '') + '。名前が一覧と違うか、新しいソースです（このボタンでは作りません）。';
+    if (res.badId.length) msg += '　※ 一覧に無い地層の id ' + res.badId.length + '件：' + res.badId.slice(0, 6).join(' ・ ') + '。';
+    if (res.badShape.length) msg += '　※ 形が違う ' + res.badShape.length + '件：' + res.badShape.slice(0, 6).join(' ・ ') + '。';
+    if (res.badUrl) msg += '　※ URL が不正な ' + res.badUrl + '件を落としました。';
+    return msg;
+  }
+
   // ---- 答え合わせ (v17 C) ----------------------------------------------------
   // 聞くのは「その分かれ目は実際どうなったか」だけ。当たり外れは端末が引く。
   // 生成に採点させると採点が甘くなる方向に力がかかり、pick や lean を見せると
@@ -19167,6 +19267,20 @@
     document.getElementById('worldLevelPanel').hidden = false;
   });
   document.getElementById('btnWorldLevelCancel').addEventListener('click', () => { document.getElementById('worldLevelPanel').hidden = true; });
+  // v17.1: まとめて貼る
+  document.getElementById('btnWorldBulkApply').addEventListener('click', () => {
+    const box = document.getElementById('worldBulkPaste');
+    const st = document.getElementById('worldBulkStatus');
+    const res = worldApplyBulk(box.value, document.getElementById('worldBulkOverwrite').checked);
+    const msg = worldBulkMessage(res).trim();
+    // 当たらなかった行だけ欄に残す。もう一度直して貼り直せる
+    if (res.notFound.length || res.badId.length || res.badShape.length) {
+      const bad = new Set([...res.notFound, ...res.badId, ...res.badShape]);
+      box.value = box.value.split('\n').filter((l) => bad.has((worldBulkColumns(l)[0] || ''))).join('\n');
+    } else if (res.stance || res.strata) box.value = '';
+    renderWorldSources();
+    st.textContent = msg;
+  });
   // v17 C: 答え合わせ
   document.getElementById('btnWorldJudgeBack').addEventListener('click', () => { worldState.view = 'main'; renderWorld(); });
   document.getElementById('btnWorldJudgePrompt').addEventListener('click', () => {
