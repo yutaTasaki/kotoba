@@ -15005,7 +15005,7 @@
   // 出来事側の綴りは正式名へ寄せて保存する（あとで統合・名前変更をしたとき
   // 既存の出来事が自動で追従し、同じものが違う綴りで並ぶこともなくなる）。
   function worldApplyEntries(ev) {
-    const created = { concept: [], term: [] };
+    const created = { concept: [], term: [], unknownConcepts: 0 };
     const CS = WORLD_STORES.concept, TS = WORLD_STORES.term;
 
     // 概念を新しく作るときは、同じ名前の用語が居たら必ず吸わせる。
@@ -15041,7 +15041,7 @@
       pushCooc(a); pushCooc(b);
       center = a;
     }
-    ev.concepts = ev.concepts.map((n) => { const c = touchConcept(n, '', [], false); pushCooc(c); return c ? c.name : n; });
+    ev.concepts = ev.concepts.map((n) => { const c = touchConcept(n, '', [], false); pushCooc(c); if (!c) created.unknownConcepts++; return c ? c.name : n; });
     ev.related = ev.related.map((n) => { const c = touchConcept(n, '', [], false); if (c) worldLinkConcepts(center, c); return c ? c.name : n; });
     worldLinkCooc(cooc, ev.id);
     if (ev.premise.kind === 'new' && center) ev.premise.name = center.name;
@@ -15281,8 +15281,22 @@
       '    aka に別名・日本語訳・英語名を必ず入れる（表記ゆれを防ぐため）。\n' +
       '  - line は1文。その概念の定義であって、この出来事の説明ではない。\n' +
       '\n' +
+      // v11.6: ここが空欄同然だったので、生成は「その札に出てくる語」を並べ、
+      // 15件から共起が1本しかできなかった。既知から必ず探させ、札限りの語を禁じる。
+      '- concepts：この出来事が触れている「概念」を 2〜4個。premise に書いたものも含める。\n' +
+      '  概念の意味は premise と同じ。積み上がって世界の見方になるものだけを書く。\n' +
+      '  - 末尾の「すでに知っている概念」を必ず見て、この出来事にも当てはまるものが\n' +
+      '    あれば挙げる。当てはまるかどうかは、その概念がこの出来事を説明するのに\n' +
+      '    使えるかで判断する。無理に当てはめない。\n' +
+      '  - その出来事の中でしか使わない言葉を書かない。\n' +
+      '    他の出来事にも出てくる言葉かどうかで判断する。\n' +
+      '    悪い例：「石油在庫」「設備投資」「9月会合」\n' +
+      '    良い例：「外貨準備」「交易条件」「量的引き締め」\n' +
+      '  - 組織名・国名・略語・人名は書かない（それは terms）。\n' +
+      '  - 2個に満たなければ1個でよい。無理に埋めない。\n' +
+      '\n' +
       '- terms：fact・why・detail の中に出てくる組織名・国名・略語・制度名・人名を、\n' +
-      '  出てきたぶんだけ全部挙げる。概念は書かない（それは premise）。\n' +
+      '  出てきたぶんだけ全部挙げる。概念は書かない（それは premise と concepts）。\n' +
       '  - line は ' + WORLD_TERM_LINE_MIN + '〜' + WORLD_TERM_LINE_MAX + '字。1つの節で言い切る。\n' +
       '    注は読ませるものではない。一瞬で片づけて本文に戻るためのもの。\n' +
       '    「〜が集まり、〜を作る」のように節を二段重ねにしない。\n' +
@@ -15336,9 +15350,9 @@
       '- detail：数字・当事者・背景。1〜3文。ここには専門用語を書いてよい。\n' +
       '- source：媒体名と発表日。\n' +
       '- url：出典ページ。\n' +
-      '- eventDate：出典ページに書かれた発表日または発生日（YYYY-MM-DD）。未来の日付にしない。\n' +
-      '- concepts：この出来事が触れている概念名（既知・新規とも）。\n' +
-      '- related：premise の概念と、つながりの深い概念名（既知の一覧から。最大3つ）。\n\n' +
+      '- eventDate：出典ページに書かれた発表日または発生日（YYYY-MM-DD）。未来の日付にしない。\n\n' +
+      // related は落とした（v11.6）。concepts と同じ質問を違う縛りで2回聞くことに
+      // なるため。取り込みは今でも読むので、古い JSON を貼っても壊れない。
       '■ 並べ方\n' +
       '重要だと思う順に並べる。上から読まれる。\n\n' +
       '■ 出力形式\n' +
@@ -15347,15 +15361,14 @@
       '  "why":"...",\n' +
       '  "reason":"...",\n' +
       '  "premise":{"kind":"new","name":"...","aka":["...","..."],"line":"..."},\n' +
+      '  "concepts":["...","..."],\n' +
       '  "terms":[{"name":"IMF","line":"...","kind":"org","aka":["国際通貨基金"]}],\n' +
       '  "strata":["st_jp_rate_long"],\n' +
       '  "fork":{"text":"...","type":"level"},\n' +
       '  "detail":"...",\n' +
       '  "source":"...",\n' +
       '  "url":"https://...",\n' +
-      '  "eventDate":"YYYY-MM-DD",\n' +
-      '  "concepts":["..."],\n' +
-      '  "related":["..."]\n' +
+      '  "eventDate":"YYYY-MM-DD"\n' +
       '}]}\n\n' +
       'kind が "relation" のときの premise：\n' +
       '  {"kind":"relation","a":"既知の概念1","b":"既知の概念2","line":"..."}\n' +
@@ -15366,7 +15379,9 @@
       '────────────────────────────────────────\n' +
       '■ 地層の一覧（strata はこの id から選ぶ。ここに無いものを作らない）\n' +
       (strataLines.length ? strataLines.join('\n') : '（まだありません）') + '\n\n' +
-      '■ すでに知っている概念（説明しなくてよい。名前だけ。最大' + WORLD_KNOWN_MAX + '件）\n' +
+      // 見出しで役割を2つにする。「説明しなくてよい」だけだと、生成にとって
+      // これは「避けるもの」のリストになり、concepts を探す場所にならない。
+      '■ すでに知っている概念（concepts はここから探す。premise で説明し直さなくてよい。名前だけ。最大' + WORLD_KNOWN_MAX + '件）\n' +
       (known.length ? known.join(' / ') : '（まだありません）') + '\n\n' +
       '■ すでに知っている用語（説明しなくてよい。名前だけ。最大' + WORLD_KNOWN_TERMS_MAX + '件。\n' +
       '　一覧に無くても、経済・政治の基礎的な用語は説明不要）\n' +
@@ -15419,7 +15434,7 @@
     const createdConcepts = [];
     const createdTerms = [];
     const touchedMonths = new Set();
-    let old = 0, forks = 0, onStrata = 0, droppedStrata = 0;
+    let old = 0, forks = 0, onStrata = 0, droppedStrata = 0, unknownConcepts = 0;
 
     items.forEach((it, i) => {
       if (!it || typeof it !== 'object') { rejected.fact++; return; }
@@ -15461,6 +15476,7 @@
       const made = worldApplyEntries(ev);
       made.concept.forEach((id) => createdConcepts.push(id));
       made.term.forEach((id) => createdTerms.push(id));
+      unknownConcepts += made.unknownConcepts;
       if (ev.fork) forks++;
       if (ev.strata.length) onStrata++;
       const askedStrata = Array.isArray(it.strata) ? it.strata.length : 0;
@@ -15473,7 +15489,7 @@
       touchedMonths.forEach((m) => worldMonthChanged(m));
     }
     return {
-      added: added.length, rejected, old, forks, onStrata, droppedStrata,
+      added: added.length, rejected, old, forks, onStrata, droppedStrata, unknownConcepts,
       createdConcepts, createdTerms,
       candidates: worldMergeCandidatesIn(WORLD_STORES.concept, createdConcepts)
         .concat(worldMergeCandidatesIn(WORLD_STORES.term, createdTerms)),
@@ -16809,6 +16825,7 @@
     if (res.createdTerms.length) msg += '　新しい用語 ' + res.createdTerms.length + '件。';
     if (res.added) msg += '　分かれ目つき ' + res.forks + '件、地層に乗った ' + res.onStrata + '件。';
     if (res.droppedStrata) msg += '　※ 一覧に無い地層 ' + res.droppedStrata + '件を落としました。';
+    if (res.unknownConcepts) msg += '　※ 知らない概念名 ' + res.unknownConcepts + '件は無視しました（premise として生まれれば、作り直しで拾われます）。';
     if (res.old) msg += '　※ 90日より古い出来事が ' + res.old + '件あります。';
     if (unread > WORLD_QUEUE_WARN) msg += '　未読が ' + unread + '件です。読む速さより入れる速さが上回っています。';
     if (res.added) box.value = '';
