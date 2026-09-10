@@ -1147,6 +1147,20 @@
   .worldActorTl .tlCaret { font-size: 10px; color: var(--text-faint); white-space: nowrap; }
   /* 時系列の思惑は押す前から出す。空白が「述べていない」の信号になる */
   .worldActorMind { padding: 0 0 6px 12px; font-size: 12px; line-height: 1.7; }
+  /* --- v13 主体の盤面 ----------------------------------------------------- */
+  .worldBoardRow {
+    display: grid; grid-template-columns: auto 1fr auto auto; gap: 8px; align-items: baseline;
+    width: 100%; text-align: left; background: none; border: 0; margin: 0;
+    padding: 8px 0; border-top: 1px solid var(--border);
+    font: inherit; color: var(--text); cursor: pointer;
+  }
+  .worldBoardRow .wbName { font-size: 13px; color: var(--text-dim); white-space: nowrap; }
+  .worldBoardRow .wbDid { font-size: 13px; line-height: 1.5; }
+  .worldBoardRow .wbMeta { font-size: 11px; color: var(--text-faint); white-space: nowrap; }
+  .worldBoardRow .wbMark { font-size: 11px; color: var(--text-dim); white-space: nowrap; min-width: 2.4em; text-align: right; }
+  /* 述べずに動いている主体。この画面で一番重要なので、色と位置の両方でずらす */
+  .worldBoardRow .wbMark.onlyRead { color: var(--guess); font-weight: 700; }
+  .worldSectionHead .wbLegend { font-size: 10px; color: var(--text-faint); padding: 0; }
   .worldActorMind .waKey { display: inline-block; min-width: 3.2em; color: var(--text-faint); font-size: 11px; margin-right: 6px; }
   .worldActorMind .waRead { border-left: 2px dashed var(--guess); padding-left: 8px; margin-top: 2px; }
   /* v11.7 つながる札：札を読んでいる最中に、隣の札が勝手に見える */
@@ -2036,6 +2050,7 @@
       </div>
 
       <div class="tagFilterRow" id="worldTabRow">
+        <button type="button" class="tagFilterBtn" data-wtab="board">主体</button>
         <button type="button" class="tagFilterBtn" data-wtab="events">出来事</button>
         <button type="button" class="tagFilterBtn" data-wtab="concepts">概念</button>
         <button type="button" class="tagFilterBtn" data-wtab="predictions">予測</button>
@@ -14021,6 +14036,11 @@
   const WORLD_ACTOR_KIND_LABEL = { state: '政府', cb: '中銀', intl: '国際機関', industry: '業界', person: '人物', '': 'その他' };
   const WORLD_FLOW_UNITS       = ['JPY', 'USD', 'EUR', 'CNY', '%'];
   const WORLD_RETRO_MAX        = 40;    // 遡及プロンプトに載せる札の数
+  // v13 主体の盤面：既定の画面。「今日どんな出来事があったか」ではなく
+  // 「いま誰が何を動かそうとしているか」を最初に見る。
+  const WORLD_BOARD_FOLD = 5;    // 盤面の既定の件数
+  const WORLD_BOARD_MAX  = 20;   // 「もっと見る」で出す上限
+  const WORLD_BOARD_LEGEND_KEY = 'kotoba_worldBoardLegend';   // 凡例を畳んだか
   // 種。一度も保存されていないときだけ入れる。「市場参加者」は入れない
   // （市場は思惑を持つ主体ではなく、思惑が現れる場所）。
   const WORLD_DEFAULT_ACTORS = [
@@ -14192,6 +14212,8 @@
   function worldStr(v, max) { return typeof v === 'string' ? v.trim().slice(0, max) : ''; }
   function isDateStr(s) { return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(parseDateStr(s)); }
   function monthOfWorldId(id) { const m = /^w_(\d{4})(\d{2})\d{2}_/.exec(String(id || '')); return m ? m[1] + '-' + m[2] : null; }
+  // id の日付部分は eventDate。月ファイルを読まなくても日付が分かる
+  function dateOfWorldId(id) { const m = /^w_(\d{4})(\d{2})(\d{2})_/.exec(String(id || '')); return m ? m[1] + '-' + m[2] + '-' + m[3] : null; }
 
   function normalizeWorldPremise(p) {
     const out = { kind: (p && p.kind === 'relation') ? 'relation' : 'new', name: '', aka: [], a: '', b: '', line: '' };
@@ -15946,7 +15968,7 @@
   }
 
   // ---- 画面 ----------------------------------------------------------------
-  const worldState = { view: 'main', tab: 'events', entryKind: 'concept', entrySort: 'count', conceptId: null, stratumId: null, strataAll: false, sunkOpen: false, openId: null, candidates: [], lastResult: '', search: { events: '', concept: '', term: '', actor: '' }, searchFocus: '', batchFilter: null, lastBatch: null };
+  const worldState = { view: 'main', tab: 'board', boardAll: false, entryFrom: 'list', entryKind: 'concept', entrySort: 'count', conceptId: null, stratumId: null, strataAll: false, sunkOpen: false, openId: null, candidates: [], lastResult: '', search: { events: '', concept: '', term: '', actor: '' }, searchFocus: '', batchFilter: null, lastBatch: null };
 
   // 地層の1行。押すとその地層を開く。太くしない。
   function paintStratumLine(el, s) {
@@ -16633,6 +16655,101 @@
         return { event: e, rec, amount };
       });
   }
+  // ---- 主体の盤面 (v13) ----------------------------------------------------
+  // 回数と最終日は id から出すので、月を読み込んでいなくても正確。
+  // 読み込み済みの月については実物で判定する（非表示・削除された札を数えない）。
+  // 行動の文と述べた／推定は読み込んだ月からしか取れないので、裏で月を読んで
+  // 埋まったら描き直す。
+  function worldActorLiveIds(a) {
+    const live = new Set(worldLiveEvents().map((e) => e.id));
+    return (a.eventIds || []).filter((id) => {
+      const m = monthOfWorldId(id);
+      if (m && wd.loaded.has(m)) return live.has(id);   // 読み込み済みなら実物で
+      return true;                                       // 未読込みは id を信じる
+    });
+  }
+  function worldBoardRows() {
+    return worldActors().map((a) => {
+      const ids = worldActorLiveIds(a);
+      if (!ids.length) return null;                      // 行動が1件も無い主体は出さない
+      const dates = ids.map(dateOfWorldId).filter(Boolean).sort();
+      const date = dates.length ? dates[dates.length - 1] : '';
+      const rows = worldActorRows(a);                    // 読み込み済みの月だけ
+      const top = rows[0] || null;
+      return {
+        actor: a, date, count: ids.length,
+        did: top ? (top.rec ? top.rec.did : top.event.fact) : '',
+        said: rows.some((r) => r.rec && r.rec.said),
+        read: rows.some((r) => r.rec && r.rec.read),
+        partial: rows.length < ids.length,               // 読めていない月がある
+        months: [...new Set(ids.map(monthOfWorldId).filter(Boolean))],
+      };
+    }).filter(Boolean)
+      .sort((x, y) => (x.date > y.date ? -1 : x.date < y.date ? 1 : y.count - x.count));
+  }
+  function worldBoardLegendOpen() { try { return localStorage.getItem(WORLD_BOARD_LEGEND_KEY) !== '0'; } catch (e) { return true; } }
+  function renderWorldBoardTab(body) {
+    const rows = worldBoardRows();
+    if (!rows.length) {
+      const p = document.createElement('p'); p.className = 'emptyMsg';
+      p.textContent = 'まだ動いた主体がありません。札に「動かした側」が付くと、ここに並びます。';
+      body.appendChild(p); return;
+    }
+    const shown = worldState.boardAll ? rows.slice(0, WORLD_BOARD_MAX) : rows.slice(0, WORLD_BOARD_FOLD);
+
+    const head = document.createElement('div');
+    head.className = 'worldSectionHead';
+    const l = document.createElement('span'); l.textContent = '動いている主体';
+    const leg = document.createElement('button');
+    leg.type = 'button'; leg.className = 'linkLikeBtn wbLegend';
+    const open = worldBoardLegendOpen();
+    leg.textContent = open ? '述＝述べた理由がある／推＝推定がある ▾' : '凡例 ▸';
+    leg.addEventListener('click', () => {
+      try { localStorage.setItem(WORLD_BOARD_LEGEND_KEY, open ? '0' : '1'); } catch (e) {}
+      renderWorldMain();
+    });
+    head.appendChild(l); head.appendChild(leg);
+    body.appendChild(head);
+
+    shown.forEach((r) => {
+      const row = document.createElement('button');
+      row.type = 'button'; row.className = 'worldBoardRow';
+      const n = document.createElement('span'); n.className = 'wbName'; n.textContent = r.actor.name;
+      const d = document.createElement('span'); d.className = 'wbDid'; d.textContent = r.did || (r.partial ? '…' : '');
+      const meta = document.createElement('span'); meta.className = 'wbMeta';
+      meta.textContent = worldShortDate(r.date) + '　' + r.count + '件';
+      const mk = document.createElement('span');
+      // 述べずに動いている主体が、探さずに見えるようにする。
+      // 色（琥珀）だけだと「述推」と並んだとき弱いので、中黒で位置もずらす。
+      const onlyRead = r.read && !r.said;
+      mk.className = 'wbMark' + (onlyRead ? ' onlyRead' : '');
+      mk.textContent = onlyRead ? '・推' : ((r.said ? '述' : '') + (r.read ? '推' : ''));
+      row.appendChild(n); row.appendChild(d); row.appendChild(meta); row.appendChild(mk);
+      row.addEventListener('click', () => { worldState.entryFrom = 'board'; openWorldEntry(r.actor.id); });
+      body.appendChild(row);
+    });
+
+    if (!worldState.boardAll && rows.length > WORLD_BOARD_FOLD) {
+      const more = document.createElement('button');
+      more.type = 'button'; more.className = 'linkLikeBtn';
+      more.textContent = 'もっと見る（あと ' + (Math.min(rows.length, WORLD_BOARD_MAX) - WORLD_BOARD_FOLD) + '件）';
+      more.addEventListener('click', () => { worldState.boardAll = true; renderWorldMain(); });
+      body.appendChild(more);
+    } else if (worldState.boardAll && rows.length > WORLD_BOARD_MAX) {
+      const p = document.createElement('p'); p.className = 'fieldNote';
+      p.textContent = 'ほか ' + (rows.length - WORLD_BOARD_MAX) + '件は「概念」タブの［アクター］で見られます。';
+      body.appendChild(p);
+    }
+
+    // 行動の文と述べた／推定は、読み込んだ月からしか取れない。裏で読んで埋める
+    const need = [...new Set(shown.filter((r) => r.partial).flatMap((r) => r.months))].filter((m) => !wd.loaded.has(m));
+    if (need.length) {
+      const p = document.createElement('p'); p.className = 'fieldNote';
+      p.textContent = need.length + 'か月ぶんを読み込み中…（回数と日付は正確です）';
+      body.appendChild(p);
+      ensureWorldMonths(need).then(() => { if (nav.screen === 'world' && worldState.view === 'main' && worldState.tab === 'board') renderWorldMain(); });
+    }
+  }
   function renderWorldActorTimeline(box, c) {
     box.innerHTML = '';
     // 端末に無い月を引く（id に eventDate が入っている）
@@ -16828,7 +16945,8 @@
     document.querySelectorAll('#worldTabRow .tagFilterBtn').forEach((b) => b.classList.toggle('selected', b.dataset.wtab === worldState.tab));
     const body = document.getElementById('worldTabBody');
     body.innerHTML = '';
-    if (worldState.tab === 'events') renderWorldEventsTab(body);
+    if (worldState.tab === 'board') renderWorldBoardTab(body);
+    else if (worldState.tab === 'events') renderWorldEventsTab(body);
     else if (worldState.tab === 'concepts') renderWorldConceptsTab(body);
     else renderWorldPredictionsTab(body);
   }
@@ -17106,6 +17224,7 @@
     try { wrap.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e) {}
   }
   function openWorldEntry(id) {
+    if (worldState.view !== 'concept') worldState.entryFrom = worldState.tab === 'board' ? 'board' : 'list';
     worldState.conceptId = id;
     worldState.view = 'concept';
     showScreen('world');
@@ -17542,7 +17661,12 @@
     worldState.view = 'main'; worldState.tab = 'events';
     renderWorld();
   });
-  document.getElementById('btnWorldConceptBack').addEventListener('click', () => { worldState.view = 'main'; renderWorld(); });
+  document.getElementById('btnWorldConceptBack').addEventListener('click', () => {
+    // 盤面から入ったのに一覧に落ちる、を防ぐ
+    worldState.view = 'main';
+    if (worldState.entryFrom === 'board') worldState.tab = 'board';
+    renderWorld();
+  });
   document.getElementById('btnWorldConceptRename').addEventListener('click', () => {
     const c = worldEntryById(worldState.conceptId);
     if (!c) return;
