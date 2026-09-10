@@ -1753,6 +1753,17 @@
         <button id="btnWorldRebuildDue" class="secondaryBtn">作り直す</button>
         <p class="fieldNote" id="worldRebuildStatus"></p>
       </div>
+      <!-- v19 段階1：一度きりの削除。上から順にしか押せない（1 保存庫 → 2 端末 → 3 捨てる） -->
+      <div class="field">
+        <span class="fieldLabel">世界のデータを捨てる</span>
+        <p class="fieldNote">札・概念・用語・問いを消します。主体・地層の値・ソースは残します。消す前に、保存庫とこの端末にバックアップを作ります。もう一方の端末は、次に開いたときに同じように消えます。</p>
+        <button id="btnWorldBackupMake" class="secondaryBtn">1 バックアップを作る</button>
+        <button id="btnWorldBackupSave" class="secondaryBtn" disabled>2 この端末に保存</button>
+        <button id="btnWorldReset" class="dangerBtn" disabled>3 捨てる</button>
+        <p class="fieldNote" id="worldResetStatus"></p>
+        <p class="fieldNote" id="worldEpochLine"></p>
+        <button id="btnAppReloadFresh" class="linkLikeBtn">最新の版を読み込む</button>
+      </div>
       <hr>
       <div class="field statsField">
         <h3>7. 統計</h3>
@@ -2727,6 +2738,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
+  const APP_BUILD = 'v19';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -12242,6 +12254,7 @@
     renderSourceKindList();
     renderWorldSources();
     renderWorldHidden();
+    renderWorldReset();
     document.getElementById('worldRebuildStatus').textContent = '';
     document.getElementById('worldCoocStatus').textContent = '';
     document.getElementById('morningQuoteHeadingInput').value = getMorningQuoteHeading();
@@ -14734,11 +14747,14 @@
     out.deletedIds = (Array.isArray(raw.deletedIds) ? raw.deletedIds : []).filter((t) => t && t.id).map((t) => ({ id: String(t.id), deletedAt: t.deletedAt || nowIso() }));
     return out;
   }
-  function emptyWorldIndex() { return { version: 1, updatedAt: '', months: {}, due: {}, concepts: { updatedAt: '', count: 0 }, terms: { updatedAt: '', count: 0 }, strata: { updatedAt: '', count: 0 }, actors: { updatedAt: '', count: 0 }, asks: { updatedAt: '', count: 0 }, sources: { updatedAt: '', count: 0 } }; }
+  function emptyWorldIndex() { return { version: 1, updatedAt: '', epoch: 0, resetAt: '', months: {}, due: {}, concepts: { updatedAt: '', count: 0 }, terms: { updatedAt: '', count: 0 }, strata: { updatedAt: '', count: 0 }, actors: { updatedAt: '', count: 0 }, asks: { updatedAt: '', count: 0 }, sources: { updatedAt: '', count: 0 } }; }
   function normalizeWorldIndex(raw) {
     const out = emptyWorldIndex();
     if (!raw || typeof raw !== 'object') return out;
     out.updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : '';
+    // v19: 世代番号。捨てるたびに1つ上がる。古い世代の端末は、同期の前に自分の世界データを捨てる
+    out.epoch = Number.isFinite(raw.epoch) && raw.epoch > 0 ? Math.floor(raw.epoch) : 0;
+    out.resetAt = typeof raw.resetAt === 'string' ? raw.resetAt : '';
     Object.entries(raw.months || {}).forEach(([m, v]) => {
       if (!/^\d{4}-\d{2}$/.test(m) || !v || typeof v !== 'object') return;
       out.months[m] = { updatedAt: typeof v.updatedAt === 'string' ? v.updatedAt : '', count: Number(v.count) || 0, unread: Number(v.unread) || 0 };
@@ -14855,8 +14871,12 @@
   function worldMonthDoc(m) {
     return { version: 1, month: m, updatedAt: nowIso(), events: worldEventsOfMonth(m), deletedIds: [...(wd.tombs.get(m) || new Map()).entries()].map(([id, deletedAt]) => ({ id, deletedAt })) };
   }
+  // v19: 捨てた日時より前にできたものは、読むときも合わせるときも捨てる。
+  // 古い版の端末が古い札を保存庫に書き戻しても、画面にも重複判定にも出ない。
+  function worldResetCut() { return (wd.index && wd.index.resetAt) || ''; }
+  function worldAfterReset(x) { const cut = worldResetCut(); return !cut || !x || (x.createdAt || '') >= cut; }
   function applyWorldMonthToMemory(m, doc) {
-    worldEvents = worldEvents.filter((e) => monthOfDate(e.eventDate) !== m).concat(doc.events);
+    worldEvents = worldEvents.filter((e) => monthOfDate(e.eventDate) !== m).concat(doc.events.filter(worldAfterReset));
     wd.tombs.set(m, new Map(doc.deletedIds.map((t) => [t.id, t.deletedAt])));
     wd.loaded.add(m);
   }
@@ -15024,7 +15044,12 @@
     return { events: [...out.values()], deleted: [...deleted.entries()].map(([id, deletedAt]) => ({ id, deletedAt })) };
   }
   function mergeWorldIndex(a, b) {
+    // v19: 世代が違うときは足し合わせない。新しい世代の側を丸ごと採る
+    // （古い世代の月や期限を混ぜると、捨てたはずの札が索引から戻ってくる）
+    const ea = a.epoch || 0, eb = b.epoch || 0;
+    if (ea !== eb) return JSON.parse(JSON.stringify(ea > eb ? a : b));
     const out = emptyWorldIndex();
+    out.epoch = ea; out.resetAt = a.resetAt > b.resetAt ? a.resetAt : b.resetAt;
     new Set([...Object.keys(a.months), ...Object.keys(b.months)]).forEach((m) => { const x = a.months[m], y = b.months[m]; out.months[m] = (x && y) ? ((y.updatedAt > x.updatedAt) ? y : x) : (x || y); });
     // due は日付ごとの id の和集合。片方を丸ごと勝たせると、別の端末で書かれた
     // 「まだ答え合わせしていない予測」が期限の一覧から静かに落ちる。読み込んだ
@@ -15107,6 +15132,8 @@
     const remote = await ghGetContents(GITHUB_REPO, worldMonthPath(m), token);
     let rdoc = emptyWorldMonthDoc(m);
     try { if (remote.text) rdoc = normalizeWorldMonthDoc(JSON.parse(remote.text), m); } catch (e) {}
+    const remoteSig = worldMonthSignature(rdoc);   // v19: 絞る前の相手の版
+    rdoc.events = rdoc.events.filter(worldAfterReset);   // v19
     const local = worldMonthDoc(m);
     const ms = mergeWorldSets(local.events, local.deletedIds, rdoc.events, rdoc.deletedIds);
     const merged = { version: 1, month: m, updatedAt: nowIso(), events: ms.events, deletedIds: ms.deleted };
@@ -15114,7 +15141,7 @@
     await persistWorldMonth(m);
     updateWorldIndexMonth(m);
     const isEmpty = !merged.events.length && !merged.deletedIds.length;
-    if ((!remote.text && !isEmpty) || (remote.text && worldMonthSignature(rdoc) !== worldMonthSignature(merged))) {
+    if ((!remote.text && !isEmpty) || (remote.text && remoteSig !== worldMonthSignature(merged))) {
       try { await ghPutJson(worldMonthPath(m), merged, remote.sha, `world ${m}: ${merged.events.length} events`); }
       catch (e) { if (e.status === 409 && !attempt) return syncWorldMonth(token, m, 1); throw e; }
     }
@@ -15133,7 +15160,8 @@
     const got = await ghGetContents(GITHUB_REPO, WORLD_CONCEPTS_PATH, token);
     let rdoc = emptyWorldConceptsDoc();
     try { if (got.text) rdoc = normalizeWorldConceptsDoc(JSON.parse(got.text)); } catch (e) {}
-    const before = worldConceptsSignature(rdoc);
+    const before = worldConceptsSignature(rdoc);   // v19: 絞る前の相手の版と比べる
+    rdoc.concepts = rdoc.concepts.filter(worldAfterReset);   // v19
     wd.concepts = mergeWorldConceptDocs(wd.concepts, rdoc);
     await persistWorldConcepts();
     if (worldConceptsSignature(wd.concepts) !== before) {
@@ -15147,7 +15175,8 @@
     const got = await ghGetContents(GITHUB_REPO, WORLD_TERMS_PATH, token);
     let rdoc = emptyWorldTermsDoc();
     try { if (got.text) rdoc = normalizeWorldTermsDoc(JSON.parse(got.text)); } catch (e) {}
-    const before = worldTermsSignature(rdoc);
+    const before = worldTermsSignature(rdoc);   // v19: 絞る前の相手の版と比べる
+    rdoc.terms = rdoc.terms.filter(worldAfterReset);   // v19
     wd.terms = mergeWorldTermDocs(wd.terms, rdoc);
     await persistWorldTerms();
     if (worldTermsSignature(wd.terms) !== before) {
@@ -15163,7 +15192,8 @@
     const got = await ghGetContents(GITHUB_REPO, WORLD_ASKS_PATH, token);
     let rdoc = emptyWorldAsksDoc();
     try { if (got.text) rdoc = normalizeWorldAsksDoc(JSON.parse(got.text)); } catch (e) {}
-    const before = worldAsksSignature(rdoc);
+    const before = worldAsksSignature(rdoc);   // v19: 絞る前の相手の版と比べる
+    rdoc.asks = rdoc.asks.filter(worldAfterReset);   // v19
     wd.asks = mergeWorldAskDocs(wd.asks, rdoc);
     await persistWorldAsks();
     if (worldAsksSignature(wd.asks) !== before) {
@@ -15222,6 +15252,9 @@
       const ri = await ghGetContents(GITHUB_REPO, WORLD_INDEX_PATH, token);
       let remoteIndex = emptyWorldIndex();
       try { if (ri.text) remoteIndex = normalizeWorldIndex(JSON.parse(ri.text)); } catch (e) {}
+      // v19: 別の端末で捨てられた。1.1 と同じ規則で自分の世界データを捨ててから合わせる。
+      // 日時は進めない（捨てた側が書いた新しい版が勝つように）
+      if ((remoteIndex.epoch || 0) > (wd.index.epoch || 0)) await worldResetLocal(remoteIndex.epoch, remoteIndex.resetAt, false);
       const conceptsChanged = remoteIndex.concepts.updatedAt > (wd.index.concepts.updatedAt || '');
       const termsChanged = remoteIndex.terms.updatedAt > (wd.index.terms.updatedAt || '');
       const strataChanged = remoteIndex.strata.updatedAt > (wd.index.strata.updatedAt || '');
@@ -15238,7 +15271,7 @@
       await syncWorldActors(token, actorsChanged);
       await syncWorldAsks(token, asksChanged);
       await syncWorldSources(token, sourcesChanged);
-      const sig = (ix) => JSON.stringify([Object.keys(ix.months).sort().map((m) => [m, ix.months[m].updatedAt, ix.months[m].unread]), ix.concepts.updatedAt, ix.terms.updatedAt, ix.strata.updatedAt, ix.actors.updatedAt, ix.asks.updatedAt, ix.sources.updatedAt, Object.keys(ix.due).sort()]);
+      const sig = (ix) => JSON.stringify([ix.epoch || 0, Object.keys(ix.months).sort().map((m) => [m, ix.months[m].updatedAt, ix.months[m].unread]), ix.concepts.updatedAt, ix.terms.updatedAt, ix.strata.updatedAt, ix.actors.updatedAt, ix.asks.updatedAt, ix.sources.updatedAt, Object.keys(ix.due).sort()]);
       if (sig(wd.index) !== sig(remoteIndex)) {
         try { await ghPutJson(WORLD_INDEX_PATH, wd.index, ri.sha, 'world index'); }
         catch (e) {
@@ -19311,6 +19344,194 @@
     }
   }
 
+  // ---- 世界のデータを捨てる (v19 段階1) ---------------------------------------
+  // 一度きりの操作。バックアップを保存庫と端末の2つに取ってから消す。
+  // 残すのは主体（名前・別名・種類・ふだん欲しがるもの）・地層の値・ソース。
+  const worldResetState = { backup: null, backupName: '', savedToDevice: false, busy: false, inProgress: null };
+
+  // 主体は残す。捨てる札を指している id と「最後に出た日」だけ空にする
+  function worldClearActorLinks(a, bump) {
+    a.eventIds = []; a.firstEventId = ''; a.lastUsedAt = ''; a.links = [];
+    if (bump) a.updatedAt = nowIso();
+  }
+  // 地層の値は1件も消さない。札から来た値だけ、札へのつながりを外す
+  function worldUnlinkCardLevels(s, bump) {
+    let n = 0;
+    s.levels.forEach((l) => { if (l.via === 'card' && l.eventId) { l.eventId = ''; n++; } });
+    if (n && bump) s.updatedAt = nowIso();
+    return n;
+  }
+  // bump=true は捨てた側（その版が勝つように日時を進める）。
+  // bump=false は、別の端末で捨てられたのを受けた側（日時を進めない）。
+  async function worldResetLocal(epoch, resetAt, bump) {
+    const counts = { events: worldEvents.length, concepts: wd.concepts.concepts.length, terms: wd.terms.terms.length, asks: wd.asks.asks.length };
+    const iso = nowIso();
+    worldEvents = [];
+    wd.tombs = new Map(); wd.loaded = new Set(); wd.dirty = new Set(); wd.stamps = {};
+    try { for (const k of await kvKeys('world:')) await kvDel(k); } catch (e) {}
+    liveWorldMonths().forEach((m) => applyWorldMonthToMemory(m, emptyWorldMonthDoc(m)));
+    wd.concepts = emptyWorldConceptsDoc(); wd.terms = emptyWorldTermsDoc(); wd.asks = emptyWorldAsksDoc();
+    wd.actors.actors.forEach((a) => worldClearActorLinks(a, bump));
+    wd.strata.strata.forEach((s) => worldUnlinkCardLevels(s, bump));
+    wd.index = emptyWorldIndex();
+    wd.index.epoch = epoch; wd.index.resetAt = resetAt; wd.index.updatedAt = iso;
+    if (bump) {
+      // 捨てた側：器ごとに新しい日付を付けて、相手の古い版より勝たせる
+      await persistWorldConcepts(); await persistWorldTerms(); await persistWorldAsks();
+      await persistWorldActors(); await persistWorldStrata();
+      ['concepts', 'terms', 'asks', 'actors', 'strata'].forEach((k) => {
+        const doc = wd[k];
+        wd.index[k] = { updatedAt: doc.updatedAt, count: (doc[k] || []).length };
+      });
+      wd.index.sources = { updatedAt: wd.sources.updatedAt, count: wd.sources.sources.length };
+    } else {
+      // 受けた側：日時は進めずに端末へ書く。器の日付は空にして、次の同期で相手の版を読みに行かせる
+      await kvSet('worldConcepts', JSON.stringify(wd.concepts)); await kvSet('worldTerms', JSON.stringify(wd.terms));
+      await kvSet('worldAsks', JSON.stringify(wd.asks)); await kvSet('worldActors', JSON.stringify(wd.actors));
+      await kvSet('worldStrata', JSON.stringify(wd.strata));
+    }
+    await persistWorldIndex(); await persistWorldDirty(); await persistWorldStamps();
+    worldState.cards = null; worldState.lastBatch = null; worldState.candidates = []; worldState.view = 'main';
+    return counts;
+  }
+
+  // 保存庫と端末に残っている月を全部。index に載っている月と、端末の月の和
+  async function worldAllKnownMonths() {
+    const ms = new Set(Object.keys((wd.index && wd.index.months) || {}));
+    try { (await kvKeys('world:')).forEach((k) => { const m = k.slice(6); if (/^\d{4}-\d{2}$/.test(m)) ms.add(m); }); } catch (e) {}
+    liveWorldMonths().forEach((m) => ms.add(m));
+    return [...ms].sort();
+  }
+  function worldBackupStamp() {
+    const d = new Date();
+    return d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+  }
+  // 1：全部の月を保存庫から読み直し、端末の分と合わせてから、保存庫に _backup を書く。
+  // 月が1つでも読めなければ失敗（何も消さない）
+  async function worldBackupMake() {
+    const token = getGhToken();
+    if (!token || !navigator.onLine) throw new Error('保存庫に繋がりません（トークンか通信を確かめてください）');
+    const months = await worldAllKnownMonths();
+    const failed = [];
+    const docs = {};
+    for (const m of months) {
+      let remote = null;
+      try { remote = await ghGetContents(GITHUB_REPO, worldMonthPath(m), token); }
+      catch (e) { failed.push(m); continue; }
+      let rdoc = emptyWorldMonthDoc(m);
+      try { if (remote.text) rdoc = normalizeWorldMonthDoc(JSON.parse(remote.text), m); }
+      catch (e) { failed.push(m); continue; }
+      let ldoc = emptyWorldMonthDoc(m);
+      try { const raw = await kvGet('world:' + m); if (raw) ldoc = normalizeWorldMonthDoc(JSON.parse(raw), m); } catch (e) {}
+      const ms = mergeWorldSets(ldoc.events, ldoc.deletedIds, rdoc.events, rdoc.deletedIds);
+      docs[m] = { version: 1, month: m, events: ms.events, deletedIds: ms.deleted, sha: remote.sha || null };
+    }
+    if (failed.length) {
+      const err = new Error('読めなかった月：' + failed.join('、') + '。何も消していません。');
+      err.months = failed;
+      throw err;
+    }
+    const body = {
+      version: 1, kind: 'world-backup', createdAt: nowIso(), build: APP_BUILD,
+      epoch: (wd.index && wd.index.epoch) || 0,
+      index: wd.index,
+      months: Object.fromEntries(Object.entries(docs).map(([m, d]) => [m, { events: d.events, deletedIds: d.deletedIds }])),
+      concepts: wd.concepts, terms: wd.terms, asks: wd.asks, actors: wd.actors, strata: wd.strata, sources: wd.sources,
+    };
+    // 同名があれば _2, _3 …
+    const stamp = worldBackupStamp();
+    let name = '', n = 1;
+    for (;;) {
+      name = 'world/_backup_' + stamp + (n > 1 ? '_' + n : '') + '.json';
+      const got = await ghGetContents(GITHUB_REPO, name, token);
+      if (!got.text) break;
+      n++;
+      if (n > 20) throw new Error('バックアップの名前が決まりませんでした');
+    }
+    await ghPutJson(name, body, null, 'world backup before reset');
+    return { body, name, months: Object.keys(docs), shas: Object.fromEntries(Object.entries(docs).map(([m, d]) => [m, d.sha])) };
+  }
+  // 2：押した瞬間にダウンロードするだけ（iPhone で止められないように、待ちを挟まない）
+  function worldBackupDownload() {
+    const b = worldResetState.backup;
+    if (!b) throw new Error('先に 1 を押してください');
+    const blob = new Blob([JSON.stringify(b.body, null, 1)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'kotoba_world_backup_' + worldBackupStamp() + '.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
+  // 3：世代を上げた index を先に書く（途中で止まっても、相手は作り前の札を読まない）→
+  // 器を上書き → 月を空にする
+  async function worldResetNow() {
+    const b = worldResetState.backup;
+    if (!b || !worldResetState.savedToDevice) throw new Error('1 と 2 が済んでいません');
+    const token = getGhToken();
+    if (!token || !navigator.onLine) throw new Error('保存庫に繋がりません');
+    wd.busy = true;
+    const step = { at: '' };
+    try {
+      step.at = '世代番号';
+      const ri = await ghGetContents(GITHUB_REPO, WORLD_INDEX_PATH, token);
+      // 途中で止まったあとの2回目は、世代も日時も上げ直さない。上げ直すと、
+      // 1回目と2回目のあいだに取り込んだ札が「作り前」扱いになって見えなくなる
+      let epoch, counts;
+      if (worldResetState.inProgress) {
+        ({ epoch, counts } = worldResetState.inProgress);
+      } else {
+        let remoteIndex = emptyWorldIndex();
+        try { if (ri.text) remoteIndex = normalizeWorldIndex(JSON.parse(ri.text)); } catch (e) {}
+        epoch = Math.max(remoteIndex.epoch || 0, (wd.index && wd.index.epoch) || 0) + 1;
+        counts = await worldResetLocal(epoch, nowIso(), true);
+        worldResetState.inProgress = { epoch, counts };
+      }
+      await ghPutJson(WORLD_INDEX_PATH, wd.index, ri.sha, 'world reset: epoch ' + epoch);
+
+      const put = async (path, doc, label) => {
+        step.at = label;
+        const got = await ghGetContents(GITHUB_REPO, path, token);
+        await ghPutJson(path, doc, got.sha, 'world reset: ' + label);
+      };
+      await put(WORLD_CONCEPTS_PATH, wd.concepts, '概念');
+      await put(WORLD_TERMS_PATH, wd.terms, '用語');
+      await put(WORLD_ASKS_PATH, wd.asks, '問い');
+      await put(WORLD_ACTORS_PATH, wd.actors, '主体');
+      await put(WORLD_STRATA_PATH, wd.strata, '地層');
+      for (const m of b.months) {
+        step.at = '月 ' + m;
+        const got = await ghGetContents(GITHUB_REPO, worldMonthPath(m), token);
+        if (!got.text) continue;   // 保存庫に無い月は作らない
+        await ghPutJson(worldMonthPath(m), emptyWorldMonthDoc(m), got.sha, 'world reset ' + m);
+      }
+      worldResetState.backup = null; worldResetState.savedToDevice = false; worldResetState.inProgress = null;
+      return { epoch, counts };
+    } catch (e) {
+      const err = new Error('途中で止まりました（' + step.at + ' を書けませんでした：' + (e && e.message ? e.message : e) + '）。もう一度 3 を押すと続きをやります。');
+      err.partial = true;
+      throw err;
+    } finally {
+      wd.busy = false;
+    }
+  }
+  function renderWorldReset() {
+    const make = document.getElementById('btnWorldBackupMake');
+    if (!make) return;
+    const save = document.getElementById('btnWorldBackupSave');
+    const reset = document.getElementById('btnWorldReset');
+    const st = document.getElementById('worldResetStatus');
+    const online = !!getGhToken() && navigator.onLine;
+    make.disabled = !online || worldResetState.busy;
+    save.disabled = !worldResetState.backup || worldResetState.busy;
+    reset.disabled = !worldResetState.backup || !worldResetState.savedToDevice || worldResetState.busy;
+    if (!online && !st.textContent) st.textContent = '保存庫に繋がっていないので押せません（設定のトークンと通信を確かめてください）。';
+    document.getElementById('worldEpochLine').textContent =
+      '版 ' + APP_BUILD + ' ・ 世界の世代 ' + ((wd.index && wd.index.epoch) || 0);
+  }
+
   // ---- つなぎ --------------------------------------------------------------
   document.getElementById('btnOpenWorld').addEventListener('click', openWorld);
   document.getElementById('backFromWorld').addEventListener('click', () => {
@@ -19528,6 +19749,55 @@
     renderWorldSources();
   });
   document.getElementById('btnWorldRebuildDue').addEventListener('click', worldRebuildDue);
+  // v19 段階1
+  document.getElementById('btnWorldBackupMake').addEventListener('click', async () => {
+    const st = document.getElementById('worldResetStatus');
+    worldResetState.busy = true; worldResetState.backup = null; worldResetState.savedToDevice = false;
+    st.textContent = '全部の月を保存庫から読み直しています…';
+    renderWorldReset();
+    try {
+      const b = await worldBackupMake();
+      worldResetState.backup = b;
+      st.textContent = '保存庫に ' + b.name + ' を書きました（' + b.months.length + 'か月）。次に 2 を押してください。';
+    } catch (e) {
+      st.textContent = 'バックアップを作れませんでした：' + (e && e.message ? e.message : e);
+    }
+    worldResetState.busy = false;
+    renderWorldReset();
+  });
+  document.getElementById('btnWorldBackupSave').addEventListener('click', () => {
+    const st = document.getElementById('worldResetStatus');
+    try {
+      worldBackupDownload();
+      worldResetState.savedToDevice = true;
+      st.textContent = 'この端末に保存しました（ダウンロードの中を確かめてください）。これで 3 が押せます。';
+    } catch (e) {
+      st.textContent = '端末に保存できませんでした：' + (e && e.message ? e.message : e);
+    }
+    renderWorldReset();
+  });
+  document.getElementById('btnWorldReset').addEventListener('click', async () => {
+    const st = document.getElementById('worldResetStatus');
+    if (!confirm('札・概念・用語・問いを消します。主体・地層の値・ソースは残します。元に戻すにはバックアップを手で戻す必要があります。捨てますか？')) return;
+    worldResetState.busy = true;
+    renderWorldReset();
+    st.textContent = '捨てています…';
+    try {
+      const r = await worldResetNow();
+      const c = r.counts;
+      st.textContent = '札 ' + c.events + '件・概念 ' + c.concepts + '件・用語 ' + c.terms + '件・問い ' + c.asks + '件を消しました。世代 ' + r.epoch;
+    } catch (e) {
+      st.textContent = e && e.message ? e.message : String(e);
+      // 途中で止まったときは、1・2 をやり直さずに 3 だけ押せるようにする
+      if (e && e.partial) { worldResetState.backup = worldResetState.backup || { months: await worldAllKnownMonths(), body: null, name: '' }; worldResetState.savedToDevice = true; }
+    }
+    worldResetState.busy = false;
+    renderWorldReset();
+  });
+  // 端末に覚えている古いページを使わず、新しい住所として読み込み直す
+  document.getElementById('btnAppReloadFresh').addEventListener('click', () => {
+    location.replace('./index.html?v=' + Date.now());
+  });
   document.getElementById('btnWorldRebuildCooc').addEventListener('click', worldRebuildCooc);
 
   // ---- 地層のつなぎ --------------------------------------------------------
