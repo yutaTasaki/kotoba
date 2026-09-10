@@ -1105,6 +1105,17 @@
   .levelRow .lvAt { color: var(--text-faint); font-size: 11px; }
   .worldMetaLine { font-size: 12px; color: var(--text-faint); line-height: 1.7; margin-top: 6px; }
   .worldMetaLine .wmKey { color: var(--text-dim); }
+  /* --- v11.5 再会・共通点・検索 ------------------------------------------ */
+  .worldRow .wTag.isStrong { color: var(--text-dim); border-color: var(--text-faint); }
+  .worldPremise .wpReunion { font-size: 11px; color: var(--text-faint); margin-top: 6px; line-height: 1.6; }
+  .worldConceptRow .linkLikeBtn { font-size: 11px; padding: 0; margin-left: 8px; }
+  /* 今日の共通点。無い日は出さないので、出たときだけ意味がある */
+  .worldCommon {
+    font-size: 12px; color: var(--text-dim); line-height: 1.6;
+    background: var(--bg-card); border-radius: 8px; padding: 6px 10px; margin-bottom: 8px;
+  }
+  .worldSearch { margin-bottom: 8px; }
+  .worldSearch input { margin: 0; }
   .sunkHead {
     font-size: 12px; color: var(--text-faint); margin-top: 14px; padding: 8px 0 4px;
     border-top: 1px solid var(--border); cursor: pointer;
@@ -1562,6 +1573,12 @@
         <p class="fieldNote">本文は残っています。押すと戻ります。非表示のあいだは一覧にも生成の既知一覧にも出ません。</p>
         <div id="worldHiddenList"></div>
         <p class="emptyMsg" id="worldHiddenEmpty" hidden>非表示にしたものはありません。</p>
+      </div>
+      <div class="field">
+        <span class="fieldLabel">概念のつながりを作り直す</span>
+        <p class="fieldNote">同じ札に一緒に出た概念どうしを繋ぎ直します。何度押しても同じ本数になります。手で外したつながりと、生成が指定したつながりは残ります。</p>
+        <button id="btnWorldRebuildCooc" class="secondaryBtn">作り直す</button>
+        <p class="fieldNote" id="worldCoocStatus"></p>
       </div>
       <div class="field">
         <span class="fieldLabel">予測の索引を作り直す</span>
@@ -11926,6 +11943,7 @@
     renderWorldSources();
     renderWorldHidden();
     document.getElementById('worldRebuildStatus').textContent = '';
+    document.getElementById('worldCoocStatus').textContent = '';
     document.getElementById('morningQuoteHeadingInput').value = getMorningQuoteHeading();
     document.getElementById('statNoteCount').textContent = data.notes.length;
     document.getElementById('statTagCount').textContent = allTags().length;
@@ -13918,6 +13936,14 @@
   const WORLD_STRATUM_DIRS      = ['up', 'down', 'flat'];
   const WORLD_STRATUM_DIR_LABEL = { up: '上向き', down: '下向き', flat: '横ばい' };
 
+  // v11.5 共起リンク: 同じ札に一緒に出た概念どうしを繋ぐ。生成の related は
+  // 「既知の概念しか指せない」ので構造的に育たない（1回目は既知が空、
+  // 2回目の概念どうしは絶対に繋がらない）。待っていても網はできない。
+  const WORLD_COOC_MIN           = 1;   // これ以上の共起を「つながり」として見せる
+  const WORLD_COOC_MAX_PER_EVENT = 5;   // 1つの札で繋ぐ概念の数（→ 最大10本）
+  const WORLD_REUNION_STRONG     = 3;   // この回数から、タグを少し濃くする
+  const WORLD_COOC_HINT_EVENTS   = 10;  // 出来事がこれ以上あってリンク0なら作り直しを促す
+
   const WORLD_INDEX_PATH    = 'world/index.json';
   const WORLD_CONCEPTS_PATH = 'world/concepts.json';
   const WORLD_TERMS_PATH    = 'world/terms.json';
@@ -14148,7 +14174,25 @@
       out.seenAt = typeof c.seenAt === 'string' ? c.seenAt : '';   // 一度開いた注は下線を薄くする
     } else {
       out.field = WORLD_FIELDS.includes(c.field) ? c.field : '';
-      out.related = (Array.isArray(c.related) ? c.related : []).map(String).slice(0, 40);
+      // v11.5: related（id の配列）は links に読み替える。データは消えない。
+      // count は「共起の回数」だけを数える。生成が指定しただけのリンクは 0。
+      const links = new Map();
+      (Array.isArray(c.related) ? c.related : []).forEach((id) => {
+        if (typeof id !== 'string' || !id) return;
+        links.set(id, { id, by: 'model', count: 0, eventIds: [], at: out.createdAt });
+      });
+      (Array.isArray(c.links) ? c.links : []).forEach((l) => {
+        if (!l || typeof l.id !== 'string' || !l.id) return;
+        links.set(l.id, {
+          id: l.id,
+          by: l.by === 'cooc' ? 'cooc' : 'model',
+          count: Math.max(0, Number(l.count) || 0),
+          eventIds: (Array.isArray(l.eventIds) ? l.eventIds : []).map(String).slice(-40),
+          at: typeof l.at === 'string' ? l.at : out.createdAt,
+        });
+      });
+      out.links = [...links.values()].slice(0, 80);
+      out.rejected = (Array.isArray(c.rejected) ? c.rejected : []).map(String).slice(0, 80);
       // v11 上位概念。手で付ける（生成には選ばせない）。2段までで、循環は作らせない
       if (typeof c.parent === 'string' && c.parent) out.parent = c.parent;
     }
@@ -14452,7 +14496,8 @@
       const x = mA.get(id), y = mB.get(id);
       const w = (x && y) ? (new Date(x.updatedAt) >= new Date(y.updatedAt) ? x : y) : (x || y);
       const copy = { ...w, aka: [...w.aka], eventIds: [...w.eventIds] };
-      if (w.related) copy.related = [...w.related];
+      if (w.links) copy.links = w.links.map((l) => ({ ...l, eventIds: [...l.eventIds] }));
+      if (w.rejected) copy.rejected = [...w.rejected];
       // seenAt は「この人が一度開いた」印なので、どちらかで立っていれば立てる
       if (x && y && field === 'terms') copy.seenAt = x.seenAt || y.seenAt || '';
       out[field].push(copy);
@@ -14755,10 +14800,54 @@
     c.lastUsedAt = nowIso();
     c.updatedAt = nowIso();
   }
-  function worldLinkConcepts(a, b) {
+  // ---- つながり (v11.5) ----------------------------------------------------
+  // by は作られたときの出所で、あとから変えない（'model' のまま count が
+  // 増えたものは「生成が指定し、実際に同じ札にも出た」リンク）。
+  function worldFindLink(c, id) { return (c.links || []).find((l) => l.id === id) || null; }
+  function worldLinkRejected(a, b) { return (a.rejected || []).includes(b.id) || (b.rejected || []).includes(a.id); }
+  function worldAddLink(a, b, by, eventId) {
     if (!a || !b || a.id === b.id) return;
-    if (!a.related.includes(b.id)) { a.related.push(b.id); a.updatedAt = nowIso(); }
-    if (!b.related.includes(a.id)) { b.related.push(a.id); b.updatedAt = nowIso(); }
+    if (worldLinkRejected(a, b)) return;   // 手で外したものは二度と繋がない
+    [[a, b], [b, a]].forEach(([x, y]) => {
+      let l = worldFindLink(x, y.id);
+      if (!l) { l = { id: y.id, by: by === 'cooc' ? 'cooc' : 'model', count: 0, eventIds: [], at: nowIso() }; x.links.push(l); }
+      if (by === 'cooc' && (!eventId || !l.eventIds.includes(eventId))) {
+        l.count++;
+        if (eventId) { l.eventIds.push(eventId); if (l.eventIds.length > 40) l.eventIds = l.eventIds.slice(-40); }
+      }
+      x.updatedAt = nowIso();
+    });
+  }
+  function worldLinkConcepts(a, b) { worldAddLink(a, b, 'model', ''); }
+  // 1つの札に一緒に出た概念どうしを総当たりで繋ぐ。ev.concepts は最大8件なので
+  // premise と合わせると1札から最大36本出る。上限を掛けて爆発させない。
+  function worldLinkCooc(list, eventId) {
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) worldAddLink(list[i], list[j], 'cooc', eventId);
+    }
+  }
+  // しきい値は表示にだけ効かせる（count は常に数えるので、上げ下げしても数え直しが要らない）
+  function worldVisibleLinks(c) {
+    return (c.links || [])
+      .filter((l) => (l.by === 'model' || l.count >= WORLD_COOC_MIN) && worldConceptById(l.id))
+      .slice().sort((a, b) => b.count - a.count);
+  }
+  function worldRejectLink(a, bId) {
+    const b = worldConceptById(bId);
+    a.links = (a.links || []).filter((l) => l.id !== bId);
+    if (!(a.rejected || []).includes(bId)) a.rejected.push(bId);
+    a.updatedAt = nowIso();
+    if (b) {
+      b.links = (b.links || []).filter((l) => l.id !== a.id);
+      if (!(b.rejected || []).includes(a.id)) b.rejected.push(a.id);
+      b.updatedAt = nowIso();
+    }
+    worldSaveConcepts();
+  }
+  function worldCoocLinkCount() {
+    let n = 0;
+    worldConcepts().forEach((c) => (c.links || []).forEach((l) => { if (l.by === 'cooc') n++; }));
+    return Math.round(n / 2);   // 双方向に持っているので半分が本数
   }
   // 近い名前の候補。正規化して完全一致するものは作る時点で吸収済みなので、
   // ここに出るのは「近いが同じではないかもしれない」ものだけ。
@@ -14809,7 +14898,16 @@
     keep.eventIds = [...new Set([...keep.eventIds, ...drop.eventIds])];
     if (!keep.line && drop.line) keep.line = drop.line;
     if (store.key === 'concept') {
-      keep.related = [...new Set([...keep.related, ...drop.related])].filter((x) => x !== keep.id && x !== drop.id);
+      // つながりは id ごとに足し合わせる（count は共起の回数なので合算でよい）
+      drop.links.forEach((l) => {
+        if (l.id === keep.id || l.id === drop.id) return;
+        const cur = worldFindLink(keep, l.id);
+        if (!cur) keep.links.push({ ...l, eventIds: [...l.eventIds] });
+        else { cur.count += l.count; cur.eventIds = [...new Set([...cur.eventIds, ...l.eventIds])].slice(-40); }
+      });
+      keep.links = keep.links.filter((l) => l.id !== drop.id && l.id !== keep.id);
+      keep.rejected = [...new Set([...keep.rejected, ...drop.rejected])].filter((x) => x !== keep.id && x !== drop.id);
+      keep.links = keep.links.filter((l) => !keep.rejected.includes(l.id));
       if (!keep.field && drop.field) keep.field = drop.field;
     } else if (!keep.kind && drop.kind) keep.kind = drop.kind;
     keep.updatedAt = nowIso();
@@ -14823,8 +14921,15 @@
           if (c.id === keep.id) delete c.parent; else c.parent = keep.id;
           c.updatedAt = nowIso();
         }
-        if (!c.related.includes(drop.id)) return;
-        c.related = [...new Set(c.related.filter((x) => x !== drop.id).concat(c.id === keep.id ? [] : [keep.id]))].filter((x) => x !== c.id);
+        if ((c.rejected || []).includes(drop.id)) c.rejected = [...new Set(c.rejected.filter((x) => x !== drop.id).concat(c.id === keep.id ? [] : [keep.id]))];
+        const l = worldFindLink(c, drop.id);
+        if (!l) return;
+        c.links = c.links.filter((x) => x.id !== drop.id);
+        if (c.id !== keep.id && !(c.rejected || []).includes(keep.id)) {
+          const cur = worldFindLink(c, keep.id);
+          if (!cur) c.links.push({ ...l, id: keep.id, eventIds: [...l.eventIds] });
+          else { cur.count += l.count; cur.eventIds = [...new Set([...cur.eventIds, ...l.eventIds])].slice(-40); }
+        }
         c.updatedAt = nowIso();
       });
       if (keep.parent === keep.id) delete keep.parent;
@@ -14921,17 +15026,24 @@
       return c;
     };
 
+    // v11.5: この札に一緒に出た概念。premise を先に取り、足りない分を
+    // ev.concepts の順で埋めて上限で切る（1札から36本出るのを防ぐ）。
+    const cooc = [];
+    const pushCooc = (c) => { if (c && cooc.length < WORLD_COOC_MAX_PER_EVENT && !cooc.some((x) => x.id === c.id)) cooc.push(c); };
+
     let center = null;
     if (ev.premise.kind === 'new') {
       center = touchConcept(ev.premise.name, ev.premise.line, ev.premise.aka, true);
+      pushCooc(center);
     } else {
       const a = touchConcept(ev.premise.a, '', [], true);
       const b = touchConcept(ev.premise.b, '', [], true);
-      worldLinkConcepts(a, b);
+      pushCooc(a); pushCooc(b);
       center = a;
     }
-    ev.concepts = ev.concepts.map((n) => { const c = touchConcept(n, '', [], false); return c ? c.name : n; });
+    ev.concepts = ev.concepts.map((n) => { const c = touchConcept(n, '', [], false); pushCooc(c); return c ? c.name : n; });
     ev.related = ev.related.map((n) => { const c = touchConcept(n, '', [], false); if (c) worldLinkConcepts(center, c); return c ? c.name : n; });
+    worldLinkCooc(cooc, ev.id);
     if (ev.premise.kind === 'new' && center) ev.premise.name = center.name;
     else if (ev.premise.kind === 'relation') {
       const a = worldFindIn(CS, ev.premise.a), b = worldFindIn(CS, ev.premise.b);
@@ -15369,7 +15481,7 @@
   }
 
   // ---- 画面 ----------------------------------------------------------------
-  const worldState = { view: 'main', tab: 'events', entryKind: 'concept', entrySort: 'count', conceptId: null, stratumId: null, strataAll: false, sunkOpen: false, openId: null, candidates: [], lastResult: '' };
+  const worldState = { view: 'main', tab: 'events', entryKind: 'concept', entrySort: 'count', conceptId: null, stratumId: null, strataAll: false, sunkOpen: false, openId: null, candidates: [], lastResult: '', search: { events: '', concept: '', term: '' }, searchFocus: '' };
 
   // 地層の1行。押すとその地層を開く。太くしない。
   function paintStratumLine(el, s) {
@@ -15402,6 +15514,21 @@
     if (ev.premise.kind === 'relation') return false;
     const c = worldFindConcept(ev.premise.name);
     return !!c && c.firstEventId === ev.id;
+  }
+  // v11.5 再会。体系ができるのは新しい札を読む瞬間なので、そこに差し込む。
+  // 一覧を見に行く行為にはこの瞬間がないから、一覧は見られない。
+  function worldReunionCount(ev) {
+    if (ev.premise.kind !== 'new') return 0;
+    const c = worldFindConcept(ev.premise.name);
+    return c ? worldConceptCount(c) : 0;
+  }
+  // この札を除いて、いちばん新しい「その概念が出た出来事」
+  function worldPrevEventOf(c, ev) {
+    if (!c) return null;
+    const list = worldLiveEvents()
+      .filter((e) => e.id !== ev.id && c.eventIds.includes(e.id))
+      .sort((a, b) => (a.eventDate > b.eventDate ? -1 : 1));
+    return list[0] || null;
   }
   function worldPredictionWritten(ev) { return !!(ev.prediction.pick || ev.prediction.text); }
   function worldPredictionSummary(ev) {
@@ -15563,8 +15690,11 @@
       const tagText = worldPremiseTagText(ev);
       if (tagText) {
         const t = document.createElement('span');
-        t.className = 'wTag' + (worldPremiseIsNew(ev) ? ' isNew' : '');
-        t.textContent = tagText;
+        // v11.5 再会：2回目以降は回数を足す。行は増やさず、文字が2つ増えるだけ。
+        // relation（A × B）は2つあるのでどちらの回数か分からず、出さない。
+        const n = ev.premise.kind === 'new' ? worldReunionCount(ev) : 0;
+        t.className = 'wTag' + (worldPremiseIsNew(ev) ? ' isNew' : '') + (n >= WORLD_REUNION_STRONG ? ' isStrong' : '');
+        t.textContent = tagText + (n >= 2 ? ' ' + n : '');
         right.appendChild(t);
       }
     };
@@ -15622,6 +15752,17 @@
     }
     if (ev.premise.kind === 'new') {
       const c = worldFindConcept(ev.premise.name);
+      // 再会の1行。カードは増やさず、既にある premise カードの中に足す。
+      // 初出のときは何も出さない（「1回目」と書いても情報がない）。
+      const n = worldReunionCount(ev);
+      if (n >= 2) {
+        const r = document.createElement('div');
+        r.className = 'wpReunion';
+        const prev = worldPrevEventOf(c, ev);
+        r.textContent = n + '回目'
+          + (prev ? ' ・ 前は ' + worldShortDate(prev.eventDate) + '「' + prev.fact + '」' : '');
+        pre.appendChild(r);
+      }
       if (c) {
         const open = document.createElement('button');
         open.type = 'button'; open.className = 'linkLikeBtn';
@@ -15909,13 +16050,58 @@
     const isTerm = worldStoreOf(c).key === 'term';
     const events = worldLiveEvents().filter((e) => c.eventIds.includes(e.id)).slice(-5).reverse();
     const related = isTerm ? '' :
-      '【つながる概念】' + (c.related.map((id) => { const o = worldConceptById(id); return o ? o.name : null; }).filter(Boolean).join(' ・ ') || '（なし）') + '\n\n';
+      '【つながる概念】' + (worldVisibleLinks(c).map((l) => { const o = worldConceptById(l.id); return o ? o.name : null; }).filter(Boolean).join(' ・ ') || '（なし）') + '\n\n';
     return '【' + (isTerm ? '用語' : '概念') + '】' + c.name + (c.aka.length ? '（' + c.aka.join(' / ') + '）' : '') + '\n'
       + (c.line || '（注がまだありません）') + '\n\n'
       + related
       + '【この' + (isTerm ? '用語' : '概念') + 'が出た出来事】\n'
       + (events.length ? events.map((e) => '- ' + worldShortDate(e.eventDate) + ' ' + e.fact).join('\n') : '（読み込んでいる月にはありません）') + '\n\n'
       + (ask ? worldAskTail(ask).replace(/^\n/, '') : 'この概念について、上の理解の次に来るものを教えてください。');
+  }
+
+  // 今日の3件の共通点。概念は premise が1件1つで薄く空振りするので、
+  // 13件しかない地層で判定する。無い日は何も言わない（毎日出る飾りにしない）。
+  function worldCommonStratumOf(list) {
+    const tally = new Map();
+    list.forEach((e) => worldStrataOf(e).forEach((s) => tally.set(s.id, (tally.get(s.id) || 0) + 1)));
+    let best = null;
+    tally.forEach((n, id) => { if (n >= 2 && (!best || n > best.n)) best = { id, n }; });
+    return best ? { stratum: worldStratumById(best.id), n: best.n } : null;
+  }
+  function worldCommonLineEl(list) {
+    const c = worldCommonStratumOf(list);
+    if (!c || !c.stratum) return null;
+    const el = document.createElement('div');
+    el.className = 'worldCommon';
+    el.textContent = '今日の' + list.length + '件のうち' + c.n + '件が「' + c.stratum.name + '」の上に乗っています';
+    return el;
+  }
+
+  // 検索。タブをまたぐ横断検索は作らない（探すときは何を探しているか分かっている）
+  function worldSearchKey(s) { return worldNormName(s); }
+  function worldSearchBoxEl(key, placeholder, onChange) {
+    const wrap = document.createElement('div');
+    wrap.className = 'worldSearch';
+    const input = document.createElement('input');
+    input.type = 'search';
+    input.placeholder = placeholder;
+    input.value = worldState.search[key] || '';
+    input.addEventListener('input', () => {
+      worldState.search[key] = input.value;
+      worldState.searchFocus = key;
+      onChange();   // タブごと描き直すので、下でフォーカスを戻す
+    });
+    input.addEventListener('blur', () => { if (worldState.searchFocus === key) worldState.searchFocus = ''; });
+    wrap.appendChild(input);
+    if (worldState.searchFocus === key) {
+      setTimeout(() => { try { input.focus(); const n = input.value.length; input.setSelectionRange(n, n); } catch (e) {} }, 0);
+    }
+    return wrap;
+  }
+  function worldMatches(q, parts) {
+    const k = worldSearchKey(q);
+    if (!k) return true;
+    return worldSearchKey(parts.filter(Boolean).join(' ')).includes(k);
   }
 
   function renderWorldList(container, list, emptyText) {
@@ -15937,7 +16123,11 @@
     // （毎日見せる）が果たせないため。重くなるなら定数を false に。
     if (WORLD_STRATUM_ON_COLLAPSED) paintStratumLine(document.getElementById('homeStratumLine'), worldTodayStratum());
     const today = worldReadOn(todayStr());
-    renderWorldList(document.getElementById('homeWorldList'), today, '');
+    const box = document.getElementById('homeWorldList');
+    renderWorldList(box, today, '');
+    // 共通点は展開の中だけ。畳んだ行は増やさない
+    const common = worldCommonLineEl(today);
+    if (common) box.insertBefore(common, box.firstChild);
     document.getElementById('homeWorldEmpty').hidden = !!today.length;
     document.getElementById('homeWorldEmpty').textContent = worldUnread().length
       ? '今日の分がまだ出ていません。もう一度この行を押してください。'
@@ -15976,7 +16166,10 @@
     paintStratumLine(document.getElementById('worldStratumToday'), worldTodayStratum());
 
     const todayList = worldReadOn(todayStr());
-    renderWorldList(document.getElementById('worldTodayList'), todayList, '');
+    const todayBox = document.getElementById('worldTodayList');
+    renderWorldList(todayBox, todayList, '');
+    const common = worldCommonLineEl(todayList);
+    if (common) todayBox.insertBefore(common, todayBox.firstChild);
     const unread = worldUnread().length;
     const emptyEl = document.getElementById('worldTodayEmpty');
     emptyEl.hidden = !!todayList.length;
@@ -15994,14 +16187,19 @@
     else renderWorldPredictionsTab(body);
   }
   function renderWorldEventsTab(body) {
+    body.appendChild(worldSearchBoxEl('events', '出来事を探す（本文・出典）', renderWorldMain));
+    const q = worldState.search.events;
     const byMonth = new Map();
-    worldLiveEvents().sort((a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0)).forEach((e) => {
+    worldLiveEvents()
+      .filter((e) => worldMatches(q, [e.fact, e.why, e.detail, e.source]))
+      .sort((a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0)).forEach((e) => {
       const m = monthOfDate(e.eventDate);
       if (!byMonth.has(m)) byMonth.set(m, []);
       byMonth.get(m).push(e);
     });
     if (!byMonth.size) {
-      const p = document.createElement('p'); p.className = 'emptyMsg'; p.textContent = 'まだ出来事がありません。';
+      const p = document.createElement('p'); p.className = 'emptyMsg';
+      p.textContent = q ? '見つかりませんでした（端末に読み込んでいる月だけを探しています）。' : 'まだ出来事がありません。';
       body.appendChild(p); return;
     }
     [...byMonth.keys()].sort().reverse().forEach((m) => {
@@ -16064,14 +16262,26 @@
       return row;
     };
 
-    const all = isTerm ? worldTerms() : worldConcepts();
+    body.appendChild(worldSearchBoxEl(isTerm ? 'term' : 'concept',
+      (isTerm ? '用語' : '概念') + 'を探す（名前・別名・注）', renderWorldMain));
+    const q = worldState.search[isTerm ? 'term' : 'concept'];
+
+    // つながりが1本も無いのに札が溜まっているときだけ、作り直しを促す
+    if (!isTerm && !q && worldLiveEvents().length >= WORLD_COOC_HINT_EVENTS && worldCoocLinkCount() === 0) {
+      const hint = document.createElement('p');
+      hint.className = 'fieldNote warn';
+      hint.textContent = 'つながりがまだ作られていません。設定 → 世界 →「概念のつながりを作り直す」で、これまでの札から繋ぎ直せます。';
+      body.appendChild(hint);
+    }
+
+    const all = (isTerm ? worldTerms() : worldConcepts()).filter((c) => worldMatches(q, [c.name, (c.aka || []).join(' '), c.line]));
     // 用語は、90日どの札にも出ていないものを下段に沈める。消さない。
     const live = isTerm ? all.filter((t) => !worldTermSunk(t)) : all;
     const sunk = isTerm ? all.filter(worldTermSunk) : [];
 
     if (!all.length) {
       const p = document.createElement('p'); p.className = 'emptyMsg';
-      p.textContent = isTerm ? 'まだ用語がありません。' : 'まだ概念がありません。';
+      p.textContent = q ? '見つかりませんでした。' : (isTerm ? 'まだ用語がありません。' : 'まだ概念がありません。');
       body.appendChild(p); return;
     }
 
@@ -16229,15 +16439,31 @@
     relField.hidden = isTerm;
     const rel = document.getElementById('worldConceptRelated');
     rel.innerHTML = '';
-    const related = isTerm ? [] : c.related.map(worldConceptById).filter(Boolean);
-    document.getElementById('worldConceptRelatedEmpty').hidden = !!related.length;
-    related.forEach((o) => {
+    const links = isTerm ? [] : worldVisibleLinks(c);
+    document.getElementById('worldConceptRelatedEmpty').hidden = !!links.length;
+    links.forEach((l) => {
+      const o = worldConceptById(l.id);
+      if (!o) return;
       const row = document.createElement('div');
       row.className = 'worldConceptRow';
-      const n = document.createElement('span'); n.textContent = o.name;
-      const cnt = document.createElement('span'); cnt.className = 'wcCount'; cnt.textContent = worldConceptCount(o) + '件';
-      row.appendChild(n); row.appendChild(cnt);
+      const n = document.createElement('span');
+      n.textContent = o.name;
+      const why = document.createElement('span');
+      why.className = 'wcCount';
+      // 出所を出す。あとで「生成の related は役に立ったのか」を見るため
+      why.textContent = (l.count ? '同じ札に' + l.count + '回' : '')
+        + (l.by === 'model' ? (l.count ? ' ・ 生成が指定' : '生成が指定') : '');
+      row.appendChild(n); row.appendChild(why);
       row.addEventListener('click', () => openWorldEntry(o.id));
+      const cut = document.createElement('button');
+      cut.type = 'button'; cut.className = 'linkLikeBtn'; cut.textContent = '外す';
+      cut.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!confirm('「' + o.name + '」とのつながりを外します。二度と自動では繋がりません。よろしいですか？')) return;
+        worldRejectLink(c, o.id);
+        renderWorldConcept();
+      });
+      row.appendChild(cut);
       rel.appendChild(row);
     });
 
@@ -16468,6 +16694,45 @@
     });
   }
 
+  // 共起のつながりを全部の月から数え直す。何度押しても同じ本数になる（冪等）。
+  // by:'model' と rejected は残す（生成の related が役に立ったかを後で見るため）。
+  async function worldRebuildCooc() {
+    const el = document.getElementById('worldCoocStatus');
+    el.textContent = '読み込み中…';
+    try {
+      const months = Object.keys((wd.index && wd.index.months) || {});
+      await ensureWorldMonths(months);
+      worldAllConcepts().forEach((c) => {
+        c.links = (c.links || []).filter((l) => l.by !== 'cooc');
+        c.links.forEach((l) => { l.count = 0; l.eventIds = []; });
+      });
+      const byName = (n) => worldFindIn(WORLD_STORES.concept, n);
+      let scanned = 0, added = 0;
+      worldEvents.forEach((ev) => {
+        const touched = [];
+        const push = (c) => { if (c && !touched.some((x) => x.id === c.id)) touched.push(c); };
+        if (ev.premise.kind === 'new') push(byName(ev.premise.name));
+        else { push(byName(ev.premise.a)); push(byName(ev.premise.b)); }
+        (ev.concepts || []).forEach((n) => push(byName(n)));
+        (ev.related || []).forEach((n) => push(byName(n)));
+        // 取り込んだ時点では、まだ存在しない概念は数えられなかった
+        // （ev.concepts も makeIfMissing=false）。ここで数え直す。
+        // 減らさない（読めなかった月の分を消さないため）。
+        touched.forEach((c) => { if (!c.eventIds.includes(ev.id)) { c.eventIds.push(ev.id); c.updatedAt = nowIso(); added++; } });
+        const cooc = touched.slice(0, WORLD_COOC_MAX_PER_EVENT);
+        if (cooc.length >= 2) { worldLinkCooc(cooc, ev.id); scanned++; }
+      });
+      worldSaveConcepts();
+      const n = worldCoocLinkCount();
+      el.textContent = months.length + 'か月・出来事 ' + worldEvents.length + '件を読み直し、'
+        + scanned + '件の札から つながり ' + n + '本を作りました。'
+        + (added ? '（出た回数も ' + added + '件ぶん数え直しました）' : '');
+      if (nav.screen === 'world') renderWorld();
+    } catch (e) {
+      el.textContent = '作り直せませんでした：' + (e && e.message ? e.message : e);
+    }
+  }
+
   // due（期限の索引）を全部の月から組み直す。索引が合わなくなったときの逃げ道。
   async function worldRebuildDue() {
     const el = document.getElementById('worldRebuildStatus');
@@ -16586,6 +16851,7 @@
     renderWorldSources();
   });
   document.getElementById('btnWorldRebuildDue').addEventListener('click', worldRebuildDue);
+  document.getElementById('btnWorldRebuildCooc').addEventListener('click', worldRebuildCooc);
 
   // ---- 地層のつなぎ --------------------------------------------------------
   document.getElementById('btnWorldStratumList').addEventListener('click', () => { worldState.strataAll = true; renderWorld(); });
