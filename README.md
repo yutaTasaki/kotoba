@@ -139,7 +139,7 @@ iPhone: 設定 → Safari → 詳細 → Web サイトデータ → yutatasaki.g
 | 筋トレ | `training` | `kotoba-data` の `training.json` | |
 | 瞑想 | `meditation:YYYY`（年ごと。全年を端末に持つ）、未同期の年 `meditationDirty`、最後に見た索引 `meditationStamps` | `kotoba-data` の `meditation/YYYY.json` と `meditation/index.json` | v8.0。最初から年ファイル |
 | 世界（出来事） | `world:YYYY-MM`（eventDate の月ごと。**全月は持たない**）、索引 `worldIndex`、未同期の月 `worldDirty`、最後に見た索引 `worldStamps` | `kotoba-data` の `world/YYYY-MM.json` と `world/index.json` | v10。端末に読むのは「今月・先月」＋「索引が未読ありと言う月」 |
-| 世界（概念・ソース） | `worldConcepts` / `worldSources`（どちらも全件） | `kotoba-data` の `world/concepts.json` と `world/sources.json` | 署名が変わったときだけ書く |
+| 世界（概念・用語・ソース） | `worldConcepts` / `worldTerms` / `worldSources`（どれも全件） | `kotoba-data` の `world/concepts.json`・`world/terms.json`・`world/sources.json` | 署名が変わったときだけ書く。用語（v10.5）は概念と**別ファイル**（混ぜると概念一覧が固有名詞で埋まる） |
 | 散歩 | `walk`（予備 `walkBackup`） | `walk10000-data` の `data.json` | walk10000 と同じ形 |
 | 設定（トークン・APIキー・モデル名・各種フラグ） | localStorage `kotoba_*` | 置かない | 端末ごと |
 
@@ -217,12 +217,18 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
   premise: { kind: 'new'|'relation',
              name/aka（new のとき。aka は別名・訳語・英語名）, a/b（relation のとき。既知の概念2つ）,
              line: 概念（または関係）の説明1文 },
+  terms: [用語名]（v10.5。名前だけ。注はストアから引く。取り込み時に正式名へ寄せる）,
+  fork: { text: 3ヶ月で決着する分かれ目, type: 'level'|'event' } | null（v10.5。思いつかなければ null）,
   detail: 数字・背景, source: 媒体と発表日, url: 出典（空の出来事は取り込まない）,
   concepts: [触れている概念名], related: [premise の概念とつながる概念名],
-  prediction: { text, days: 30|90|180, writtenDate, dueDate, setAt, history: [{text, at}],
+  prediction: { pick: ''|'up'|'down'|'flat'（v10.5。fork への3択）, text: 自由記述（任意）,
+                days: 30|90|180, writtenDate, dueDate, setAt, history: [{text, at, pick}],
                 result: ''|'hit'|'miss'|'hold', judgedAt, judgeNote },
+  hit?: 1, hitAt?（v10.5 ★。出来事そのものに付く。言葉側の picks とは別で、重みには使わない）,
+  slim?: 1（段階1.6 の痩せさせ。why と detail を落とした印）,
   batchId, order（その取り込みの中での並び）, createdAt（取り込んだ時刻）, updatedAt }
 ```
+`pick` と `text` のどちらかが入っていれば「予測が書かれた」。期限はどちらでも入る（3択だけ押して一言を書かないのが既定の使い方）。`history` は今の文が置かれてから 1 分以内の書き直しでは行を作らない（`setAt` で見る）。
 **索引 `world/index.json`**: `{ version:1, updatedAt, months: {'YYYY-MM': {updatedAt, count, unread}}, due: {'YYYY-MM-DD': [出来事id]}, concepts: {updatedAt,count}, sources: {updatedAt,count} }`
 `due` は期限の来た予測を全月走査せずに拾うためだけにある。id から月が引けるので、そこから該当月だけを読む。合わなくなったら設定の「予測の索引を作り直す」で組み直す。
 
@@ -234,12 +240,27 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
                createdAt, updatedAt, lastUsedAt（プロンプトに差し込む400件を切る順序） }],
   dismissedPairs: [{a, b, at}]（「別のもの」と答えた組。二度と聞かない） }
 ```
+**用語（`world/terms.json`。v10.5）**
+```
+{ version:1, updatedAt,
+  terms: [{ id:'wt_YYYYMMDD_連番', name, aka: [別名・訳語・英語名], line: 20〜40字の注,
+            kind: 'org'|'place'|'scheme'|'person'|'',
+            eventIds, firstEventId, createdAt, updatedAt, lastUsedAt,
+            seenAt（一度でも注を開いた時刻。開いた語は下線が薄くなる） }],
+  dismissedPairs: [{a, b, at}] }
+```
+**概念**は積み上がって網になるもの（外貨準備、コンディショナリティ、シーレーン）。**用語**は読むための注（IMF、EIA、エルサルバドル、EFF、人名）。生成プロンプトの premise にも「組織名・国名・略語・人名は概念ではない」と明記してある（書かないと IMF が概念として立つ）。同じ名前が両方に来たら**概念が本体**：用語として来た名前が概念にあれば用語を作らず、用語だった名前が premise として来たら用語を消して概念に吸わせる。
+
 **ソース（`world/sources.json`）**: `{ version:1, updatedAt, sources: [{id, name, url, field:'finance'|'geo'|'both', role:'primary'|'analysis', note, updatedAt}] }`
 `role` の `primary`（中銀・政府・国際機関・統計）は出来事・日付・数字の出所。`analysis`（シンクタンク）は why を書くための補助で、**それだけを根拠に出来事を立てさせない**。プロンプトでは2つの一覧を分けて差し込み、使い分けを明記してある。一度も保存されていないときだけ初期リスト22件が入る。
 
 **世界の作り**：生成はアプリの中でやらない（撮る v9.0 と同じ）。分野ごとに2本のプロンプト（金融・経済／地政学・政治）をコピーしてチャットに貼り、返ってきた JSON を貼り戻す。**取り込みは追記のみ**で、置き換えを一切しないので、読んだ出来事と書いた予測が取り込みで消える経路が無い。重複は `eventDate ±3日` の窓で `fact` のバイグラム類似（0.70）と URL 一致を見る（窓が月境を越えるので隣接月も読む）。`url` が空・日付が不正・未来の日付は落として、理由ごとに件数を出す。
 一覧は **fact の1行だけ**で、`why` と `premise` はタップの向こう、数字・出典・URL はさらにその奥。1日に出るのは3件（`WORLD_PER_DAY`）で、**朝のステップか「今日の3件をひらく」を押すまで1件も消費されない**。読まない日があってよく、14日を過ぎた未読は「古い」印が付いてまとめて捨てられる（自動では消さない）。
-概念の表記ゆれは、(1) 正規化（中黒・長音・空白・全角半角）して完全一致するものを取り込み時に自動で吸収、(2) 近い名前を候補として出して1タップで統合、(3) 概念一覧から手で名前を直す（**既にある名前にすると統合になる**。タグの名前変更と同じ）。**バイグラムは「イールドカーブ」と「利回り曲線」のように文字が重ならない言い換えを拾えない**ので、本命は生成に `aka`（別名・訳語・英語名）を書かせて突き合わせることと、手での統合。
+概念の表記ゆれは、(1) 正規化（中黒・長音・空白・全角半角）して完全一致するものを取り込み時に自動で吸収、(2) 近い名前を候補として出して1タップで統合、(3) 概念一覧から手で名前を直す（**既にある名前にすると統合になる**。タグの名前変更と同じ）。**バイグラムは「イールドカーブ」と「利回り曲線」のように文字が重ならない言い換えを拾えない**ので、本命は生成に `aka`（別名・訳語・英語名）を書かせて突き合わせることと、手での統合。引き当て・候補・統合・名前変更は概念と用語で1本のコード（`WORLD_STORES` にストアを渡す）。違うのは、統合のとき出来事側のどこを寄せるかだけ。用語の「片方が片方を含む」規則は最短4文字（概念は3）——`IMF` が `IMFC`（別組織）を拾う事故を避けるため。
+
+**用語の注の出し方（v10.5）**：`fact` には注を入れない（一覧の1行はタップ＝展開なので、語に指が当たったときだけ展開しない操作になる）。注が開くのは展開後の `why` と `detail` の中、および premise の下の「用語」のチップ行だけ。本文の照合は**その出来事の `terms` に載っている語だけ**を見て、最長一致・重なりなし／英数字の略語は前後が英数字でないときだけ／日本語で2文字以下は本文では当てない（チップ行からは開ける）／1語につき最初の1回だけ、で事故を避ける。既知の用語も生成に `name` だけは書かせる（書かせないと、覚えさせた語ほど下線が消える）。
+
+**「Claude に聞く」（v10.5）**：押すと4つの定型（やさしく説明／なぜ今なのか／日本にどう効くか／反対の見方は）が開き、素材を差し込んだ完成形がコピーされる。文面は `WORLD_ASK_PROMPTS` と `WORLD_ASK_COMMON`。**「反対の見方は」だけ既知の用語を渡す**（反論は前提を突くので、渡さないと既知の説明から始まる）。**「やさしく説明」は渡さない**（注を読んでも分からなかったときに押すボタンなので、既知として渡すと分からなかったものを飛ばされる）。概念・用語の詳細にも同じ仕組みで `WORLD_CONCEPT_ASK_PROMPTS` を置いてある。
 
 **月ファイル `journal/YYYY-MM.json`**: `{ version: 1, month, updatedAt, entries: [...], deletedIds: [] }`
 **索引 `journal/index.json`**: `{ version: 1, updatedAt, months: { 'YYYY-MM': { updatedAt, count, noteStats: { ノートid: { p: 届いた回数, h: ★の回数, q: 問いに使われた回数, last, lastHit } } } } }`

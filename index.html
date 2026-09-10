@@ -1041,6 +1041,33 @@
   .worldSourceRow .wsUrl { font-size: 11px; color: var(--text-faint); word-break: break-all; }
   .worldSourceRow .tagFilterRow { flex: 0 0 auto; }
   .worldSourceRow .tagFilterBtn { padding: 3px 7px; font-size: 11px; }
+
+  /* --- v10.5 用語の注 ---------------------------------------------------- */
+  /* 本文の中で押せる語。まだ注を開いていないものだけが目立つ（開いたら薄く
+     なる）。fact には出さない - 一覧の1行はタップ＝展開なので競合する。 */
+  .termChip {
+    background: none; border: 0; padding: 0; margin: 0; cursor: pointer;
+    font: inherit; color: var(--text);
+    border-bottom: 1px dashed var(--accent); line-height: inherit;
+  }
+  .termChip.seen { border-bottom-color: var(--text-faint); }
+  .worldTermRow { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; align-items: center; }
+  .worldTermRow .rowLabel { font-size: 11px; color: var(--text-faint); }
+  .termPill {
+    font-size: 12px; padding: 3px 9px; border-radius: 999px;
+    border: 1px solid var(--accent-dim); background: none; color: var(--text); cursor: pointer;
+  }
+  .termPill.seen { border-color: var(--border); color: var(--text-dim); }
+  .worldTermNote {
+    margin-top: 8px; padding: 10px 12px; background: var(--bg-card); border-radius: 10px;
+    font-size: 13px; line-height: 1.7;
+  }
+  .worldTermNote .wtName { color: var(--accent); }
+  .worldTermNote .wtKind { font-size: 10px; color: var(--text-faint); margin-left: 6px; }
+  .worldTermNote .wtEmpty { color: var(--text-faint); }
+  .worldAskRow { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .worldForkText { font-size: 13px; line-height: 1.6; color: var(--text-dim); margin-bottom: 6px; }
+  .hitBtn.worldHit { font-size: 14px; }
 </style>
 </head>
 <body>
@@ -1930,18 +1957,18 @@
       <h3 id="worldConceptName"></h3>
       <p class="fieldNote" id="worldConceptAka" hidden></p>
       <p id="worldConceptLine" style="line-height:1.8;"></p>
-      <div class="field">
+      <div class="field" id="worldConceptRelatedField">
         <span class="fieldLabel">つながる概念</span>
         <div id="worldConceptRelated"></div>
         <p class="emptyMsg" id="worldConceptRelatedEmpty" hidden>まだありません。</p>
       </div>
       <div class="field">
-        <span class="fieldLabel">この概念が出た出来事</span>
+        <span class="fieldLabel" id="worldConceptEventsLabel">この概念が出た出来事</span>
         <div id="worldConceptEvents"></div>
       </div>
       <div class="field">
+        <div class="medRow" id="worldConceptAskRow"></div>
         <div class="medRow">
-          <button type="button" id="btnWorldConceptCopy" class="tagFilterBtn">Claude に聞く</button>
           <button type="button" id="btnWorldConceptRename" class="tagFilterBtn">名前を直す・まとめる</button>
         </div>
         <p class="fieldNote" id="worldConceptStatus"></p>
@@ -2645,7 +2672,7 @@
   bootKV.medDocs = {};
   try { (await kvGetAllPrefix('meditation:')).forEach((v, k) => { bootKV.medDocs[k.slice(11)] = v; }); } catch (e) {}
   // v10 世界: 全月は読まない。今月・先月と、索引が「未読が残っている」と言う月だけ。
-  for (const k of ['worldIndex', 'worldDirty', 'worldStamps', 'worldConcepts', 'worldSources']) { try { bootKV[k] = await kvGet(k); } catch (e) { bootKV[k] = null; } }
+  for (const k of ['worldIndex', 'worldDirty', 'worldStamps', 'worldConcepts', 'worldTerms', 'worldSources']) { try { bootKV[k] = await kvGet(k); } catch (e) { bootKV[k] = null; } }
   bootKV.worldDocs = {};
   {
     let wix = null;
@@ -10375,7 +10402,8 @@
     {
       const read = worldEvents.filter((e) => inMonth(e.readDate));
       const wrote = worldEvents.filter((e) => inMonth(e.prediction.writtenDate));
-      document.getElementById('summaryWorld').textContent = `読んだ ${read.length}件 / 予測 ${wrote.length}件`;
+      const starred = worldEvents.filter((e) => e.hit && inMonth((e.hitAt || '').slice(0, 10)));
+      document.getElementById('summaryWorld').textContent = `読んだ ${read.length}件 / 予測 ${wrote.length}件 / ★ ${starred.length}件`;
     }
 
     // "届いた言葉" mirrors topMonthlyPickedNoteIds's own scope: morning +
@@ -13747,10 +13775,74 @@
   const WORLD_ROLES       = ['primary', 'analysis'];
   const WORLD_ROLE_LABEL  = { primary: '一次', analysis: '解釈' };
 
+  // v10.5 用語（terms）: 読むための注。概念（積み上がって網になるもの）とは
+  // 別ファイルに置く。1ファイル＋種別だと、どこか1か所の絞り忘れで概念一覧が
+  // 固有名詞で埋まる。
+  const WORLD_TERM_MIN_LEN      = 4;    // 用語の「片方が片方を含む」を使う最短の長さ（概念は3）
+  const WORLD_KNOWN_TERMS_MAX   = 600;  // プロンプトに差し込む既知用語の上限
+  const WORLD_TERM_LINE_MIN     = 20;   // 注の長さの目安（プロンプトに書く数字）
+  const WORLD_TERM_LINE_MAX     = 40;
+  const WORLD_TERM_BODY_MIN_LEN = 3;    // 本文中で当てにいく日本語の最短の長さ
+  const WORLD_TERM_KINDS      = ['org', 'place', 'scheme', 'person'];
+  const WORLD_TERM_KIND_LABEL = { org: '組織', place: '地名', scheme: '制度', person: '人物', '': 'その他' };
+  const WORLD_FORK_TYPES      = ['level', 'event'];
+  const WORLD_FORK_DAYS       = 90;     // fork が決着する時間軸（プロンプトに書く数字）
+  const WORLD_PICKS = ['up', 'down', 'flat'];
+  const WORLD_PICK_LABEL = {
+    level: { up: '上', down: '下', flat: '横ばい' },
+    event: { up: '起きる', down: '起きない', flat: 'どちらとも' },
+  };
+  const WORLD_PICK_MARK = { up: '↑', down: '↓', flat: '→' };
+  const WORLD_SORTS = ['count', 'kana', 'new'];
+  const WORLD_SORT_LABEL = { count: '回数順', kana: '五十音順', new: '新しい順' };
+
   const WORLD_INDEX_PATH    = 'world/index.json';
   const WORLD_CONCEPTS_PATH = 'world/concepts.json';
+  const WORLD_TERMS_PATH    = 'world/terms.json';
   const WORLD_SOURCES_PATH  = 'world/sources.json';
   const worldMonthPath = (m) => 'world/' + m + '.json';
+
+  // 「Claude に聞く」の定型。面倒の正体は質問文を考えることなので、素材の
+  // 組み立ては共通にして、ここには依頼文だけを置く。
+  const WORLD_ASK_COMMON =
+    '- web 検索を使ってよい。ただし出典のある事実と、推測・解釈をはっきり分けて書くこと。\n' +
+    '  推測を書くときは「ここからは推測」と明示する。\n' +
+    '- 見出しや箇条書きで飾らず、普通の文で書くこと。\n';
+  // terms: この依頼に「すでに知っている用語」を渡すか。
+  // 「やさしく説明」は注を読んでも分からなかったときに押すので、既知として
+  // 渡すと分からなかったものを飛ばして説明される。
+  const WORLD_ASK_PROMPTS = [
+    { key: 'plain', label: 'やさしく説明', terms: false, body:
+      'この出来事を、前提知識のない人に向けて説明してください。\n' +
+      '出てくる組織・国・制度・略語・人物は、名前を出した最初のところで一言ずつ添えてください。\n' +
+      '私はこの分野に詳しくありません。上の「前提」も、分かった気になっているだけかもしれません。\n' },
+    { key: 'why', label: 'なぜ今なのか', terms: false, body:
+      'なぜこれが今このタイミングで動いたのかを教えてください。\n' +
+      '誰が何を欲しがり、何を恐れ、何に縛られているかを書いてください。\n' +
+      '出来事の言い換えではなく、その裏で働いている力を知りたい。\n' +
+      'いつから続いている話で、次にどこを見ていれば分かるのかも書いてください。\n' },
+    { key: 'japan', label: '日本にどう効くか', terms: false, body:
+      'これが日本にどう効くかを教えてください。\n' +
+      '直接の波及と、何段か経由してから届く波及を分けて書いてください。\n' +
+      '国内の制度・産業・物価・為替のどこに、どれくらいの時間で出るのかを知りたい。\n' +
+      '効かないなら「効かない」と書いてください。無理につながりを作らないでください。\n' },
+    { key: 'against', label: '反対の見方は', terms: true, body:
+      '上の見立てを疑う立場からの反論を書いてください。\n' +
+      'この出来事の重要性そのものを疑う立場と、原因の見立てを疑う立場の両方を挙げてください。\n' +
+      '私の予測が書いてあるときは、それが外れるとしたらどの前提が崩れるときかを書いてください。\n' +
+      '私が既に知っていること（上に並べた用語）の説明はしないでください。\n' },
+  ];
+  const WORLD_CONCEPT_ASK_PROMPTS = [
+    { key: 'plain', label: 'やさしく説明', body:
+      'この概念を、前提知識のない人に向けて説明してください。\n' +
+      'まず一言で言い切ってから、なぜそれが問題になるのかを書いてください。\n' +
+      '身近な例を1つだけ添えてください。たとえ話は1つまでにしてください。\n' },
+    { key: 'deepen', label: 'この概念を厚くする', body:
+      'この概念について、上の理解の次に来るものを教えてください。\n' +
+      'よくある誤解を1つ、例外や効かない場面を1つ、\n' +
+      'そしてこの概念とセットで覚えるべき概念を2つまで挙げてください。\n' +
+      '入門の説明の繰り返しは要りません。\n' },
+  ];
 
   // 一度も保存されていないときだけ入れる初期値。一度でも編集したら入れ直さない。
   // URL は実測（apex が HTTPS を返さないものは www. を付けてある）。
@@ -13799,10 +13891,19 @@
   }
   // 予測は段階1で最終形にしてある（段階2で移行しない）。
   // setAt = 今の文が置かれた時刻。1分以内の書き直しは history に行を作らない。
+  // v10.5: 生成が書く「分かれ目」。3ヶ月で決着しないものは書かせない。
+  // 思いつかなければ null（無理に作らせると「原油価格は変動するか」が並ぶ）。
+  function normalizeWorldFork(f) {
+    if (!f || typeof f !== 'object') return null;
+    const text = worldStr(f.text, 200);
+    if (!text) return null;
+    return { text, type: WORLD_FORK_TYPES.includes(f.type) ? f.type : 'event' };
+  }
   function normalizeWorldPrediction(p) {
     const src = (p && typeof p === 'object') ? p : {};
     const days = WORLD_PREDICT_CHOICES.includes(Number(src.days)) ? Number(src.days) : WORLD_PREDICT_DAYS;
     return {
+      pick: WORLD_PICKS.includes(src.pick) ? src.pick : '',   // v10.5: 3択。白紙の自由記述は書かれない
       text: worldStr(src.text, 600),
       days,
       writtenDate: isDateStr(src.writtenDate) ? src.writtenDate : '',
@@ -13810,7 +13911,7 @@
       setAt: typeof src.setAt === 'string' ? src.setAt : '',
       history: (Array.isArray(src.history) ? src.history : [])
         .filter((h) => h && typeof h.text === 'string' && h.text.trim())
-        .map((h) => ({ text: h.text.slice(0, 600), at: typeof h.at === 'string' ? h.at : '' })).slice(-40),
+        .map((h) => ({ text: h.text.slice(0, 600), at: typeof h.at === 'string' ? h.at : '', pick: WORLD_PICKS.includes(h.pick) ? h.pick : '' })).slice(-40),
       result: ['hit', 'miss', 'hold'].includes(src.result) ? src.result : '',
       judgedAt: typeof src.judgedAt === 'string' ? src.judgedAt : '',
       judgeNote: worldStr(src.judgeNote, 600),
@@ -13818,7 +13919,7 @@
   }
   function normalizeWorldEvent(e) {
     if (!e || !e.id || !isDateStr(e.eventDate)) return null;
-    return {
+    const out = {
       id: String(e.id),
       eventDate: e.eventDate,
       readDate: isDateStr(e.readDate) ? e.readDate : '',
@@ -13826,6 +13927,9 @@
       fact: worldStr(e.fact, WORLD_FACT_MAX),
       why: worldStr(e.why, 200),
       premise: normalizeWorldPremise(e.premise),
+      // v10.5: 名前だけ。line はストアから引く（複写すると統合のあと古い注が残る）
+      terms: (Array.isArray(e.terms) ? e.terms : []).map((x) => worldStr(typeof x === 'string' ? x : (x && x.name), 80)).filter(Boolean).slice(0, 12),
+      fork: normalizeWorldFork(e.fork),
       detail: worldStr(e.detail, 600),
       source: worldStr(e.source, 120),
       url: typeof e.url === 'string' ? (shootSafeUrl(e.url.trim()) || '') : '',
@@ -13837,23 +13941,36 @@
       createdAt: e.createdAt || nowIso(),
       updatedAt: e.updatedAt || e.createdAt || nowIso(),
     };
+    // v10.5 ★: 出来事そのものに付く。言葉側の picks とは別で、重みには使わない
+    if (e.hit) { out.hit = 1; out.hitAt = typeof e.hitAt === 'string' ? e.hitAt : ''; }
+    if (e.slim) out.slim = 1;   // 段階1.6（痩せさせ）。読み込みだけ先に通しておく
+    return out;
   }
-  function normalizeWorldConcept(c) {
+  // 概念と用語は同じ形。ストアを引数で受け取れるように、正規化も共通にする。
+  function normalizeWorldEntry(c, isTerm) {
     if (!c || !c.id || !c.name) return null;
-    return {
+    const out = {
       id: String(c.id),
       name: worldStr(c.name, 80),
       aka: (Array.isArray(c.aka) ? c.aka : []).map((x) => worldStr(x, 80)).filter(Boolean).slice(0, 12),
       line: worldStr(c.line, 200),
-      field: WORLD_FIELDS.includes(c.field) ? c.field : '',
       eventIds: (Array.isArray(c.eventIds) ? c.eventIds : []).map(String).slice(0, 500),
-      related: (Array.isArray(c.related) ? c.related : []).map(String).slice(0, 40),
       firstEventId: typeof c.firstEventId === 'string' ? c.firstEventId : '',
       createdAt: c.createdAt || nowIso(),
       updatedAt: c.updatedAt || c.createdAt || nowIso(),
       lastUsedAt: c.lastUsedAt || c.updatedAt || c.createdAt || nowIso(),
     };
+    if (isTerm) {
+      out.kind = WORLD_TERM_KINDS.includes(c.kind) ? c.kind : '';
+      out.seenAt = typeof c.seenAt === 'string' ? c.seenAt : '';   // 一度開いた注は下線を薄くする
+    } else {
+      out.field = WORLD_FIELDS.includes(c.field) ? c.field : '';
+      out.related = (Array.isArray(c.related) ? c.related : []).map(String).slice(0, 40);
+    }
+    return out;
   }
+  function normalizeWorldConcept(c) { return normalizeWorldEntry(c, false); }
+  function normalizeWorldTerm(c) { return normalizeWorldEntry(c, true); }
   function normalizeWorldSource(s) {
     if (!s || !s.id || !s.name) return null;
     return {
@@ -13875,7 +13992,7 @@
     out.deletedIds = (Array.isArray(raw.deletedIds) ? raw.deletedIds : []).filter((t) => t && t.id).map((t) => ({ id: String(t.id), deletedAt: t.deletedAt || nowIso() }));
     return out;
   }
-  function emptyWorldIndex() { return { version: 1, updatedAt: '', months: {}, due: {}, concepts: { updatedAt: '', count: 0 }, sources: { updatedAt: '', count: 0 } }; }
+  function emptyWorldIndex() { return { version: 1, updatedAt: '', months: {}, due: {}, concepts: { updatedAt: '', count: 0 }, terms: { updatedAt: '', count: 0 }, sources: { updatedAt: '', count: 0 } }; }
   function normalizeWorldIndex(raw) {
     const out = emptyWorldIndex();
     if (!raw || typeof raw !== 'object') return out;
@@ -13885,20 +14002,32 @@
       out.months[m] = { updatedAt: typeof v.updatedAt === 'string' ? v.updatedAt : '', count: Number(v.count) || 0, unread: Number(v.unread) || 0 };
     });
     Object.entries(raw.due || {}).forEach(([d, ids]) => { if (isDateStr(d) && Array.isArray(ids)) out.due[d] = ids.map(String).slice(0, 50); });
-    ['concepts', 'sources'].forEach((k) => {
+    ['concepts', 'terms', 'sources'].forEach((k) => {
       const v = raw[k];
       if (v && typeof v === 'object') out[k] = { updatedAt: typeof v.updatedAt === 'string' ? v.updatedAt : '', count: Number(v.count) || 0 };
     });
     return out;
   }
   function emptyWorldConceptsDoc() { return { version: 1, updatedAt: '', concepts: [], dismissedPairs: [] }; }
+  function emptyWorldTermsDoc() { return { version: 1, updatedAt: '', terms: [], dismissedPairs: [] }; }
+  function normalizeWorldDismissed(raw) {
+    return (Array.isArray(raw) ? raw : [])
+      .filter((p) => p && p.a && p.b).map((p) => ({ a: String(p.a), b: String(p.b), at: p.at || nowIso() })).slice(0, 2000);
+  }
   function normalizeWorldConceptsDoc(raw) {
     const out = emptyWorldConceptsDoc();
     if (!raw || typeof raw !== 'object') return out;
     out.updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : '';
     out.concepts = (Array.isArray(raw.concepts) ? raw.concepts : []).map(normalizeWorldConcept).filter(Boolean);
-    out.dismissedPairs = (Array.isArray(raw.dismissedPairs) ? raw.dismissedPairs : [])
-      .filter((p) => p && p.a && p.b).map((p) => ({ a: String(p.a), b: String(p.b), at: p.at || nowIso() })).slice(0, 2000);
+    out.dismissedPairs = normalizeWorldDismissed(raw.dismissedPairs);
+    return out;
+  }
+  function normalizeWorldTermsDoc(raw) {
+    const out = emptyWorldTermsDoc();
+    if (!raw || typeof raw !== 'object') return out;
+    out.updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : '';
+    out.terms = (Array.isArray(raw.terms) ? raw.terms : []).map(normalizeWorldTerm).filter(Boolean);
+    out.dismissedPairs = normalizeWorldDismissed(raw.dismissedPairs);
     return out;
   }
   function emptyWorldSourcesDoc() { return { version: 1, updatedAt: '', sources: [] }; }
@@ -13917,8 +14046,8 @@
   const wd = {
     loaded: new Set(), loading: new Map(), tombs: new Map(),
     index: null, dirty: new Set(), stamps: {},
-    concepts: emptyWorldConceptsDoc(), sources: emptyWorldSourcesDoc(),
-    conceptsDirty: false, sourcesDirty: false, busy: false,
+    concepts: emptyWorldConceptsDoc(), terms: emptyWorldTermsDoc(), sources: emptyWorldSourcesDoc(),
+    conceptsDirty: false, termsDirty: false, sourcesDirty: false, busy: false,
   };
   function liveWorldMonths() { const t = todayStr(); const a = monthOfDate(addDays(t, -30)), b = monthOfDate(t); return a === b ? [b] : [a, b]; }
   // 起動時に読む月：今月・先月に加えて「未読が残っている月」。月ファイルは
@@ -13954,6 +14083,10 @@
     wd.concepts.updatedAt = nowIso();
     return kvSet('worldConcepts', JSON.stringify(wd.concepts)).catch(() => {});
   }
+  function persistWorldTerms() {
+    wd.terms.updatedAt = nowIso();
+    return kvSet('worldTerms', JSON.stringify(wd.terms)).catch(() => {});
+  }
   function persistWorldSources() {
     wd.sources.updatedAt = nowIso();
     return kvSet('worldSources', JSON.stringify(wd.sources)).catch(() => {});
@@ -13974,7 +14107,7 @@
     });
     events.forEach((e) => {
       const p = e.prediction;
-      if (!p.text || !p.dueDate || p.result) return;
+      if (!(p.pick || p.text) || !p.dueDate || p.result) return;
       (wd.index.due[p.dueDate] = wd.index.due[p.dueDate] || []).push(e.id);
     });
     wd.index.updatedAt = nowIso();
@@ -14006,6 +14139,7 @@
     try { JSON.parse(bootKV.worldDirty || '[]').forEach((m) => wd.dirty.add(m)); } catch (e) {}
     try { wd.stamps = JSON.parse(bootKV.worldStamps || '{}') || {}; } catch (e) { wd.stamps = {}; }
     try { wd.concepts = normalizeWorldConceptsDoc(JSON.parse(bootKV.worldConcepts || 'null')); } catch (e) { wd.concepts = emptyWorldConceptsDoc(); }
+    try { wd.terms = normalizeWorldTermsDoc(JSON.parse(bootKV.worldTerms || 'null')); } catch (e) { wd.terms = emptyWorldTermsDoc(); }
     try { wd.sources = normalizeWorldSourcesDoc(JSON.parse(bootKV.worldSources || 'null')); } catch (e) { wd.sources = emptyWorldSourcesDoc(); }
     worldEvents = [];
     Object.entries(bootKV.worldDocs || {}).forEach(([m, raw]) => {
@@ -14077,13 +14211,17 @@
   }
   // 概念は id ごとの新しい方が勝つ union。消すのは統合のときだけなので墓標は
   // 持たず、代わりに「別名に吸われた」ことが aka に残る。
-  function mergeWorldConceptDocs(a, b) {
-    const out = emptyWorldConceptsDoc();
-    const mA = new Map(a.concepts.map((c) => [c.id, c])), mB = new Map(b.concepts.map((c) => [c.id, c]));
+  function mergeWorldEntryDocs(a, b, field) {
+    const out = field === 'terms' ? emptyWorldTermsDoc() : emptyWorldConceptsDoc();
+    const mA = new Map(a[field].map((c) => [c.id, c])), mB = new Map(b[field].map((c) => [c.id, c]));
     new Set([...mA.keys(), ...mB.keys()]).forEach((id) => {
       const x = mA.get(id), y = mB.get(id);
       const w = (x && y) ? (new Date(x.updatedAt) >= new Date(y.updatedAt) ? x : y) : (x || y);
-      out.concepts.push({ ...w, aka: [...w.aka], eventIds: [...w.eventIds], related: [...w.related] });
+      const copy = { ...w, aka: [...w.aka], eventIds: [...w.eventIds] };
+      if (w.related) copy.related = [...w.related];
+      // seenAt は「この人が一度開いた」印なので、どちらかで立っていれば立てる
+      if (x && y && field === 'terms') copy.seenAt = x.seenAt || y.seenAt || '';
+      out[field].push(copy);
     });
     const seen = new Set();
     out.dismissedPairs = [...a.dismissedPairs, ...b.dismissedPairs].filter((p) => {
@@ -14092,6 +14230,8 @@
     out.updatedAt = a.updatedAt > b.updatedAt ? a.updatedAt : b.updatedAt;
     return out;
   }
+  function mergeWorldConceptDocs(a, b) { return mergeWorldEntryDocs(a, b, 'concepts'); }
+  function mergeWorldTermDocs(a, b) { return mergeWorldEntryDocs(a, b, 'terms'); }
   function mergeWorldSourceDocs(a, b) {
     const out = emptyWorldSourcesDoc();
     const mA = new Map(a.sources.map((s) => [s.id, s])), mB = new Map(b.sources.map((s) => [s.id, s]));
@@ -14124,7 +14264,9 @@
   }
   // 概念とソースは署名が変わったときだけ書く（毎回の同期で GitHub 呼び出しが
   // 2つ増えるのを避ける）。
-  function worldConceptsSignature(doc) { return doc.concepts.map((c) => c.id + ':' + c.updatedAt).sort().join('|') + '#' + doc.dismissedPairs.length; }
+  function worldEntriesSignature(list, doc) { return list.map((c) => c.id + ':' + c.updatedAt).sort().join('|') + '#' + doc.dismissedPairs.length; }
+  function worldConceptsSignature(doc) { return worldEntriesSignature(doc.concepts, doc); }
+  function worldTermsSignature(doc) { return worldEntriesSignature(doc.terms, doc); }
   function worldSourcesSignature(doc) { return doc.sources.map((s) => s.id + ':' + s.updatedAt).sort().join('|'); }
   async function syncWorldConcepts(token, remoteChanged) {
     if (!wd.conceptsDirty && !remoteChanged) return;
@@ -14139,6 +14281,20 @@
     }
     wd.conceptsDirty = false;
     wd.index.concepts = { updatedAt: wd.concepts.updatedAt, count: wd.concepts.concepts.length };
+  }
+  async function syncWorldTerms(token, remoteChanged) {
+    if (!wd.termsDirty && !remoteChanged) return;
+    const got = await ghGetContents(GITHUB_REPO, WORLD_TERMS_PATH, token);
+    let rdoc = emptyWorldTermsDoc();
+    try { if (got.text) rdoc = normalizeWorldTermsDoc(JSON.parse(got.text)); } catch (e) {}
+    const before = worldTermsSignature(rdoc);
+    wd.terms = mergeWorldTermDocs(wd.terms, rdoc);
+    await persistWorldTerms();
+    if (worldTermsSignature(wd.terms) !== before) {
+      await ghPutJson(WORLD_TERMS_PATH, wd.terms, got.sha, `world terms: ${wd.terms.terms.length}`);
+    }
+    wd.termsDirty = false;
+    wd.index.terms = { updatedAt: wd.terms.updatedAt, count: wd.terms.terms.length };
   }
   async function syncWorldSources(token, remoteChanged) {
     if (!wd.sourcesDirty && !remoteChanged) return;
@@ -14163,14 +14319,16 @@
       let remoteIndex = emptyWorldIndex();
       try { if (ri.text) remoteIndex = normalizeWorldIndex(JSON.parse(ri.text)); } catch (e) {}
       const conceptsChanged = remoteIndex.concepts.updatedAt > (wd.index.concepts.updatedAt || '');
+      const termsChanged = remoteIndex.terms.updatedAt > (wd.index.terms.updatedAt || '');
       const sourcesChanged = remoteIndex.sources.updatedAt > (wd.index.sources.updatedAt || '');
       const months = new Set([...liveWorldMonths(), ...wd.dirty, ...worldBootMonths(remoteIndex)]);
       wd.loaded.forEach((m) => { const r = remoteIndex.months[m]; if (r && r.updatedAt !== (wd.stamps[m] || '')) months.add(m); });
       wd.index = mergeWorldIndex(wd.index, remoteIndex);
       for (const m of [...months].sort()) { if (!wd.loaded.has(m)) await loadWorldMonth(m); else await syncWorldMonth(token, m); }
       await syncWorldConcepts(token, conceptsChanged);
+      await syncWorldTerms(token, termsChanged);
       await syncWorldSources(token, sourcesChanged);
-      const sig = (ix) => JSON.stringify([Object.keys(ix.months).sort().map((m) => [m, ix.months[m].updatedAt, ix.months[m].unread]), ix.concepts.updatedAt, ix.sources.updatedAt, Object.keys(ix.due).sort()]);
+      const sig = (ix) => JSON.stringify([Object.keys(ix.months).sort().map((m) => [m, ix.months[m].updatedAt, ix.months[m].unread]), ix.concepts.updatedAt, ix.terms.updatedAt, ix.sources.updatedAt, Object.keys(ix.due).sort()]);
       if (sig(wd.index) !== sig(remoteIndex)) {
         try { await ghPutJson(WORLD_INDEX_PATH, wd.index, ri.sha, 'world index'); }
         catch (e) {
@@ -14196,31 +14354,84 @@
     return t.toLowerCase().replace(/[\s　]+/g, '').replace(/[・･.\-‐‑–—ー−_/()（）]/g, '');
   }
   function worldConcepts() { return wd.concepts.concepts; }
-  function worldFindConcept(name) {
+  function worldTerms() { return wd.terms.terms; }
+
+  // v10.5: 概念と用語は同じ形なので、引き当て・候補・統合・名前変更は1本に
+  // する。しきい値と「別のもの」の記憶を2か所で直す羽目になるのを避ける。
+  // ストアごとに違うのは、統合のとき出来事側の綴りを寄せる先だけ。
+  const WORLD_STORES = {
+    concept: {
+      key: 'concept', label: '概念', idPrefix: 'wc_', minLen: WORLD_CONCEPT_MIN_LEN,
+      doc: () => wd.concepts, list: worldConcepts,
+      setList: (v) => { wd.concepts.concepts = v; },
+      save: () => worldSaveConcepts(),
+      rewrite: (e, from, to) => {
+        let changed = false;
+        const swap = (s) => { if (s && worldNormName(s) === worldNormName(from)) { changed = true; return to; } return s; };
+        e.concepts = e.concepts.map(swap);
+        e.related = e.related.map(swap);
+        if (e.premise.kind === 'new') e.premise.name = swap(e.premise.name);
+        else { e.premise.a = swap(e.premise.a); e.premise.b = swap(e.premise.b); }
+        return changed;
+      },
+    },
+    term: {
+      key: 'term', label: '用語', idPrefix: 'wt_', minLen: WORLD_TERM_MIN_LEN,
+      doc: () => wd.terms, list: worldTerms,
+      setList: (v) => { wd.terms.terms = v; },
+      save: () => worldSaveTerms(),
+      rewrite: (e, from, to) => {
+        let changed = false;
+        e.terms = e.terms.map((s) => { if (s && worldNormName(s) === worldNormName(from)) { changed = true; return to; } return s; });
+        return changed;
+      },
+    },
+  };
+  function worldStoreOf(entry) { return String(entry && entry.id).startsWith('wt_') ? WORLD_STORES.term : WORLD_STORES.concept; }
+
+  function worldFindIn(store, name) {
     const k = worldNormName(name);
     if (!k) return null;
-    return worldConcepts().find((c) => worldNormName(c.name) === k || (c.aka || []).some((a) => worldNormName(a) === k)) || null;
+    return store.list().find((c) => worldNormName(c.name) === k || (c.aka || []).some((a) => worldNormName(a) === k)) || null;
   }
-  function worldConceptById(id) { return worldConcepts().find((c) => c.id === id) || null; }
+  function worldByIdIn(store, id) { return store.list().find((c) => c.id === id) || null; }
+  function worldEntryById(id) { return worldByIdIn(WORLD_STORES.concept, id) || worldByIdIn(WORLD_STORES.term, id); }
+  function worldFindConcept(name) { return worldFindIn(WORLD_STORES.concept, name); }
+  function worldFindTerm(name) { return worldFindIn(WORLD_STORES.term, name); }
+  function worldConceptById(id) { return worldByIdIn(WORLD_STORES.concept, id); }
   function worldConceptCount(c) { return (c.eventIds || []).length; }
-  function worldGenConceptId() {
+  function worldGenIdIn(store) {
     const t = todayStr().replace(/-/g, '');
-    const taken = new Set(worldConcepts().map((c) => c.id));
-    let n = 1; while (taken.has('wc_' + t + '_' + n)) n++;
-    return 'wc_' + t + '_' + n;
+    const taken = new Set(store.list().map((c) => c.id));
+    let n = 1; while (taken.has(store.idPrefix + t + '_' + n)) n++;
+    return store.idPrefix + t + '_' + n;
   }
   function worldSaveConcepts() { wd.conceptsDirty = true; persistWorldConcepts(); scheduleSync(); }
-  function worldAddConcept(name, line, aka, field, eventId) {
+  function worldSaveTerms() { wd.termsDirty = true; persistWorldTerms(); scheduleSync(); }
+  // 注を開いた印。同期は自分から呼ばない（開くたびに同期が走るのは割に合わ
+  // ないので、次の自然な同期に相乗りする）。
+  function worldMarkTermSeen(t) {
+    if (!t || t.seenAt) return;
+    t.seenAt = nowIso();
+    t.updatedAt = nowIso();
+    wd.termsDirty = true;
+    persistWorldTerms();
+  }
+  function worldAddIn(store, o, eventId) {
     const iso = nowIso();
-    const c = normalizeWorldConcept({
-      id: worldGenConceptId(), name, aka: aka || [], line: line || '', field: field || '',
-      eventIds: eventId ? [eventId] : [], related: [], firstEventId: eventId || '',
+    const base = {
+      id: worldGenIdIn(store), name: o.name, aka: o.aka || [], line: o.line || '',
+      eventIds: eventId ? [eventId] : [], firstEventId: eventId || '',
       createdAt: iso, updatedAt: iso, lastUsedAt: iso,
-    });
-    if (c) worldConcepts().push(c);
+    };
+    if (store.key === 'term') base.kind = o.kind || '';
+    else { base.field = o.field || ''; base.related = []; }
+    const c = normalizeWorldEntry(base, store.key === 'term');
+    if (c) store.list().push(c);
     return c;
   }
-  function worldTouchConcept(c, eventId) {
+  function worldTouchEntry(c, eventId) {
+    if (!c) return;
     if (eventId && !c.eventIds.includes(eventId)) c.eventIds.push(eventId);
     c.lastUsedAt = nowIso();
     c.updatedAt = nowIso();
@@ -14232,9 +14443,11 @@
   }
   // 近い名前の候補。正規化して完全一致するものは作る時点で吸収済みなので、
   // ここに出るのは「近いが同じではないかもしれない」ものだけ。
-  function worldMergeCandidates(newIds) {
-    const list = worldConcepts();
-    const dismissed = new Set((wd.concepts.dismissedPairs || []).map((p) => worldPairKey(p.a, p.b)));
+  // 用語の最短長を1つ上げてあるのは、IMF（3文字）が IMFC（別組織）を
+  // 「含む」規則で拾ってしまうため。
+  function worldMergeCandidatesIn(store, newIds) {
+    const list = store.list();
+    const dismissed = new Set((store.doc().dismissedPairs || []).map((p) => worldPairKey(p.a, p.b)));
     const out = [];
     newIds.forEach((id) => {
       const c = list.find((x) => x.id === id);
@@ -14249,93 +14462,145 @@
           const kn = worldNormName(nm);
           if (!kn) return false;
           const shorter = Math.min(kn.length, kc.length);
-          if (shorter >= WORLD_CONCEPT_MIN_LEN && (kn.includes(kc) || kc.includes(kn))) return true;
+          if (shorter >= store.minLen && (kn.includes(kc) || kc.includes(kn))) return true;
           return textSimilarity(kn, kc) >= WORLD_CONCEPT_SIM;
         });
-        if (hit) out.push({ a: c.id, b: o.id });
+        if (hit) out.push({ a: c.id, b: o.id, store: store.key });
       });
     });
     return out;
   }
-  function worldDismissPair(a, b) {
+  function worldDismissPairIn(store, a, b) {
     const k = worldPairKey(a, b);
-    if (!(wd.concepts.dismissedPairs || []).some((p) => worldPairKey(p.a, p.b) === k)) {
-      wd.concepts.dismissedPairs.push({ a, b, at: nowIso() });
-      worldSaveConcepts();
+    const doc = store.doc();
+    if (!(doc.dismissedPairs || []).some((p) => worldPairKey(p.a, p.b) === k)) {
+      doc.dismissedPairs.push({ a, b, at: nowIso() });
+      store.save();
     }
   }
   // keep に drop を吸わせる。drop の名前と別名は keep の aka に入るので、
-  // 読み込んでいない月に残っている古い綴りも worldFindConcept で当たる。
-  function worldMergeConcepts(keepId, dropId) {
-    const keep = worldConceptById(keepId), drop = worldConceptById(dropId);
+  // 読み込んでいない月に残っている古い綴りも worldFindIn で当たる。
+  function worldMergeIn(store, keepId, dropId) {
+    const keep = worldByIdIn(store, keepId), drop = worldByIdIn(store, dropId);
     if (!keep || !drop || keep.id === drop.id) return null;
     const akas = new Set([...keep.aka, drop.name, ...drop.aka].filter(Boolean));
     akas.delete(keep.name);
     keep.aka = [...akas].slice(0, 12);
     keep.eventIds = [...new Set([...keep.eventIds, ...drop.eventIds])];
-    keep.related = [...new Set([...keep.related, ...drop.related])].filter((x) => x !== keep.id && x !== drop.id);
     if (!keep.line && drop.line) keep.line = drop.line;
-    if (!keep.field && drop.field) keep.field = drop.field;
+    if (store.key === 'concept') {
+      keep.related = [...new Set([...keep.related, ...drop.related])].filter((x) => x !== keep.id && x !== drop.id);
+      if (!keep.field && drop.field) keep.field = drop.field;
+    } else if (!keep.kind && drop.kind) keep.kind = drop.kind;
     keep.updatedAt = nowIso();
-    wd.concepts.concepts = worldConcepts().filter((c) => c.id !== drop.id);
-    worldConcepts().forEach((c) => {
-      if (!c.related.includes(drop.id)) return;
-      c.related = [...new Set(c.related.filter((x) => x !== drop.id).concat(c.id === keep.id ? [] : [keep.id]))].filter((x) => x !== c.id);
-      c.updatedAt = nowIso();
-    });
+    store.setList(store.list().filter((c) => c.id !== drop.id));
+    if (store.key === 'concept') {
+      store.list().forEach((c) => {
+        if (!c.related.includes(drop.id)) return;
+        c.related = [...new Set(c.related.filter((x) => x !== drop.id).concat(c.id === keep.id ? [] : [keep.id]))].filter((x) => x !== c.id);
+        c.updatedAt = nowIso();
+      });
+    }
     // 読み込んでいる月の出来事の綴りだけ寄せる（読み込んでいない月は aka が拾う）
     const touched = new Set();
     worldEvents.forEach((e) => {
-      let changed = false;
-      const swap = (s) => { if (worldNormName(s) === worldNormName(drop.name)) { changed = true; return keep.name; } return s; };
-      e.concepts = e.concepts.map(swap);
-      e.related = e.related.map(swap);
-      if (e.premise.kind === 'new') e.premise.name = swap(e.premise.name);
-      else { e.premise.a = swap(e.premise.a); e.premise.b = swap(e.premise.b); }
-      if (changed) { e.updatedAt = nowIso(); touched.add(monthOfDate(e.eventDate)); }
+      if (store.rewrite(e, drop.name, keep.name)) { e.updatedAt = nowIso(); touched.add(monthOfDate(e.eventDate)); }
     });
-    worldSaveConcepts();
+    store.save();
     touched.forEach((m) => worldMonthChanged(m));
     return keep;
   }
-  function worldRenameConcept(id, newName) {
-    const c = worldConceptById(id);
+  function worldRenameIn(store, id, newName) {
+    const c = worldByIdIn(store, id);
     const name = worldStr(newName, 80);
     if (!c || !name) return null;
-    const existing = worldFindConcept(name);
-    if (existing && existing.id !== c.id) return worldMergeConcepts(existing.id, c.id);
+    const existing = worldFindIn(store, name);
+    if (existing && existing.id !== c.id) return worldMergeIn(store, existing.id, c.id);
     const old = c.name;
     c.name = name;
     if (old && worldNormName(old) !== worldNormName(name) && !c.aka.includes(old)) c.aka.unshift(old);
     c.aka = c.aka.slice(0, 12);
     c.updatedAt = nowIso();
-    worldSaveConcepts();
+    // 出来事の綴りも新しい名前に寄せる
+    const touched = new Set();
+    worldEvents.forEach((e) => { if (store.rewrite(e, old, name)) { e.updatedAt = nowIso(); touched.add(monthOfDate(e.eventDate)); } });
+    store.save();
+    touched.forEach((m) => worldMonthChanged(m));
     return c;
   }
-  // 取り込んだ1件から概念を起こす／既存につなぐ。新しく作った概念の id を返す。
-  function worldApplyConcepts(ev) {
-    const created = [];
-    const touch = (name, line, aka, makeIfMissing) => {
+
+  // 取り込んだ1件から概念と用語を起こす／既存につなぐ。
+  // 出来事側の綴りは正式名へ寄せて保存する（あとで統合・名前変更をしたとき
+  // 既存の出来事が自動で追従し、同じものが違う綴りで並ぶこともなくなる）。
+  function worldApplyEntries(ev) {
+    const created = { concept: [], term: [] };
+    const CS = WORLD_STORES.concept, TS = WORLD_STORES.term;
+
+    const touchConcept = (name, line, aka, makeIfMissing) => {
       if (!name) return null;
-      let c = worldFindConcept(name);
-      if (!c && makeIfMissing) { c = worldAddConcept(name, line, aka, ev.field, ev.id); if (c) created.push(c.id); }
-      if (c) worldTouchConcept(c, ev.id);
+      let c = worldFindIn(CS, name);
+      if (!c && makeIfMissing) { c = worldAddIn(CS, { name, line, aka, field: ev.field }, ev.id); if (c) created.concept.push(c.id); }
+      worldTouchEntry(c, ev.id);
       return c;
     };
+
     let center = null;
     if (ev.premise.kind === 'new') {
-      center = touch(ev.premise.name, ev.premise.line, ev.premise.aka, true);
+      // 用語だった名前が概念として来たら、用語を消して概念に吸わせる
+      // （同じ名前が両方のストアに居座らないように）。
+      const asTerm = worldFindIn(TS, ev.premise.name);
+      center = touchConcept(ev.premise.name, ev.premise.line, ev.premise.aka, true);
+      if (asTerm && center) worldPromoteTermToConcept(asTerm, center);
     } else {
-      // 関係の premise は新しい概念を作らない。既知の2つを結ぶだけで、
-      // 関係の説明文は出来事の側にだけ残る。
-      const a = touch(ev.premise.a, '', [], true);
-      const b = touch(ev.premise.b, '', [], true);
+      const a = touchConcept(ev.premise.a, '', [], true);
+      const b = touchConcept(ev.premise.b, '', [], true);
       worldLinkConcepts(a, b);
       center = a;
     }
-    ev.concepts.forEach((n) => touch(n, '', [], false));
-    ev.related.forEach((n) => { const c = touch(n, '', [], false); worldLinkConcepts(center, c); });
+    ev.concepts = ev.concepts.map((n) => { const c = touchConcept(n, '', [], false); return c ? c.name : n; });
+    ev.related = ev.related.map((n) => { const c = touchConcept(n, '', [], false); if (c) worldLinkConcepts(center, c); return c ? c.name : n; });
+    if (ev.premise.kind === 'new' && center) ev.premise.name = center.name;
+    else if (ev.premise.kind === 'relation') {
+      const a = worldFindIn(CS, ev.premise.a), b = worldFindIn(CS, ev.premise.b);
+      if (a) ev.premise.a = a.name;
+      if (b) ev.premise.b = b.name;
+    }
+
+    // 用語。概念が本体なので、同じ名前が概念にあるときは用語を作らない。
+    const seen = new Set();
+    ev.terms = ev.terms.map((raw) => {
+      const meta = (ev._termMeta && ev._termMeta[worldNormName(raw)]) || {};
+      const asConcept = worldFindIn(CS, raw);
+      if (asConcept) { worldTouchEntry(asConcept, ev.id); return asConcept.name; }
+      let t = worldFindIn(TS, raw);
+      if (!t) {
+        if (!meta.line) {
+          // 既知のつもりで name だけ来たが、こちらには無い語。注なしで登録して
+          // おく（チップは出るが中身は空、と分かる形にする）。
+          t = worldAddIn(TS, { name: raw, aka: [], line: '', kind: '' }, ev.id);
+        } else {
+          t = worldAddIn(TS, { name: raw, aka: meta.aka || [], line: meta.line, kind: meta.kind || '' }, ev.id);
+        }
+        if (t) created.term.push(t.id);
+      } else {
+        if (!t.line && meta.line) { t.line = meta.line; if (meta.kind && !t.kind) t.kind = meta.kind; }
+        if (meta.aka && meta.aka.length) t.aka = [...new Set([...t.aka, ...meta.aka])].filter((x) => worldNormName(x) !== worldNormName(t.name)).slice(0, 12);
+      }
+      worldTouchEntry(t, ev.id);
+      return t ? t.name : raw;
+    }).filter((n) => { const k = worldNormName(n); if (!k || seen.has(k)) return false; seen.add(k); return true; });
+    delete ev._termMeta;
     return created;
+  }
+  // 用語 → 概念への昇格。用語側を消して、別名と出た出来事を概念に移す。
+  function worldPromoteTermToConcept(term, concept) {
+    const akas = new Set([...concept.aka, term.name, ...term.aka].filter(Boolean));
+    akas.delete(concept.name);
+    concept.aka = [...akas].slice(0, 12);
+    concept.eventIds = [...new Set([...concept.eventIds, ...term.eventIds])];
+    concept.updatedAt = nowIso();
+    wd.terms.terms = worldTerms().filter((t) => t.id !== term.id);
+    worldSaveTerms();
   }
 
   // ---- ソース --------------------------------------------------------------
@@ -14386,27 +14651,43 @@
   }
 
   // ---- 予測 ----------------------------------------------------------------
+  // 3択と一言のどちらかが入っていれば「書かれた」。期限はどちらでも入る
+  // （3択だけ押して一言を書かないのが既定の使い方になるため）。
+  function worldPredictionDue(ev) {
+    const p = ev.prediction;
+    if (!(p.pick || p.text)) { p.dueDate = ''; return; }
+    if (!p.writtenDate) p.writtenDate = todayStr();
+    p.dueDate = addDays(p.writtenDate, p.days);
+  }
   function worldSetPrediction(ev, text) {
     const p = ev.prediction;
     const t = worldStr(text, 600);
     if (t === p.text) return false;
     const iso = nowIso();
-    // 1分以内の書き直しは history に行を作らない（撮るの answers と同じ）
-    if (p.text && p.setAt && (Date.now() - new Date(p.setAt).getTime()) >= 60000) p.history.push({ text: p.text, at: p.setAt });
+    // 1分以内の書き直しは history に行を作らない（撮るの answers と同じ）。
+    // 行には、そのとき何を押していたかも添える。
+    if (p.text && p.setAt && (Date.now() - new Date(p.setAt).getTime()) >= 60000) p.history.push({ text: p.text, at: p.setAt, pick: p.pick });
     p.text = t;
     p.setAt = iso;
-    if (t) {
-      if (!p.writtenDate) p.writtenDate = todayStr();
-      p.dueDate = addDays(p.writtenDate, p.days);
-    } else { p.dueDate = ''; }
+    worldPredictionDue(ev);
     worldTouch(ev);
     return true;
+  }
+  // 押し直しは history に行を作らない（押すたびに行が増えると読めない）
+  function worldSetPredictionPick(ev, pick) {
+    const p = ev.prediction;
+    const v = WORLD_PICKS.includes(pick) ? pick : '';
+    if (p.pick === v) return;
+    p.pick = v;
+    if (!p.setAt) p.setAt = nowIso();
+    worldPredictionDue(ev);
+    worldTouch(ev);
   }
   function worldSetPredictionDays(ev, days) {
     const p = ev.prediction;
     if (!WORLD_PREDICT_CHOICES.includes(days) || p.days === days) return;
     p.days = days;
-    if (p.text && p.writtenDate) p.dueDate = addDays(p.writtenDate, days);
+    if (worldPredictionWritten(ev) && p.writtenDate) p.dueDate = addDays(p.writtenDate, days);
     worldTouch(ev);
   }
   function worldDueEvents(onOrBefore) {
@@ -14422,6 +14703,13 @@
       .filter((c) => !c.field || c.field === field)
       .slice().sort((a, b) => (a.lastUsedAt > b.lastUsedAt ? -1 : 1))
       .slice(0, WORLD_KNOWN_MAX)
+      .map((c) => c.name);
+  }
+  // 用語は概念より速く増えるので、別の上限で切る（名前が短いぶん多く入る）
+  function worldKnownTermNames() {
+    return worldTerms()
+      .slice().sort((a, b) => (a.lastUsedAt > b.lastUsedAt ? -1 : 1))
+      .slice(0, WORLD_KNOWN_TERMS_MAX)
       .map((c) => c.name);
   }
   function worldSourceLines(field, role) {
@@ -14442,6 +14730,7 @@
     const prim = worldSourceLines(field, 'primary');
     const anal = worldSourceLines(field, 'analysis');
     const known = worldKnownNames(field);
+    const knownTerms = worldKnownTermNames();
     return SHOOT_PROMPT_HEAD +
       'あなたは、ある人の世界の見方を少しずつ更新するための材料係です。\n' +
       '解説記事は書きません。ニュースの要約もしません。\n' +
@@ -14474,7 +14763,10 @@
       '  その場合も url と source には、一次のソース（出来事そのものの出所）を書く。\n\n' +
       '■ すでに知っている概念（説明しなくてよい）\n' +
       (known.length ? known.join(' / ') : '（まだありません）') + '\n' +
-      '（名前だけ。一覧に無くても、経済・政治の基礎的な用語は説明不要）\n\n' +
+      '（名前だけ。最大' + WORLD_KNOWN_MAX + '件）\n\n' +
+      '■ すでに知っている用語（説明しなくてよい）\n' +
+      (knownTerms.length ? knownTerms.join(' / ') : '（まだありません）') + '\n' +
+      '（名前だけ。最大' + WORLD_KNOWN_TERMS_MAX + '件。一覧に無くても、経済・政治の基礎的な用語は説明不要）\n\n' +
       '■ それぞれの出来事に書くこと\n' +
       '- fact：何が起きたか。1文・' + WORLD_FACT_MAX + '字以内。数字か固有名詞を必ず含む。\n' +
       '  聞く人に向けた文にする。専門用語を並べない。\n' +
@@ -14483,13 +14775,49 @@
       '- why：なぜ今動いたか。1〜2文。\n' +
       '  誰が何を欲しがり・何を恐れ・何に縛られているかを書く。\n' +
       '  出来事の言い換えを書かない。評価・感想・助言を書かない。\n' +
-      '- premise：この件を理解するのに最低限必要な概念を 1つだけ。\n' +
+      '\n' +
+      '- premise：この件を理解するのに最低限必要な「概念」を 1つだけ。\n' +
+      '  概念とは、積み上がって世界の見方になるもの（外貨準備、コンディショナリティ、\n' +
+      '  シーレーン）。組織名・国名・略語・人名は概念ではない。それは terms に書く。\n' +
       '  - 上の「すでに知っている概念」で足りるなら、新しい概念を作らない。\n' +
       '    そのときは kind を "relation" にして、既知の概念2つ（a と b）の\n' +
       '    関係を line に1文で書く。\n' +
       '  - 新しい概念が要るときは kind を "new" にして、name と line を書く。\n' +
       '    aka に別名・日本語訳・英語名を必ず入れる（表記ゆれを防ぐため）。\n' +
       '  - line は1文。その概念の定義であって、この出来事の説明ではない。\n' +
+      '\n' +
+      '- terms：fact・why・detail の中に出てくる組織名・国名・略語・制度名・人名を、\n' +
+      '  出てきたぶんだけ全部挙げる。概念は書かない（それは premise）。\n' +
+      '  - line は ' + WORLD_TERM_LINE_MIN + '〜' + WORLD_TERM_LINE_MAX + '字。「誰が・何を・何のために」が分かる注にする。\n' +
+      '    「国際的な金融機関」のような、読んでも何も増えない書き方をしない。\n' +
+      '    良い例：「加盟国が資金を出し合い、外貨が足りない国に融資する国際機関」\n' +
+      '    悪い例：「国際通貨基金のこと」「中米の国」\n' +
+      '  - line はその語の定義であって、この出来事の説明ではない。\n' +
+      '  - kind は org（組織）／place（国・地域・海峡など）／scheme（制度・枠組み）\n' +
+      '    ／person（人物）のどれか。\n' +
+      '  - person の注は、肩書きと立場だけを書く。\n' +
+      '    評価・来歴・人物像を書かない（「〜で知られる」「〜と対立している」は不可）。\n' +
+      '    人は入れ替わるので、いつ時点の肩書きかを必ず含める。\n' +
+      '    良い例：「2026年時点の米財務長官。国債の発行計画を決める側」\n' +
+      '    悪い例：「著名な投資家出身で、市場との対話を重視することで知られる」\n' +
+      '  - aka に別名・日本語訳・英語名を入れる（IMF なら 国際通貨基金、\n' +
+      '    International Monetary Fund）。\n' +
+      '  - すでに知っている用語も、本文に出てきたら name だけは必ず書く。\n' +
+      '    その場合 line・kind・aka は空でよい。（読むときの目印に使うため）\n' +
+      '  - 本文に出てこない語は書かない。\n' +
+      '\n' +
+      '- fork：おおむね' + Math.round(WORLD_FORK_DAYS / 30) + 'ヶ月で決着する「分かれ目」を1つ。検証可能なものだけ。\n' +
+      '  - type が "level" のとき：数字がある水準を超えるか（text の例\n' +
+      '    「ブレント原油が80ドル/バレルを割るか」）\n' +
+      '  - type が "event" のとき：起きるか起きないかがはっきりする事実（text の例\n' +
+      '    「IMF理事会が年内に承認するか」）\n' +
+      '  - ' + Math.round(WORLD_FORK_DAYS / 30) + 'ヶ月では決着しないものを書かない。1年かけて決まることを書かれると、\n' +
+      '    どう転んでも「どちらとも」にしかならない。\n' +
+      '  - 思いつかなければ null にする。無理に作らない。\n' +
+      '    「原油価格は変動するか」のような、どちらにも転ばない書き方は禁止。\n' +
+      '  - 誰がどう見ても同じ判定になる書き方にする。\n' +
+      '    「市場が落ち着くか」「関係が改善するか」は書かない。\n' +
+      '\n' +
       '- detail：数字・当事者・背景。1〜3文。ここには専門用語を書いてよい。\n' +
       '- source：媒体名と発表日。\n' +
       '- url：出典ページ。\n' +
@@ -14503,6 +14831,9 @@
       '  "fact":"...",\n' +
       '  "why":"...",\n' +
       '  "premise":{"kind":"new","name":"...","aka":["...","..."],"line":"..."},\n' +
+      '  "terms":[{"name":"IMF","line":"...","kind":"org","aka":["国際通貨基金"]},\n' +
+      '           {"name":"エルサルバドル","line":"...","kind":"place","aka":[]}],\n' +
+      '  "fork":{"text":"...","type":"level"},\n' +
       '  "detail":"...",\n' +
       '  "source":"...",\n' +
       '  "url":"https://...",\n' +
@@ -14511,7 +14842,11 @@
       '  "related":["..."]\n' +
       '}]}\n\n' +
       'kind が "relation" のときの premise：\n' +
-      '  {"kind":"relation","a":"既知の概念1","b":"既知の概念2","line":"..."}';
+      '  {"kind":"relation","a":"既知の概念1","b":"既知の概念2","line":"..."}\n' +
+      'すでに知っている用語：\n' +
+      '  {"name":"IMF"}\n' +
+      '分かれ目が思いつかないとき：\n' +
+      '  "fork": null';
   }
 
   // ---- 取り込み ------------------------------------------------------------
@@ -14556,8 +14891,9 @@
     const iso = nowIso();
     const added = [];
     const createdConcepts = [];
+    const createdTerms = [];
     const touchedMonths = new Set();
-    let old = 0;
+    let old = 0, forks = 0;
 
     items.forEach((it, i) => {
       if (!it || typeof it !== 'object') { rejected.fact++; return; }
@@ -14574,27 +14910,47 @@
         readDate: '',
         field: WORLD_FIELDS.includes(it.field) ? it.field : (worldImportField || 'finance'),
         fact, why: it.why, premise: it.premise, detail: it.detail, source: it.source, url,
+        terms: it.terms, fork: it.fork,
         concepts: it.concepts, related: it.related,
         prediction: null, batchId, order: i,
         createdAt: iso, updatedAt: iso,
       });
       if (!ev) { rejected.date++; return; }
+      // 生成が書いた注（line/kind/aka）は ev には残さない。ストアに移してから捨てる。
+      ev._termMeta = {};
+      (Array.isArray(it.terms) ? it.terms : []).forEach((t) => {
+        if (!t || typeof t !== 'object' || !t.name) return;
+        ev._termMeta[worldNormName(t.name)] = {
+          line: worldStr(t.line, 200),
+          kind: WORLD_TERM_KINDS.includes(t.kind) ? t.kind : '',
+          aka: (Array.isArray(t.aka) ? t.aka : []).map((x) => worldStr(x, 80)).filter(Boolean).slice(0, 5),
+        };
+      });
       worldEvents.push(ev);
       touchedMonths.add(monthOfDate(ev.eventDate));
       added.push(ev);
       if (ev.eventDate < addDays(today, -WORLD_OLD_EVENT_DAYS)) old++;
-      worldApplyConcepts(ev).forEach((id) => createdConcepts.push(id));
+      const made = worldApplyEntries(ev);
+      made.concept.forEach((id) => createdConcepts.push(id));
+      made.term.forEach((id) => createdTerms.push(id));
+      if (ev.fork) forks++;
     });
 
     if (added.length) {
       worldSaveConcepts();
+      worldSaveTerms();
       touchedMonths.forEach((m) => worldMonthChanged(m));
     }
-    return { added: added.length, rejected, old, createdConcepts, candidates: worldMergeCandidates(createdConcepts) };
+    return {
+      added: added.length, rejected, old, forks,
+      createdConcepts, createdTerms,
+      candidates: worldMergeCandidatesIn(WORLD_STORES.concept, createdConcepts)
+        .concat(worldMergeCandidatesIn(WORLD_STORES.term, createdTerms)),
+    };
   }
 
   // ---- 画面 ----------------------------------------------------------------
-  const worldState = { view: 'main', tab: 'events', conceptId: null, openId: null, candidates: [], lastResult: '' };
+  const worldState = { view: 'main', tab: 'events', entryKind: 'concept', entrySort: 'count', conceptId: null, openId: null, candidates: [], lastResult: '' };
   let worldImportField = 'finance';   // 最後にコピーしたプロンプトの分野（JSON に field が無いときの既定）
 
   function worldShortDate(d) { const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(d); return m ? Number(m[1]) + '/' + Number(m[2]) : d; }
@@ -14608,11 +14964,118 @@
     const c = worldFindConcept(ev.premise.name);
     return !!c && c.firstEventId === ev.id;
   }
+  function worldPredictionWritten(ev) { return !!(ev.prediction.pick || ev.prediction.text); }
   function worldPredictionSummary(ev) {
     const p = ev.prediction;
-    if (!p.text) return '';
+    if (!worldPredictionWritten(ev)) return '';
     if (p.result) return { hit: '当たり', miss: '外れ', hold: '保留' }[p.result];
-    return '予測';
+    return p.pick ? WORLD_PICK_MARK[p.pick] : '予測';
+  }
+
+  // --- 用語の注 (v10.5) ---------------------------------------------------
+  // 本文の中の語を押せるようにする。事故を避けるための縛りが5つ：
+  //  1. 照合するのはその出来事の terms に載っている語だけ（ストア全体と見ない）
+  //  2. 最長一致・重なりなし（「エルサルバドル」が「サルバドル」に負けない）
+  //  3. 英数字の略語は前後が英数字でないときだけ（EFF が EFFECT に当たらない）
+  //  4. 日本語で2文字以下は本文では当てない（「円」が「円安」に当たる事故）
+  //  5. 1つの語につき最初の1回だけ（why と detail を通して1回）
+  function worldTermEntriesOf(ev) {
+    const out = [];
+    const seen = new Set();
+    (ev.terms || []).forEach((name) => {
+      // 概念に昇格しているものは概念を返す（網が育つ方向）
+      const c = worldFindConcept(name) || worldFindTerm(name);
+      if (!c || seen.has(c.id)) return;
+      seen.add(c.id);
+      out.push(c);
+    });
+    return out;
+  }
+  function worldIsAscii(s) { return /^[\x20-\x7E]+$/.test(s); }
+  function worldTermMatchable(entry) {
+    // 名前と別名のうち、本文で当てにいってよいもの
+    return [entry.name, ...(entry.aka || [])].filter((n) => n && (worldIsAscii(n) || n.length >= WORLD_TERM_BODY_MIN_LEN));
+  }
+  function worldFindTermSpans(text, entries, used) {
+    const spans = [];
+    entries.forEach((entry) => {
+      if (used.has(entry.id)) return;
+      let best = null;
+      worldTermMatchable(entry).forEach((needle) => {
+        let from = 0;
+        for (;;) {
+          const i = text.indexOf(needle, from);
+          if (i < 0) break;
+          if (worldIsAscii(needle)) {
+            const before = text[i - 1], after = text[i + needle.length];
+            if ((before && /[A-Za-z0-9]/.test(before)) || (after && /[A-Za-z0-9]/.test(after))) { from = i + 1; continue; }
+          }
+          if (!best || needle.length > best.len || (needle.length === best.len && i < best.start)) best = { start: i, len: needle.length, entry };
+          break;
+        }
+      });
+      if (best) spans.push(best);
+    });
+    // 長いものを先に確定させ、重なったものは捨てる
+    spans.sort((a, b) => b.len - a.len || a.start - b.start);
+    const taken = [];
+    const kept = [];
+    spans.forEach((s) => {
+      if (taken.some((t) => s.start < t.end && s.start + s.len > t.start)) return;
+      taken.push({ start: s.start, end: s.start + s.len });
+      kept.push(s);
+      used.add(s.entry.id);
+    });
+    return kept.sort((a, b) => a.start - b.start);
+  }
+  // innerHTML は使わない。テキストノードとボタンを組み立てる。
+  function worldFillWithTerms(el, text, entries, used, onOpen) {
+    el.textContent = '';
+    const spans = entries.length ? worldFindTermSpans(text, entries, used) : [];
+    let cur = 0;
+    spans.forEach((s) => {
+      if (s.start > cur) el.appendChild(document.createTextNode(text.slice(cur, s.start)));
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'termChip' + (s.entry.seenAt ? ' seen' : '');
+      b.textContent = text.slice(s.start, s.start + s.len);
+      b.addEventListener('click', (e) => { e.stopPropagation(); onOpen(s.entry); });
+      el.appendChild(b);
+      cur = s.start + s.len;
+    });
+    if (cur < text.length) el.appendChild(document.createTextNode(text.slice(cur)));
+  }
+  function worldTermNoteEl(entry) {
+    const box = document.createElement('div');
+    box.className = 'worldTermNote';
+    const head = document.createElement('div');
+    const nm = document.createElement('span');
+    nm.className = 'wtName';
+    nm.textContent = entry.name;
+    head.appendChild(nm);
+    if (entry.kind) {
+      const k = document.createElement('span');
+      k.className = 'wtKind';
+      k.textContent = WORLD_TERM_KIND_LABEL[entry.kind] || '';
+      head.appendChild(k);
+    }
+    box.appendChild(head);
+    const line = document.createElement('div');
+    if (entry.line) line.textContent = entry.line;
+    else { line.className = 'wtEmpty'; line.textContent = '注がまだありません（既知として名前だけ来た語です）。'; }
+    box.appendChild(line);
+    if (entry.aka && entry.aka.length) {
+      const a = document.createElement('div');
+      a.className = 'wtKind';
+      a.textContent = '別名：' + entry.aka.join(' / ');
+      box.appendChild(a);
+    }
+    const open = document.createElement('button');
+    open.type = 'button'; open.className = 'linkLikeBtn';
+    open.textContent = worldStoreOf(entry).key === 'term' ? 'この用語を見る' : 'この概念を見る';
+    open.addEventListener('click', (e) => { e.stopPropagation(); openWorldEntry(entry.id); });
+    box.appendChild(open);
+    return box;
   }
 
   // 一覧は fact の1行だけ。why も premise もタップの向こう側にある。
@@ -14631,21 +15094,33 @@
     f.textContent = ev.fact;
     row.appendChild(f);
 
+    // 右端は展開の中の操作（★・3択・一言）で変わるので、組み立てを関数にして
+    // 詳細から呼び戻せるようにする。行は展開前に一度しか作られない。
     const right = document.createElement('span');
-    const mark = worldPredictionSummary(ev);
-    if (mark) {
-      const mk = document.createElement('span');
-      mk.className = 'wMark';
-      mk.textContent = mark;
-      right.appendChild(mk);
-    }
-    const tagText = worldPremiseTagText(ev);
-    if (tagText) {
-      const t = document.createElement('span');
-      t.className = 'wTag' + (worldPremiseIsNew(ev) ? ' isNew' : '');
-      t.textContent = tagText;
-      right.appendChild(t);
-    }
+    const paintRight = () => {
+      right.innerHTML = '';
+      if (ev.hit) {
+        const h = document.createElement('span');
+        h.className = 'wMark';
+        h.textContent = '★';
+        right.appendChild(h);
+      }
+      const mark = worldPredictionSummary(ev);
+      if (mark) {
+        const mk = document.createElement('span');
+        mk.className = 'wMark';
+        mk.textContent = mark;
+        right.appendChild(mk);
+      }
+      const tagText = worldPremiseTagText(ev);
+      if (tagText) {
+        const t = document.createElement('span');
+        t.className = 'wTag' + (worldPremiseIsNew(ev) ? ' isNew' : '');
+        t.textContent = tagText;
+        right.appendChild(t);
+      }
+    };
+    paintRight();
     row.appendChild(right);
 
     const detail = document.createElement('div');
@@ -14655,7 +15130,7 @@
     row.addEventListener('click', () => {
       const open = !detail.hidden;
       container.querySelectorAll('.worldDetail').forEach((el) => { el.hidden = true; });
-      if (!open) { renderWorldDetail(detail, ev); detail.hidden = false; worldState.openId = ev.id; }
+      if (!open) { renderWorldDetail(detail, ev, paintRight); detail.hidden = false; worldState.openId = ev.id; }
       else worldState.openId = null;
     });
 
@@ -14664,12 +15139,26 @@
     return wrap;
   }
 
-  function renderWorldDetail(box, ev) {
+  function renderWorldDetail(box, ev, paintRight) {
+    const repaint = paintRight || function () {};
     box.innerHTML = '';
+    const termEntries = worldTermEntriesOf(ev);
+    const usedTerms = new Set();   // 1語につき最初の1回だけ（why → detail の順に消費）
+    const noteHost = document.createElement('div');
+    const openTerm = (entry) => {
+      worldMarkTermSeen(entry);
+      const same = noteHost.dataset.entryId === entry.id && !noteHost.hidden;
+      noteHost.innerHTML = '';
+      noteHost.hidden = same;
+      noteHost.dataset.entryId = entry.id;
+      if (!same) noteHost.appendChild(worldTermNoteEl(entry));
+      box.querySelectorAll('.termChip, .termPill').forEach((el) => { if (el.dataset.entryId === entry.id) el.classList.add('seen'); });
+    };
 
     const why = document.createElement('p');
     why.className = 'wWhy';
-    why.textContent = ev.why || '（なぜ今動いたかが書かれていません）';
+    if (ev.why) worldFillWithTerms(why, ev.why, termEntries, usedTerms, openTerm);
+    else why.textContent = ev.slim ? '（この出来事は要約だけ残しています）' : '（なぜ今動いたかが書かれていません）';
     box.appendChild(why);
 
     const pre = document.createElement('div');
@@ -14689,17 +15178,41 @@
         const open = document.createElement('button');
         open.type = 'button'; open.className = 'linkLikeBtn';
         open.textContent = 'この概念を見る';
-        open.addEventListener('click', (e) => { e.stopPropagation(); openWorldConcept(c.id); });
+        open.addEventListener('click', (e) => { e.stopPropagation(); openWorldEntry(c.id); });
         pre.appendChild(open);
       }
     }
     box.appendChild(pre);
 
+    // 用語のチップ行。fact にしか出てこない語、2文字以下で本文に当たらなかった
+    // 語も、ここからは開ける。
+    if (termEntries.length) {
+      const row = document.createElement('div');
+      row.className = 'worldTermRow';
+      const lab = document.createElement('span');
+      lab.className = 'rowLabel';
+      lab.textContent = '用語';
+      row.appendChild(lab);
+      termEntries.forEach((entry) => {
+        const p = document.createElement('button');
+        p.type = 'button';
+        p.className = 'termPill' + (entry.seenAt ? ' seen' : '');
+        p.dataset.entryId = entry.id;
+        p.textContent = entry.name;
+        p.addEventListener('click', (e) => { e.stopPropagation(); openTerm(entry); });
+        row.appendChild(p);
+      });
+      box.appendChild(row);
+    }
+    noteHost.hidden = true;
+    box.appendChild(noteHost);
+
     // 数字・出典・URL は既定で閉じている。ここが「読みに行ってしまう」入口。
     const deep = document.createElement('div');
     deep.className = 'worldDeep';
     deep.hidden = true;
-    if (ev.detail) { const p = document.createElement('div'); p.textContent = ev.detail; deep.appendChild(p); }
+    if (ev.detail) { const p = document.createElement('div'); worldFillWithTerms(p, ev.detail, termEntries, usedTerms, openTerm); deep.appendChild(p); }
+    else if (ev.slim) { const p = document.createElement('div'); p.textContent = 'この出来事は要約だけ残しています。'; deep.appendChild(p); }
     if (ev.source) { const p = document.createElement('div'); p.textContent = ev.source; deep.appendChild(p); }
     if (ev.url) {
       const a = document.createElement('a');
@@ -14711,6 +15224,23 @@
 
     const btns = document.createElement('div');
     btns.className = 'worldRowBtns';
+
+    // ★ は出来事そのものに付く。言葉側の picks とは別で、重みには使わない。
+    const hitBtn = document.createElement('button');
+    hitBtn.type = 'button';
+    const paintHit = () => {
+      hitBtn.className = 'hitBtn worldHit' + (ev.hit ? ' on' : '');
+      hitBtn.textContent = ev.hit ? '★' : '☆';
+      hitBtn.title = ev.hit ? '刺さった（もう一度押すと外す）' : '刺さった';
+    };
+    paintHit();
+    hitBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (ev.hit) { delete ev.hit; delete ev.hitAt; } else { ev.hit = 1; ev.hitAt = nowIso(); }
+      worldTouch(ev); paintHit(); repaint();
+    });
+    btns.appendChild(hitBtn);
+
     const deepBtn = document.createElement('button');
     deepBtn.type = 'button'; deepBtn.className = 'tagFilterBtn'; deepBtn.textContent = '詳しく';
     deepBtn.addEventListener('click', (e) => { e.stopPropagation(); deep.hidden = !deep.hidden; deepBtn.classList.toggle('selected', !deep.hidden); });
@@ -14718,49 +15248,88 @@
 
     const predBox = document.createElement('div');
     predBox.className = 'worldPredBox';
-    predBox.hidden = !ev.prediction.text;
+    predBox.hidden = !worldPredictionWritten(ev);
     const predBtn = document.createElement('button');
     predBtn.type = 'button'; predBtn.className = 'tagFilterBtn';
-    predBtn.textContent = ev.prediction.text ? '予測を直す' : '予測を書く';
+    predBtn.textContent = worldPredictionWritten(ev) ? '予測を直す' : '予測';
     predBtn.addEventListener('click', (e) => { e.stopPropagation(); predBox.hidden = !predBox.hidden; });
     btns.appendChild(predBtn);
 
-    const copyBtn = document.createElement('button');
-    copyBtn.type = 'button'; copyBtn.className = 'tagFilterBtn'; copyBtn.textContent = 'Claude に聞く';
+    // 定型の依頼文。押す気が起きるように、質問文を考える工数をゼロにする。
+    const askRow = document.createElement('div');
+    askRow.className = 'worldAskRow';
+    askRow.hidden = true;
     const copyNote = document.createElement('p');
     copyNote.className = 'fieldNote';
-    copyBtn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const ok = await copyToClipboard(worldEventCopyText(ev));
-      copyNote.textContent = ok ? 'コピーしました。Claude のチャットに貼ってください。' : 'コピーできませんでした。';
+    const askBtn = document.createElement('button');
+    askBtn.type = 'button'; askBtn.className = 'tagFilterBtn'; askBtn.textContent = 'Claude に聞く';
+    askBtn.addEventListener('click', (e) => { e.stopPropagation(); askRow.hidden = !askRow.hidden; askBtn.classList.toggle('selected', !askRow.hidden); });
+    btns.appendChild(askBtn);
+    WORLD_ASK_PROMPTS.forEach((ask) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'tagFilterBtn'; b.textContent = ask.label;
+      b.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const ok = await copyToClipboard(worldEventCopyText(ev, ask));
+        copyNote.textContent = ok ? '「' + ask.label + '」をコピーしました。Claude のチャットに貼ってください。' : 'コピーできませんでした。';
+      });
+      askRow.appendChild(b);
     });
-    btns.appendChild(copyBtn);
+
     box.appendChild(btns);
+    box.appendChild(askRow);
     box.appendChild(copyNote);
     box.appendChild(deep);
 
     // --- 予測 ---
-    const lab = document.createElement('span');
-    lab.className = 'fieldLabel';
-    lab.textContent = '3ヶ月後どうなっていると思うか（書かなくてよい）';
-    predBox.appendChild(lab);
-    const ta = document.createElement('textarea');
-    ta.rows = 2;
-    ta.value = ev.prediction.text;
-    ta.placeholder = 'ひとこと。あとで答え合わせします';
-    ta.addEventListener('click', (e) => e.stopPropagation());
     const dueEl = document.createElement('div');
     dueEl.className = 'worldPredDue';
     const paintDue = () => {
       const p = ev.prediction;
-      dueEl.textContent = p.text && p.dueDate ? '期限 ' + dotDate(p.dueDate) : '書くと期限が入ります';
+      dueEl.textContent = worldPredictionWritten(ev) && p.dueDate ? '期限 ' + dotDate(p.dueDate) : '押すか書くと期限が入ります';
     };
+
+    // fork があれば3択が主。白紙の自由記述は書かれないので、押すだけで済む形。
+    if (ev.fork) {
+      const forkEl = document.createElement('div');
+      forkEl.className = 'worldForkText';
+      forkEl.textContent = ev.fork.text;
+      predBox.appendChild(forkEl);
+      const pickRow = document.createElement('div');
+      pickRow.className = 'tagFilterRow';
+      const paintPicks = () => {
+        pickRow.querySelectorAll('button').forEach((b) => b.classList.toggle('selected', b.dataset.pick === ev.prediction.pick));
+      };
+      WORLD_PICKS.forEach((v) => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'tagFilterBtn'; b.dataset.pick = v;
+        b.textContent = (WORLD_PICK_LABEL[ev.fork.type] || WORLD_PICK_LABEL.event)[v];
+        b.addEventListener('click', (e) => {
+          e.stopPropagation();
+          worldSetPredictionPick(ev, ev.prediction.pick === v ? '' : v);
+          paintPicks(); paintDue(); repaint();
+        });
+        pickRow.appendChild(b);
+      });
+      predBox.appendChild(pickRow);
+      paintPicks();
+    }
+
+    const lab = document.createElement('span');
+    lab.className = 'fieldLabel';
+    lab.textContent = ev.fork ? 'ひとこと（任意）' : Math.round(ev.prediction.days / 30) + 'ヶ月後どうなっていると思うか（書かなくてよい）';
+    predBox.appendChild(lab);
+    const ta = document.createElement('textarea');
+    ta.rows = 2;
+    ta.value = ev.prediction.text;
+    ta.placeholder = ev.fork ? 'なぜそう思うか。書かなくてよい' : 'ひとこと。あとで答え合わせします';
+    ta.addEventListener('click', (e) => e.stopPropagation());
     let saveTimer = null;
     ta.addEventListener('input', () => {
       if (saveTimer) clearTimeout(saveTimer);
-      saveTimer = setTimeout(() => { saveTimer = null; worldSetPrediction(ev, ta.value); paintDue(); }, 600);
+      saveTimer = setTimeout(() => { saveTimer = null; worldSetPrediction(ev, ta.value); paintDue(); repaint(); }, 600);
     });
-    ta.addEventListener('blur', () => { if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; } worldSetPrediction(ev, ta.value); paintDue(); });
+    ta.addEventListener('blur', () => { if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; } worldSetPrediction(ev, ta.value); paintDue(); repaint(); });
     predBox.appendChild(ta);
 
     const daysRow = document.createElement('div');
@@ -14782,34 +15351,59 @@
     if (ev.prediction.history.length) {
       const hist = document.createElement('div');
       hist.className = 'worldHistory';
-      hist.textContent = '前に書いたこと：' + ev.prediction.history.map((h) => (h.at ? dotDate(h.at.slice(0, 10)) + ' ' : '') + h.text).join(' ／ ');
+      hist.textContent = '前に書いたこと：' + ev.prediction.history.map((h) => {
+        const label = h.pick && ev.fork ? (WORLD_PICK_LABEL[ev.fork.type] || WORLD_PICK_LABEL.event)[h.pick] + ' ' : '';
+        return (h.at ? dotDate(h.at.slice(0, 10)) + ' ' : '') + label + h.text;
+      }).join(' ／ ');
       predBox.appendChild(hist);
     }
     box.appendChild(predBox);
   }
 
-  function worldEventCopyText(ev) {
+  function worldPredictionCopyLine(ev) {
     const p = ev.prediction;
+    if (!worldPredictionWritten(ev)) return '';
+    const label = p.pick && ev.fork ? (WORLD_PICK_LABEL[ev.fork.type] || WORLD_PICK_LABEL.event)[p.pick] : '';
+    return '\n【自分の予測（' + (p.writtenDate || '') + ' 記入・期限 ' + (p.dueDate || '') + '）】\n'
+      + (ev.fork ? ev.fork.text + '\n→ ' + (label || '（未選択）') + '\n' : '')
+      + (p.text ? p.text + '\n' : '');
+  }
+  // 素材は4つとも共通。末尾の依頼文だけが違う。terms を渡すかどうかも
+  // 依頼ごとに違う（「やさしく説明」は注を読んでも分からなかったときに押す
+  // ので、既知として渡すと分からなかったものを飛ばして説明される）。
+  function worldEventCopyText(ev, ask) {
     const pre = ev.premise.kind === 'relation'
       ? '【前提】' + ev.premise.a + ' × ' + ev.premise.b + '\n' + ev.premise.line
       : '【前提】' + ev.premise.name + '\n' + ev.premise.line;
+    let termBlock = '';
+    if (ask && ask.terms) {
+      const entries = worldTermEntriesOf(ev).filter((t) => t.line);
+      if (entries.length) termBlock = '\n【私が既に知っていること】\n' + entries.map((t) => '- ' + t.name + '：' + t.line).join('\n') + '\n';
+    }
+    const tail = ask
+      ? '\n' + ask.body + WORLD_ASK_COMMON
+      : '\nこの件について、私が見落としている力学を教えてください。\n私は既に上の前提は理解しています。';
     return '【出来事】' + ev.eventDate + '\n' + ev.fact + '\n\n'
       + '【なぜ今動いたか】\n' + (ev.why || '（なし）') + '\n\n'
-      + pre + '\n\n'
-      + (ev.detail ? '【詳細】' + ev.detail + '\n' : '')
+      + pre + '\n'
+      + termBlock
+      + (ev.detail ? '\n【詳細】' + ev.detail + '\n' : '')
       + (ev.source ? '【出典】' + ev.source + '\n' : '')
       + (ev.url ? ev.url + '\n' : '')
-      + (p.text ? '\n【自分の予測（' + (p.writtenDate || '') + ' 記入・期限 ' + (p.dueDate || '') + '）】\n' + p.text + '\n' : '')
-      + '\nこの件について、私が見落としている力学を教えてください。\n私は既に上の前提は理解しています。';
+      + worldPredictionCopyLine(ev)
+      + tail;
   }
-  function worldConceptCopyText(c) {
+  function worldConceptCopyText(c, ask) {
+    const isTerm = worldStoreOf(c).key === 'term';
     const events = worldEvents.filter((e) => c.eventIds.includes(e.id)).slice(-5).reverse();
-    return '【概念】' + c.name + (c.aka.length ? '（' + c.aka.join(' / ') + '）' : '') + '\n'
-      + (c.line || '') + '\n\n'
-      + '【つながる概念】' + (c.related.map((id) => { const o = worldConceptById(id); return o ? o.name : null; }).filter(Boolean).join(' ・ ') || '（なし）') + '\n\n'
-      + '【この概念が出た出来事】\n'
+    const related = isTerm ? '' :
+      '【つながる概念】' + (c.related.map((id) => { const o = worldConceptById(id); return o ? o.name : null; }).filter(Boolean).join(' ・ ') || '（なし）') + '\n\n';
+    return '【' + (isTerm ? '用語' : '概念') + '】' + c.name + (c.aka.length ? '（' + c.aka.join(' / ') + '）' : '') + '\n'
+      + (c.line || '（注がまだありません）') + '\n\n'
+      + related
+      + '【この' + (isTerm ? '用語' : '概念') + 'が出た出来事】\n'
       + (events.length ? events.map((e) => '- ' + worldShortDate(e.eventDate) + ' ' + e.fact).join('\n') : '（読み込んでいる月にはありません）') + '\n\n'
-      + 'この概念について、上の理解の次に来るものを教えてください。';
+      + (ask ? ask.body + WORLD_ASK_COMMON : 'この概念について、上の理解の次に来るものを教えてください。');
   }
 
   function renderWorldList(container, list, emptyText) {
@@ -14906,24 +15500,58 @@
     note.textContent = '端末に読み込んでいる月だけを出しています（今月・先月と、未読が残っている月）。';
     body.appendChild(note);
   }
+  function worldSortEntries(list, sort) {
+    const copy = list.slice();
+    if (sort === 'kana') return copy.sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+    if (sort === 'new') return copy.sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1));
+    return copy.sort((a, b) => worldConceptCount(b) - worldConceptCount(a) || a.name.localeCompare(b.name, 'ja'));
+  }
+  // 用語はタブ行を増やさず、概念の中の切替に置く。「用語は読むための道具で
+  // あって、体系ではない」という位置づけが画面に出るほうを採った。
   function renderWorldConceptsTab(body) {
-    const list = worldConcepts().slice().sort((a, b) => worldConceptCount(b) - worldConceptCount(a) || (a.name > b.name ? 1 : -1));
+    const isTerm = worldState.entryKind === 'term';
+
+    const kindRow = document.createElement('div');
+    kindRow.className = 'tagFilterRow';
+    [['concept', '概念'], ['term', '用語']].forEach(([k, label]) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'tagFilterBtn' + (worldState.entryKind === k ? ' selected' : '');
+      b.textContent = label + ' ' + (k === 'term' ? worldTerms().length : worldConcepts().length);
+      b.addEventListener('click', () => { worldState.entryKind = k; renderWorldMain(); });
+      kindRow.appendChild(b);
+    });
+    body.appendChild(kindRow);
+
+    const sortRow = document.createElement('div');
+    sortRow.className = 'tagFilterRow';
+    WORLD_SORTS.forEach((s) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'tagFilterBtn' + (worldState.entrySort === s ? ' selected' : '');
+      b.textContent = WORLD_SORT_LABEL[s];
+      b.addEventListener('click', () => { worldState.entrySort = s; renderWorldMain(); });
+      sortRow.appendChild(b);
+    });
+    body.appendChild(sortRow);
+
+    const list = worldSortEntries(isTerm ? worldTerms() : worldConcepts(), worldState.entrySort);
     if (!list.length) {
-      const p = document.createElement('p'); p.className = 'emptyMsg'; p.textContent = 'まだ概念がありません。';
+      const p = document.createElement('p'); p.className = 'emptyMsg';
+      p.textContent = isTerm ? 'まだ用語がありません。' : 'まだ概念がありません。';
       body.appendChild(p); return;
     }
     list.forEach((c) => {
       const row = document.createElement('div');
       row.className = 'worldConceptRow';
-      const n = document.createElement('span'); n.textContent = c.name;
+      const n = document.createElement('span');
+      n.textContent = c.name + (isTerm && c.kind ? '（' + WORLD_TERM_KIND_LABEL[c.kind] + '）' : '');
       const cnt = document.createElement('span'); cnt.className = 'wcCount'; cnt.textContent = worldConceptCount(c) + '件';
       row.appendChild(n); row.appendChild(cnt);
-      row.addEventListener('click', () => openWorldConcept(c.id));
+      row.addEventListener('click', () => openWorldEntry(c.id));
       body.appendChild(row);
     });
   }
   function renderWorldPredictionsTab(body) {
-    const withPred = worldEvents.filter((e) => e.prediction.text);
+    const withPred = worldEvents.filter(worldPredictionWritten);
     const waiting = withPred.filter((e) => !e.prediction.result).sort((a, b) => (a.prediction.dueDate < b.prediction.dueDate ? -1 : 1));
     const done = withPred.filter((e) => e.prediction.result);
 
@@ -14960,24 +15588,28 @@
     }
   }
 
-  function openWorldConcept(id) {
+  function openWorldEntry(id) {
     worldState.conceptId = id;
     worldState.view = 'concept';
     showScreen('world');
     renderWorld();
   }
   function renderWorldConcept() {
-    const c = worldConceptById(worldState.conceptId);
+    const c = worldEntryById(worldState.conceptId);
     if (!c) { worldState.view = 'main'; renderWorld(); return; }
-    document.getElementById('worldConceptName').textContent = c.name;
+    const isTerm = worldStoreOf(c).key === 'term';
+    document.getElementById('worldConceptName').textContent = c.name + (isTerm && c.kind ? '（' + WORLD_TERM_KIND_LABEL[c.kind] + '）' : '');
     const aka = document.getElementById('worldConceptAka');
     aka.hidden = !c.aka.length;
     aka.textContent = c.aka.length ? '別名：' + c.aka.join(' / ') : '';
-    document.getElementById('worldConceptLine').textContent = c.line || '（説明がまだありません）';
+    document.getElementById('worldConceptLine').textContent = c.line || (isTerm ? '（注がまだありません）' : '（説明がまだありません）');
 
+    // 用語は網に参加しないので「つながる概念」を持たない
+    const relField = document.getElementById('worldConceptRelatedField');
+    relField.hidden = isTerm;
     const rel = document.getElementById('worldConceptRelated');
     rel.innerHTML = '';
-    const related = c.related.map(worldConceptById).filter(Boolean);
+    const related = isTerm ? [] : c.related.map(worldConceptById).filter(Boolean);
     document.getElementById('worldConceptRelatedEmpty').hidden = !!related.length;
     related.forEach((o) => {
       const row = document.createElement('div');
@@ -14985,13 +15617,28 @@
       const n = document.createElement('span'); n.textContent = o.name;
       const cnt = document.createElement('span'); cnt.className = 'wcCount'; cnt.textContent = worldConceptCount(o) + '件';
       row.appendChild(n); row.appendChild(cnt);
-      row.addEventListener('click', () => openWorldConcept(o.id));
+      row.addEventListener('click', () => openWorldEntry(o.id));
       rel.appendChild(row);
     });
 
+    document.getElementById('worldConceptEventsLabel').textContent = 'この' + (isTerm ? '用語' : '概念') + 'が出た出来事';
     const evBox = document.getElementById('worldConceptEvents');
     const events = worldEvents.filter((e) => c.eventIds.includes(e.id)).sort((a, b) => (a.eventDate > b.eventDate ? -1 : 1));
     renderWorldList(evBox, events, c.eventIds.length ? '出た月が端末に読み込まれていません。' : 'まだありません。');
+
+    // 概念の詳細は全画面で余白があるので、階層を作らず直接並べる
+    const askRow = document.getElementById('worldConceptAskRow');
+    askRow.innerHTML = '';
+    WORLD_CONCEPT_ASK_PROMPTS.forEach((ask) => {
+      if (isTerm && ask.key === 'deepen') return;   // 用語は厚くしない（注のままでよい）
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'tagFilterBtn'; b.textContent = ask.label;
+      b.addEventListener('click', async () => {
+        const ok = await copyToClipboard(worldConceptCopyText(c, ask));
+        document.getElementById('worldConceptStatus').textContent = ok ? '「' + ask.label + '」をコピーしました。' : 'コピーできませんでした。';
+      });
+      askRow.appendChild(b);
+    });
 
     document.getElementById('worldConceptStatus').textContent = '';
     document.getElementById('worldConceptRenamePanel').hidden = true;
@@ -15004,13 +15651,14 @@
     box.innerHTML = '';
     field.hidden = !worldState.candidates.length;
     worldState.candidates.forEach((pair) => {
-      const a = worldConceptById(pair.a), b = worldConceptById(pair.b);
+      const store = WORLD_STORES[pair.store] || WORLD_STORES.concept;
+      const a = worldByIdIn(store, pair.a), b = worldByIdIn(store, pair.b);
       if (!a || !b) return;
       const row = document.createElement('div');
       row.className = 'worldMergeRow';
       const p = document.createElement('div');
       p.className = 'wmPair';
-      p.appendChild(document.createTextNode(a.name));
+      p.appendChild(document.createTextNode('[' + store.label + '] ' + a.name));
       const arrow = document.createElement('span'); arrow.className = 'wmArrow'; arrow.textContent = '↔';
       p.appendChild(arrow);
       p.appendChild(document.createTextNode(b.name + '（既存 ' + worldConceptCount(b) + '件）'));
@@ -15018,19 +15666,19 @@
       const btns = document.createElement('div');
       btns.className = 'medRow';
       const ok = document.createElement('button');
-      ok.type = 'button'; ok.className = 'tagFilterBtn'; ok.textContent = '同じ概念にする';
+      ok.type = 'button'; ok.className = 'tagFilterBtn'; ok.textContent = '同じ' + store.label + 'にする';
       ok.addEventListener('click', () => {
         // 古い方を残す（既存の綴りに寄せる）
         const keep = new Date(a.createdAt) <= new Date(b.createdAt) ? a : b;
         const drop = keep === a ? b : a;
-        worldMergeConcepts(keep.id, drop.id);
+        worldMergeIn(store, keep.id, drop.id);
         worldState.candidates = worldState.candidates.filter((x) => worldPairKey(x.a, x.b) !== worldPairKey(pair.a, pair.b) && x.a !== drop.id && x.b !== drop.id);
         renderWorldImport();
       });
       const no = document.createElement('button');
       no.type = 'button'; no.className = 'tagFilterBtn'; no.textContent = '別のもの';
       no.addEventListener('click', () => {
-        worldDismissPair(pair.a, pair.b);
+        worldDismissPairIn(store, pair.a, pair.b);
         worldState.candidates = worldState.candidates.filter((x) => worldPairKey(x.a, x.b) !== worldPairKey(pair.a, pair.b));
         renderWorldImport();
       });
@@ -15068,6 +15716,7 @@
       const t = document.createElement('div'); t.className = 'liText'; t.textContent = ev.fact;
       row.appendChild(t);
       const marks = [];
+      if (ev.hit) marks.push('★');
       if (ev.prediction.writtenDate === dateStr) marks.push('予測を書いた');
       if (ev.prediction.judgedAt && ev.prediction.judgedAt.slice(0, 10) === dateStr) marks.push({ hit: '当たり', miss: '外れ', hold: '保留' }[ev.prediction.result] || '');
       if (marks.length) {
@@ -15197,6 +15846,8 @@
     let msg = res.added + '件を入れました。';
     if (drops.length) msg += '　' + drops.join('／') + ' を落としました。';
     if (res.createdConcepts.length) msg += '　新しい概念 ' + res.createdConcepts.length + '件。';
+    if (res.createdTerms.length) msg += '　新しい用語 ' + res.createdTerms.length + '件。';
+    if (res.added) msg += '　分かれ目つき ' + res.forks + '件。';
     if (res.old) msg += '　※ 90日より古い出来事が ' + res.old + '件あります。';
     if (unread > WORLD_QUEUE_WARN) msg += '　未読が ' + unread + '件です。読む速さより入れる速さが上回っています。';
     if (res.added) box.value = '';
@@ -15206,14 +15857,8 @@
     renderWorldImport();
   });
   document.getElementById('btnWorldConceptBack').addEventListener('click', () => { worldState.view = 'main'; renderWorld(); });
-  document.getElementById('btnWorldConceptCopy').addEventListener('click', async () => {
-    const c = worldConceptById(worldState.conceptId);
-    if (!c) return;
-    const ok = await copyToClipboard(worldConceptCopyText(c));
-    document.getElementById('worldConceptStatus').textContent = ok ? 'コピーしました。' : 'コピーできませんでした。';
-  });
   document.getElementById('btnWorldConceptRename').addEventListener('click', () => {
-    const c = worldConceptById(worldState.conceptId);
+    const c = worldEntryById(worldState.conceptId);
     if (!c) return;
     document.getElementById('worldConceptRenameInput').value = c.name;
     document.getElementById('worldConceptRenamePanel').hidden = false;
@@ -15222,13 +15867,14 @@
     document.getElementById('worldConceptRenamePanel').hidden = true;
   });
   document.getElementById('btnWorldConceptRenameOk').addEventListener('click', () => {
-    const c = worldConceptById(worldState.conceptId);
+    const c = worldEntryById(worldState.conceptId);
     if (!c) return;
+    const store = worldStoreOf(c);
     const name = document.getElementById('worldConceptRenameInput').value.trim();
     if (!name) return;
-    const existing = worldFindConcept(name);
-    if (existing && existing.id !== c.id && !confirm('「' + existing.name + '」と同じ概念にまとめます。よろしいですか？')) return;
-    const res = worldRenameConcept(c.id, name);
+    const existing = worldFindIn(store, name);
+    if (existing && existing.id !== c.id && !confirm('「' + existing.name + '」と同じ' + store.label + 'にまとめます。よろしいですか？')) return;
+    const res = worldRenameIn(store, c.id, name);
     if (res) worldState.conceptId = res.id;
     renderWorldConcept();
   });
