@@ -1167,6 +1167,19 @@
     background: var(--bg-card); border: 0; border-radius: 8px; margin: 0 0 10px;
     padding: 9px 12px; font: inherit; font-size: 13px; color: var(--text-dim); cursor: pointer;
   }
+  /* 盤面に出す最近の問い。入口の帯の下に、控えめに続ける */
+  .worldAskRecent { margin: -6px 0 10px; }
+  .worldAskRecentRow {
+    display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; align-items: baseline;
+    width: 100%; text-align: left; background: none; border: 0; margin: 0;
+    padding: 5px 12px; font: inherit; color: var(--text); cursor: pointer;
+  }
+  .worldAskRecentRow .warqText { font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+  .worldAskRecentRow .warqDate { font-size: 10px; color: var(--text-faint); white-space: nowrap; }
+  .worldAskRecentRow .warqView {
+    grid-column: 1 / -1; font-size: 11px; color: var(--text-faint); line-height: 1.5;
+    border-left: 2px dashed var(--guess); padding-left: 6px;
+  }
   .worldAskCard { border-top: 1px solid var(--border); padding: 4px 0; }
   .worldAskHead {
     display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: baseline;
@@ -14103,6 +14116,7 @@
   const WORLD_BOARD_FOLD = 5;    // 盤面の既定の件数
   const WORLD_BOARD_MAX  = 20;   // 「もっと見る」で出す上限
   const WORLD_BOARD_LEGEND_KEY = 'kotoba_worldBoardLegend';   // 凡例を畳んだか
+  const WORLD_BOARD_ASKS = 2;    // 盤面に出す最近の問いの数
 
   // v14 問いモード：「知りたいことが先、主体はそこから出てくる」入口。
   // 札の主語（actors）は「出典に行動が書かれた主体」に縛ってあるので広げられない。
@@ -16334,7 +16348,14 @@
   }
   let worldImportField = 'finance';   // 最後にコピーしたプロンプトの分野（JSON に field が無いときの既定）
 
-  function worldShortDate(d) { const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(d); return m ? Number(m[1]) + '/' + Number(m[2]) : d; }
+  // v14.1: 当年は M/D、それ以外は YYYY.M/D。去年の札が今年に混ざって見えるのを防ぐ。
+  // 一覧・盤面・時系列・問い・つながる札のすべてがここを通る。
+  function worldShortDate(d) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
+    if (!m) return d;
+    const short = Number(m[2]) + '/' + Number(m[3]);
+    return m[1] === todayStr().slice(0, 4) ? short : m[1] + '.' + short;
+  }
   function worldPremiseTagText(ev) {
     if (ev.premise.kind === 'relation') return (ev.premise.a || '?') + ' × ' + (ev.premise.b || '?');
     return ev.premise.name || '';
@@ -17039,6 +17060,34 @@
     ask.textContent = '知りたいことから引く' + (worldAsks().length ? '（' + worldAsks().length + '）' : '') + '　▸';
     ask.addEventListener('click', () => { worldState.view = 'ask'; renderWorld(); });
     body.appendChild(ask);
+
+    // v14.1: 最近の問いを盤面から見せる。問いは在庫ではなく自分が立てた立場なので、
+    // 「知りたいことから引く」の中だけに置くと、戻ったとき消えたように見える。
+    const recent = worldAsks()
+      .filter((a) => a.runs.length)
+      .sort((a, b) => { const x = a.runs[a.runs.length - 1].at, y = b.runs[b.runs.length - 1].at; return x > y ? -1 : x < y ? 1 : 0; })
+      .slice(0, WORLD_BOARD_ASKS);
+    if (recent.length) {
+      const box = document.createElement('div');
+      box.className = 'worldAskRecent';
+      recent.forEach((a) => {
+        const last = a.runs[a.runs.length - 1];
+        const row = document.createElement('button');
+        row.type = 'button'; row.className = 'worldAskRecentRow';
+        const t = document.createElement('span'); t.className = 'warqText'; t.textContent = a.text;
+        const v = document.createElement('span'); v.className = 'warqView'; v.textContent = last.view || '';
+        const d = document.createElement('span'); d.className = 'warqDate'; d.textContent = worldShortDate(last.at);
+        row.appendChild(t); row.appendChild(d); row.appendChild(v);
+        row.addEventListener('click', () => {
+          worldState.view = 'ask';
+          worldState.askOpenId = a.id;      // 前回の見立てを開いた状態で
+          worldState.askId = ''; worldState.askText = ''; worldState.askResult = '';
+          renderWorld();
+        });
+        box.appendChild(row);
+      });
+      body.appendChild(box);
+    }
 
     const rows = worldBoardRows();
     if (!rows.length) {
