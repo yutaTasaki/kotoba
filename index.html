@@ -1130,6 +1130,20 @@
   .worldMoneyReach .wmrRow { display: flex; gap: 8px; padding: 3px 0; }
   .worldMoneyReach .wmrKey { color: var(--text-dim); white-space: nowrap; min-width: 6.5em; }
   .worldMoneyReach .wmrVal { color: var(--text-faint); }
+  /* --- v17 C 答え合わせ ---------------------------------------------------- */
+  .worldJudgeRow { padding: 10px 0; border-top: 1px solid var(--border); font-size: 13px; line-height: 1.7; }
+  .worldJudgeRow .wjFork { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .worldJudgeRow .wjOutcome { font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+  .worldJudgeRow .wjSide { font-size: 12px; padding-left: 12px; color: var(--text-dim); }
+  .worldJudgeRow .wjHit  { color: var(--text); }
+  .worldJudgeRow .wjMiss { color: var(--danger); }
+  .worldJudgeRow .wjWhy { font-size: 11px; color: var(--text-faint); padding-left: 12px; }
+  .worldJudgeRow .wjEvidence { font-size: 12px; color: var(--text-faint); margin-top: 4px; }
+  .worldJudgeRow .wjOpen { font-size: 11px; }
+  /* 生成の見立ては推定。判定の結果は事実。見た目で分ける */
+  .worldLean { font-size: 12px; line-height: 1.7; margin: 4px 0 6px; }
+  .worldLean .wlDir { color: var(--text); }
+  .worldLean .wlWhy { color: var(--text-faint); font-size: 11px; padding-left: 12px; }
   .worldMetaLine { font-size: 12px; color: var(--text-faint); line-height: 1.7; margin-top: 6px; }
   .worldMetaLine .wmKey { color: var(--text-dim); }
   /* --- v11.5 再会・共通点・検索 ------------------------------------------ */
@@ -2225,6 +2239,36 @@
           <p class="fieldNote" id="worldProbeStatus"></p>
         </div>
         <div id="worldStratumListBody"></div>
+      </div>
+    </div>
+
+    <!-- v17 C 答え合わせ：期限が来た分かれ目を一次ソースで判定する。
+         聞くのは「何が起きたか」だけで、当たり外れは端末が引く。 -->
+    <div class="editorBody" id="worldJudgeView" hidden>
+      <div class="worldSectionHead">
+        <h3 style="margin:0;">答え合わせ</h3>
+        <span id="worldJudgeRest"></span>
+      </div>
+      <div class="field">
+        <p class="fieldNote">期限が来た分かれ目を、一次ソースで調べて判定します。誰が何を予測したかはプロンプトに載せません（予測に合わせて事実を選ばせないため）。出典URLの無い結果は保留になります。</p>
+        <button type="button" id="btnWorldJudgePrompt" class="tagFilterBtn">プロンプトをコピー</button>
+        <textarea id="worldJudgePaste" rows="3" placeholder='{"results":[...]} をここに貼る' autocomplete="off"></textarea>
+        <button type="button" id="btnWorldJudgeImport" class="secondaryBtn">結果を取り込む</button>
+        <p class="fieldNote" id="worldJudgeStatus"></p>
+      </div>
+      <div class="field">
+        <div class="worldSectionHead">
+          <span class="fieldLabel" style="margin:0;">的中率</span>
+          <span id="worldJudgeRate"></span>
+        </div>
+      </div>
+      <div class="field">
+        <span class="fieldLabel">判定したもの</span>
+        <div id="worldJudgeList"></div>
+        <p class="emptyMsg" id="worldJudgeEmpty" hidden>まだ判定したものがありません。</p>
+      </div>
+      <div class="field">
+        <button type="button" id="btnWorldJudgeBack" class="secondaryBtn">戻る</button>
       </div>
     </div>
 
@@ -14115,6 +14159,19 @@
     event: { up: '起きる', down: '起きない', flat: 'どちらとも' },
   };
   const WORLD_PICK_MARK = { up: '↑', down: '↓', flat: '→' };
+  // v17 C：生成にも予測させ、答え合わせを一次ソースでやる。
+  // 判定は「どちらが当たったか」ではなく「何が起きたか」を聞き、当たり外れは端末が引く。
+  const WORLD_FORK_PER_BATCH  = 3;    // 1回の取り込みで分かれ目を書く札の数
+  const WORLD_JUDGE_PER_BATCH = 12;   // 1回の答え合わせに載せる数
+  const WORLD_HOLD_DAYS       = 14;   // 保留を次に見るまでの日数
+  const WORLD_HOLD_MAX        = 2;    // 何回保留になったら打ち切るか
+  const WORLD_BECAUSE_MAX     = 60;   // 生成の見立ての理由の字数
+  const WORLD_EVIDENCE_MAX    = 80;   // 判定の根拠の字数
+  const WORLD_OUTCOMES        = ['up', 'down', 'flat'];
+  // 札の画面で、生成の見立て（方向）まで隠すか。理由（because）は押すまで畳む
+  // のが既定で、方向は出す——方向1つなら引きずられる度合いが小さく、隠すと
+  // 「AI はこう思っている」が予測タブでしか見られなくなるため。
+  const WORLD_LEAN_HIDDEN     = false;
   const WORLD_SORTS = ['count', 'kana', 'new'];
   const WORLD_CONCEPT_SORTS = ['count', 'kana', 'new', 'parent'];   // v11: 親でまとめる
   const WORLD_SORT_LABEL = { count: '回数順', kana: '五十音順', new: '新しい順', parent: '親でまとめる' };
@@ -14442,6 +14499,17 @@
       result: ['hit', 'miss', 'hold'].includes(src.result) ? src.result : '',
       judgedAt: typeof src.judgedAt === 'string' ? src.judgedAt : '',
       judgeNote: worldStr(src.judgeNote, 600),
+      // v17 C: 生成の見立て。fork がある札だけ。推定なので画面では琥珀の印を付ける
+      lean: WORLD_PICKS.includes(src.lean) ? src.lean : '',
+      because: worldStr(src.because, WORLD_BECAUSE_MAX),
+      leanResult: ['hit', 'miss', 'hold'].includes(src.leanResult) ? src.leanResult : '',
+      // v17 C: 答え合わせ。outcome（実際どうなったか）が判定の素で、
+      // 当たり外れは lean・pick と突き合わせて端末が引く
+      outcome: WORLD_OUTCOMES.includes(src.outcome) ? src.outcome : '',
+      evidence: worldStr(src.evidence, WORLD_EVIDENCE_MAX),
+      evidenceUrl: typeof src.evidenceUrl === 'string' ? (shootSafeUrl(src.evidenceUrl.trim()) || '') : '',
+      nextCheck: isDateStr(src.nextCheck) ? src.nextCheck : '',
+      holdCount: Number.isFinite(src.holdCount) ? src.holdCount : 0,
     };
   }
   function normalizeWorldEvent(e) {
@@ -14778,8 +14846,12 @@
     });
     events.forEach((e) => {
       const p = e.prediction;
-      if (!(p.pick || p.text) || !p.dueDate || p.result) return;
-      (wd.index.due[p.dueDate] = wd.index.due[p.dueDate] || []).push(e.id);
+      // v17 C: result ではなく judgedAt で外す。pick を押していない札は判定しても
+      // result が空のままなので、result で見ていると永久に索引に残る。
+      if (!worldPredictionAny(e) || p.judgedAt) return;
+      const d = p.nextCheck || p.dueDate;   // 保留は次に見る日に出す
+      if (!d) return;
+      (wd.index.due[d] = wd.index.due[d] || []).push(e.id);
     });
     wd.index.updatedAt = nowIso();
     persistWorldIndex();
@@ -15732,7 +15804,8 @@
   // （3択だけ押して一言を書かないのが既定の使い方になるため）。
   function worldPredictionDue(ev) {
     const p = ev.prediction;
-    if (!(p.pick || p.text)) { p.dueDate = ''; return; }
+    // v17 C: 生成の見立てだけでも期限が入る（自分が押していなくても答え合わせに載る）
+    if (!worldPredictionAny(ev)) { p.dueDate = ''; return; }
     if (!p.writtenDate) p.writtenDate = todayStr();
     p.dueDate = addDays(p.writtenDate, p.days);
   }
@@ -15764,7 +15837,7 @@
     const p = ev.prediction;
     if (!WORLD_PREDICT_CHOICES.includes(days) || p.days === days) return;
     p.days = days;
-    if (worldPredictionWritten(ev) && p.writtenDate) p.dueDate = addDays(p.writtenDate, days);
+    if (worldPredictionAny(ev) && p.writtenDate) p.dueDate = addDays(p.writtenDate, days);
     worldTouch(ev);
   }
   function worldDueEvents(onOrBefore) {
@@ -15967,6 +16040,22 @@
       '    「原油価格は変動するか」のような、どちらにも転ばない書き方は禁止。\n' +
       '  - 誰がどう見ても同じ判定になる書き方にする。\n' +
       '    「市場が落ち着くか」「関係が改善するか」は書かない。\n' +
+      // v17 C: 入口で絞らないと答え合わせが追いつかない（90日 × 3件が待ち行列の上限）
+      '  - 分かれ目を書くのは、上から' + WORLD_FORK_PER_BATCH + '件までにする。' + (WORLD_FORK_PER_BATCH + 1) + '件目からは fork を null にする。\n' +
+      '    分かれ目が立つ札は、その週に数件しかないのが正常。\n' +
+      '\n' +
+      // v17 C: 見立ては推定。事実（fact・did）と混ぜないよう別の項目に分ける
+      '- lean：その分かれ目が、あなたの見立てではどちらに転ぶか。\n' +
+      '  fork が null のときは書かない。\n' +
+      '  "up"／"down"／"flat" のどれか。\n' +
+      '  type が "level" なら up=示された水準に届く／down=届かない／flat=どちらとも言えない。\n' +
+      '  type が "event" なら up=起きる／down=起きない／flat=どちらとも言えない。\n' +
+      '  逃げないこと。flat は「本当にどちらにも転びうる」ときだけ。\n' +
+      '- because：なぜそう見立てたかを1文・' + WORLD_BECAUSE_MAX + '字以内。\n' +
+      '  これは推定です。出典に書かれた事実ではなく、あなたの読みを書く。\n' +
+      '  何がそう思わせるのかを書く。どちらでもない文を書かない。\n' +
+      '  良い例：「減額幅を決めるのが財政側なので、金利が上がるまで動かない」\n' +
+      '  悪い例：「今後の動向次第で変わる可能性がある」\n' +
       '\n' +
       '- flow：この出来事で動いたお金。無ければ null。無理に書かない。\n' +
       '  from／to は主体名（アクター名か、「為替市場」のような場所）。what は何をしたか。\n' +
@@ -16012,6 +16101,7 @@
       '  "flow":{"from":"...","to":"...","what":"...","amount":"...","span":"","strata":[]},\n' +
       '  "levels":[{"stratumId":"st_jp_fx_reserve","value":"...","at":"YYYY-MM-DD"}],\n' +
       '  "fork":{"text":"...","type":"level"},\n' +
+      '  "lean":"up","because":"...",\n' +
       '  "detail":"...",\n' +
       '  "source":"...",\n' +
       '  "url":"https://...",\n' +
@@ -16021,7 +16111,7 @@
       '  {"kind":"relation","a":"既知の概念1","b":"既知の概念2","line":"..."}\n' +
       'すでに知っている用語： {"name":"IMF"}\n' +
       'どの地層にも乗らないとき： "strata": []\n' +
-      '分かれ目が思いつかないとき： "fork": null\n' +
+      '分かれ目が思いつかないとき： "fork": null（lean と because も書かない）\n' +
       'お金の動きが無いとき： "flow": null\n' +
       '地層の値が出典に書かれていないとき： "levels": []\n' +
       '述べた理由が出典に無いとき： "said": ""\n' +
@@ -16235,6 +16325,144 @@
       known: eventIds.length, missing,
       knownActors: actors.filter((a) => a.actorId).length,
     };
+  }
+
+  // ---- 答え合わせ (v17 C) ----------------------------------------------------
+  // 聞くのは「その分かれ目は実際どうなったか」だけ。当たり外れは端末が引く。
+  // 生成に採点させると採点が甘くなる方向に力がかかり、pick や lean を見せると
+  // それに引きずられる。だから両方ともプロンプトに載せない。
+  function worldPredictionMine(ev) { return !!(ev.prediction.pick || ev.prediction.text); }
+  function worldPredictionLean(ev) { return !!ev.prediction.lean; }
+  function worldPredictionAny(ev)  { return worldPredictionMine(ev) || worldPredictionLean(ev); }
+  function worldNextCheckOf(ev) { return ev.prediction.nextCheck || ev.prediction.dueDate; }
+  // 期限（保留のときは次に見る日）の古い順。端末に読み込んでいる札だけ。
+  function worldJudgeTargets() {
+    const today = todayStr();
+    return worldLiveEvents()
+      .filter((e) => e.fork && worldPredictionAny(e) && !e.prediction.judgedAt)
+      .filter((e) => { const d = worldNextCheckOf(e); return d && d <= today; })
+      .sort((a, b) => (worldNextCheckOf(a) < worldNextCheckOf(b) ? -1 : 1));
+  }
+  // level と event で up の意味が違う。生成側に毎回判断させると事故るので、
+  // 端末で文言に展開してから渡す。3択のボタンの文言（上／下）はここでは使えない
+  // ——「up とは：上」では、その分かれ目にとって何が上なのかが伝わらない。
+  function worldOutcomeWords(ev) {
+    return ev.fork.type === 'level'
+      ? 'up とは：示された水準に届く（分かれ目の文のとおりになる）　／　down とは：届かない'
+      : 'up とは：起きる（分かれ目の文のとおりになる）　／　down とは：起きない';
+  }
+  function worldJudgePromptText() {
+    const cards = worldJudgeTargets().slice(0, WORLD_JUDGE_PER_BATCH);
+    return SHOOT_PROMPT_HEAD +
+      'あなたは、少し前に立てた「分かれ目」が実際どうなったかを調べる係です。\n' +
+      '予測しません。採点しません。何が起きたかだけを調べて返します。\n\n' +
+      '■ 必ず守ること\n' +
+      '- web 検索を必ず使う。検索せずに書かない。\n' +
+      '- 一次ソース（中銀・政府・国際機関・統計）で確認できた事実だけを書く。\n' +
+      '- 分かったことと、分からなかったことを正直に分ける。\n' +
+      '  決着していない・調べても出てこない分かれ目は "unknown" にする。\n' +
+      '  埋めるくらいなら "unknown" のほうがよい。\n' +
+      '- url が無いものは書かない。出典が出せない結果は "unknown" にする。\n' +
+      '- 前に誰が何を予測したかは書いていない。予測に合わせて事実を選ばない。\n' +
+      '- JSON のみ。ほかの文章を返さない。\n\n' +
+      '■ それぞれに書くこと\n' +
+      '- eventId：下の一覧にある id だけ。\n' +
+      '- outcome：その分かれ目が実際どうなったか。\n' +
+      '  "up"      … その分かれ目に書いた「up とは」に当たることが起きた\n' +
+      '  "down"    … 起きなかった\n' +
+      '  "flat"    … 決着したが、どちらとも言えない形で終わった\n' +
+      '  "unknown" … まだ決着していない、または調べても分からなかった\n' +
+      '- evidence：そう言える事実を1文・' + WORLD_EVIDENCE_MAX + '字以内。数字か日付を含める。\n' +
+      '  「〜と報じられた」ではなく「〜が〜した」と書く。\n' +
+      '- url：その事実が載っているページ。outcome が "unknown" のときは空でよい。\n\n' +
+      '■ 出力形式\n' +
+      '{"results":[\n' +
+      '  {"eventId":"w_20260610_1","outcome":"up",\n' +
+      '   "evidence":"米エネルギー情報局の週報で10月2日に留出油在庫が9860万バレルとなり1億バレルを割った",\n' +
+      '   "url":"https://..."},\n' +
+      '  {"eventId":"w_20260612_2","outcome":"unknown",\n' +
+      '   "evidence":"IMF理事会の議題に上がっておらず、承認の記録が無い","url":""}\n' +
+      ']}\n\n' +
+      '────────────────────────────────────────\n' +
+      '■ 調べる分かれ目（' + cards.length + '件）\n' +
+      (cards.length ? cards.map((e) =>
+        '[' + e.id + ']  ' + e.eventDate + '\n' +
+        '  分かれ目：' + e.fork.text + '\n' +
+        '  ' + worldOutcomeWords(e) + '\n' +
+        '  もとの出来事：' + e.fact + '\n' +
+        '  出典：' + (e.source || '') + '  ' + (e.url || '') + '\n' +
+        '  期限：' + (e.prediction.dueDate || '')
+        + (e.prediction.holdCount ? '（' + e.prediction.holdCount + '回保留）' : '')).join('\n\n')
+        : '（期限が来た分かれ目がありません）');
+  }
+
+  // 判定するのは outcome だけ。当たり外れは lean・pick と突き合わせて端末が引く。
+  // url・evidence が無いもの、unknown は保留にして 14 日後にもう一度出す。
+  // 2回保留になったら打ち切る——永久に戻り続けると答え合わせが詰まるので。
+  function worldImportJudgeJson(raw) {
+    const parsed = shootParseJson(raw);
+    const items = parsed ? (Array.isArray(parsed) ? parsed : Array.isArray(parsed.results) ? parsed.results : null) : null;
+    if (!items) return { error: 'JSON として読めませんでした。{"results":[...]} の形で貼ってください。' };
+    const out = { judged: 0, held: 0, closed: 0, unknown: 0, noUrl: 0, noEvidence: 0, missing: 0,
+      leanHit: 0, leanMiss: 0, mineHit: 0, mineMiss: 0 };
+    const touched = new Set();
+    const iso = nowIso();
+    items.forEach((r) => {
+      if (!r || typeof r !== 'object') return;
+      const ev = worldLiveEvents().find((e) => e.id === String(r.eventId));
+      if (!ev || !ev.fork) { out.missing++; return; }
+      const p = ev.prediction;
+      if (p.judgedAt) return;                                   // 済みは触らない（足すだけ）
+      const outcome = WORLD_OUTCOMES.includes(r.outcome) ? r.outcome : '';
+      const url = typeof r.url === 'string' ? (shootSafeUrl(r.url.trim()) || '') : '';
+      const evidence = worldStr(r.evidence, WORLD_EVIDENCE_MAX);
+      let hold = '';
+      if (!outcome) { hold = 'unknown'; out.unknown++; }
+      else if (!url) { hold = 'noUrl'; out.noUrl++; }           // 判定を捏造させない
+      else if (!evidence) { hold = 'noEvidence'; out.noEvidence++; }
+      if (hold) {
+        p.holdCount = (p.holdCount || 0) + 1;
+        if (p.holdCount >= WORLD_HOLD_MAX) {
+          p.result = p.pick ? 'hold' : '';
+          p.leanResult = p.lean ? 'hold' : '';
+          p.judgedAt = iso; p.nextCheck = '';
+          p.evidence = evidence;                                 // 分からなかった理由は残す
+          out.closed++;
+        } else {
+          p.nextCheck = addDays(todayStr(), WORLD_HOLD_DAYS);
+          p.evidence = evidence;
+          out.held++;
+        }
+      } else {
+        p.outcome = outcome; p.evidence = evidence; p.evidenceUrl = url;
+        p.judgedAt = iso; p.nextCheck = '';
+        p.leanResult = p.lean ? (p.lean === outcome ? 'hit' : 'miss') : '';
+        // pick が無ければ result は空のまま。押さなかったものを外れにしない
+        p.result = p.pick ? (p.pick === outcome ? 'hit' : 'miss') : '';
+        if (p.leanResult === 'hit') out.leanHit++; else if (p.leanResult === 'miss') out.leanMiss++;
+        if (p.result === 'hit') out.mineHit++; else if (p.result === 'miss') out.mineMiss++;
+        out.judged++;
+      }
+      ev.updatedAt = iso;
+      touched.add(monthOfDate(ev.eventDate));
+    });
+    touched.forEach((m) => worldMonthChanged(m));
+    return out;
+  }
+  // 判定済みの札から的中率を出す。自分の分は「自分が答えたもの」だけで数える。
+  function worldJudgeStats() {
+    const st = { leanHit: 0, leanMiss: 0, leanHold: 0, mineHit: 0, mineMiss: 0, mineHold: 0 };
+    worldLiveEvents().forEach((e) => {
+      const p = e.prediction;
+      if (!p.judgedAt) return;
+      if (p.leanResult === 'hit') st.leanHit++; else if (p.leanResult === 'miss') st.leanMiss++; else if (p.leanResult === 'hold') st.leanHold++;
+      if (p.result === 'hit') st.mineHit++; else if (p.result === 'miss') st.mineMiss++; else if (p.result === 'hold') st.mineHold++;
+    });
+    return st;
+  }
+  function worldRateText(hit, miss) {
+    const n = hit + miss;
+    return n ? hit + '/' + n + '（' + Math.round((hit / n) * 100) + '%）' : '—';
   }
 
   // ---- 地層の現在値を調べる (v16 B) ------------------------------------------
@@ -16496,7 +16724,7 @@
     const createdConcepts = [];
     const createdTerms = [];
     const touchedMonths = new Set();
-    let old = 0, forks = 0, onStrata = 0, droppedStrata = 0, unknownConcepts = 0, withActors = 0, withRead = 0, withFlow = 0;
+    let old = 0, forks = 0, leans = 0, droppedForks = 0, onStrata = 0, droppedStrata = 0, unknownConcepts = 0, withActors = 0, withRead = 0, withFlow = 0;
     const createdActors = [];
     const lv = { levelsFilled: 0, levelsDup: 0, levelsUnknown: 0 };   // v15
 
@@ -16564,6 +16792,21 @@
       const askedStrata = Array.isArray(it.strata) ? it.strata.length : 0;
       droppedStrata += Math.max(0, askedStrata - ev.strata.length);
       worldApplyLevels(ev, it.levels, lv);   // v15: 札が運んできた地層の値
+      // v17 C: 分かれ目は上位 WORLD_FORK_PER_BATCH 件まで。プロンプトにも書いて
+      // あるが破られるので取り込みでも切る。入口で絞らないと答え合わせが追いつかない。
+      if (ev.fork) {
+        if (forks > WORLD_FORK_PER_BATCH) { ev.fork = null; forks--; droppedForks++; }
+        else if (WORLD_PICKS.includes(it.lean)) {
+          // 期限は札の日付から数える。自分があとで押しても writtenDate は動かないので、
+          // 同じ分かれ目に生成と自分が同じ期限で答えることになり、的中率が比べられる。
+          ev.prediction.lean = it.lean;
+          ev.prediction.because = worldStr(it.because, WORLD_BECAUSE_MAX);
+          ev.prediction.writtenDate = ev.eventDate;
+          ev.prediction.days = WORLD_PREDICT_DAYS;
+          worldPredictionDue(ev);
+          leans++;
+        }
+      }
     });
 
     if (added.length) {
@@ -16589,7 +16832,7 @@
       }));
     }
     return {
-      added: added.length, rejected, old, forks, onStrata, droppedStrata, unknownConcepts,
+      added: added.length, rejected, old, forks, leans, droppedForks, onStrata, droppedStrata, unknownConcepts,
       createdConcepts, createdTerms, createdActors, batchId, linked, partnerIds: [...partnerIds],
       addedIds: added.map((e) => e.id),
       withActors, withRead, withFlow,
@@ -16656,12 +16899,29 @@
       .sort((a, b) => (a.eventDate > b.eventDate ? -1 : 1));
     return list[0] || null;
   }
-  function worldPredictionWritten(ev) { return !!(ev.prediction.pick || ev.prediction.text); }
+  // v17 C: 生成の見立て（lean）が自動で入るので、「自分が書いた」と「何か予測が
+  // 付いている」を分ける。予測タブと due 索引は Any、コピー文は Mine。
+  function worldPredictionWritten(ev) { return worldPredictionMine(ev); }
+  const WORLD_RESULT_LABEL = { hit: '当たり', miss: '外れ', hold: '保留' };
+  // v17 C: 答え合わせの画面には3択のボタンが無いので、ボタンの文言（上／下）を
+  // 借りると「1億バレルを割るか → 上」になって何が起きたのか読めない。
+  // プロンプトに書いた「up とは」と同じ言い方に揃える。
+  const WORLD_OUTCOME_LABEL = {
+    level: { up: '届いた', down: '届かなかった', flat: 'どちらとも' },
+    event: { up: '起きた', down: '起きなかった', flat: 'どちらとも' },
+  };
+  const WORLD_SIDE_LABEL = {
+    level: { up: '届く', down: '届かない', flat: 'どちらとも' },
+    event: { up: '起きる', down: '起きない', flat: 'どちらとも' },
+  };
   function worldPredictionSummary(ev) {
     const p = ev.prediction;
-    if (!worldPredictionWritten(ev)) return '';
-    if (p.result) return { hit: '当たり', miss: '外れ', hold: '保留' }[p.result];
-    return p.pick ? WORLD_PICK_MARK[p.pick] : '予測';
+    if (!worldPredictionAny(ev)) return '';
+    if (p.result) return WORLD_RESULT_LABEL[p.result];
+    if (p.pick) return WORLD_PICK_MARK[p.pick];
+    // 自分がまだ押していない。生成の見立てだけがある状態
+    if (p.lean) return WORLD_PICK_MARK[p.lean] + '?';
+    return '予測';
   }
 
   // --- 用語の注 (v10.5) ---------------------------------------------------
@@ -17088,10 +17348,10 @@
 
     const predBox = document.createElement('div');
     predBox.className = 'worldPredBox';
-    predBox.hidden = !worldPredictionWritten(ev);
+    predBox.hidden = !worldPredictionAny(ev);
     const predBtn = document.createElement('button');
     predBtn.type = 'button'; predBtn.className = 'tagFilterBtn';
-    predBtn.textContent = worldPredictionWritten(ev) ? '予測を直す' : '予測';
+    predBtn.textContent = worldPredictionMine(ev) ? '予測を直す' : '予測';
     predBtn.addEventListener('click', (e) => { e.stopPropagation(); predBox.hidden = !predBox.hidden; });
     btns.appendChild(predBtn);
 
@@ -17137,7 +17397,7 @@
     dueEl.className = 'worldPredDue';
     const paintDue = () => {
       const p = ev.prediction;
-      dueEl.textContent = worldPredictionWritten(ev) && p.dueDate ? '期限 ' + dotDate(p.dueDate) : '押すか書くと期限が入ります';
+      dueEl.textContent = p.dueDate ? '期限 ' + dotDate(p.dueDate) : '押すか書くと期限が入ります';
     };
 
     // fork があれば3択が主。白紙の自由記述は書かれないので、押すだけで済む形。
@@ -17146,6 +17406,32 @@
       forkEl.className = 'worldForkText';
       forkEl.textContent = ev.fork.text;
       predBox.appendChild(forkEl);
+      // v17 C: 生成の見立ては3択の上。方向1つなら引きずられる度合いが小さく、
+      // 隠すと「AI はこう思っている」が予測タブでしか見られなくなる。理由は
+      // 自分が押すまで畳む——先に読むと、自分の考えではなく理由の追認になる。
+      if (ev.prediction.lean && !WORLD_LEAN_HIDDEN) {
+        const lw = document.createElement('div');
+        lw.className = 'worldLean';
+        const dir = document.createElement('div');
+        dir.className = 'wlDir';
+        const bg = document.createElement('span'); bg.className = 'guessBadge'; bg.textContent = '推定';
+        dir.appendChild(bg);
+        const lab0 = WORLD_PICK_LABEL[ev.fork.type] || WORLD_PICK_LABEL.event;
+        dir.appendChild(document.createTextNode('生成の見立て：' + lab0[ev.prediction.lean]));
+        const why = document.createElement('div');
+        why.className = 'wlWhy';
+        why.textContent = ev.prediction.because;
+        why.hidden = !ev.prediction.because || !ev.prediction.pick;
+        if (ev.prediction.because && !ev.prediction.pick) {
+          const t = document.createElement('button');
+          t.type = 'button'; t.className = 'linkLikeBtn';
+          t.textContent = 'なぜ ▸';
+          t.addEventListener('click', (e) => { e.stopPropagation(); why.hidden = !why.hidden; });
+          dir.appendChild(t);
+        }
+        lw.appendChild(dir); lw.appendChild(why);
+        predBox.appendChild(lw);
+      }
       const pickRow = document.createElement('div');
       pickRow.className = 'tagFilterRow';
       const paintPicks = () => {
@@ -17243,11 +17529,17 @@
   }
   function worldPredictionCopyLine(ev) {
     const p = ev.prediction;
-    if (!worldPredictionWritten(ev)) return '';
-    const label = p.pick && ev.fork ? (WORLD_PICK_LABEL[ev.fork.type] || WORLD_PICK_LABEL.event)[p.pick] : '';
-    return '\n【自分の予測（' + (p.writtenDate || '') + ' 記入・期限 ' + (p.dueDate || '') + '）】\n'
-      + (ev.fork ? ev.fork.text + '\n→ ' + (label || '（未選択）') + '\n' : '')
-      + (p.text ? p.text + '\n' : '');
+    if (!worldPredictionAny(ev)) return '';
+    const lab = ev.fork ? (WORLD_PICK_LABEL[ev.fork.type] || WORLD_PICK_LABEL.event) : null;
+    const label = p.pick && lab ? lab[p.pick] : '';
+    // v17 C: 生成の見立ては推定なので、自分の予測とは別の行に分ける
+    const lean = (p.lean && lab)
+      ? '\n【生成の見立て（推定）】\n' + lab[p.lean] + (p.because ? '：' + p.because : '') + '\n' : '';
+    const mine = worldPredictionMine(ev)
+      ? '\n【自分の予測（' + (p.writtenDate || '') + ' 記入・期限 ' + (p.dueDate || '') + '）】\n'
+        + (ev.fork ? ev.fork.text + '\n→ ' + (label || '（未選択）') + '\n' : '')
+        + (p.text ? p.text + '\n' : '') : '';
+    return lean + mine;
   }
   // 素材は4つとも共通。末尾の依頼文だけが違う。terms を渡すかどうかも
   // 依頼ごとに違う（「やさしく説明」は注を読んでも分からなかったときに押す
@@ -17592,7 +17884,9 @@
     document.getElementById('worldConceptView').hidden = worldState.view !== 'concept';
     document.getElementById('worldStratumView').hidden = worldState.view !== 'stratum';
     document.getElementById('worldAskView').hidden = worldState.view !== 'ask';
+    document.getElementById('worldJudgeView').hidden = worldState.view !== 'judge';
     if (worldState.view === 'ask') renderWorldAsk();
+    else if (worldState.view === 'judge') renderWorldJudge();
     else if (worldState.view === 'main') renderWorldMain();
     else if (worldState.view === 'concept') renderWorldConcept();
     else if (worldState.view === 'stratum') renderWorldStratum();
@@ -17918,9 +18212,30 @@
     }
   }
   function renderWorldPredictionsTab(body) {
-    const withPred = worldLiveEvents().filter(worldPredictionWritten);
-    const waiting = withPred.filter((e) => !e.prediction.result).sort((a, b) => (a.prediction.dueDate < b.prediction.dueDate ? -1 : 1));
-    const done = withPred.filter((e) => e.prediction.result);
+    // v17 C: 期限が来た日だけ入口を出す。在庫の一覧を既定に置かない
+    const targets = worldJudgeTargets();
+    if (targets.length) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'worldAskEntry';
+      b.textContent = '答え合わせ ' + targets.length + '件　▸';
+      b.addEventListener('click', () => { worldState.view = 'judge'; renderWorld(); });
+      body.appendChild(b);
+    }
+    const st = worldJudgeStats();
+    if (st.leanHit + st.leanMiss + st.mineHit + st.mineMiss) {
+      const h = document.createElement('div');
+      h.className = 'worldSectionHead';
+      const l = document.createElement('span'); l.textContent = '的中率';
+      const r = document.createElement('button');
+      r.type = 'button'; r.className = 'linkLikeBtn';
+      r.textContent = '生成 ' + worldRateText(st.leanHit, st.leanMiss) + ' ・ 自分 ' + worldRateText(st.mineHit, st.mineMiss);
+      r.addEventListener('click', () => { worldState.view = 'judge'; renderWorld(); });
+      h.appendChild(l); h.appendChild(r);
+      body.appendChild(h);
+    }
+    const withPred = worldLiveEvents().filter(worldPredictionAny);
+    const waiting = withPred.filter((e) => !e.prediction.judgedAt).sort((a, b) => (a.prediction.dueDate < b.prediction.dueDate ? -1 : 1));
+    const done = withPred.filter((e) => e.prediction.judgedAt);
 
     const head = document.createElement('div');
     head.className = 'worldSectionHead';
@@ -17932,27 +18247,121 @@
     renderWorldList(box, waiting, 'まだ予測がありません。');
     body.appendChild(box);
 
-    const due = worldDueEvents(todayStr());
-    const note = document.createElement('p');
-    note.className = 'fieldNote';
-    note.textContent = due.length
-      ? '期限が来た予測が ' + due.length + ' 件あります。答え合わせは次の段階で入ります。'
-      : '期限が来た予測はまだありません。';
-    body.appendChild(note);
+    if (!targets.length) {
+      const note = document.createElement('p');
+      note.className = 'fieldNote';
+      note.textContent = '期限が来た分かれ目はまだありません。';
+      body.appendChild(note);
+    }
 
     if (done.length) {
       const h2 = document.createElement('div');
       h2.className = 'worldSectionHead';
       const c = { hit: 0, miss: 0, hold: 0 };
-      done.forEach((e) => { c[e.prediction.result]++; });
-      const l2 = document.createElement('span'); l2.textContent = '済み';
-      const r2 = document.createElement('span'); r2.textContent = `当たり ${c.hit} ・ 外れ ${c.miss} ・ 保留 ${c.hold}`;
+      // 自分が押したものだけ数える（押さなかったものを外れにしない）
+      done.forEach((e) => { if (e.prediction.result) c[e.prediction.result]++; });
+      const l2 = document.createElement('span'); l2.textContent = '済み（' + done.length + '件）';
+      const r2 = document.createElement('span'); r2.textContent = `自分の分 当たり ${c.hit} ・ 外れ ${c.miss} ・ 保留 ${c.hold}`;
       h2.appendChild(l2); h2.appendChild(r2);
       body.appendChild(h2);
       const box2 = document.createElement('div');
       renderWorldList(box2, done, '');
       body.appendChild(box2);
     }
+  }
+
+  // ---- 答え合わせの画面 (v17 C) ----------------------------------------------
+  function renderWorldJudge() {
+    const targets = worldJudgeTargets();
+    const rest = Math.max(0, targets.length - WORLD_JUDGE_PER_BATCH);
+    const next = worldLiveEvents()
+      .filter((e) => e.fork && worldPredictionAny(e) && !e.prediction.judgedAt)
+      .map(worldNextCheckOf).filter((d) => d && d > todayStr()).sort()[0] || '';
+    document.getElementById('worldJudgeRest').textContent =
+      (rest ? 'あと ' + rest + '件' : '') + (next ? (rest ? '　' : '') + '次は ' + worldShortDate(next) : '');
+    document.getElementById('btnWorldJudgePrompt').textContent =
+      'プロンプトをコピー（' + Math.min(targets.length, WORLD_JUDGE_PER_BATCH) + '件）';
+    document.getElementById('btnWorldJudgePrompt').disabled = !targets.length;
+
+    const st = worldJudgeStats();
+    document.getElementById('worldJudgeRate').textContent =
+      '生成 ' + worldRateText(st.leanHit, st.leanMiss) + '　自分 ' + worldRateText(st.mineHit, st.mineMiss);
+
+    const box = document.getElementById('worldJudgeList');
+    box.innerHTML = '';
+    const done = worldLiveEvents().filter((e) => e.prediction.judgedAt || e.prediction.holdCount)
+      .sort((a, b) => (a.eventDate > b.eventDate ? -1 : 1));
+    document.getElementById('worldJudgeEmpty').hidden = !!done.length;
+    done.forEach((e) => box.appendChild(worldJudgeRowEl(e)));
+  }
+  function worldJudgeRowEl(ev) {
+    const p = ev.prediction;
+    const lab = WORLD_SIDE_LABEL[ev.fork.type] || WORLD_SIDE_LABEL.event;
+    const outLab = WORLD_OUTCOME_LABEL[ev.fork.type] || WORLD_OUTCOME_LABEL.event;
+    const row = document.createElement('div');
+    row.className = 'worldJudgeRow';
+    const head = document.createElement('div');
+    head.className = 'wjFork';
+    const t = document.createElement('span'); t.textContent = ev.fork.text;
+    const o = document.createElement('span');
+    o.className = 'wjOutcome';
+    o.textContent = p.outcome ? outLab[p.outcome]
+      : (p.judgedAt ? '打ち切り（' + p.holdCount + '回保留）' : '保留（' + p.holdCount + '回目）');
+    head.appendChild(t); head.appendChild(o);
+    row.appendChild(head);
+
+    // 生成の側。見立ては推定なので琥珀の印を付ける（判定の結果は事実）
+    if (p.lean) {
+      const l = document.createElement('div');
+      l.className = 'wjSide';
+      const b = document.createElement('span'); b.className = 'guessBadge'; b.textContent = '推定';
+      l.appendChild(b);
+      l.appendChild(document.createTextNode('生成 ' + lab[p.lean]));
+      if (p.leanResult) {
+        const r = document.createElement('span');
+        r.className = p.leanResult === 'hit' ? 'wjHit' : p.leanResult === 'miss' ? 'wjMiss' : '';
+        r.textContent = '　' + WORLD_RESULT_LABEL[p.leanResult];
+        l.appendChild(r);
+      }
+      row.appendChild(l);
+      if (p.because) { const w = document.createElement('div'); w.className = 'wjWhy'; w.textContent = p.because; row.appendChild(w); }
+    }
+    // 自分の側。押していなければ出さない（押さなかったものを外れにしない）
+    if (p.pick) {
+      const m = document.createElement('div');
+      m.className = 'wjSide';
+      m.appendChild(document.createTextNode('自分 ' + lab[p.pick]));
+      if (p.result) {
+        const r = document.createElement('span');
+        r.className = p.result === 'hit' ? 'wjHit' : p.result === 'miss' ? 'wjMiss' : '';
+        r.textContent = '　' + WORLD_RESULT_LABEL[p.result];
+        m.appendChild(r);
+      }
+      row.appendChild(m);
+    }
+    if (p.evidence) {
+      const e2 = document.createElement('div');
+      e2.className = 'wjEvidence';
+      e2.textContent = (p.outcome ? '根拠：' : '') + p.evidence;
+      row.appendChild(e2);
+    }
+    if (p.evidenceUrl) {
+      const a = document.createElement('button');
+      a.type = 'button'; a.className = 'linkLikeBtn wjOpen'; a.textContent = '開く';
+      a.addEventListener('click', () => window.open(p.evidenceUrl, '_blank', 'noopener'));
+      row.appendChild(a);
+    }
+    if (!p.judgedAt && p.nextCheck) {
+      const n = document.createElement('div');
+      n.className = 'wjWhy';
+      n.textContent = worldShortDate(p.nextCheck) + ' にもう一度出ます';
+      row.appendChild(n);
+    }
+    const go = document.createElement('button');
+    go.type = 'button'; go.className = 'linkLikeBtn wjOpen'; go.textContent = '札を開く';
+    go.addEventListener('click', () => openWorldEvent(ev.id));
+    row.appendChild(go);
+    return row;
   }
 
   // ---- 問いの画面 (v14) ------------------------------------------------------
@@ -18599,7 +19008,8 @@
     if (drops.length) msg += '　' + drops.join('／') + ' を落としました。';
     if (res.createdConcepts.length) msg += '　新しい概念 ' + res.createdConcepts.length + '件。';
     if (res.createdTerms.length) msg += '　新しい用語 ' + res.createdTerms.length + '件。';
-    if (res.added) msg += '　分かれ目つき ' + res.forks + '件、地層に乗った ' + res.onStrata + '件。';
+    if (res.added) msg += '　分かれ目つき ' + res.forks + '件（うち生成の見立てつき ' + res.leans + '件）、地層に乗った ' + res.onStrata + '件。';
+    if (res.droppedForks) msg += '　※ ' + (WORLD_FORK_PER_BATCH + 1) + '件目以降の分かれ目 ' + res.droppedForks + '件を落としました（答え合わせが追いつかなくなるため）。';
     if (res.added) msg += '　動かした側つき ' + res.withActors + '件、推定を書いた札 ' + res.withRead + '件／全 ' + res.added + '件、お金の動きつき ' + res.withFlow + '件。';
     if (res.createdActors && res.createdActors.length) msg += '　新しいアクター ' + res.createdActors.length + '件。';
     if (res.levelsFilled) msg += '　地層の値 ' + res.levelsFilled + '件を入れました。';
@@ -18757,6 +19167,35 @@
     document.getElementById('worldLevelPanel').hidden = false;
   });
   document.getElementById('btnWorldLevelCancel').addEventListener('click', () => { document.getElementById('worldLevelPanel').hidden = true; });
+  // v17 C: 答え合わせ
+  document.getElementById('btnWorldJudgeBack').addEventListener('click', () => { worldState.view = 'main'; renderWorld(); });
+  document.getElementById('btnWorldJudgePrompt').addEventListener('click', () => {
+    copyToClipboard(worldJudgePromptText()).then((ok) => {
+      document.getElementById('worldJudgeStatus').textContent = ok
+        ? 'コピーしました。Claude のチャットに貼ってください。' : 'コピーできませんでした。';
+    });
+  });
+  document.getElementById('btnWorldJudgeImport').addEventListener('click', () => {
+    const box = document.getElementById('worldJudgePaste');
+    const st = document.getElementById('worldJudgeStatus');
+    const res = worldImportJudgeJson(box.value);
+    if (res.error) { st.textContent = res.error; return; }
+    let msg = res.judged + '件を判定しました';
+    if (res.judged) msg += '（生成 当たり' + res.leanHit + '・外れ' + res.leanMiss
+      + '／自分 当たり' + res.mineHit + '・外れ' + res.mineMiss + '）';
+    msg += '。';
+    const holds = [];
+    if (res.unknown) holds.push('決着していない ' + res.unknown + '件');
+    if (res.noUrl) holds.push('出典URLが無い ' + res.noUrl + '件');
+    if (res.noEvidence) holds.push('根拠が無い ' + res.noEvidence + '件');
+    if (res.held) msg += '　※ ' + res.held + '件は保留にしました（' + holds.join('、') + '）。'
+      + WORLD_HOLD_DAYS + '日後にもう一度出ます。';
+    if (res.closed) msg += '　※ ' + res.closed + '件は' + WORLD_HOLD_MAX + '回目の保留なので打ち切りました。';
+    if (res.missing) msg += '　端末に無い札 ' + res.missing + '件は無視しました。';
+    if (res.judged || res.held || res.closed) box.value = '';
+    renderWorldJudge();
+    st.textContent = msg;
+  });
   // v16 B: 地層の現在値を調べる
   document.getElementById('btnWorldProbePrompt').addEventListener('click', () => {
     copyToClipboard(worldProbePromptText()).then((ok) => {
