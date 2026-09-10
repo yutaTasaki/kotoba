@@ -2211,6 +2211,19 @@
 
       <div id="worldStratumAll" hidden>
         <p class="fieldNote">数十年単位でしか動かない量です。生成には作らせません。値は札を取り込むときに、出典に数字が書かれていれば入ります。同じ日付は上書きしません。手で入れることもできます。</p>
+        <!-- v16 B: 週のニュースの札には出てこない量（金利・人口・実質実効為替レート）を、
+             専用のプロンプトで埋める。値・基準日・出典URL の3点が揃わなければ取り込まない。 -->
+        <div class="field">
+          <div class="worldSectionHead">
+            <span class="fieldLabel" style="margin:0;">現在値を調べる</span>
+            <span id="worldProbeCount"></span>
+          </div>
+          <p class="fieldNote">確認先を差し込んだプロンプトをコピーします。返ってきた値は、出典URL と基準日が揃っているものだけ入ります。推測は入りません。月に一度、または赤が残っているときに。</p>
+          <button type="button" id="btnWorldProbePrompt" class="tagFilterBtn">プロンプトをコピー</button>
+          <textarea id="worldProbePaste" rows="3" placeholder='{"levels":[...]} をここに貼る' autocomplete="off"></textarea>
+          <button type="button" id="btnWorldProbeImport" class="secondaryBtn">取り込む</button>
+          <p class="fieldNote" id="worldProbeStatus"></p>
+        </div>
         <div id="worldStratumListBody"></div>
       </div>
     </div>
@@ -14147,6 +14160,11 @@
   const WORLD_LEVELS_PER_EVENT = 3;     // 1つの札が運ぶ地層の値の数
   const WORLD_FLOW_SPAN_MAX    = 20;    // 累計の期間（「2022年以降」）の字数
   const WORLD_MONEY_LEGEND_KEY = 'kotoba_worldMoneyLegend';   // 「追える範囲」を畳んだか
+  // v16 B：「古い」の日数は地層ごと。一律90日にすると、年に一度しか出ない
+  // 軍事費や人口が1年中赤くなり、赤が情報でなくなる。
+  const WORLD_CADENCES     = ['month', 'quarter', 'year'];
+  const WORLD_CADENCE_DAYS = { month: 45, quarter: 120, year: 400 };
+  const WORLD_PROBE_JUMP   = 100;   // 前回値の何倍で桁の警告を出すか
   const WORLD_FLOW_UNIT_LABEL  = { JPY: '円', USD: 'ドル', EUR: 'ユーロ', CNY: '元', '%': '割合', '': '単位が読めないもの' };
   // v13 主体の盤面：既定の画面。「今日どんな出来事があったか」ではなく
   // 「いま誰が何を動かそうとしているか」を最初に見る。
@@ -14208,43 +14226,43 @@
   // （推測の数字を入れると、この機能の信頼が最初から壊れる）。
   // where.url は実測で確認済み。
   const WORLD_DEFAULT_STRATA = [
-    { id: 'st_jp_rate_long', name: '日本の長期金利', short: '日金利', unit: '%', dir: 'up', dirSince: '2022',
+    { id: 'st_jp_rate_long', cadence: 'month', name: '日本の長期金利', short: '日金利', unit: '%', dir: 'up', dirSince: '2022',
       line: '1990年から30年下がり続け、2022年から上げ',
       where: { source: '財務省 国債金利情報', url: 'https://www.mof.go.jp/jgbs/reference/interest_rate/' } },
-    { id: 'st_us_rate_long', name: '米国の長期金利', short: '米金利', unit: '%', dir: 'up', dirSince: '2022',
+    { id: 'st_us_rate_long', cadence: 'month', name: '米国の長期金利', short: '米金利', unit: '%', dir: 'up', dirSince: '2022',
       line: '1981年から40年下がり続け、2020年に底、2022年から上げ',
       where: { source: 'FRB H.15', url: 'https://www.federalreserve.gov/releases/h15/' } },
-    { id: 'st_jp_debt_gdp', name: '日本の政府債務/GDP', short: '日債務', unit: '%', dir: 'up', dirSince: '1990s',
+    { id: 'st_jp_debt_gdp', cadence: 'quarter', name: '日本の政府債務/GDP', short: '日債務', unit: '%', dir: 'up', dirSince: '1990s',
       line: '1990年代から上がり続け、下がった局面がほぼない',
       where: { source: '財務省 日本の財政関係資料', url: 'https://www.mof.go.jp/policy/budget/fiscal_condition/basic_data/' } },
-    { id: 'st_us_debt_gdp', name: '米国の政府債務/GDP', short: '米債務', unit: '%', dir: 'up', dirSince: '2008',
+    { id: 'st_us_debt_gdp', cadence: 'quarter', name: '米国の政府債務/GDP', short: '米債務', unit: '%', dir: 'up', dirSince: '2008',
       line: '2008年以降上がり続け、2020年に急増',
       where: { source: 'FRB Z.1', url: 'https://www.federalreserve.gov/releases/z1/' } },
-    { id: 'st_jp_pop_working', name: '日本の生産年齢人口', short: '日人口', unit: '万人', dir: 'down', dirSince: '1995',
+    { id: 'st_jp_pop_working', cadence: 'year', name: '日本の生産年齢人口', short: '日人口', unit: '万人', dir: 'down', dirSince: '1995',
       line: '1995年をピークに減り続けている',
       where: { source: '総務省統計局 人口推計', url: 'https://www.stat.go.jp/data/jinsui/' } },
-    { id: 'st_cn_pop', name: '中国の人口', short: '中人口', unit: '億人', dir: 'down', dirSince: '2022',
+    { id: 'st_cn_pop', cadence: 'year', name: '中国の人口', short: '中人口', unit: '億人', dir: 'down', dirSince: '2022',
       line: '2022年から減少に転じた',
       where: { source: '国連 World Population Prospects', url: 'https://population.un.org/wpp/' } },
-    { id: 'st_boj_assets', name: '日銀の資産規模', short: '日銀資産', unit: '兆円', dir: 'down', dirSince: '2024',
+    { id: 'st_boj_assets', cadence: 'month', name: '日銀の資産規模', short: '日銀資産', unit: '兆円', dir: 'down', dirSince: '2024',
       line: '2013年から急拡大、2024年から国債買入れ減額へ',
       where: { source: '日本銀行 営業毎旬報告', url: 'https://www.boj.or.jp/statistics/boj/other/acmai/' } },
-    { id: 'st_jp_fx_reserve', name: '日本の外貨準備残高', short: '外準', unit: '億ドル', dir: 'down', dirSince: '2026',
+    { id: 'st_jp_fx_reserve', cadence: 'month', name: '日本の外貨準備残高', short: '外準', unit: '億ドル', dir: 'down', dirSince: '2026',
       line: '2011年以降1.2〜1.4兆ドルで横ばい、2026年に介入で減少',
       where: { source: '財務省 外貨準備等の状況', url: 'https://www.mof.go.jp/policy/international_policy/reference/official_reserve_assets/' } },
-    { id: 'st_yen_reer', name: '円の実質実効為替レート', short: '実質円', unit: '指数', dir: 'down', dirSince: '1995',
+    { id: 'st_yen_reer', cadence: 'month', name: '円の実質実効為替レート', short: '実質円', unit: '指数', dir: 'down', dirSince: '1995',
       line: '1995年をピークに下がり続け、2022年以降は1970年代の水準',
       where: { source: 'BIS 実効為替レート', url: 'https://www.bis.org/statistics/eer.htm' } },
-    { id: 'st_jp_energy_self', name: '日本のエネルギー自給率', short: '自給率', unit: '%', dir: 'flat', dirSince: '2011',
+    { id: 'st_jp_energy_self', cadence: 'year', name: '日本のエネルギー自給率', short: '自給率', unit: '%', dir: 'flat', dirSince: '2011',
       line: '1960年代から下がり、2011年以降1割前後',
       where: { source: '資源エネルギー庁 エネルギー白書', url: 'https://www.enecho.meti.go.jp/about/whitepaper/' } },
-    { id: 'st_world_trade_gdp', name: '世界貿易/GDP', short: '貿易', unit: '%', dir: 'flat', dirSince: '2008',
+    { id: 'st_world_trade_gdp', cadence: 'quarter', name: '世界貿易/GDP', short: '貿易', unit: '%', dir: 'flat', dirSince: '2008',
       line: '1990年代から2008年まで上昇、以降横ばい',
       where: { source: 'WTO 統計', url: 'https://www.wto.org/english/res_e/statis_e/statis_e.htm' } },
-    { id: 'st_world_military', name: '世界の軍事費', short: '軍事費', unit: '億ドル', dir: 'up', dirSince: '2022',
+    { id: 'st_world_military', cadence: 'year', name: '世界の軍事費', short: '軍事費', unit: '億ドル', dir: 'up', dirSince: '2022',
       line: '2010年代から増加、2022年以降加速',
       where: { source: 'SIPRI 軍事費データベース', url: 'https://www.sipri.org/databases/milex' } },
-    { id: 'st_cb_gold', name: '各国中銀の金保有', short: '中銀金', unit: 'トン', dir: 'up', dirSince: '2022',
+    { id: 'st_cb_gold', cadence: 'year', name: '各国中銀の金保有', short: '中銀金', unit: 'トン', dir: 'up', dirSince: '2022',
       line: '2010年以降純購入が続き、2022年から増加',
       where: { source: 'World Gold Council 金準備', url: 'https://www.gold.org/goldhub/data/gold-reserves-by-country' } },
   ];
@@ -14526,6 +14544,8 @@
       short: worldStr(s.short, 8) || worldStr(s.name, 8),
       line: worldStr(s.line, 120),
       unit: worldStr(s.unit, 12),
+      // v16 B: どれくらいで「古い」か。地層ごとに違う（金利は日次、人口は年次）
+      cadence: WORLD_CADENCES.includes(s.cadence) ? s.cadence : 'quarter',
       dir: WORLD_STRATUM_DIRS.includes(s.dir) ? s.dir : 'flat',
       dirSince: worldStr(s.dirSince, 12),
       where: { source: worldStr(w.source, 80), url: (typeof w.url === 'string' ? (shootSafeUrl(w.url.trim()) || '') : '') },
@@ -14537,7 +14557,7 @@
           value: worldStr(l.value, 40), at: l.at, note: worldStr(l.note, 200),
           source: worldStr(l.source, 120),
           url: typeof l.url === 'string' ? (shootSafeUrl(l.url.trim()) || '') : '',
-          via: l.via === 'card' ? 'card' : 'hand',
+          via: (l.via === 'card' || l.via === 'probe') ? l.via : 'hand',
           eventId: worldStr(l.eventId, 40),
         }))
         .sort((a, b) => (a.at > b.at ? -1 : 1)).slice(0, 400),
@@ -15131,6 +15151,14 @@
   function worldStratumById(id) { return wd.strata.strata.find((s) => s.id === id) || null; }
   function worldSaveStrata() { wd.strataDirty = true; persistWorldStrata(); scheduleSync(); }
   function worldStratumLevel(s) { return (s.levels && s.levels[0]) || null; }
+  // v16 B: 値が無いものは常に古い（未記入が最も古い状態）。日数は地層ごと。
+  function worldStratumStale(s) {
+    const lv = worldStratumLevel(s);
+    if (!lv) return true;
+    const d = worldDaysSince(lv.at);
+    return d !== null && d > (WORLD_CADENCE_DAYS[s.cadence] || WORLD_CADENCE_DAYS.quarter);
+  }
+  function worldStaleStrata() { return worldStrata().filter(worldStratumStale); }
   function worldDaysSince(dateStr) {
     if (!isDateStr(dateStr)) return null;
     return Math.round((parseDateStr(todayStr()) - parseDateStr(dateStr)) / 86400000);
@@ -15153,21 +15181,21 @@
     const d = worldDaysSince(lv.at);
     return worldLevelText(s, lv) + '（' + dotDate(lv.at) + (d === null ? '' : ' ・ ' + d + '日前') + '）';
   }
-  // v15: meta を付けると札から来た値になる（{ source, url, via:'card', eventId }）。
-  // 手で入れるぶんは打ち間違いを直せないと困るので、同じ日付は上書きしてよい。
-  // 札から来たぶんは上書きしない。levels は履歴で、足すだけのもの。同じ日付が
-  // 既にあれば落とす（false を返す）。
+  // v15: meta を付けると生成から来た値になる（{ source, url, via, eventId }）。
+  // via:'card'（札）・'probe'（v16 B。地層を調べたもの）は上書きしない。levels は
+  // 履歴で、足すだけのもの。同じ日付が既にあれば落とす（false を返す）。
+  // 上書きしてよいのは手入力だけ——打ち間違いを直せないと困るため。
   function worldAddLevel(s, value, at, note, meta) {
     const v = worldStr(value, 40);
     if (!v || !isDateStr(at)) return false;
-    const fromCard = !!meta && meta.via === 'card';
-    if (fromCard && s.levels.some((l) => l.at === at)) return false;
-    if (!fromCard) s.levels = s.levels.filter((l) => l.at !== at);
+    const via = (meta && (meta.via === 'card' || meta.via === 'probe')) ? meta.via : 'hand';
+    if (via !== 'hand' && s.levels.some((l) => l.at === at)) return false;
+    if (via === 'hand') s.levels = s.levels.filter((l) => l.at !== at);
     s.levels.push({
       value: v, at, note: worldStr(note, 200),
       source: worldStr(meta && meta.source, 120),
       url: (meta && typeof meta.url === 'string') ? (shootSafeUrl(meta.url.trim()) || '') : '',
-      via: fromCard ? 'card' : 'hand',
+      via,
       eventId: worldStr(meta && meta.eventId, 40),
     });
     s.levels.sort((a, b) => (a.at > b.at ? -1 : 1));
@@ -16209,6 +16237,88 @@
     };
   }
 
+  // ---- 地層の現在値を調べる (v16 B) ------------------------------------------
+  // 週のニュースの札には、長期金利・人口・実質実効為替レートのような量は出て
+  // こない。13件のうち札から埋まるのはせいぜい5件なので、専用のプロンプトで
+  // 残りを埋める。値・基準日・出典URL の3点が揃わなければ返せない形にする。
+  function worldProbePromptText() {
+    const list = worldStrata();
+    const block = list.map((s) => {
+      const lv = worldStratumLevel(s);
+      const d = lv ? worldDaysSince(lv.at) : null;
+      return s.id + '　' + s.name + '　単位 ' + (s.unit || '（指定なし）') + '\n'
+        + '  ' + s.line + '\n'
+        + '  確認先：' + (s.where.source || '（未設定）') + '  ' + (s.where.url || '') + '\n'
+        + '  （前回の値：' + (lv ? worldLevelText(s, lv) + '  ' + lv.at + (d === null ? '' : ' ・ ' + d + '日前') : 'まだ入っていません') + '）';
+    });
+    return SHOOT_PROMPT_HEAD +
+      'あなたは、決まった' + list.length + '個の「量」の現在値を調べて返す係です。\n' +
+      '解説を書きません。増やしません。減らしません。下に並ぶ' + list.length + '個だけを見ます。\n\n' +
+      '■ 必ず守ること\n' +
+      '- web 検索を必ず使う。検索せずに書かない。\n' +
+      '- それぞれの「確認先」に挙げた一次ソースで確認できた値だけを返す。\n' +
+      '  確認先で見つからなければ、そのソースが引用している一次の統計まで辿ってよい。\n' +
+      '  ニュース記事・まとめサイト・百科事典を出典にしない。\n' +
+      '- **値・基準日・出典URL の3つが揃わないものは返さない。**\n' +
+      '  2つしか揃わないくらいなら、その量は返さないほうがよい。\n' +
+      '- 推測・概算・「およそ」「約」を書かない。四捨五入された公表値はそのままでよい。\n' +
+      '- URL は実在するページのものだけ。開けるか確かめる。\n' +
+      '  確かめられなければ、その量を返さない。\n' +
+      '- ' + list.length + '個すべてを埋めなくてよい。7個しか確認できなければ7個を返す。\n' +
+      '- 前回の値は参考として載せてある。確認できなければ返さない。\n' +
+      '  **前回の値をそのまま書き写さない。**\n' +
+      '- JSON のみ。ほかの文章を返さない。\n\n' +
+      '■ それぞれに書くこと\n' +
+      '- stratumId：下の一覧にある id だけ。一覧に無いものを作らない。\n' +
+      '- value：出典の書き方のまま。単位は下の「単位」に合わせる。\n' +
+      '  換算しない。「1.85」と書いてあれば「1.85」。\n' +
+      '- at：その値の基準日（YYYY-MM-DD）。\n' +
+      '  「2026年8月末時点」なら 2026-08-31。「2026年第2四半期」なら 2026-06-30。\n' +
+      '  基準日が書かれていなければ、その量を返さない（公表日で代用しない）。\n' +
+      '- source：媒体名と統計名。（例：財務省 外貨準備等の状況 2026年8月末）\n' +
+      '- url：その値が載っているページ。トップページではなく、数字のあるページ。\n\n' +
+      '■ 出力形式\n' +
+      '{"levels":[\n' +
+      '  {"stratumId":"st_jp_fx_reserve","value":"12075","at":"2026-08-31",\n' +
+      '   "source":"財務省 外貨準備等の状況 2026年8月末","url":"https://..."},\n' +
+      '  {"stratumId":"st_jp_rate_long","value":"1.85","at":"2026-09-09",\n' +
+      '   "source":"財務省 国債金利情報","url":"https://..."}\n' +
+      ']}\n\n' +
+      '確認できなかった量は、行ごと書かない（null や空文字で埋めない）。\n\n' +
+      '────────────────────────────────────────\n' +
+      '■ 調べる量（' + list.length + '件）\n' +
+      (block.length ? block.join('\n\n') : '（地層がありません）');
+  }
+  // 札の levels と同じ器に入れるが via は分ける。札の url は取り込み時点で
+  // 検証済み、probe の url は生成が新しく書くので未検証。混ぜると「どの url が
+  // 検証済みか」が消える。
+  function worldImportProbeJson(raw) {
+    const parsed = shootParseJson(raw);
+    const items = parsed ? (Array.isArray(parsed) ? parsed : Array.isArray(parsed.levels) ? parsed.levels : null) : null;
+    if (!items) return { error: 'JSON として読めませんでした。{"levels":[...]} の形で貼ってください。' };
+    const out = { filled: 0, noUrl: 0, noDate: 0, dup: 0, unknown: 0, jumps: [] };
+    items.forEach((l) => {
+      if (!l || typeof l !== 'object') return;
+      const s = worldStratumById(worldStr(l.stratumId, 40));
+      if (!s) { out.unknown++; return; }
+      const value = worldStr(l.value, 40);
+      if (!value) { out.unknown++; return; }
+      const url = typeof l.url === 'string' ? (shootSafeUrl(l.url.trim()) || '') : '';
+      if (!url) { out.noUrl++; return; }                  // 捏造の入り口を塞ぐ
+      if (!isDateStr(l.at)) { out.noDate++; return; }     // 札と違い eventDate で代用しない
+      const before = worldStratumLevel(s);
+      if (!worldAddLevel(s, value, l.at, '', { source: l.source, url, via: 'probe' })) { out.dup++; return; }
+      out.filled++;
+      // 桁が飛んだら落とさずに知らせる。本当に変わることがあるので判断は人がする
+      const a = Number(String(value).replace(/,/g, '')), b = before ? Number(String(before.value).replace(/,/g, '')) : NaN;
+      if (Number.isFinite(a) && Number.isFinite(b) && a > 0 && b > 0
+        && (a / b >= WORLD_PROBE_JUMP || b / a >= WORLD_PROBE_JUMP)) {
+        out.jumps.push(s.name + '（' + before.value + ' → ' + value + '）');
+      }
+    });
+    return out;
+  }
+
   // ---- 遡及（既存の札に付け直す） (v12 / v15) --------------------------------
   // 出典を開き直さないので、通常より厳しく縛る。
   // v12：ev.actors が空の札にだけ主語を足す。
@@ -16504,10 +16614,9 @@
     n.textContent = s.name + ' ── ' + s.line;
     el.appendChild(n);
     el.appendChild(document.createElement('br'));
-    const lv = worldStratumLevel(s);
     const v = document.createElement('span');
-    const days = lv ? worldDaysSince(lv.at) : null;
-    v.className = 'wsVal' + (!lv || (days !== null && days > 120) ? ' wsStale' : '');
+    // v16 B: 一律120日をやめ、地層ごとの cadence で判定する
+    v.className = 'wsVal' + (worldStratumStale(s) ? ' wsStale' : '');
     v.textContent = worldStratumLine(s);
     el.appendChild(v);
     el.onclick = (e) => { e.stopPropagation(); openWorldStratum(s.id); };
@@ -18055,13 +18164,19 @@
   function renderWorldStratumList() {
     const box = document.getElementById('worldStratumListBody');
     box.innerHTML = '';
+    // v16 B: 押す前に「押す必要があるか」が分かるようにする
+    const stale = worldStaleStrata();
+    document.getElementById('worldProbeCount').textContent = stale.length
+      ? '古い ' + stale.length + '件 / ' + worldStrata().length + '件'
+      : 'すべて新しい（' + worldStrata().length + '件）';
     worldStrata().forEach((s) => {
       const row = document.createElement('div');
       row.className = 'stratumListRow';
       const n = document.createElement('span'); n.className = 'slName'; n.textContent = s.name;
       const lv = worldStratumLevel(s);
       const v = document.createElement('span');
-      v.className = 'slVal' + (lv ? '' : ' empty');
+      // 赤は「未記入」だけでなく「その地層にとって古い」まで広げる
+      v.className = 'slVal' + (worldStratumStale(s) ? ' empty' : '');
       v.textContent = lv ? worldLevelText(s, lv) + ' ・ ' + (worldDaysSince(lv.at)) + '日前' : '値は未記入';
       const l = document.createElement('span'); l.className = 'slLine'; l.textContent = s.line;
       row.appendChild(n); row.appendChild(v); row.appendChild(l);
@@ -18637,6 +18752,39 @@
     document.getElementById('worldLevelPanel').hidden = false;
   });
   document.getElementById('btnWorldLevelCancel').addEventListener('click', () => { document.getElementById('worldLevelPanel').hidden = true; });
+  // v16 B: 地層の現在値を調べる
+  document.getElementById('btnWorldProbePrompt').addEventListener('click', () => {
+    copyToClipboard(worldProbePromptText()).then((ok) => {
+      document.getElementById('worldProbeStatus').textContent = ok
+        ? 'コピーしました。Claude のチャットに貼ってください。'
+        : 'コピーできませんでした。';
+    });
+  });
+  document.getElementById('btnWorldProbeImport').addEventListener('click', () => {
+    const box = document.getElementById('worldProbePaste');
+    const st = document.getElementById('worldProbeStatus');
+    const res = worldImportProbeJson(box.value);
+    if (res.error) { st.textContent = res.error; return; }
+    let msg = '地層の値 ' + res.filled + '件を入れました。';
+    const drops = [];
+    if (res.noUrl) drops.push('出典URLが無い ' + res.noUrl + '件');
+    if (res.noDate) drops.push('基準日が無い ' + res.noDate + '件');
+    if (res.dup) drops.push('同じ日付で重なった ' + res.dup + '件');
+    if (res.unknown) drops.push('一覧に無い・値が空 ' + res.unknown + '件');
+    if (drops.length) msg += '　※ ' + drops.join('、') + 'を落としました。';
+    // 桁が飛んだものは落とさずに知らせる。本当に変わることがあるので判断は人がする
+    res.jumps.forEach((j) => { msg += '　※ ' + j + ' が前回の ' + WORLD_PROBE_JUMP + '倍以上です。地層を開いて確かめてください。'; });
+    // 何件入っても、赤が残っていることが同じ場所で分かるようにする
+    const stale = worldStaleStrata();
+    if (stale.length) {
+      // 全部並べると13件ぶんの壁になって読まれない。数と、上から4件だけ
+      msg += '　古いまま残っている地層 ' + stale.length + '件：' + stale.slice(0, 4).map((s) => s.name).join(' ・ ')
+        + (stale.length > 4 ? ' ほか' + (stale.length - 4) + '件' : '');
+    }
+    if (res.filled) box.value = '';
+    renderWorldStratumList();   // 「古い N件」と赤を数え直す。この欄は消さない
+    st.textContent = msg;
+  });
   document.getElementById('btnWorldLevelSave').addEventListener('click', () => {
     const s = worldStratumById(worldState.stratumId);
     if (!s) return;
