@@ -2139,11 +2139,11 @@
       </div>
 
       <div class="field" id="worldTodayField">
-        <span class="fieldLabel">今日の3件</span>
+        <span class="fieldLabel" id="worldTodayLabel">今日動いた主体</span>
         <button type="button" id="worldStratumToday" class="worldStratumLine" hidden></button>
         <div id="worldTodayList"></div>
         <p class="emptyMsg" id="worldTodayEmpty" hidden>新しい分がありません。右上の「取り込む」から入れます。</p>
-        <button type="button" id="btnWorldOpenToday" class="secondaryBtn" hidden>今日の3件をひらく</button>
+        <button type="button" id="btnWorldOpenToday" class="secondaryBtn" hidden>今日の分をひらく</button>
       </div>
 
       <div class="tagFilterRow" id="worldTabRow">
@@ -14138,10 +14138,12 @@
   // きた JSON を貼り戻す（撮る v9.0 と同じ姿勢）。API は一切使わない。
   // kotoba の言葉（data.notes）は読まないし書かない。journal にも混ぜない。
   //
-  // 「量ではなく消化」を構造で守る：一覧は fact の1行だけ、1日に出るのは
-  // WORLD_PER_DAY 件だけ、朝のステップを開かない限り1件も消費されない。
+  // 「量ではなく消化」を構造で守る：一覧は fact の1行だけ、朝のステップを
+  // 開かない限り1件も消費されない。
+  // v18 A-1: 1日 WORLD_PER_DAY 件の上限は外した。取り込んだ回の札はその日に
+  // 全部出る（取り込んだのに画面から消える札を無くすため）。溜まりすぎは
+  // 古い未読の警告だけで知らせる。
 
-  const WORLD_PER_DAY         = 3;              // 1日の件数
   const WORLD_PREDICT_CHOICES = [30, 90, 180];  // 予測期限の選択肢（日）
   const WORLD_PREDICT_DAYS    = 90;             // 既定
   const WORLD_STALE_DAYS      = 14;             // 未読が「古い」になるまで
@@ -15792,30 +15794,52 @@
     return worldUnread().filter((e) => new Date(e.createdAt).getTime() < cut);
   }
   function worldReadOn(date) { return worldSortQueue(worldLiveEvents().filter((e) => e.readDate === date)); }
-  // 3件目までに両分野が入るよう、足りない分野の先頭を1つだけ繰り上げる。
-  function worldBalance(queue, need, already) {
-    const out = [];
-    for (const e of queue) { if (out.length >= need) break; out.push(e); }
-    if (out.length === need && need > 0) {
-      const fields = new Set([...already, ...out].map((e) => e.field));
-      if (fields.size === 1) {
-        const other = queue.find((e) => !fields.has(e.field) && !out.includes(e));
-        if (other) out[out.length - 1] = other;
-      }
-    }
-    return out;
-  }
-  // 今日の3件を確定させる。**開いたときにだけ呼ぶ。** 描画からは呼ばない。
+  // 今日の分を確定させる。**開いたときにだけ呼ぶ。** 描画からは呼ばない。
+  // v18 A-1: 上限を外した。取り込んだ回の札は全部その日の分にする——3件ずつ
+  // 出していると、入れた札の大半が数週間どこにも出ないまま古くなる。
   function worldPickToday() {
     const t = todayStr();
-    const already = worldReadOn(t);
-    if (already.length >= WORLD_PER_DAY) return already;
-    const chosen = worldBalance(worldUnread(), WORLD_PER_DAY - already.length, already);
-    if (!chosen.length) return already;
+    const fresh = worldUnread();
+    if (!fresh.length) return worldReadOn(t);
     const months = new Set();
-    chosen.forEach((e) => { e.readDate = t; e.updatedAt = nowIso(); months.add(monthOfDate(e.eventDate)); });
+    fresh.forEach((e) => { e.readDate = t; e.updatedAt = nowIso(); months.add(monthOfDate(e.eventDate)); });
     months.forEach((m) => worldMonthChanged(m));
     return worldReadOn(t);
+  }
+
+  // ---- 札の2種類 (v18 A-1) -------------------------------------------------
+  // actors がある札＝行動の札。今日動いた主体に流れる。
+  // actors が空の札＝背景の札。「背景に沈めた札 N件」の1行に畳む。
+  // levels（地層の値）を持つかどうかは、この分け方と独立——介入の公表は
+  // actors もあり levels もあるので、両方に出る。
+  function worldIsActionCard(e) { return !!(e.actors && e.actors.length); }
+  function worldActionCards(list) { return list.filter(worldIsActionCard); }
+  function worldBackgroundCards(list) { return list.filter((e) => !worldIsActionCard(e)); }
+  // 札を主体でまとめる。同じ主体が複数の札を動かした日は1行にまとまる。
+  function worldDayActorRows(list) {
+    const byActor = new Map();
+    worldActionCards(list)
+      .slice()
+      .sort((a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0))
+      .forEach((e) => {
+        e.actors.forEach((rec) => {
+          const k = worldNormName(rec.name);
+          if (!k) return;
+          if (!byActor.has(k)) byActor.set(k, { name: rec.name, cards: [], recs: [] });
+          const g = byActor.get(k);
+          g.cards.push(e); g.recs.push(rec);
+        });
+      });
+    return [...byActor.values()].map((g) => {
+      const entry = worldFindIn(WORLD_STORES.actor, g.name);
+      return {
+        actor: entry, name: (entry && entry.name) || g.name,
+        cards: g.cards, count: g.cards.length, date: g.cards[0].eventDate,
+        did: g.recs[0].did || g.cards[0].fact,
+        said: g.recs.some((r) => r.said), read: g.recs.some((r) => r.read),
+        partial: false,
+      };
+    }).sort((x, y) => (y.count - x.count) || (x.date > y.date ? -1 : x.date < y.date ? 1 : 0));
   }
 
   // ---- 予測 ----------------------------------------------------------------
@@ -16950,7 +16974,7 @@
   }
 
   // ---- 画面 ----------------------------------------------------------------
-  const worldState = { view: 'main', tab: 'board', boardAll: false, entryFrom: 'list', askText: '', askId: '', askWord: '', askWordOpen: false, askNewOnly: false, askResult: '', askOpenId: '', entryKind: 'concept', entrySort: 'count', eventKind: 'card', conceptId: null, stratumId: null, strataAll: false, sunkOpen: false, openId: null, candidates: [], lastResult: '', search: { events: '', concept: '', term: '', actor: '', money: '' }, searchFocus: '', batchFilter: null, lastBatch: null };
+  const worldState = { view: 'main', tab: 'board', boardAll: false, entryFrom: 'list', askText: '', askId: '', askWord: '', askWordOpen: false, askNewOnly: false, askResult: '', askOpenId: '', entryKind: 'concept', entrySort: 'count', eventKind: 'card', conceptId: null, stratumId: null, strataAll: false, sunkOpen: false, bgOpen: false, openId: null, candidates: [], lastResult: '', search: { events: '', concept: '', term: '', actor: '', money: '' }, searchFocus: '', batchFilter: null, lastBatch: null };
 
   // 地層の1行。押すとその地層を開く。太くしない。
   function paintStratumLine(el, s) {
@@ -17754,6 +17778,25 @@
       .sort((x, y) => (x.date > y.date ? -1 : x.date < y.date ? 1 : y.count - x.count));
   }
   function worldBoardLegendOpen() { try { return localStorage.getItem(WORLD_BOARD_LEGEND_KEY) !== '0'; } catch (e) { return true; } }
+  // v18 A-1: 盤面と「今日動いた主体」で同じ行を使う（片方だけ直って離れるのを防ぐ）
+  function worldBoardRowEl(r, onClick) {
+    const row = document.createElement('button');
+    row.type = 'button'; row.className = 'worldBoardRow';
+    const n = document.createElement('span'); n.className = 'wbName';
+    n.textContent = (r.actor && r.actor.name) || r.name || '';
+    const d = document.createElement('span'); d.className = 'wbDid'; d.textContent = r.did || (r.partial ? '…' : '');
+    const meta = document.createElement('span'); meta.className = 'wbMeta';
+    meta.textContent = worldShortDate(r.date) + '　' + r.count + '件';
+    const mk = document.createElement('span');
+    // 述べずに動いている主体が、探さずに見えるようにする。
+    // 色（琥珀）だけだと「述推」と並んだとき弱いので、中黒で位置もずらす。
+    const onlyRead = r.read && !r.said;
+    mk.className = 'wbMark' + (onlyRead ? ' onlyRead' : '');
+    mk.textContent = onlyRead ? '・推' : ((r.said ? '述' : '') + (r.read ? '推' : ''));
+    row.appendChild(n); row.appendChild(d); row.appendChild(meta); row.appendChild(mk);
+    row.addEventListener('click', onClick);
+    return row;
+  }
   function renderWorldBoardTab(body) {
     // 盤面と同じ「主体を見る」入口だが向きが逆（盤面＝動いている主体から、
     // 問い＝知りたいことから）。タブに5つ目を足すと390pxで崩れる。
@@ -17814,21 +17857,7 @@
     body.appendChild(head);
 
     shown.forEach((r) => {
-      const row = document.createElement('button');
-      row.type = 'button'; row.className = 'worldBoardRow';
-      const n = document.createElement('span'); n.className = 'wbName'; n.textContent = r.actor.name;
-      const d = document.createElement('span'); d.className = 'wbDid'; d.textContent = r.did || (r.partial ? '…' : '');
-      const meta = document.createElement('span'); meta.className = 'wbMeta';
-      meta.textContent = worldShortDate(r.date) + '　' + r.count + '件';
-      const mk = document.createElement('span');
-      // 述べずに動いている主体が、探さずに見えるようにする。
-      // 色（琥珀）だけだと「述推」と並んだとき弱いので、中黒で位置もずらす。
-      const onlyRead = r.read && !r.said;
-      mk.className = 'wbMark' + (onlyRead ? ' onlyRead' : '');
-      mk.textContent = onlyRead ? '・推' : ((r.said ? '述' : '') + (r.read ? '推' : ''));
-      row.appendChild(n); row.appendChild(d); row.appendChild(meta); row.appendChild(mk);
-      row.addEventListener('click', () => { worldState.entryFrom = 'board'; openWorldEntry(r.actor.id); });
-      body.appendChild(row);
+      body.appendChild(worldBoardRowEl(r, () => { worldState.entryFrom = 'board'; openWorldEntry(r.actor.id); }));
     });
 
     if (!worldState.boardAll && rows.length > WORLD_BOARD_FOLD) {
@@ -18028,12 +18057,17 @@
       ? '今日の分がまだ出ていません。もう一度この行を押してください。'
       : '新しい分がありません。';
   }
+  // v18 A-1: 単位を「件」から「動いた主体」に変える。統計だけの日は
+  // 主体が0になるので、そこだけ背景の札の件数で言い直す
   function homeWorldCollapsedLabel() {
     const today = worldReadOn(todayStr());
-    if (today.length) return '世界 ・ 読んだ ' + today.length + '件';
+    if (today.length) {
+      const n = worldDayActorRows(today).length;
+      return n ? '世界 ・ 動いた主体 ' + n : '世界 ・ 背景の札 ' + today.length + '件';
+    }
     const unread = worldUnread().length;
     if (!unread) return '世界 ・ 新しい分がありません';
-    return '世界 ・ 今日の' + Math.min(WORLD_PER_DAY, unread) + '件';
+    return '世界 ・ 新しい分 ' + unread + '件';
   }
 
   function openWorld() {
@@ -18055,6 +18089,42 @@
     else if (worldState.view === 'stratum') renderWorldStratum();
     else renderWorldImport();
   }
+  // v18 A-1: 今日の単位は「札」ではなく「主体」。readDate はそのまま残す
+  // （朝の畳んだ行・記録の月まとめ・worldReadOn が依存している）。
+  function renderWorldTodayActors(box, list) {
+    box.innerHTML = '';
+    if (!list.length) return;
+    const rows = worldDayActorRows(list);
+    const bg = worldBackgroundCards(list);
+    const common = worldCommonLineEl(list);
+    if (common) box.appendChild(common);
+    if (!rows.length) {
+      // 統計だけの日。空欄を並べるより、1行で完結させる（静かな日だと分かる方が読みやすい）
+      box.appendChild(worldSunkCardsEl(bg, '今日は動いた主体がありません（背景の札 ' + bg.length + '件）'));
+      return;
+    }
+    rows.forEach((r) => box.appendChild(worldBoardRowEl(r, () => {
+      if (r.actor) { worldState.entryFrom = 'board'; openWorldEntry(r.actor.id); }
+      else openWorldEvent(r.cards[0].id);
+    })));
+    // 取り込んだのに画面から消える札を作らないための1行。0件の日は出さない
+    if (bg.length) box.appendChild(worldSunkCardsEl(bg, '背景に沈めた札 ' + bg.length + '件'));
+  }
+  // 押すと畳んだ札の一覧が開く1行
+  function worldSunkCardsEl(cards, label) {
+    const wrap = document.createElement('div');
+    const head = document.createElement('div');
+    head.className = 'sunkHead';
+    head.textContent = (worldState.bgOpen ? '▾ ' : '▸ ') + label;
+    head.addEventListener('click', () => { worldState.bgOpen = !worldState.bgOpen; renderWorldMain(); });
+    wrap.appendChild(head);
+    if (worldState.bgOpen) {
+      const box = document.createElement('div');
+      renderWorldList(box, cards, '');
+      wrap.appendChild(box);
+    }
+    return wrap;
+  }
   function renderWorldMain() {
     const stale = worldStaleUnread();
     const bar = document.getElementById('worldStaleBar');
@@ -18065,10 +18135,10 @@
     paintStratumLine(document.getElementById('worldStratumToday'), worldTodayStratum());
 
     const todayList = worldReadOn(todayStr());
-    const todayBox = document.getElementById('worldTodayList');
-    renderWorldList(todayBox, todayList, '');
-    const common = worldCommonLineEl(todayList);
-    if (common) todayBox.insertBefore(common, todayBox.firstChild);
+    renderWorldTodayActors(document.getElementById('worldTodayList'), todayList);
+    const actorRows = worldDayActorRows(todayList);
+    document.getElementById('worldTodayLabel').textContent =
+      '今日動いた主体' + (actorRows.length ? '（' + actorRows.length + '）' : '');
     const unread = worldUnread().length;
     const emptyEl = document.getElementById('worldTodayEmpty');
     emptyEl.hidden = !!todayList.length;
