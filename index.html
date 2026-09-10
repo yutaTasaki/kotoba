@@ -2174,10 +2174,9 @@
     <div class="editorBody" id="worldImportView" hidden>
       <div class="field">
         <span class="fieldLabel">1 プロンプトをコピー</span>
-        <p class="fieldNote">分野を2本に分けています。1本ずつチャットに貼り、返ってきた JSON をこの下に貼り戻します。何回貼っても足されるだけで、読んだ分や書いた予測は消えません。</p>
+        <p class="fieldNote">金融・経済と地政学・政治を1本で見ます。チャットに貼り、返ってきた JSON をこの下に貼り戻します。何回貼っても足されるだけで、読んだ分は消えません。</p>
         <div class="medRow">
-          <button type="button" id="btnWorldPromptFinance" class="tagFilterBtn">金融・経済（A）</button>
-          <button type="button" id="btnWorldPromptGeo" class="tagFilterBtn">地政学・政治（B）</button>
+          <button type="button" id="btnWorldPromptCopy" class="tagFilterBtn">プロンプトをコピー</button>
         </div>
         <p class="fieldNote" id="worldPromptStatus"></p>
       </div>
@@ -2188,7 +2187,8 @@
         <p class="fieldNote" id="worldImportStatus"></p>
         <button type="button" id="btnWorldImportShow" class="tagFilterBtn" hidden>入れた札を見る</button>
       </div>
-      <div class="field">
+      <!-- v19 段階4：データを捨てるので対象が無い。画面から外す（処理は残す） -->
+      <div class="field" hidden>
         <span class="fieldLabel">既存の札に付け直す（主語・お金・地層の値）</span>
         <p class="fieldNote">主語がまだ付いていない札に主語を、金額が書かれている札から地層の値を、あとから拾います。出典を開き直さないぶん縛りは通常より厳しく、材料が足りない札は空のままになります。足すだけで、置き換えません。地層の値は同じ日付が既にあれば落とします。</p>
         <div class="medRow">
@@ -14209,7 +14209,7 @@
   const WORLD_DUP_WINDOW_DAYS = 3;              // 重複を見る eventDate の窓（前後）
   const WORLD_CONCEPT_SIM     = 0.60;           // 概念名の近さしきい値
   const WORLD_CONCEPT_MIN_LEN = 3;              // 「片方が片方を含む」を使う最短の長さ
-  const WORLD_PROMPT_COUNT    = 10;             // 1本あたりに求める件数
+  const WORLD_PROMPT_COUNT    = 12;             // v19: A・B を1本にしたぶん 10 → 12
   const WORLD_OLD_EVENT_DAYS  = 90;             // これより古い eventDate は数だけ知らせる
   const WORLD_DAY_LOOKBACK_MONTHS = 4;          // 記録の日詳細で読む月の数（後述）
   const WORLD_FIELDS      = ['finance', 'geo'];
@@ -14289,6 +14289,11 @@
   // v19 段階3：動いたものの種類。既定の画面に並べるのは money だけ。
   // goods（物）と people（人）には金額が付かないので、単独で並べると点が並ぶだけに戻る。
   const WORLD_FLOW_KINDS      = ['money', 'goods', 'people'];
+  // v19 段階4
+  const WORLD_RECENT_FLOWS_MAX  = 30;   // プロンプトに差し込む最近のお金の動き（after の候補）
+  const WORLD_RECENT_FLOWS_DAYS = 30;   // その対象期間
+  const WORLD_CONCEPT_BOOTSTRAP = 10;   // 既知の概念がこれ未満なら、新しく作ってよい
+  const WORLD_DTS_MAX_PER_DAY   = 2;    // 米財務省 DTS から取る札の上限（プロンプトに書く数字）
   const WORLD_FLOW_KIND_MARK  = { money: '', goods: '［物］', people: '［人］' };
   const WORLD_FLOW_KIND_LABEL = { money: 'お金の動き', goods: '物の動き', people: '人の動き' };
   const WORLD_EVENT_ID_RE     = /^w_\d{8}_\d+$/;
@@ -14487,6 +14492,14 @@
     { name: 'Chatham House', url: 'https://www.chathamhouse.org/', field: 'geo', role: 'analysis' },
     { name: 'IISS', url: 'https://www.iiss.org/', field: 'geo', role: 'analysis' },
     { name: 'アジア経済研究所（IDE-JETRO）', url: 'https://www.ide.go.jp/', field: 'geo', role: 'analysis' },
+  ];
+
+  // v19 段階4：日次のお金の源。note は「何を取るか」の1行としてプロンプトに出る
+  const WORLD_MONEY_SOURCES = [
+    { id: 'ws_money_dts', name: '米財務省 Daily Treasury Statement', url: 'https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/', role: 'primary',
+      note: 'その日の支払い・受け取りのうち、金額の大きい順に最大' + WORLD_DTS_MAX_PER_DAY + '件。毎日ある定例のもの（社会保障の給付、国債の償還、税の還付）は除く。from は「米財務省」' },
+    { id: 'ws_money_boj_juq', name: '日本銀行 当座預金増減要因と金融調節（毎営業日）', url: 'https://www.boj.or.jp/statistics/boj/fm/juq/index.htm', role: 'primary',
+      note: '「財政等要因」（政府と民間のあいだ）と「日銀のオペ」（日銀から金融機関）の金額。大きく動いた日だけ札にする' },
   ];
 
   // ---- 形をそろえる --------------------------------------------------------
@@ -15014,6 +15027,14 @@
       wd.sourcesDirty = true;
       persistWorldSources();
     }
+    // v19 段階4：日次のお金の源。決まった id で、まだ無ければ足す（何度起動しても1回だけ）
+    let addedMoneySrc = false;
+    WORLD_MONEY_SOURCES.forEach((x) => {
+      if (wd.sources.sources.some((sc) => sc.id === x.id)) return;
+      const src = normalizeWorldSource({ ...x, field: 'finance', updatedAt: nowIso() });
+      if (src) { wd.sources.sources.push(src); addedMoneySrc = true; }
+    });
+    if (addedMoneySrc) { wd.sourcesDirty = true; persistWorldSources(); }
   }
   function loadWorldMonth(m) {
     if (wd.loaded.has(m) && !wd.loading.has(m)) return Promise.resolve();
@@ -15982,7 +16003,7 @@
   // ---- プロンプト ----------------------------------------------------------
   function worldKnownNames(field) {
     return worldConcepts()
-      .filter((c) => !c.field || c.field === field)
+      .filter((c) => !field || !c.field || c.field === field)   // v19: 分野を渡さなければ全部
       .slice().sort((a, b) => (a.lastUsedAt > b.lastUsedAt ? -1 : 1))
       .slice(0, WORLD_KNOWN_MAX)
       .map((c) => c.name);
@@ -16009,22 +16030,33 @@
       .filter((s) => (s.field === field || s.field === 'both') && s.role === role)
       .map((s) => '- ' + s.name + ' ' + s.url);
   }
-  function worldFieldBlock(field) {
-    if (field === 'finance') {
-      return '金融・経済。中央銀行、財政、統計、債券・為替・商品の市場構造、規制。\n'
-        + '株価の上下そのものは書かない。値動きの背後にある制度・制約を書く。';
-    }
-    return '地政学・政治・国際情勢。領域と航路、資源とエネルギー、同盟と制裁、\n'
-      + '選挙と政変、軍事配置。\n'
-      + 'どちらが正しいかを書かない。誰が何に縛られているかを書く。';
+  // v19 段階4：分野で分けない。note があれば「取るもの」として添える
+  function worldAllSourceLines(role) {
+    return worldSources()
+      .filter((s) => s.role === role)
+      .map((s) => '- ' + s.name + ' ' + s.url + (s.note ? '\n  取るもの：' + s.note : ''));
   }
-  function worldPromptText(field) {
-    const prim = worldSourceLines(field, 'primary');
-    const anal = worldSourceLines(field, 'analysis');
-    const known = worldKnownNames(field);
-    const knownTerms = worldKnownTermNames();
+  // after の候補。直近 WORLD_RECENT_FLOWS_DAYS 日のうち、お金を先に、新しい順
+  function worldRecentFlowLines() {
+    const cut = addDays(todayStr(), -WORLD_RECENT_FLOWS_DAYS);
+    const byDate = (a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0);
+    const recent = worldLiveEvents().filter((e) => e.flow && e.eventDate >= cut);
+    return recent.filter(worldIsMoneyFlow).sort(byDate)
+      .concat(recent.filter((e) => !worldIsMoneyFlow(e)).sort(byDate))
+      .slice(0, WORLD_RECENT_FLOWS_MAX)
+      .map((e) => e.id + '　' + worldShortDate(e.eventDate) + '　' + WORLD_FLOW_KIND_MARK[e.flow.kind]
+        + (e.flow.from || '？') + '→' + (e.flow.to || '？') + '　' + (e.flow.what || '')
+        + (e.flow.amount ? '　' + e.flow.amount : '') + (e.flow.span ? '（' + e.flow.span + 'の累計）' : ''));
+  }
+  function worldPromptText() {
+    const prim = worldAllSourceLines('primary');
+    const anal = worldAllSourceLines('analysis');
+    const known = worldKnownNames();
     const knownActors = worldKnownActorLines();
     const strataLines = worldStrataPromptLines();
+    const flowLines = worldRecentFlowLines();
+    // v19: 既知の概念が少ないうちは「既知から必ず探す」が成り立たない。件数で自動で切り替える
+    const boot = worldConcepts().length < WORLD_CONCEPT_BOOTSTRAP;
     return SHOOT_PROMPT_HEAD +
       'あなたは、ある人の世界の見方を少しずつ更新するための材料係です。\n' +
       '解説記事は書きません。ニュースの要約もしません。\n' +
@@ -16039,13 +16071,21 @@
       '- 件数が足りなくてよい。埋めるくらいなら少ない方がよい。\n' +
       '  ' + WORLD_PROMPT_COUNT + '件求めて4件しか確認できなければ4件を返す。\n' +
       '- 出来事以外の文章を返さない。JSON のみ。\n\n' +
-      '■ 分野\n' + worldFieldBlock(field) + '\n' +
+      '■ 分野\n' +
+      '金融・経済と、地政学・政治を1本で見る。分けない。お金と力の動きは本質的につながっている。\n' +
+      '株価の上下そのものは書かない。値動きの背後にある制度・制約を書く。\n' +
+      'どちらが正しいかを書かない。誰が何に縛られているかを書く。\n' +
       WORLD_PROMPT_COUNT + '件を目安に返す（確認できたものだけ）。\n\n' +
+      // v19: お金が動いた事実から、何を暗に実現したいかを逆に読むため
+      '■ 選び方\n' +
+      '- お金が動いた出来事を優先する。\n' +
+      '- 同じくらい重要なら、金額が出典に書かれている方を選ぶ。\n' +
+      '- 統計の発表そのものは、誰から誰へお金が動いたかが書かれていなければ後回しにする。\n\n' +
       '■ 期間\n' +
       '直近7日間に動いたもの。ただし「その日のニュース」ではなく、\n' +
       'これから数ヶ月〜数年にわたって効き続ける動きを選ぶ。\n' +
       '発表そのものより、発表が示している力学を選ぶ。\n\n' +
-      '■ ソース：一次（fact・eventDate・detail の数字はここでしか確認できない）\n' +
+      '■ ソース：一次（fact・eventDate・detail の数字はここでしか確認できない。「取るもの」があるソースはそれに従う）\n' +
       (prim.length ? prim.join('\n') : '（未設定）') + '\n\n' +
       '■ ソース：解釈（why を書くための補助）\n' +
       (anal.length ? anal.join('\n') : '（未設定）') + '\n\n' +
@@ -16055,6 +16095,11 @@
       '  シンクタンクの論考は「出来事」ではない。\n' +
       '- 解釈のソースは why を書くときにだけ使う。\n' +
       '  その場合も url と source には、一次のソース（出来事そのものの出所）を書く。\n\n' +
+      // v19: 用語集をやめる。注が要らない書き方にする
+      '■ 書き方\n' +
+      '- fact・why・did は、注が要らないくらい平たい言葉で書く。\n' +
+      '- 専門用語を使うときは、その場で言い換える。\n' +
+      '  良い例：「政府が国債の元本を返した分」 悪い例：「償還」だけ\n\n' +
       '■ それぞれの出来事に書くこと\n' +
       '- fact：何が起きたか。1文・' + WORLD_FACT_MAX + '字以内。数字か固有名詞を必ず含む。\n' +
       '  聞く人に向けた文にする。専門用語を並べない。\n' +
@@ -16064,7 +16109,6 @@
       '  誰が何を欲しがり・何を恐れ・何に縛られているかを書く。\n' +
       '  出来事の言い換えを書かない。評価・感想・助言を書かない。\n' +
       '\n' +
-      // v12: 主語。思惑は必ず捏造されるので3層に分け、said と同じ read は空にさせる。
       '- actors：この出来事を動かした主体を 1〜' + WORLD_ACTORS_PER_EVENT + 'つ。主語。\n' +
       '  組織を主体にする（審議委員の発言は「日本銀行」の行動として読む）。\n' +
       '  個人を主体にするのは、組織と立場が違うときだけ（審議委員が執行部と違う提案をした、\n' +
@@ -16098,52 +16142,47 @@
       '  悪い例：「重要なニュースだから」「市場への影響が大きい」\n' +
       '\n' +
       '- premise：この件を理解するのに最低限必要な「概念」を 1つだけ。\n' +
-      '  概念とは、積み上がって世界の見方になるもの（外貨準備、コンディショナリティ、\n' +
-      '  シーレーン）。組織名・国名・略語・人名は概念ではない。それは terms に書く。\n' +
-      '  - 末尾の「すでに知っている概念」で足りるなら、新しい概念を作らない。\n' +
-      '    そのときは kind を "relation" にして、既知の概念2つ（a と b）の\n' +
-      '    関係を line に1文で書く。\n' +
-      '  - 新しい概念が要るときは kind を "new" にして、name と line を書く。\n' +
+      '  概念とは、積み上がって世界の見方になるもの（外貨準備、交易条件、\n' +
+      '  金融政策の正常化）。組織名・国名・略語・人名は概念ではない。\n' +
+      '  - その札の中でしか使わない固有名詞を概念にしない。\n' +
+      '    悪い例：「GDP2次速報」「ホルムズ海峡」「フロンティアAI」\n' +
+      '    良い例：「交易条件」「金融政策の正常化」「外貨準備」\n' +
+      (boot
+        ? '  - いま知っている概念はまだ少ない（' + worldConcepts().length + '件）。足りなければ新しく作ってよい。\n' +
+          '    そのときは kind を "new" にして、name と line を書く。\n'
+        : '  - 末尾の「すでに知っている概念」で足りるなら、新しい概念を作らない。\n' +
+          '    そのときは kind を "relation" にして、既知の概念2つ（a と b）の\n' +
+          '    関係を line に1文で書く。\n' +
+          '  - 新しい概念が要るときは kind を "new" にして、name と line を書く。\n') +
       '    aka に別名・日本語訳・英語名を必ず入れる（表記ゆれを防ぐため）。\n' +
       '  - line は1文。その概念の定義であって、この出来事の説明ではない。\n' +
       '\n' +
-      // v11.6: ここが空欄同然だったので、生成は「その札に出てくる語」を並べ、
-      // 15件から共起が1本しかできなかった。既知から必ず探させ、札限りの語を禁じる。
-      '- concepts：この出来事が触れている「概念」を 2〜4個。premise に書いたものも含める。\n' +
-      '  概念の意味は premise と同じ。積み上がって世界の見方になるものだけを書く。\n' +
-      '  - 末尾の「すでに知っている概念」を必ず見て、この出来事にも当てはまるものが\n' +
-      '    あれば挙げる。当てはまるかどうかは、その概念がこの出来事を説明するのに\n' +
-      '    使えるかで判断する。無理に当てはめない。\n' +
-      '  - その出来事の中でしか使わない言葉を書かない。\n' +
-      '    他の出来事にも出てくる言葉かどうかで判断する。\n' +
-      '    悪い例：「石油在庫」「設備投資」「9月会合」\n' +
-      '    良い例：「外貨準備」「交易条件」「量的引き締め」\n' +
-      '  - 組織名・国名・略語・人名は書かない（それは terms）。\n' +
-      '  - 2個に満たなければ1個でよい。無理に埋めない。\n' +
+      (boot
+        ? '- concepts：premise に書いた概念だけでよい（いまは既知の概念が少ないため）。\n' +
+          '  末尾の「すでに知っている概念」にこの出来事にも当てはまるものがあれば、足してよい。\n'
+        : '- concepts：この出来事が触れている「概念」を 2〜4個。premise に書いたものも含める。\n' +
+          '  概念の意味は premise と同じ。積み上がって世界の見方になるものだけを書く。\n' +
+          '  - 末尾の「すでに知っている概念」を必ず見て、この出来事にも当てはまるものが\n' +
+          '    あれば挙げる。当てはまるかどうかは、その概念がこの出来事を説明するのに\n' +
+          '    使えるかで判断する。無理に当てはめない。\n' +
+          '  - その出来事の中でしか使わない言葉を書かない。\n' +
+          '    他の出来事にも出てくる言葉かどうかで判断する。\n' +
+          '    悪い例：「石油在庫」「設備投資」「9月会合」\n' +
+          '    良い例：「外貨準備」「交易条件」「量的引き締め」\n' +
+          '  - 組織名・国名・略語・人名は書かない。\n' +
+          '  - 2個に満たなければ1個でよい。無理に埋めない。\n') +
       '\n' +
-      '- terms：fact・why・detail の中に出てくる組織名・国名・略語・制度名・人名を、\n' +
-      '  出てきたぶんだけ全部挙げる。概念は書かない（それは premise と concepts）。\n' +
-      '  - line は ' + WORLD_TERM_LINE_MIN + '〜' + WORLD_TERM_LINE_MAX + '字。1つの節で言い切る。\n' +
-      '    注は読ませるものではない。一瞬で片づけて本文に戻るためのもの。\n' +
-      '    「〜が集まり、〜を作る」のように節を二段重ねにしない。\n' +
-      '    かといって「国際的な金融機関」のような、読んでも何も増えない書き方もしない。\n' +
+      // v19: 用語集をやめた。平たく言い換えられるものは terms に入れない
+      '- terms：本文にどうしても残った組織名・国名・制度名・人名だけ。\n' +
+      '  平たく言い換えられるものは言い換えて、terms に入れない。概念は書かない。\n' +
+      '  - line は ' + WORLD_TERM_LINE_MIN + '〜' + WORLD_TERM_LINE_MAX + '字。1つの節で言い切る。その語の定義であって、この出来事の説明ではない。\n' +
       '    良い例：「外貨が足りない国に融資する、加盟国出資の国際機関」\n' +
-      '    良い例：「世界の決済システムの共通ルールを作る、中央銀行の集まり」\n' +
-      '    悪い例：「BISの下で各国の中央銀行が集まり、決済システムの国際基準を作る委員会」\n' +
       '    悪い例：「国際通貨基金のこと」「中米の国」\n' +
-      '  - line はその語の定義であって、この出来事の説明ではない。\n' +
       '  - kind は org（組織）／place（国・地域・海峡など）／scheme（制度・枠組み）\n' +
       '    ／person（人物）のどれか。\n' +
-      '  - person の注は、肩書きと立場だけを書く。\n' +
-      '    評価・来歴・人物像を書かない（「〜で知られる」「〜と対立している」は不可）。\n' +
-      '    人は入れ替わるので、いつ時点の肩書きかを必ず含める。\n' +
-      '    良い例：「2026年時点の米財務長官。国債の発行計画を決める側」\n' +
-      '    悪い例：「著名な投資家出身で、市場との対話を重視することで知られる」\n' +
-      '  - aka に別名・日本語訳・英語名を入れる（IMF なら 国際通貨基金、\n' +
-      '    International Monetary Fund）。\n' +
-      '  - すでに知っている用語も、本文に出てきたら name だけは必ず書く。\n' +
-      '    その場合 line・kind・aka は空でよい。（読むときの目印に使うため）\n' +
-      '  - 本文に出てこない語は書かない。\n' +
+      '  - person の注は、いつ時点の肩書きと立場だけ。評価・来歴・人物像を書かない。\n' +
+      '  - aka に別名・日本語訳・英語名を入れる。\n' +
+      '  - 本文に出てこない語は書かない。前に注を書いたことがある語かは気にしなくてよい（こちらで重ねない）。\n' +
       '\n' +
       '- strata：この出来事が乗っている「地層」の id を0〜' + WORLD_STRATA_PER_EVENT + '個。\n' +
       '  地層とは、数十年単位でしか動かない量（金利、人口、債務、備蓄）のこと。\n' +
@@ -16172,37 +16211,34 @@
       '    「原油価格は変動するか」のような、どちらにも転ばない書き方は禁止。\n' +
       '  - 誰がどう見ても同じ判定になる書き方にする。\n' +
       '    「市場が落ち着くか」「関係が改善するか」は書かない。\n' +
-      // v17 C: 入口で絞らないと答え合わせが追いつかない（90日 × 3件が待ち行列の上限）
       '  - 分かれ目を書くのは、上から' + WORLD_FORK_PER_BATCH + '件までにする。' + (WORLD_FORK_PER_BATCH + 1) + '件目からは fork を null にする。\n' +
       '    分かれ目が立つ札は、その週に数件しかないのが正常。\n' +
+      '  - どちらに転ぶかの見立ては書かない（分かれ目の文だけ）。\n' +
       '\n' +
-      // v17 C: 見立ては推定。事実（fact・did）と混ぜないよう別の項目に分ける
-      '- lean：その分かれ目が、あなたの見立てではどちらに転ぶか。\n' +
-      '  fork が null のときは書かない。\n' +
-      '  "up"／"down"／"flat" のどれか。\n' +
-      '  type が "level" なら up=示された水準に届く／down=届かない／flat=どちらとも言えない。\n' +
-      '  type が "event" なら up=起きる／down=起きない／flat=どちらとも言えない。\n' +
-      '  逃げないこと。flat は「本当にどちらにも転びうる」ときだけ。\n' +
-      '- because：なぜそう見立てたかを1文・' + WORLD_BECAUSE_MAX + '字以内。\n' +
-      '  これは推定です。出典に書かれた事実ではなく、あなたの読みを書く。\n' +
-      '  何がそう思わせるのかを書く。どちらでもない文を書かない。\n' +
-      '  良い例：「減額幅を決めるのが財政側なので、金利が上がるまで動かない」\n' +
-      '  悪い例：「今後の動向次第で変わる可能性がある」\n' +
-      '\n' +
-      '- flow：この出来事で動いたお金。無ければ null。無理に書かない。\n' +
+      // v19: お金の欄を必須寄りに。kind と after を足す
+      '- flow：この出来事で動いたもの。お金を優先して書く。\n' +
+      '  - 出典に金額が書かれていれば、必ず書く。\n' +
+      '  - 金額が書かれていなくても、誰から誰へ動いたかが出典に書かれていれば、\n' +
+      '    from と to だけ書く（amount は空）。\n' +
+      '  - 出典に書かれていない移動は書かない。金額を推定しない。換算しない。合計しない。\n' +
+      '  - 書けなければ null（出来事そのものは返してよい）。\n' +
+      '  kind：お金なら "money"。原油・穀物・兵器・半導体など物が動いたなら "goods"。\n' +
+      '        移民・避難・人材など人が動いたなら "people"。\n' +
       '  from／to は主体名（アクター名か、「為替市場」のような場所）。what は何をしたか。\n' +
-      '  amount は出典の書き方のまま（「15兆円」「1.4億ドル」）。換算しない。合計しない。\n' +
-      '  出典に金額が無ければ null。\n' +
-      // v15: 累計と1回を混ぜると、一覧で累計だけが大きく見える
+      '  amount は出典の書き方のまま（「15兆円」「1.4億ドル」）。goods・people では空でよい。\n' +
       '  span：その金額が期間の累計・合計なら、その期間（「2022年以降」「2026年度」）。\n' +
       '        1回の動きなら空。累計と1回を混ぜると、一覧で累計だけが大きく見える。\n' +
       '  strata：この金が動かした「地層」の id を0〜' + WORLD_FLOW_STRATA_MAX + '個。末尾の一覧にあるものだけ。\n' +
       '          例：介入 → 外貨準備が動く。\n' +
+      '  after：この動きの原因や前段に当たる動きがあれば、その id。\n' +
+      '         末尾の「最近のお金の動き」の id（w_…）か、\n' +
+      '         同じ JSON の前の出来事なら "#番号"（上から1、2…と数える）。\n' +
+      '         自分より後ろの出来事は指さない。無ければ null。無理に繋がない。\n' +
+      '         例：1件目が「制裁で原油が中国へ流れた」、3件目が「その原油の代金が動いた」なら、\n' +
+      '             3件目の after は "#1"。\n' +
       '  例：{"from":"財務省","to":"為替市場","what":"円買い介入","amount":"15兆円",\n' +
-      '       "span":"","strata":["st_jp_fx_reserve"]}\n' +
+      '       "kind":"money","after":null,"span":"","strata":["st_jp_fx_reserve"]}\n' +
       '\n' +
-      // v15: 残高（外貨準備、中銀の資産）は flow に入れない。from も to も無い
-      // flow は「流れ」ではない。器は地層の levels のほうにもともとある。
       '- levels：末尾の地層の一覧にある量について、この時点の値が出典に書かれていたら。\n' +
       '  無ければ空の配列。0件でよい。\n' +
       '  - 出典に数字が書かれているときだけ。推測・概算・「およそ」は書かない。\n' +
@@ -16212,12 +16248,10 @@
       '  - 出典（source・url）は札のものを使うので、ここには書かない。\n' +
       '  例：[{"stratumId":"st_jp_fx_reserve","value":"1兆2075億ドル","at":"2026-09-07"}]\n' +
       '\n' +
-      '- detail：数字・当事者・背景。1〜3文。ここには専門用語を書いてよい。\n' +
+      '- detail：数字・当事者・背景。1〜3文。\n' +
       '- source：媒体名と発表日。\n' +
       '- url：出典ページ。\n' +
       '- eventDate：出典ページに書かれた発表日または発生日（YYYY-MM-DD）。未来の日付にしない。\n\n' +
-      // related は落とした（v11.6）。concepts と同じ質問を違う縛りで2回聞くことに
-      // なるため。取り込みは今でも読むので、古い JSON を貼っても壊れない。
       '■ 並べ方\n' +
       '重要だと思う順に並べる。上から読まれる。\n\n' +
       '■ 出力形式\n' +
@@ -16226,41 +16260,39 @@
       '  "why":"...",\n' +
       '  "reason":"...",\n' +
       '  "premise":{"kind":"new","name":"...","aka":["...","..."],"line":"..."},\n' +
-      '  "concepts":["...","..."],\n' +
+      '  "concepts":["..."],\n' +
       '  "terms":[{"name":"IMF","line":"...","kind":"org","aka":["国際通貨基金"]}],\n' +
       '  "strata":["st_jp_rate_long"],\n' +
       '  "actors":[{"name":"財務省","did":"...","said":"...","read":"...","kind":"state"}],\n' +
-      '  "flow":{"from":"...","to":"...","what":"...","amount":"...","span":"","strata":[]},\n' +
+      '  "flow":{"from":"...","to":"...","what":"...","amount":"...","kind":"money","after":null,"span":"","strata":[]},\n' +
       '  "levels":[{"stratumId":"st_jp_fx_reserve","value":"...","at":"YYYY-MM-DD"}],\n' +
       '  "fork":{"text":"...","type":"level"},\n' +
-      '  "lean":"up","because":"...",\n' +
       '  "detail":"...",\n' +
       '  "source":"...",\n' +
       '  "url":"https://...",\n' +
       '  "eventDate":"YYYY-MM-DD"\n' +
       '}]}\n\n' +
-      'kind が "relation" のときの premise：\n' +
-      '  {"kind":"relation","a":"既知の概念1","b":"既知の概念2","line":"..."}\n' +
-      'すでに知っている用語： {"name":"IMF"}\n' +
+      (boot ? '' : 'kind が "relation" のときの premise：\n' +
+        '  {"kind":"relation","a":"既知の概念1","b":"既知の概念2","line":"..."}\n') +
       'どの地層にも乗らないとき： "strata": []\n' +
-      '分かれ目が思いつかないとき： "fork": null（lean と because も書かない）\n' +
-      'お金の動きが無いとき： "flow": null\n' +
+      '分かれ目が思いつかないとき： "fork": null\n' +
+      '動いたものが無い・書けないとき： "flow": null\n' +
+      '前の動きの続きでないとき： "after": null\n' +
       '地層の値が出典に書かれていないとき： "levels": []\n' +
       '述べた理由が出典に無いとき： "said": ""\n' +
       '読んだ思惑が述べた理由と同じとき： "read": ""\n\n' +
-      // 既知の羅列は末尾に置く。3本になると、上に置いたときに規則を押しのける。
+      // 既知の羅列は末尾に置く。上に置くと規則を押しのける。
       '────────────────────────────────────────\n' +
       '■ 地層の一覧（strata・levels はこの id から選ぶ。ここに無いものを作らない）\n' +
       (strataLines.length ? strataLines.join('\n') : '（まだありません）') + '\n\n' +
-      // 見出しで役割を2つにする。「説明しなくてよい」だけだと、生成にとって
-      // これは「避けるもの」のリストになり、concepts を探す場所にならない。
-      '■ すでに知っている概念（concepts はここから探す。premise で説明し直さなくてよい。名前だけ。最大' + WORLD_KNOWN_MAX + '件）\n' +
+      (boot
+        ? '■ すでに知っている概念（まだ少ない。当てはまるものがあれば使い、足りなければ premise で新しく作ってよい）\n'
+        : '■ すでに知っている概念（concepts はここから探す。premise で説明し直さなくてよい。名前だけ。最大' + WORLD_KNOWN_MAX + '件）\n') +
       (known.length ? known.join(' / ') : '（まだありません）') + '\n\n' +
-      '■ すでに知っている用語（説明しなくてよい。名前だけ。最大' + WORLD_KNOWN_TERMS_MAX + '件。\n' +
-      '　一覧に無くても、経済・政治の基礎的な用語は説明不要）\n' +
-      (knownTerms.length ? knownTerms.join(' / ') : '（まだありません）') + '\n\n' +
       '■ すでに知っているアクター（actors の name はここから探す。無ければ新しく書いてよい。名前（別名）。最大' + WORLD_KNOWN_ACTORS_MAX + '件）\n' +
-      (knownActors.length ? knownActors.join(' / ') : '（まだありません）');
+      (knownActors.length ? knownActors.join(' / ') : '（まだありません）') + '\n\n' +
+      '■ 最近のお金の動き（after はこの id から選ぶ。ここに無い id を書かない。［物］［人］は物と人の動き）\n' +
+      (flowLines.length ? flowLines.join('\n') : '（まだありません）');
   }
   // 名前＋主要な別名（引き当てのため）。lastUsedAt 順
   function worldKnownActorLines() {
@@ -16395,8 +16427,6 @@
       (worldKnownActorLines().length ? worldKnownActorLines().join(' / ') : '（まだありません）') + '\n\n' +
       '■ すでに知っている概念（説明しなくてよい）\n' +
       (worldConcepts().length ? worldConcepts().map((c) => c.name).slice(0, WORLD_KNOWN_MAX).join(' / ') : '（まだありません）') + '\n\n' +
-      '■ すでに知っている用語（説明しなくてよい）\n' +
-      (worldKnownTermNames().length ? worldKnownTermNames().join(' / ') : '（まだありません）') + '\n\n' +
       '■ 関係しそうな札（related はこの id から選ぶ。ここに無い id を書かない）\n' +
       (cards.length ? cards.map((e) => e.id + '  ' + e.fact).join('\n') : '（関係しそうな札は端末にありません）');
   }
@@ -19637,18 +19667,18 @@
     stale.forEach((e) => worldDeleteEvent(e.id));
     renderWorldMain();
   });
-  function worldCopyPrompt(field) {
-    worldImportField = field;
+  function worldCopyPrompt() {
+    worldImportField = 'finance';   // 札の field はもう使わない（既定の値を入れ続ける）
     const el = document.getElementById('worldPromptStatus');
-    copyToClipboard(worldPromptText(field)).then((ok) => {
+    const text = worldPromptText();
+    copyToClipboard(text).then((ok) => {
       el.textContent = ok
-        ? WORLD_FIELD_LABEL[field] + 'のプロンプトをコピーしました。Claude のチャットに貼ってください。'
+        ? 'プロンプトをコピーしました（' + text.length.toLocaleString() + '字）。Claude のチャットに貼ってください。'
         : 'コピーできませんでした。下の欄に出したので、選んでコピーしてください。';
-      if (!ok) document.getElementById('worldImportPaste').value = worldPromptText(field);
+      if (!ok) document.getElementById('worldImportPaste').value = text;
     });
   }
-  document.getElementById('btnWorldPromptFinance').addEventListener('click', () => worldCopyPrompt('finance'));
-  document.getElementById('btnWorldPromptGeo').addEventListener('click', () => worldCopyPrompt('geo'));
+  document.getElementById('btnWorldPromptCopy').addEventListener('click', worldCopyPrompt);
   document.getElementById('btnWorldImport').addEventListener('click', async () => {
     const box = document.getElementById('worldImportPaste');
     const status = document.getElementById('worldImportStatus');
