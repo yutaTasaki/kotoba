@@ -1161,6 +1161,36 @@
   /* 述べずに動いている主体。この画面で一番重要なので、色と位置の両方でずらす */
   .worldBoardRow .wbMark.onlyRead { color: var(--guess); font-weight: 700; }
   .worldSectionHead .wbLegend { font-size: 10px; color: var(--text-faint); padding: 0; }
+  /* --- v14 問いモード ------------------------------------------------------ */
+  .worldAskEntry {
+    display: block; width: 100%; text-align: left;
+    background: var(--bg-card); border: 0; border-radius: 8px; margin: 0 0 10px;
+    padding: 9px 12px; font: inherit; font-size: 13px; color: var(--text-dim); cursor: pointer;
+  }
+  .worldAskCard { border-top: 1px solid var(--border); padding: 4px 0; }
+  .worldAskHead {
+    display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: baseline;
+    width: 100%; text-align: left; background: none; border: 0; padding: 8px 0; margin: 0;
+    font: inherit; color: var(--text); cursor: pointer;
+  }
+  .worldAskHead .waqText { font-size: 14px; line-height: 1.5; }
+  .worldAskHead .waqCount { font-size: 11px; color: var(--text-faint); white-space: nowrap; }
+  .worldAskRun { padding: 2px 0 8px; }
+  .worldAskRun .waqDate {
+    background: none; border: 0; padding: 2px 0; margin: 0; font: inherit;
+    font-size: 11px; color: var(--text-faint); cursor: pointer;
+  }
+  .waqView { font-size: 13px; line-height: 1.7; margin: 2px 0 4px; }
+  .waqFork { font-size: 12px; color: var(--text-dim); line-height: 1.6; margin-bottom: 6px; }
+  .waqLab { font-size: 10px; color: var(--guess); margin: 8px 0 2px; }
+  /* 思惑はすべて推定なので、ブロックごと琥珀の縦線で囲う */
+  .waqActors { border-left: 2px dashed var(--guess); padding-left: 8px; }
+  .waqActor { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: baseline; padding: 3px 0; }
+  .waqActor .waqName { font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+  .waqActor .waqWant { font-size: 13px; line-height: 1.6; }
+  .waqActor .waqGo { font-size: 11px; padding: 0; white-space: nowrap; }
+  .waqSub { font-size: 11px; color: var(--text-faint); line-height: 1.6; padding-left: 0; }
+  .waqCards { font-size: 11px; color: var(--text-faint); margin-top: 8px; }
   .worldActorMind .waKey { display: inline-block; min-width: 3.2em; color: var(--text-faint); font-size: 11px; margin-right: 6px; }
   .worldActorMind .waRead { border-left: 2px dashed var(--guess); padding-left: 8px; margin-top: 2px; }
   /* v11.7 つながる札：札を読んでいる最中に、隣の札が勝手に見える */
@@ -2142,6 +2172,38 @@
       </div>
     </div>
 
+    <div class="editorBody" id="worldAskView" hidden>
+      <div class="field">
+        <span class="fieldLabel">知りたいこと</span>
+        <p class="fieldNote">問いから、それを動かしている主体を引きます。ニュースからではなく知りたいことから入るので、その問いに合う主体の切り方（投機筋・輸出企業・保険会社など）が出ます。</p>
+        <textarea id="worldAskInput" rows="2" placeholder="なぜ円安が止まらないのか" autocomplete="off"></textarea>
+        <div id="worldAskNear" hidden>
+          <p class="fieldNote" id="worldAskNearText"></p>
+          <div class="medRow" id="worldAskNearRow"></div>
+        </div>
+        <div class="medRow">
+          <button type="button" id="btnWorldAskPrompt" class="tagFilterBtn">プロンプトをコピー</button>
+          <button type="button" id="btnWorldAskWord" class="tagFilterBtn">絞り込みの語を足す</button>
+        </div>
+        <input type="text" id="worldAskWord" placeholder="札を絞る語（例：円安）" autocomplete="off" hidden>
+        <p class="fieldNote" id="worldAskPromptStatus"></p>
+      </div>
+      <div class="field">
+        <span class="fieldLabel">返ってきた JSON を貼る</span>
+        <textarea id="worldAskPaste" rows="3" placeholder='{"view":"...","actors":[...],"actions":[...]} をここに貼る' autocomplete="off"></textarea>
+        <button type="button" id="btnWorldAskImport" class="secondaryBtn">取り込む</button>
+        <p class="fieldNote" id="worldAskImportStatus"></p>
+      </div>
+      <div class="field">
+        <span class="fieldLabel">これまでの問い</span>
+        <div id="worldAskList"></div>
+        <p class="emptyMsg" id="worldAskEmpty" hidden>まだありません。</p>
+      </div>
+      <div class="field">
+        <button type="button" id="btnWorldAskBack" class="secondaryBtn">戻る</button>
+      </div>
+    </div>
+
     <div class="editorBody" id="worldConceptView" hidden>
       <h3 id="worldConceptName"></h3>
       <p class="fieldNote" id="worldConceptAka" hidden></p>
@@ -2872,7 +2934,7 @@
   bootKV.medDocs = {};
   try { (await kvGetAllPrefix('meditation:')).forEach((v, k) => { bootKV.medDocs[k.slice(11)] = v; }); } catch (e) {}
   // v10 世界: 全月は読まない。今月・先月と、索引が「未読が残っている」と言う月だけ。
-  for (const k of ['worldIndex', 'worldDirty', 'worldStamps', 'worldConcepts', 'worldTerms', 'worldStrata', 'worldActors', 'worldSources']) { try { bootKV[k] = await kvGet(k); } catch (e) { bootKV[k] = null; } }
+  for (const k of ['worldIndex', 'worldDirty', 'worldStamps', 'worldConcepts', 'worldTerms', 'worldStrata', 'worldActors', 'worldAsks', 'worldSources']) { try { bootKV[k] = await kvGet(k); } catch (e) { bootKV[k] = null; } }
   bootKV.worldDocs = {};
   {
     let wix = null;
@@ -14041,6 +14103,15 @@
   const WORLD_BOARD_FOLD = 5;    // 盤面の既定の件数
   const WORLD_BOARD_MAX  = 20;   // 「もっと見る」で出す上限
   const WORLD_BOARD_LEGEND_KEY = 'kotoba_worldBoardLegend';   // 凡例を畳んだか
+
+  // v14 問いモード：「知りたいことが先、主体はそこから出てくる」入口。
+  // 札の主語（actors）は「出典に行動が書かれた主体」に縛ってあるので広げられない。
+  // 問いの主体は別の層に置き、行動が札になったときだけ actors に昇格する。
+  const WORLD_ASK_ACTORS_MAX = 7;    // 1回の問いで挙げる主体の上限
+  const WORLD_ASK_CARDS_MAX  = 20;   // プロンプトに差し込む既存の札
+  const WORLD_ASK_VIEW_MAX   = 60;   // 見立ての字数
+  const WORLD_ASK_WANT_MAX   = 60;
+  const WORLD_ASK_SIM        = 0.60; // 「近い問い」のしきい値
   // 種。一度も保存されていないときだけ入れる。「市場参加者」は入れない
   // （市場は思惑を持つ主体ではなく、思惑が現れる場所）。
   const WORLD_DEFAULT_ACTORS = [
@@ -14078,6 +14149,7 @@
   const WORLD_TERMS_PATH    = 'world/terms.json';
   const WORLD_STRATA_PATH   = 'world/strata.json';
   const WORLD_ACTORS_PATH   = 'world/actors.json';
+  const WORLD_ASKS_PATH     = 'world/asks.json';
   const WORLD_SOURCES_PATH  = 'world/sources.json';
   const worldMonthPath = (m) => 'world/' + m + '.json';
 
@@ -14321,6 +14393,7 @@
     // v10.5 ★: 出来事そのものに付く。言葉側の picks とは別で、重みには使わない
     if (e.hit) { out.hit = 1; out.hitAt = typeof e.hitAt === 'string' ? e.hitAt : ''; }
     if (e.slim) out.slim = 1;   // 段階1.6（痩せさせ）。読み込みだけ先に通しておく
+    if (e.viaAsk) out.viaAsk = String(e.viaAsk);   // v14: どの問いから掘り当てたか
     // v11 非表示：本文は月ファイルに残したまま、読み出しから外す
     if (e.hidden) { out.hidden = 1; out.hiddenAt = typeof e.hiddenAt === 'string' ? e.hiddenAt : ''; }
     return out;
@@ -14434,7 +14507,7 @@
     out.deletedIds = (Array.isArray(raw.deletedIds) ? raw.deletedIds : []).filter((t) => t && t.id).map((t) => ({ id: String(t.id), deletedAt: t.deletedAt || nowIso() }));
     return out;
   }
-  function emptyWorldIndex() { return { version: 1, updatedAt: '', months: {}, due: {}, concepts: { updatedAt: '', count: 0 }, terms: { updatedAt: '', count: 0 }, strata: { updatedAt: '', count: 0 }, actors: { updatedAt: '', count: 0 }, sources: { updatedAt: '', count: 0 } }; }
+  function emptyWorldIndex() { return { version: 1, updatedAt: '', months: {}, due: {}, concepts: { updatedAt: '', count: 0 }, terms: { updatedAt: '', count: 0 }, strata: { updatedAt: '', count: 0 }, actors: { updatedAt: '', count: 0 }, asks: { updatedAt: '', count: 0 }, sources: { updatedAt: '', count: 0 } }; }
   function normalizeWorldIndex(raw) {
     const out = emptyWorldIndex();
     if (!raw || typeof raw !== 'object') return out;
@@ -14444,7 +14517,7 @@
       out.months[m] = { updatedAt: typeof v.updatedAt === 'string' ? v.updatedAt : '', count: Number(v.count) || 0, unread: Number(v.unread) || 0 };
     });
     Object.entries(raw.due || {}).forEach(([d, ids]) => { if (isDateStr(d) && Array.isArray(ids)) out.due[d] = ids.map(String).slice(0, 50); });
-    ['concepts', 'terms', 'strata', 'actors', 'sources'].forEach((k) => {
+    ['concepts', 'terms', 'strata', 'actors', 'asks', 'sources'].forEach((k) => {
       const v = raw[k];
       if (v && typeof v === 'object') out[k] = { updatedAt: typeof v.updatedAt === 'string' ? v.updatedAt : '', count: Number(v.count) || 0 };
     });
@@ -14462,6 +14535,48 @@
     out.updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : '';
     out.concepts = (Array.isArray(raw.concepts) ? raw.concepts : []).map(normalizeWorldConcept).filter(Boolean);
     out.dismissedPairs = normalizeWorldDismissed(raw.dismissedPairs);
+    return out;
+  }
+  // v14 問い。runs[] に積む（別レコードにすると同じ問い×違う時期が並ばない）
+  function normalizeWorldAskActor(a) {
+    if (!a || typeof a !== 'object') return null;
+    const name = worldStr(a.name, 80);
+    const want = worldStr(a.want, WORLD_ASK_WANT_MAX);
+    if (!name || !want) return null;              // want は必須（思惑が無い主体は挙げない）
+    return { name, actorId: typeof a.actorId === 'string' ? a.actorId : '',
+             want, fear: worldStr(a.fear, WORLD_ASK_WANT_MAX), bound: worldStr(a.bound, WORLD_ASK_WANT_MAX) };
+  }
+  function normalizeWorldAskRun(r) {
+    if (!r || typeof r !== 'object') return null;
+    return {
+      at: isDateStr(r.at) ? r.at : todayStr(),
+      view: worldStr(r.view, WORLD_ASK_VIEW_MAX),
+      actors: (Array.isArray(r.actors) ? r.actors : []).map(normalizeWorldAskActor).filter(Boolean).slice(0, WORLD_ASK_ACTORS_MAX),
+      eventIds: (Array.isArray(r.eventIds) ? r.eventIds : []).map(String).slice(0, 60),
+      added: (Array.isArray(r.added) ? r.added : []).map(String).slice(0, 60),
+      fork: normalizeWorldFork(r.fork),
+      note: worldStr(r.note, 300),
+    };
+  }
+  function normalizeWorldAsk(a) {
+    if (!a || !a.id || !a.text) return null;
+    const out = {
+      id: String(a.id),
+      text: worldStr(a.text, 200),
+      runs: (Array.isArray(a.runs) ? a.runs : []).map(normalizeWorldAskRun).filter(Boolean).slice(-40),
+      createdAt: a.createdAt || nowIso(),
+      updatedAt: a.updatedAt || a.createdAt || nowIso(),
+    };
+    out.key = worldNormName(out.text);
+    if (a.hidden) { out.hidden = 1; out.hiddenAt = typeof a.hiddenAt === 'string' ? a.hiddenAt : ''; }
+    return out;
+  }
+  function emptyWorldAsksDoc() { return { version: 1, updatedAt: '', asks: [] }; }
+  function normalizeWorldAsksDoc(raw) {
+    const out = emptyWorldAsksDoc();
+    if (!raw || typeof raw !== 'object') return out;
+    out.updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : '';
+    out.asks = (Array.isArray(raw.asks) ? raw.asks : []).map(normalizeWorldAsk).filter(Boolean);
     return out;
   }
   function emptyWorldActorsDoc() { return { version: 1, updatedAt: '', actors: [], dismissedPairs: [] }; }
@@ -14497,8 +14612,8 @@
   const wd = {
     loaded: new Set(), loading: new Map(), tombs: new Map(),
     index: null, dirty: new Set(), stamps: {},
-    concepts: emptyWorldConceptsDoc(), terms: emptyWorldTermsDoc(), strata: emptyWorldStrataDoc(), actors: emptyWorldActorsDoc(), sources: emptyWorldSourcesDoc(),
-    conceptsDirty: false, termsDirty: false, strataDirty: false, actorsDirty: false, sourcesDirty: false, busy: false,
+    concepts: emptyWorldConceptsDoc(), terms: emptyWorldTermsDoc(), strata: emptyWorldStrataDoc(), actors: emptyWorldActorsDoc(), asks: emptyWorldAsksDoc(), sources: emptyWorldSourcesDoc(),
+    conceptsDirty: false, termsDirty: false, strataDirty: false, actorsDirty: false, asksDirty: false, sourcesDirty: false, busy: false,
   };
   function liveWorldMonths() { const t = todayStr(); const a = monthOfDate(addDays(t, -30)), b = monthOfDate(t); return a === b ? [b] : [a, b]; }
   // 起動時に読む月：今月・先月に加えて「未読が残っている月」。月ファイルは
@@ -14537,6 +14652,10 @@
   function persistWorldTerms() {
     wd.terms.updatedAt = nowIso();
     return kvSet('worldTerms', JSON.stringify(wd.terms)).catch(() => {});
+  }
+  function persistWorldAsks() {
+    wd.asks.updatedAt = nowIso();
+    return kvSet('worldAsks', JSON.stringify(wd.asks)).catch(() => {});
   }
   function persistWorldActors() {
     wd.actors.updatedAt = nowIso();
@@ -14601,6 +14720,7 @@
     try { wd.terms = normalizeWorldTermsDoc(JSON.parse(bootKV.worldTerms || 'null')); } catch (e) { wd.terms = emptyWorldTermsDoc(); }
     try { wd.strata = normalizeWorldStrataDoc(JSON.parse(bootKV.worldStrata || 'null')); } catch (e) { wd.strata = emptyWorldStrataDoc(); }
     try { wd.actors = normalizeWorldActorsDoc(JSON.parse(bootKV.worldActors || 'null')); } catch (e) { wd.actors = emptyWorldActorsDoc(); }
+    try { wd.asks = normalizeWorldAsksDoc(JSON.parse(bootKV.worldAsks || 'null')); } catch (e) { wd.asks = emptyWorldAsksDoc(); }
     try { wd.sources = normalizeWorldSourcesDoc(JSON.parse(bootKV.worldSources || 'null')); } catch (e) { wd.sources = emptyWorldSourcesDoc(); }
     worldEvents = [];
     Object.entries(bootKV.worldDocs || {}).forEach(([m, raw]) => {
@@ -14681,7 +14801,7 @@
     new Set([...Object.keys(a.due), ...Object.keys(b.due)]).forEach((d) => {
       out.due[d] = [...new Set([...(a.due[d] || []), ...(b.due[d] || [])])].slice(0, 50);
     });
-    ['concepts', 'terms', 'strata', 'actors', 'sources'].forEach((k) => { out[k] = (a[k].updatedAt >= b[k].updatedAt) ? a[k] : b[k]; });
+    ['concepts', 'terms', 'strata', 'actors', 'asks', 'sources'].forEach((k) => { out[k] = (a[k].updatedAt >= b[k].updatedAt) ? a[k] : b[k]; });
     out.updatedAt = a.updatedAt > b.updatedAt ? a.updatedAt : b.updatedAt;
     return out;
   }
@@ -14710,6 +14830,20 @@
   function mergeWorldConceptDocs(a, b) { return mergeWorldEntryDocs(a, b, 'concepts'); }
   function mergeWorldTermDocs(a, b) { return mergeWorldEntryDocs(a, b, 'terms'); }
   function mergeWorldActorDocs(a, b) { return mergeWorldEntryDocs(a, b, 'actors'); }
+  // 問いは id ごとの新しい方が勝つ。runs は日付ごとの和集合（別端末で投げた回を消さない）
+  function mergeWorldAskDocs(a, b) {
+    const out = emptyWorldAsksDoc();
+    const mA = new Map(a.asks.map((x) => [x.id, x])), mB = new Map(b.asks.map((x) => [x.id, x]));
+    new Set([...mA.keys(), ...mB.keys()]).forEach((id) => {
+      const x = mA.get(id), y = mB.get(id);
+      const w = (x && y) ? (new Date(x.updatedAt) >= new Date(y.updatedAt) ? x : y) : (x || y);
+      const runs = new Map();
+      [...(y ? y.runs : []), ...(x ? x.runs : [])].forEach((r) => { if (!runs.has(r.at)) runs.set(r.at, r); });
+      out.asks.push({ ...w, runs: [...runs.values()].sort((p, q) => (p.at > q.at ? 1 : -1)) });
+    });
+    out.updatedAt = a.updatedAt > b.updatedAt ? a.updatedAt : b.updatedAt;
+    return out;
+  }
   // 地層は id ごとの新しい方が勝つ union。levels は日付ごとの和集合にする
   // （別の端末で入れた四半期の値が、片方を丸ごと勝たせると消えるため）。
   function mergeWorldStrataDocs(a, b) {
@@ -14792,6 +14926,21 @@
     wd.index.terms = { updatedAt: wd.terms.updatedAt, count: wd.terms.terms.length };
   }
   function worldStrataSignature(doc) { return doc.strata.map((x) => x.id + ':' + x.updatedAt + ':' + x.levels.length).sort().join('|'); }
+  function worldAsksSignature(doc) { return doc.asks.map((x) => x.id + ':' + x.updatedAt + ':' + x.runs.length).sort().join('|'); }
+  async function syncWorldAsks(token, remoteChanged) {
+    if (!wd.asksDirty && !remoteChanged) return;
+    const got = await ghGetContents(GITHUB_REPO, WORLD_ASKS_PATH, token);
+    let rdoc = emptyWorldAsksDoc();
+    try { if (got.text) rdoc = normalizeWorldAsksDoc(JSON.parse(got.text)); } catch (e) {}
+    const before = worldAsksSignature(rdoc);
+    wd.asks = mergeWorldAskDocs(wd.asks, rdoc);
+    await persistWorldAsks();
+    if (worldAsksSignature(wd.asks) !== before) {
+      await ghPutJson(WORLD_ASKS_PATH, wd.asks, got.sha, `world asks: ${wd.asks.asks.length}`);
+    }
+    wd.asksDirty = false;
+    wd.index.asks = { updatedAt: wd.asks.updatedAt, count: wd.asks.asks.length };
+  }
   async function syncWorldActors(token, remoteChanged) {
     if (!wd.actorsDirty && !remoteChanged) return;
     const got = await ghGetContents(GITHUB_REPO, WORLD_ACTORS_PATH, token);
@@ -14846,6 +14995,7 @@
       const termsChanged = remoteIndex.terms.updatedAt > (wd.index.terms.updatedAt || '');
       const strataChanged = remoteIndex.strata.updatedAt > (wd.index.strata.updatedAt || '');
       const actorsChanged = remoteIndex.actors.updatedAt > (wd.index.actors.updatedAt || '');
+      const asksChanged = remoteIndex.asks.updatedAt > (wd.index.asks.updatedAt || '');
       const sourcesChanged = remoteIndex.sources.updatedAt > (wd.index.sources.updatedAt || '');
       const months = new Set([...liveWorldMonths(), ...wd.dirty, ...worldBootMonths(remoteIndex)]);
       wd.loaded.forEach((m) => { const r = remoteIndex.months[m]; if (r && r.updatedAt !== (wd.stamps[m] || '')) months.add(m); });
@@ -14855,8 +15005,9 @@
       await syncWorldTerms(token, termsChanged);
       await syncWorldStrata(token, strataChanged);
       await syncWorldActors(token, actorsChanged);
+      await syncWorldAsks(token, asksChanged);
       await syncWorldSources(token, sourcesChanged);
-      const sig = (ix) => JSON.stringify([Object.keys(ix.months).sort().map((m) => [m, ix.months[m].updatedAt, ix.months[m].unread]), ix.concepts.updatedAt, ix.terms.updatedAt, ix.strata.updatedAt, ix.actors.updatedAt, ix.sources.updatedAt, Object.keys(ix.due).sort()]);
+      const sig = (ix) => JSON.stringify([Object.keys(ix.months).sort().map((m) => [m, ix.months[m].updatedAt, ix.months[m].unread]), ix.concepts.updatedAt, ix.terms.updatedAt, ix.strata.updatedAt, ix.actors.updatedAt, ix.asks.updatedAt, ix.sources.updatedAt, Object.keys(ix.due).sort()]);
       if (sig(wd.index) !== sig(remoteIndex)) {
         try { await ghPutJson(WORLD_INDEX_PATH, wd.index, ri.sha, 'world index'); }
         catch (e) {
@@ -15741,6 +15892,196 @@
       .slice(0, WORLD_KNOWN_ACTORS_MAX)
       .map((a) => a.name + (a.aka.length ? '（' + a.aka.slice(0, 2).join('／') + '）' : ''));
   }
+  // ---- 問いモード (v14) ------------------------------------------------------
+  function worldAsks() { return wd.asks.asks.filter((a) => !a.hidden); }
+  function worldAskById(id) { return wd.asks.asks.find((a) => a.id === id) || null; }
+  function worldSaveAsks() { wd.asksDirty = true; persistWorldAsks(); scheduleSync(); }
+  function worldGenAskId() {
+    const t = todayStr().replace(/-/g, '');
+    const taken = new Set(wd.asks.asks.map((a) => a.id));
+    let n = 1; while (taken.has('q_' + t + '_' + n)) n++;
+    return 'q_' + t + '_' + n;
+  }
+  // 同じ問いかどうかは本人にしか分からない。機械では「近い」までを出す
+  function worldNearAsks(text) {
+    const k = worldNormName(text);
+    if (!k) return [];
+    return worldAsks()
+      .map((a) => ({ ask: a, sim: a.key === k ? 1 : textSimilarity(a.key, k) }))
+      .filter((x) => x.sim >= WORLD_ASK_SIM)
+      .sort((x, y) => y.sim - x.sim).slice(0, 3);
+  }
+  // 既知の語を辞書代わりに使って札を絞る。日本語の分かち書きを持っていないので、
+  // 問いの文をそのまま部分一致にかけても当たらない。
+  function worldAskCards(text, extraWord) {
+    const q = worldNormName(text) + worldNormName(extraWord || '');
+    if (!q) return [];
+    const names = [];
+    [WORLD_STORES.concept, WORLD_STORES.term, WORLD_STORES.actor].forEach((st) => {
+      st.list().forEach((c) => { if (c.hidden) return; [c.name, ...(c.aka || [])].forEach((n) => { if (n) names.push({ key: worldNormName(n), name: c.name }); }); });
+    });
+    const hit = new Set(names.filter((x) => x.key.length >= 2 && q.includes(x.key)).map((x) => worldNormName(x.name)));
+    if (extraWord) hit.add(worldNormName(extraWord));
+    if (!hit.size) return [];
+    const match = (e) => {
+      const pool = [...(e.concepts || []), ...(e.terms || []), ...(e.actors || []).map((a) => a.name)].map(worldNormName);
+      if (pool.some((x) => hit.has(x))) return true;
+      const body = worldNormName(e.fact + e.why);
+      return [...hit].some((h) => h.length >= 2 && body.includes(h));
+    };
+    return worldLiveEvents().filter(match)
+      .sort((a, b) => (a.eventDate > b.eventDate ? -1 : 1)).slice(0, WORLD_ASK_CARDS_MAX);
+  }
+  function worldAskPromptText(text, extraWord) {
+    const cards = worldAskCards(text, extraWord);
+    const prim = WORLD_FIELDS.flatMap((f) => worldSourceLines(f, 'primary'));
+    const anal = WORLD_FIELDS.flatMap((f) => worldSourceLines(f, 'analysis'));
+    const uniq = (xs) => [...new Set(xs)];
+    return SHOOT_PROMPT_HEAD +
+      'あなたは、ある人の「知りたいこと」から、それを動かしている主体を洗い出す係です。\n' +
+      '解説記事は書きません。答えを断定しません。\n' +
+      '誰が何を欲しがって動いているかを、決められた形で返します。\n\n' +
+      '■ 知りたいこと\n' + text + '\n\n' +
+      '■ 必ず守ること\n' +
+      '- web 検索を必ず使う。検索せずに書かない。\n' +
+      '- その問いに答えるだけの材料が一次ソースに無ければ、無いと書く。\n' +
+      '  actors を空の配列にし、view に「材料が足りない」と書いてよい。\n' +
+      '  主体を無理に挙げない。埋めるくらいなら少ない方がよい。\n' +
+      '- 行動（did）は、一次ソースの出典が付くものだけ。出典が無い行動は書かない。\n' +
+      '- 思惑（want・fear・bound）はすべて推定。事実として書かない。\n' +
+      '  出典に書いてあることは行動（did）か述べた理由（said）であって、思惑ではない。\n' +
+      '- 日付・数字は、出典ページに書かれているものだけを書く。\n' +
+      '- URL は実在するページのものだけ。開けるか確かめる。\n' +
+      '  確かめられなければ、その行動を書かない。\n' +
+      '- JSON のみ。ほかの文章を返さない。\n\n' +
+      '■ 主体（actors）\n' +
+      'この問いを動かしている主体を 1〜' + WORLD_ASK_ACTORS_MAX + 'つ。\n' +
+      '- 末尾の「すでに知っている主体」に当たるものがあれば、その名前を使う。\n' +
+      '- 一覧に無い主体を挙げてよい。投機筋・輸出企業・保険会社・年金基金・海運会社など、\n' +
+      '  組織名でなくても、その問いで意味のある切り方ならよい。\n' +
+      '  「何を見るかによって主体は変わる」ので、この問いに合う切り方を選ぶ。\n' +
+      '- ただし「市場」「投資家」のように広すぎるものは、\n' +
+      '  望みが1つに定まる単位まで絞る（「円を売っている投機筋」など）。\n\n' +
+      '  want：その主体が欲しがっているもの。必須。\n' +
+      '    他の主体と食い違う点が分かるように書く。\n' +
+      '    良い例：「介入の原資を減らしてでも、輸入物価の上昇を今止めたい」\n' +
+      '    悪い例：「経済の安定を望む」「物価の安定を重視する」\n' +
+      '    誰にでも言える一般論を書かない。誰と誰の望みがぶつかっているかが見える形にする。\n' +
+      '  fear：恐れているもの。書けるときだけ。無ければ空。\n' +
+      '  bound：縛られているもの（制度・任期・世論・条約）。書けるときだけ。無ければ空。\n\n' +
+      '■ 行動（actions）\n' +
+      '主体が実際にやったこと。一次ソースの出典が付くものだけ。0件でよい。\n' +
+      '  actor：上の主体のどれかの名前。\n' +
+      '  fact：何をしたか。1文・' + WORLD_FACT_MAX + '字以内。数字か固有名詞を含む。\n' +
+      '  did：その主体の行動として20〜' + WORLD_ACTOR_DID_MAX + '字。数字・金額はここに。\n' +
+      '  said：出典が自ら述べた理由。無ければ空。\n' +
+      '  read：読んだ思惑。said と同じ内容なら空。\n' +
+      '  eventDate：出典に書かれた発表日または発生日（YYYY-MM-DD）。未来にしない。\n' +
+      '  source：媒体名と発表日。\n' +
+      '  url：出典ページ。\n' +
+      '  flow：動いたお金。無ければ null。amount は出典の書き方のまま。換算しない。\n\n' +
+      '■ すでにある札（related）\n' +
+      '末尾の「関係しそうな札」のうち、この問いに関係するものの id。\n' +
+      '一覧に無い id を書かない。関係が無ければ空の配列。\n\n' +
+      '■ 見立て（view）\n' +
+      'この問いへの現時点の見立てを1文・' + WORLD_ASK_VIEW_MAX + '字以内。これも推定。\n' +
+      '- 「〜と考えられる」で終わらせない。何がどうなっているかを言い切る。\n' +
+      '- 良い例：「円安を止めているのは介入ではなく、金利差が縮むのを待っている状態」\n' +
+      '- 悪い例：「複数の要因が絡み合っていると考えられる」\n' +
+      '- 材料が足りなければ「材料が足りない」と書く。\n\n' +
+      '■ 分かれ目（fork）\n' +
+      'この見立てが正しいかどうかが、おおむね' + Math.round(WORLD_FORK_DAYS / 30) + 'ヶ月で分かる分かれ目を1つ。\n' +
+      '- 誰がどう見ても同じ判定になる書き方にする。\n' +
+      '- 統計の次の1回の数値を当てる形にしない。\n' +
+      '- 思いつかなければ null。\n\n' +
+      '■ ソース：一次（行動・日付・数字はここでしか確認できない）\n' +
+      (prim.length ? uniq(prim).join('\n') : '（未設定）') + '\n\n' +
+      '■ ソース：解釈（思惑を読むための補助）\n' +
+      (anal.length ? uniq(anal).join('\n') : '（未設定）') + '\n\n' +
+      '■ ソースの使い分け（厳守）\n' +
+      '- 行動・日付・数字は、一次のソースで確認できたものだけ。\n' +
+      '- 解釈のソースだけを根拠に行動を立ててはいけない。\n' +
+      '- 解釈のソースは思惑を読むときに使ってよいが、それでも思惑は推定のまま。\n\n' +
+      '■ 出力形式\n' +
+      '{"view":"...",\n' +
+      ' "fork":{"text":"...","type":"level"},\n' +
+      ' "actors":[{"name":"財務省","want":"...","fear":"...","bound":""}],\n' +
+      ' "actions":[{"actor":"財務省","fact":"...","did":"...","said":"...","read":"...",\n' +
+      '             "eventDate":"YYYY-MM-DD","source":"...","url":"https://...",\n' +
+      '             "flow":{"from":"...","to":"...","what":"...","amount":"..."}}],\n' +
+      ' "related":["w_20260902_1"]}\n\n' +
+      '材料が足りないとき： {"view":"材料が足りない","fork":null,"actors":[],"actions":[],"related":[]}\n' +
+      '恐れ・縛りが書けないとき： "fear":"", "bound":""\n' +
+      'お金が動いていないとき： "flow": null\n\n' +
+      '────────────────────────────────────────\n' +
+      '■ すでに知っている主体（名前はここから探す。一覧に無い主体を挙げてよい）\n' +
+      (worldKnownActorLines().length ? worldKnownActorLines().join(' / ') : '（まだありません）') + '\n\n' +
+      '■ すでに知っている概念（説明しなくてよい）\n' +
+      (worldConcepts().length ? worldConcepts().map((c) => c.name).slice(0, WORLD_KNOWN_MAX).join(' / ') : '（まだありません）') + '\n\n' +
+      '■ すでに知っている用語（説明しなくてよい）\n' +
+      (worldKnownTermNames().length ? worldKnownTermNames().join(' / ') : '（まだありません）') + '\n\n' +
+      '■ 関係しそうな札（related はこの id から選ぶ。ここに無い id を書かない）\n' +
+      (cards.length ? cards.map((e) => e.id + '  ' + e.fact).join('\n') : '（関係しそうな札は端末にありません）');
+  }
+  // 返ってきた JSON を3つの器に流す：行動→札、主体→runs、問い→asks
+  async function worldImportAskJson(raw, askId, text) {
+    const parsed = shootParseJson(raw);
+    if (!parsed || typeof parsed !== 'object' || typeof parsed.view !== 'string') {
+      return { error: 'JSON として読めませんでした。{"view":"...","actors":[...],"actions":[...]} の形で貼ってください。' };
+    }
+    const ask = askId ? worldAskById(askId) : null;
+    const id = ask ? ask.id : worldGenAskId();
+
+    // 行動を札の形に直して、通常の取り込みにそのまま通す（重複判定も同じ）
+    const actions = Array.isArray(parsed.actions) ? parsed.actions : [];
+    const events = actions.map((a) => (a && typeof a === 'object') ? {
+      fact: a.fact, why: a.did || '', reason: '', detail: a.detail || '',
+      source: a.source, url: a.url, eventDate: a.eventDate,
+      premise: { kind: 'new', name: '', aka: [], line: '' },
+      terms: [], strata: [], concepts: [], fork: null, flow: a.flow || null,
+      actors: a.actor ? [{ name: a.actor, did: a.did || a.fact, said: a.said || '', read: a.read || '' }] : [],
+      viaAsk: id,
+    } : null).filter(Boolean);
+    const res = events.length ? await worldImportJson(JSON.stringify({ events }), id) : null;
+
+    // 生成が指定した既存の札。端末に無い月は読み込んでから再判定する
+    const wanted = (Array.isArray(parsed.related) ? parsed.related : []).map(String);
+    const needMonths = [...new Set(wanted.map(monthOfWorldId).filter((m) => m && wd.index && wd.index.months[m] && !wd.loaded.has(m)))];
+    if (needMonths.length) await ensureWorldMonths(needMonths);
+    const live = new Set(worldLiveEvents().map((e) => e.id));
+    const eventIds = wanted.filter((x) => live.has(x));
+    const missing = wanted.length - eventIds.length;
+
+    // 主体。既存に当たれば id を持つ（盤面・時系列と繋がる）。当たらなければ名前だけ
+    const actors = (Array.isArray(parsed.actors) ? parsed.actors : []).map((a) => {
+      const rec = normalizeWorldAskActor(a);
+      if (!rec) return null;
+      const known = worldFindIn(WORLD_STORES.actor, rec.name);
+      if (known) { rec.name = known.name; rec.actorId = known.id; }
+      return rec;
+    }).filter(Boolean).slice(0, WORLD_ASK_ACTORS_MAX);
+
+    const run = normalizeWorldAskRun({
+      at: todayStr(), view: parsed.view, actors,
+      eventIds, added: res ? res.addedIds || [] : [], fork: parsed.fork,
+    });
+    if (ask) {
+      ask.runs = ask.runs.filter((r) => r.at !== run.at).concat([run]).sort((p, q) => (p.at > q.at ? 1 : -1));
+      ask.updatedAt = nowIso();
+    } else {
+      const fresh = normalizeWorldAsk({ id, text, runs: [run], createdAt: nowIso(), updatedAt: nowIso() });
+      if (fresh) wd.asks.asks.push(fresh);
+    }
+    worldSaveAsks();
+    return {
+      askId: id, run,
+      added: res ? res.added : 0,
+      rejected: res ? res.rejected : null,
+      known: eventIds.length, missing,
+      knownActors: actors.filter((a) => a.actorId).length,
+    };
+  }
+
   // ---- 遡及（既存の札にアクターを付け直す） (v12) -----------------------------
   // 出典を開き直さないので、通常より厳しく縛る。ev.actors が空の札にだけ足す。
   function worldRetroTargets() {
@@ -15848,7 +16189,7 @@
     taken.add(base + n);
     return base + n;
   }
-  async function worldImportJson(raw) {
+  async function worldImportJson(raw, viaAsk) {
     const parsed = shootParseJson(raw);
     const items = parsed ? (Array.isArray(parsed) ? parsed : Array.isArray(parsed.events) ? parsed.events : null) : null;
     if (!items) return { error: 'JSON として読めませんでした。{"events":[...]} の形で貼ってください。' };
@@ -15894,6 +16235,7 @@
         fact, why: it.why, premise: it.premise, detail: it.detail, source: it.source, url,
         terms: it.terms, fork: it.fork, reason: it.reason,
         actors: it.actors, flow: it.flow,   // v12: ここで渡さないと normalize に届かない
+        viaAsk: viaAsk || it.viaAsk || '',   // v14: どの問いから掘り当てたか
         // 地層は生成に作らせない。一覧に無い id はここで落とす
         strata: (Array.isArray(it.strata) ? it.strata : []).filter((x) => worldStratumById(String(x))),
         concepts: it.concepts, related: it.related,
@@ -15960,6 +16302,7 @@
     return {
       added: added.length, rejected, old, forks, onStrata, droppedStrata, unknownConcepts,
       createdConcepts, createdTerms, createdActors, batchId, linked, partnerIds: [...partnerIds],
+      addedIds: added.map((e) => e.id),
       withActors, withRead, withFlow,
       candidates: worldMergeCandidatesIn(WORLD_STORES.concept, createdConcepts)
         .concat(worldMergeCandidatesIn(WORLD_STORES.term, createdTerms))
@@ -15968,7 +16311,7 @@
   }
 
   // ---- 画面 ----------------------------------------------------------------
-  const worldState = { view: 'main', tab: 'board', boardAll: false, entryFrom: 'list', entryKind: 'concept', entrySort: 'count', conceptId: null, stratumId: null, strataAll: false, sunkOpen: false, openId: null, candidates: [], lastResult: '', search: { events: '', concept: '', term: '', actor: '' }, searchFocus: '', batchFilter: null, lastBatch: null };
+  const worldState = { view: 'main', tab: 'board', boardAll: false, entryFrom: 'list', askText: '', askId: '', askWord: '', askWordOpen: false, askNewOnly: false, askResult: '', askOpenId: '', entryKind: 'concept', entrySort: 'count', conceptId: null, stratumId: null, strataAll: false, sunkOpen: false, openId: null, candidates: [], lastResult: '', search: { events: '', concept: '', term: '', actor: '' }, searchFocus: '', batchFilter: null, lastBatch: null };
 
   // 地層の1行。押すとその地層を開く。太くしない。
   function paintStratumLine(el, s) {
@@ -16689,6 +17032,14 @@
   }
   function worldBoardLegendOpen() { try { return localStorage.getItem(WORLD_BOARD_LEGEND_KEY) !== '0'; } catch (e) { return true; } }
   function renderWorldBoardTab(body) {
+    // 盤面と同じ「主体を見る」入口だが向きが逆（盤面＝動いている主体から、
+    // 問い＝知りたいことから）。タブに5つ目を足すと390pxで崩れる。
+    const ask = document.createElement('button');
+    ask.type = 'button'; ask.className = 'worldAskEntry';
+    ask.textContent = '知りたいことから引く' + (worldAsks().length ? '（' + worldAsks().length + '）' : '') + '　▸';
+    ask.addEventListener('click', () => { worldState.view = 'ask'; renderWorld(); });
+    body.appendChild(ask);
+
     const rows = worldBoardRows();
     if (!rows.length) {
       const p = document.createElement('p'); p.className = 'emptyMsg';
@@ -16914,7 +17265,9 @@
     document.getElementById('worldImportView').hidden = worldState.view !== 'import';
     document.getElementById('worldConceptView').hidden = worldState.view !== 'concept';
     document.getElementById('worldStratumView').hidden = worldState.view !== 'stratum';
-    if (worldState.view === 'main') renderWorldMain();
+    document.getElementById('worldAskView').hidden = worldState.view !== 'ask';
+    if (worldState.view === 'ask') renderWorldAsk();
+    else if (worldState.view === 'main') renderWorldMain();
     else if (worldState.view === 'concept') renderWorldConcept();
     else if (worldState.view === 'stratum') renderWorldStratum();
     else renderWorldImport();
@@ -16953,26 +17306,31 @@
   function renderWorldEventsTab(body) {
     const bf = worldState.batchFilter;
     if (bf) {
-      const mine = worldLiveEvents().filter((e) => e.batchId === bf.id).sort((a, b) => a.order - b.order);
+      const mine = bf.id ? worldLiveEvents().filter((e) => e.batchId === bf.id).sort((a, b) => a.order - b.order) : [];
       const head = document.createElement('div');
       head.className = 'worldSectionHead';
-      const l = document.createElement('span'); l.textContent = 'この回に入れた札（' + mine.length + '）';
+      const l = document.createElement('span');
+      l.textContent = bf.askText ? '「' + bf.askText + '」の札（' + bf.partnerIds.length + '）' : 'この回に入れた札（' + mine.length + '）';
       const all = document.createElement('button');
       all.type = 'button'; all.className = 'linkLikeBtn'; all.textContent = '全部を見る';
       all.addEventListener('click', () => { worldState.batchFilter = null; renderWorldMain(); });
       head.appendChild(l); head.appendChild(all);
       body.appendChild(head);
       const box = document.createElement('div');
-      renderWorldList(box, mine, 'この回の札は端末に残っていません。');
+      if (mine.length || !bf.askText) renderWorldList(box, mine, 'この回の札は端末に残っていません。');
       body.appendChild(box);
       const partners = worldLiveEvents().filter((e) => bf.partnerIds.includes(e.id)).sort((a, b) => (a.eventDate > b.eventDate ? -1 : 1));
-      if (partners.length) {
+      if (partners.length && !bf.askText) {
         const h2 = document.createElement('div');
         h2.className = 'worldSectionHead';
         const l2 = document.createElement('span'); l2.textContent = 'つながった相手の札（' + partners.length + '）';
         const r2 = document.createElement('span'); r2.textContent = bf.linked + '本';
         h2.appendChild(l2); h2.appendChild(r2);
         body.appendChild(h2);
+        const box2 = document.createElement('div');
+        renderWorldList(box2, partners, '');
+        body.appendChild(box2);
+      } else if (partners.length) {
         const box2 = document.createElement('div');
         renderWorldList(box2, partners, '');
         body.appendChild(box2);
@@ -17147,6 +17505,137 @@
       renderWorldList(box2, done, '');
       body.appendChild(box2);
     }
+  }
+
+  // ---- 問いの画面 (v14) ------------------------------------------------------
+  function renderWorldAsk() {
+    const input = document.getElementById('worldAskInput');
+    if (input.value !== worldState.askText) input.value = worldState.askText;
+    document.getElementById('worldAskWord').hidden = !worldState.askWordOpen;
+    // 近い問いは機械で決めず、人に選ばせる（同じ問いかどうかは本人にしか分からない）
+    const near = worldState.askId ? [] : worldNearAsks(worldState.askText);
+    const nearBox = document.getElementById('worldAskNear');
+    nearBox.hidden = !near.length;
+    if (near.length) {
+      const a = near[0].ask;
+      const last = a.runs.length ? a.runs[a.runs.length - 1].at : '';
+      document.getElementById('worldAskNearText').textContent = '近い問いがあります：「' + a.text + '」' + (last ? '（前回 ' + worldShortDate(last) + '）' : '');
+      const row = document.getElementById('worldAskNearRow');
+      row.innerHTML = '';
+      const cont = document.createElement('button');
+      cont.type = 'button'; cont.className = 'tagFilterBtn'; cont.textContent = 'この問いの続きにする';
+      cont.addEventListener('click', () => { worldState.askId = a.id; worldState.askText = a.text; renderWorldAsk(); });
+      const fresh = document.createElement('button');
+      fresh.type = 'button'; fresh.className = 'tagFilterBtn'; fresh.textContent = '新しい問いにする';
+      fresh.addEventListener('click', () => { worldState.askNewOnly = true; renderWorldAsk(); });
+      row.appendChild(cont); row.appendChild(fresh);
+      if (worldState.askNewOnly) nearBox.hidden = true;
+    }
+    document.getElementById('worldAskImportStatus').textContent = worldState.askResult || '';
+
+    const box = document.getElementById('worldAskList');
+    box.innerHTML = '';
+    const asks = worldAsks().slice().sort((a, b) => (a.updatedAt > b.updatedAt ? -1 : 1));
+    document.getElementById('worldAskEmpty').hidden = !!asks.length;
+    asks.forEach((a) => box.appendChild(worldAskCardEl(a)));
+  }
+  function worldAskCardEl(a) {
+    const wrap = document.createElement('div');
+    wrap.className = 'worldAskCard';
+    const head = document.createElement('button');
+    head.type = 'button'; head.className = 'worldAskHead';
+    const t = document.createElement('span'); t.className = 'waqText'; t.textContent = a.text;
+    const n = document.createElement('span'); n.className = 'waqCount'; n.textContent = a.runs.length + '回目';
+    head.appendChild(t); head.appendChild(n);
+    wrap.appendChild(head);
+    const body = document.createElement('div');
+    body.hidden = worldState.askOpenId !== a.id;
+    head.addEventListener('click', () => { worldState.askOpenId = worldState.askOpenId === a.id ? '' : a.id; renderWorldAsk(); });
+    // 最新の run を開き、過去は畳む
+    a.runs.slice().reverse().forEach((r, i) => body.appendChild(worldAskRunEl(a, r, i === 0)));
+    const again = document.createElement('button');
+    again.type = 'button'; again.className = 'linkLikeBtn'; again.textContent = 'この問いをもう一度投げる';
+    again.addEventListener('click', () => {
+      worldState.askId = a.id; worldState.askText = a.text; worldState.askResult = '';
+      renderWorldAsk();
+      try { document.getElementById('worldAskInput').scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e) {}
+    });
+    body.appendChild(again);
+    wrap.appendChild(body);
+    return wrap;
+  }
+  function worldAskRunEl(ask, r, open) {
+    const box = document.createElement('div');
+    box.className = 'worldAskRun';
+    const d = document.createElement('button');
+    d.type = 'button'; d.className = 'waqDate';
+    d.textContent = dotDate(r.at) + (open ? '' : '　▸');
+    box.appendChild(d);
+    const inner = document.createElement('div');
+    inner.hidden = !open;
+    d.addEventListener('click', () => { inner.hidden = !inner.hidden; d.textContent = dotDate(r.at) + (inner.hidden ? '　▸' : ''); });
+
+    if (r.view) {
+      const v = document.createElement('div');
+      v.className = 'waqView';
+      const k = document.createElement('span'); k.className = 'guessBadge'; k.textContent = '推定';
+      v.appendChild(k); v.appendChild(document.createTextNode(r.view));
+      inner.appendChild(v);
+    }
+    if (r.fork) {
+      const f = document.createElement('div');
+      f.className = 'waqFork';
+      f.textContent = '分かれ目：' + r.fork.text;
+      inner.appendChild(f);
+    }
+    if (r.actors.length) {
+      const lab = document.createElement('div');
+      lab.className = 'waqLab';
+      // 1行ずつバッジを付けると琥珀だらけになるので、ブロックに1つ
+      lab.textContent = '主体と、その望み（すべて推定）';
+      inner.appendChild(lab);
+      const list = document.createElement('div');
+      list.className = 'waqActors';
+      r.actors.forEach((a) => {
+        const row = document.createElement('div');
+        row.className = 'waqActor';
+        const n = document.createElement('span'); n.className = 'waqName'; n.textContent = a.name;
+        const w = document.createElement('span'); w.className = 'waqWant'; w.textContent = a.want;
+        row.appendChild(n); row.appendChild(w);
+        if (a.actorId && worldByIdIn(WORLD_STORES.actor, a.actorId)) {
+          const go = document.createElement('button');
+          go.type = 'button'; go.className = 'linkLikeBtn waqGo'; go.textContent = '→詳細';
+          go.addEventListener('click', (e) => { e.stopPropagation(); worldState.entryFrom = 'list'; openWorldEntry(a.actorId); });
+          row.appendChild(go);
+        }
+        list.appendChild(row);
+        if (a.fear || a.bound) {
+          const sub = document.createElement('div');
+          sub.className = 'waqSub';
+          sub.textContent = [a.fear ? '恐れ：' + a.fear : '', a.bound ? '縛り：' + a.bound : ''].filter(Boolean).join('　');
+          list.appendChild(sub);
+        }
+      });
+      inner.appendChild(list);
+    }
+    // 行動（札）は問いの画面に出さない。問いの画面を薄く保つ
+    const cards = document.createElement('div');
+    cards.className = 'waqCards';
+    const total = r.added.length + r.eventIds.length;
+    if (total) {
+      cards.textContent = 'この回で入った札 ' + r.added.length + '件 ・ 既にあった札 ' + r.eventIds.length + '件';
+      const go = document.createElement('button');
+      go.type = 'button'; go.className = 'linkLikeBtn'; go.textContent = '出来事タブで見る';
+      go.addEventListener('click', () => {
+        worldState.view = 'main'; worldState.tab = 'events';
+        worldState.batchFilter = { id: '', partnerIds: [...r.added, ...r.eventIds], linked: 0, askText: ask.text };
+        renderWorld();
+      });
+      cards.appendChild(go);
+      inner.appendChild(cards);
+    }
+    box.appendChild(inner);
+    return box;
   }
 
   // ---- 地層の画面 ----------------------------------------------------------
@@ -17660,6 +18149,56 @@
     worldState.batchFilter = worldState.lastBatch;
     worldState.view = 'main'; worldState.tab = 'events';
     renderWorld();
+  });
+  document.getElementById('btnWorldAskBack').addEventListener('click', () => { worldState.view = 'main'; renderWorld(); });
+  document.getElementById('worldAskInput').addEventListener('input', (e) => {
+    worldState.askText = e.target.value;
+    worldState.askId = ''; worldState.askNewOnly = false;
+    renderWorldAsk();
+  });
+  document.getElementById('btnWorldAskWord').addEventListener('click', () => {
+    worldState.askWordOpen = !worldState.askWordOpen;
+    renderWorldAsk();
+  });
+  document.getElementById('worldAskWord').addEventListener('input', (e) => { worldState.askWord = e.target.value; });
+  document.getElementById('btnWorldAskPrompt').addEventListener('click', () => {
+    const text = (worldState.askText || '').trim();
+    const st = document.getElementById('worldAskPromptStatus');
+    if (!text) { st.textContent = '知りたいことを書いてください。'; return; }
+    const cards = worldAskCards(text, worldState.askWord);
+    copyToClipboard(worldAskPromptText(text, worldState.askWord)).then((ok) => {
+      st.textContent = (ok ? 'コピーしました。Claude のチャットに貼ってください。' : 'コピーできませんでした。')
+        + '　差し込んだ札 ' + cards.length + '件。'
+        + (cards.length ? '' : '　関係しそうな札が見つかりません。「絞り込みの語を足す」で1語入れると当たることがあります。');
+    });
+  });
+  document.getElementById('btnWorldAskImport').addEventListener('click', async () => {
+    const text = (worldState.askText || '').trim();
+    const box = document.getElementById('worldAskPaste');
+    const st = document.getElementById('worldAskImportStatus');
+    if (!text) { st.textContent = '知りたいことを書いてください。'; return; }
+    st.textContent = '取り込み中…';
+    const res = await worldImportAskJson(box.value, worldState.askId, text);
+    if (res.error) { st.textContent = res.error; worldState.askResult = res.error; return; }
+    const r = res.rejected;
+    const drops = [];
+    if (r) {
+      if (r.url) drops.push('URL なし ' + r.url + '件');
+      if (r.date) drops.push('日付が不正 ' + r.date + '件');
+      if (r.future) drops.push('未来の日付 ' + r.future + '件');
+      if (r.dup) drops.push('重複 ' + r.dup + '件');
+    }
+    let msg = '主体 ' + res.run.actors.length + '件（うち既存 ' + res.knownActors + '件）。'
+      + '札を ' + res.added + '件入れ、既にあった札 ' + res.known + '件をつなぎました。';
+    if (drops.length) msg += '　' + drops.join('／') + ' を落としました。';
+    if (res.missing) msg += '　※ 端末に無い札 ' + res.missing + '件は無視しました。';
+    if (!res.run.actors.length) msg += '　主体は挙がりませんでした（材料が足りない、で正常です）。';
+    box.value = '';
+    worldState.askId = res.askId;
+    worldState.askOpenId = res.askId;
+    worldState.askResult = msg;
+    st.textContent = msg;
+    renderWorldAsk();
   });
   document.getElementById('btnWorldConceptBack').addEventListener('click', () => {
     // 盤面から入ったのに一覧に落ちる、を防ぐ
