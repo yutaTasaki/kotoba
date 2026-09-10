@@ -1143,6 +1143,12 @@
   .worldActorTl .tlDid { font-size: 13px; line-height: 1.5; }
   .worldActorTl .tlAmount { font-size: 13px; font-weight: 700; color: var(--text); white-space: nowrap; }
   .worldActorOpen .tlFact { color: var(--text-faint); font-size: 11px; margin-top: 2px; }
+  .worldActorTl { grid-template-columns: auto 1fr auto auto; }
+  .worldActorTl .tlCaret { font-size: 10px; color: var(--text-faint); white-space: nowrap; }
+  /* 時系列の思惑は押す前から出す。空白が「述べていない」の信号になる */
+  .worldActorMind { padding: 0 0 6px 12px; font-size: 12px; line-height: 1.7; }
+  .worldActorMind .waKey { display: inline-block; min-width: 3.2em; color: var(--text-faint); font-size: 11px; margin-right: 6px; }
+  .worldActorMind .waRead { border-left: 2px dashed var(--guess); padding-left: 8px; margin-top: 2px; }
   /* v11.7 つながる札：札を読んでいる最中に、隣の札が勝手に見える */
   .worldLinked { margin-top: 12px; }
   .worldLinked .rowLabel { font-size: 11px; color: var(--text-faint); margin-bottom: 4px; }
@@ -16648,18 +16654,27 @@
       const d = document.createElement('span'); d.className = 'tlDate'; d.textContent = worldShortDate(e.eventDate);
       const did = document.createElement('span'); did.className = 'tlDid'; did.textContent = rec ? rec.did : e.fact;
       const am = document.createElement('span'); am.className = 'tlAmount'; am.textContent = amount;
-      row.appendChild(d); row.appendChild(did); row.appendChild(am);
+      const car = document.createElement('span'); car.className = 'tlCaret'; car.textContent = '▸';
+      row.appendChild(d); row.appendChild(did); row.appendChild(am); row.appendChild(car);
       box.appendChild(row);
+      // v12.1: 述べた／推定は押す前から出す。この画面の目的は「述べたのは
+      // 3件中1件だけ」が縦に見えることなので、1行ずつ押して回る形では果たせない。
+      // 何も無い行は何も出さない——その空白そのものが信号になる。
+      if (rec && (rec.said || rec.read)) {
+        const mind = document.createElement('div');
+        mind.className = 'worldActorMind';
+        if (rec.said) { const l = document.createElement('div'); l.className = 'waSaid'; const k = document.createElement('span'); k.className = 'waKey'; k.textContent = '述べた'; l.appendChild(k); l.appendChild(document.createTextNode(rec.said)); mind.appendChild(l); }
+        if (rec.read) { const l = document.createElement('div'); l.className = 'waRead'; const k = document.createElement('span'); k.className = 'guessBadge'; k.textContent = '推定'; l.appendChild(k); l.appendChild(document.createTextNode(rec.read)); mind.appendChild(l); }
+        box.appendChild(mind);
+      }
       const open = document.createElement('div');
       open.className = 'worldActorOpen'; open.hidden = true;
-      if (rec && rec.said) { const l = document.createElement('div'); l.className = 'waSaid'; const k = document.createElement('span'); k.className = 'waKey'; k.textContent = '述べた'; l.appendChild(k); l.appendChild(document.createTextNode(rec.said)); open.appendChild(l); }
-      if (rec && rec.read) { const l = document.createElement('div'); l.className = 'waRead'; const k = document.createElement('span'); k.className = 'guessBadge'; k.textContent = '推定'; l.appendChild(k); l.appendChild(document.createTextNode(rec.read)); open.appendChild(l); }
       const f = document.createElement('div'); f.className = 'tlFact'; f.textContent = e.fact; open.appendChild(f);
       const go = document.createElement('button'); go.type = 'button'; go.className = 'linkLikeBtn'; go.textContent = '札を開く';
       go.addEventListener('click', (ev2) => { ev2.stopPropagation(); openWorldEvent(e.id); });
       open.appendChild(go);
       box.appendChild(open);
-      row.addEventListener('click', () => { open.hidden = !open.hidden; });
+      row.addEventListener('click', () => { open.hidden = !open.hidden; car.textContent = open.hidden ? '▸' : '▾'; });
     });
   }
   function worldActorCopyText(c, ask) {
