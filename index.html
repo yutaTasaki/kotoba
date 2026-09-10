@@ -25,6 +25,7 @@
     --accent: #8fb39b;
     --accent-dim: #5f7d70;
     --danger: #d1665a;
+    --guess: #c9a24a;      /* v12: 推定の印。事実（緑）とも警告（赤）とも違う色 */
     --border: #2a2a2a;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -1115,6 +1116,33 @@
     background: var(--bg-card); border-radius: 8px; padding: 6px 10px; margin-bottom: 8px;
   }
   .worldSearch { margin-bottom: 8px; }
+  /* --- v12 動かした側 ---------------------------------------------------- */
+  .worldActors { margin-top: 10px; }
+  .worldActors .rowLabel { font-size: 11px; color: var(--text-faint); margin-bottom: 2px; }
+  .worldActorRow {
+    display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: baseline;
+    width: 100%; text-align: left; background: none; border: 0; padding: 4px 0; margin: 0;
+    font: inherit; color: var(--text); cursor: pointer;
+  }
+  .worldActorRow .waName { font-size: 13px; color: var(--text-dim); white-space: nowrap; }
+  .worldActorRow .waDid { font-size: 13px; line-height: 1.5; }
+  .worldActorOpen { padding: 2px 0 8px 12px; font-size: 12px; line-height: 1.7; }
+  .worldActorOpen .waKey { display: inline-block; min-width: 3.2em; color: var(--text-faint); font-size: 11px; margin-right: 6px; }
+  /* 推定：色（琥珀）と形（バッジ＋左の破線）で事実と分ける */
+  .worldActorOpen .waRead { border-left: 2px dashed var(--guess); padding-left: 8px; margin-top: 2px; }
+  .guessBadge {
+    display: inline-block; font-size: 10px; line-height: 1; padding: 3px 6px; border-radius: 4px;
+    background: var(--guess); color: #1a1408; margin-right: 6px; vertical-align: 1px; font-weight: 700;
+  }
+  .worldActorTl {
+    display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: baseline;
+    width: 100%; text-align: left; background: none; border: 0; padding: 7px 0; margin: 0;
+    font: inherit; color: var(--text); cursor: pointer; border-top: 1px solid var(--border);
+  }
+  .worldActorTl .tlDate { font-size: 11px; color: var(--text-faint); white-space: nowrap; }
+  .worldActorTl .tlDid { font-size: 13px; line-height: 1.5; }
+  .worldActorTl .tlAmount { font-size: 13px; font-weight: 700; color: var(--text); white-space: nowrap; }
+  .worldActorOpen .tlFact { color: var(--text-faint); font-size: 11px; margin-top: 2px; }
   /* v11.7 つながる札：札を読んでいる最中に、隣の札が勝手に見える */
   .worldLinked { margin-top: 12px; }
   .worldLinked .rowLabel { font-size: 11px; color: var(--text-faint); margin-bottom: 4px; }
@@ -2027,6 +2055,17 @@
         <p class="fieldNote" id="worldImportStatus"></p>
         <button type="button" id="btnWorldImportShow" class="tagFilterBtn" hidden>入れた札を見る</button>
       </div>
+      <div class="field">
+        <span class="fieldLabel">アクターを付け直す（既存の札）</span>
+        <p class="fieldNote">動かした側がまだ付いていない札に、あとから主語を付けます。出典を開き直さないぶん縛りは通常より厳しく、材料が足りない札は空のままになります。足すだけで、置き換えません。</p>
+        <div class="medRow">
+          <button type="button" id="btnWorldRetroPrompt" class="tagFilterBtn">プロンプトをコピー</button>
+          <span class="fieldNote" id="worldRetroCount" style="margin:0;"></span>
+        </div>
+        <textarea id="worldRetroPaste" rows="3" placeholder='{"actors":{...},"flow":{...}} をここに貼る' autocomplete="off"></textarea>
+        <button type="button" id="btnWorldRetroImport" class="secondaryBtn">取り込む</button>
+        <p class="fieldNote" id="worldRetroStatus"></p>
+      </div>
       <div class="field" id="worldMergeField" hidden>
         <span class="fieldLabel">3 近い名前の概念</span>
         <p class="fieldNote">同じものなら1つにまとめます。別のものだと答えた組は二度と聞きません。</p>
@@ -2086,6 +2125,10 @@
       <h3 id="worldConceptName"></h3>
       <p class="fieldNote" id="worldConceptAka" hidden></p>
       <p id="worldConceptLine" style="line-height:1.8;"></p>
+      <div class="field" id="worldActorStanceField" hidden>
+        <span class="fieldLabel">ふだん欲しがるもの<span class="fieldNote inlineNote">（手書き・任意）</span></span>
+        <input type="text" id="worldActorStanceInput" placeholder="例：国債の金利を低く保ちたい" autocomplete="off">
+      </div>
       <div class="field" id="worldConceptRelatedField">
         <span class="fieldLabel">つながる概念</span>
         <div id="worldConceptRelated"></div>
@@ -2808,7 +2851,7 @@
   bootKV.medDocs = {};
   try { (await kvGetAllPrefix('meditation:')).forEach((v, k) => { bootKV.medDocs[k.slice(11)] = v; }); } catch (e) {}
   // v10 世界: 全月は読まない。今月・先月と、索引が「未読が残っている」と言う月だけ。
-  for (const k of ['worldIndex', 'worldDirty', 'worldStamps', 'worldConcepts', 'worldTerms', 'worldStrata', 'worldSources']) { try { bootKV[k] = await kvGet(k); } catch (e) { bootKV[k] = null; } }
+  for (const k of ['worldIndex', 'worldDirty', 'worldStamps', 'worldConcepts', 'worldTerms', 'worldStrata', 'worldActors', 'worldSources']) { try { bootKV[k] = await kvGet(k); } catch (e) { bootKV[k] = null; } }
   bootKV.worldDocs = {};
   {
     let wix = null;
@@ -13958,10 +14001,57 @@
   const WORLD_COOC_HINT_EVENTS   = 10;  // 出来事がこれ以上あってリンク0なら作り直しを促す
   const WORLD_LINKED_MAX         = 3;   // 展開の「つながる札」に出す件数（超えたら「ほか N件」）
 
+  // v12 アクター（動かす側）: 札の主語。用語は「読むための注」、アクターは
+  // 「動かした主語」。同じ IMF でも役割が違うので重ねたまま分ける。
+  // 思惑は必ず捏造されるので、行動／述べた理由／読んだ思惑の3層に分け、
+  // 「述べた理由と同じなら読んだ思惑は空」を規則にも取り込みにも入れる。
+  const WORLD_ACTORS_PER_EVENT = 2;     // 1札の主語の数
+  const WORLD_KNOWN_ACTORS_MAX = 60;    // プロンプトに差し込む既知アクターの上限
+  const WORLD_ACTOR_MIN_LEN    = 3;     // 「片方が片方を含む」を使う最短の長さ
+  const WORLD_ACTOR_DID_MAX    = 40;
+  const WORLD_ACTOR_SAID_MAX   = 60;
+  const WORLD_ACTOR_READ_MAX   = 60;
+  const WORLD_ACTOR_KINDS      = ['state', 'cb', 'intl', 'industry', 'person'];
+  const WORLD_ACTOR_KIND_LABEL = { state: '政府', cb: '中銀', intl: '国際機関', industry: '業界', person: '人物', '': 'その他' };
+  const WORLD_FLOW_UNITS       = ['JPY', 'USD', 'EUR', 'CNY', '%'];
+  const WORLD_RETRO_MAX        = 40;    // 遡及プロンプトに載せる札の数
+  // 種。一度も保存されていないときだけ入れる。「市場参加者」は入れない
+  // （市場は思惑を持つ主体ではなく、思惑が現れる場所）。
+  const WORLD_DEFAULT_ACTORS = [
+    { id: 'ac_mof_jp', name: '財務省', aka: ['MOF', '日本の財務省'], kind: 'state' },
+    { id: 'ac_boj', name: '日本銀行', aka: ['日銀', 'BOJ'], kind: 'cb' },
+    { id: 'ac_gov_jp', name: '日本政府', aka: ['政府', '内閣', '首相官邸'], kind: 'state' },
+    { id: 'ac_fed', name: 'FRB', aka: ['米連邦準備制度', 'Fed', 'FOMC'], kind: 'cb' },
+    { id: 'ac_treasury_us', name: '米財務省', aka: ['Treasury'], kind: 'state' },
+    { id: 'ac_admin_us', name: '米政権', aka: ['ホワイトハウス', '米大統領'], kind: 'state' },
+    { id: 'ac_congress_us', name: '米議会', aka: ['上院', '下院'], kind: 'state' },
+    { id: 'ac_ecb', name: 'ECB', aka: ['欧州中央銀行'], kind: 'cb' },
+    { id: 'ac_eu', name: '欧州委員会', aka: ['EU', '欧州連合'], kind: 'state' },
+    { id: 'ac_pboc', name: '中国人民銀行', aka: ['PBOC'], kind: 'cb' },
+    { id: 'ac_gov_cn', name: '中国政府', aka: ['北京', '国務院'], kind: 'state' },
+    { id: 'ac_imf', name: 'IMF', aka: ['国際通貨基金'], kind: 'intl' },
+    { id: 'ac_bis', name: 'BIS', aka: ['国際決済銀行'], kind: 'intl' },
+    { id: 'ac_opec', name: 'OPEC＋', aka: ['OPEC', '産油国'], kind: 'industry' },
+    { id: 'ac_wto', name: 'WTO', aka: ['世界貿易機関'], kind: 'intl' },
+    { id: 'ac_nato', name: 'NATO', aka: ['北大西洋条約機構'], kind: 'intl' },
+    { id: 'ac_un', name: '国連', aka: ['UN', '安保理'], kind: 'intl' },
+    { id: 'ac_gov_ir', name: 'イラン政府', aka: ['イラン', 'テヘラン'], kind: 'state' },
+    { id: 'ac_gov_ru', name: 'ロシア政府', aka: ['ロシア', 'クレムリン', 'モスクワ'], kind: 'state' },
+    { id: 'ac_gov_ua', name: 'ウクライナ政府', aka: ['ウクライナ', 'キーウ'], kind: 'state' },
+    { id: 'ac_gov_kp', name: '北朝鮮', aka: ['朝鮮民主主義人民共和国', '平壌'], kind: 'state' },
+  ];
+  // アクターの詳細から。時系列をそのまま貼って、言っていることと動かした金額のズレを指摘してもらう
+  const WORLD_ACTOR_ASK_PROMPT = { key: 'actor', label: 'この半年の動きを読む', max: 300, body:
+    'この主体のこの期間の動きを、時系列で並べました。\n' +
+    '述べた理由と、推定として付いている思惑と、実際に動かした金額のあいだに、ズレがあれば指摘してください。\n' +
+    '一貫している点があれば、それも1つ書いてください。\n' +
+    '推定の行は生成が付けたもので、私の考えではありません。疑ってください。\n' };
+
   const WORLD_INDEX_PATH    = 'world/index.json';
   const WORLD_CONCEPTS_PATH = 'world/concepts.json';
   const WORLD_TERMS_PATH    = 'world/terms.json';
   const WORLD_STRATA_PATH   = 'world/strata.json';
+  const WORLD_ACTORS_PATH   = 'world/actors.json';
   const WORLD_SOURCES_PATH  = 'world/sources.json';
   const worldMonthPath = (m) => 'world/' + m + '.json';
 
@@ -14045,6 +14135,7 @@
       '上の見立てを疑う立場からの反論を書いてください。\n' +
       'まず、この見立てが前提にしていることを示してください。次に、それが崩れる筋道を書いてください。\n' +
       '私の予測が書いてあるときは、それが外れるとしたらどの前提が崩れるときかを書いてください。\n' +
+      '札に推定として付いている思惑が外れているとしたら、どこか、も書いてください。\n' +
       '私が既に知っていること（上に並べた用語）の説明はしないでください。\n' },
   ];
   const WORLD_CONCEPT_ASK_PROMPTS = [
@@ -14111,6 +14202,41 @@
   // setAt = 今の文が置かれた時刻。1分以内の書き直しは history に行を作らない。
   // v10.5: 生成が書く「分かれ目」。3ヶ月で決着しないものは書かせない。
   // 思いつかなければ null（無理に作らせると「原油価格は変動するか」が並ぶ）。
+  // v12: 動かした側。did が空の主体は落とす（行動が出典に書かれていない主体を
+  // アクターにしない）。read が said と同じなら read を空にする（述べた理由を
+  // なぞって推定に化かす道を、プロンプトが守られなくても塞ぐ）。
+  function normalizeWorldActorRec(a) {
+    if (!a || typeof a !== 'object') return null;
+    const name = worldStr(a.name, 80), did = worldStr(a.did, WORLD_ACTOR_DID_MAX);
+    if (!name || !did) return null;
+    const said = worldStr(a.said, WORLD_ACTOR_SAID_MAX);
+    let read = worldStr(a.read, WORLD_ACTOR_READ_MAX);
+    if (read && said && worldNormName(read) === worldNormName(said)) read = '';
+    return { name, did, said, read };
+  }
+  function normalizeWorldActorList(list) {
+    return (Array.isArray(list) ? list : []).map(normalizeWorldActorRec).filter(Boolean).slice(0, WORLD_ACTORS_PER_EVENT);
+  }
+  // 金額は換算しない。出典の文字列（amount）が正で、value/unit は素直な形だけ解析する。
+  function worldParseAmount(str) {
+    const t = String(str || '').replace(/[,，\s]/g, '');
+    const m = /^([0-9]+(?:\.[0-9]+)?)(兆|億|万)?(円|ドル|ユーロ|元|%|％)$/.exec(t);
+    if (!m) return { value: null, unit: '' };
+    const mult = { '兆': 1e12, '億': 1e8, '万': 1e4 }[m[2]] || 1;
+    const unit = { '円': 'JPY', 'ドル': 'USD', 'ユーロ': 'EUR', '元': 'CNY', '%': '%', '％': '%' }[m[3]] || '';
+    return { value: Number(m[1]) * mult, unit };
+  }
+  function normalizeWorldFlow(f) {
+    if (!f || typeof f !== 'object') return null;
+    const from = worldStr(f.from, 40), to = worldStr(f.to, 40), what = worldStr(f.what, 30), amount = worldStr(f.amount, 20);
+    if (!from && !to && !what && !amount) return null;
+    const parsed = worldParseAmount(amount);
+    return {
+      from, to, what, amount,
+      value: Number.isFinite(f.value) ? f.value : parsed.value,
+      unit: WORLD_FLOW_UNITS.includes(f.unit) ? f.unit : parsed.unit,
+    };
+  }
   function normalizeWorldFork(f) {
     if (!f || typeof f !== 'object') return null;
     const text = worldStr(f.text, 200);
@@ -14150,6 +14276,8 @@
       // v11: 乗っている地層の id。一覧に無い id は取り込みで落とす
       strata: (Array.isArray(e.strata) ? e.strata : []).map((x) => worldStr(x, 40)).filter(Boolean).slice(0, WORLD_STRATA_PER_EVENT),
       reason: worldStr(e.reason, WORLD_REASON_MAX),   // v11: なぜこの札を選んだか（why とは別）
+      actors: normalizeWorldActorList(e.actors),      // v12: 動かした側（3層）
+      flow: normalizeWorldFlow(e.flow),                // v12: 動いたお金。無ければ null
       fork: normalizeWorldFork(e.fork),
       detail: worldStr(e.detail, 600),
       source: worldStr(e.source, 120),
@@ -14170,7 +14298,8 @@
     return out;
   }
   // 概念と用語は同じ形。ストアを引数で受け取れるように、正規化も共通にする。
-  function normalizeWorldEntry(c, isTerm) {
+  function normalizeWorldEntry(c, storeKey) {
+    const isTerm = storeKey === 'term', isActor = storeKey === 'actor';
     if (!c || !c.id || !c.name) return null;
     const out = {
       id: String(c.id),
@@ -14186,6 +14315,9 @@
     if (isTerm) {
       out.kind = WORLD_TERM_KINDS.includes(c.kind) ? c.kind : '';
       out.seenAt = typeof c.seenAt === 'string' ? c.seenAt : '';   // 一度開いた注は下線を薄くする
+    } else if (isActor) {
+      out.kind = WORLD_ACTOR_KINDS.includes(c.kind) ? c.kind : '';
+      out.stance = worldStr(c.stance, WORLD_STANCE_MAX);   // ふだん欲しがるもの。手書き・任意
     } else {
       out.field = WORLD_FIELDS.includes(c.field) ? c.field : '';
       // v11.5: related（id の配列）は links に読み替える。データは消えない。
@@ -14213,8 +14345,9 @@
     if (c.hidden) { out.hidden = 1; out.hiddenAt = typeof c.hiddenAt === 'string' ? c.hiddenAt : ''; }
     return out;
   }
-  function normalizeWorldConcept(c) { return normalizeWorldEntry(c, false); }
-  function normalizeWorldTerm(c) { return normalizeWorldEntry(c, true); }
+  function normalizeWorldConcept(c) { return normalizeWorldEntry(c, 'concept'); }
+  function normalizeWorldTerm(c) { return normalizeWorldEntry(c, 'term'); }
+  function normalizeWorldActor(c) { return normalizeWorldEntry(c, 'actor'); }
 
   // v11 地層。levels は新しい順で全部残す（上書きすると、この機能が防ごうと
   // している当のもの＝ストックが見えない、を自分でやることになる）。
@@ -14273,7 +14406,7 @@
     out.deletedIds = (Array.isArray(raw.deletedIds) ? raw.deletedIds : []).filter((t) => t && t.id).map((t) => ({ id: String(t.id), deletedAt: t.deletedAt || nowIso() }));
     return out;
   }
-  function emptyWorldIndex() { return { version: 1, updatedAt: '', months: {}, due: {}, concepts: { updatedAt: '', count: 0 }, terms: { updatedAt: '', count: 0 }, strata: { updatedAt: '', count: 0 }, sources: { updatedAt: '', count: 0 } }; }
+  function emptyWorldIndex() { return { version: 1, updatedAt: '', months: {}, due: {}, concepts: { updatedAt: '', count: 0 }, terms: { updatedAt: '', count: 0 }, strata: { updatedAt: '', count: 0 }, actors: { updatedAt: '', count: 0 }, sources: { updatedAt: '', count: 0 } }; }
   function normalizeWorldIndex(raw) {
     const out = emptyWorldIndex();
     if (!raw || typeof raw !== 'object') return out;
@@ -14283,7 +14416,7 @@
       out.months[m] = { updatedAt: typeof v.updatedAt === 'string' ? v.updatedAt : '', count: Number(v.count) || 0, unread: Number(v.unread) || 0 };
     });
     Object.entries(raw.due || {}).forEach(([d, ids]) => { if (isDateStr(d) && Array.isArray(ids)) out.due[d] = ids.map(String).slice(0, 50); });
-    ['concepts', 'terms', 'strata', 'sources'].forEach((k) => {
+    ['concepts', 'terms', 'strata', 'actors', 'sources'].forEach((k) => {
       const v = raw[k];
       if (v && typeof v === 'object') out[k] = { updatedAt: typeof v.updatedAt === 'string' ? v.updatedAt : '', count: Number(v.count) || 0 };
     });
@@ -14300,6 +14433,15 @@
     if (!raw || typeof raw !== 'object') return out;
     out.updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : '';
     out.concepts = (Array.isArray(raw.concepts) ? raw.concepts : []).map(normalizeWorldConcept).filter(Boolean);
+    out.dismissedPairs = normalizeWorldDismissed(raw.dismissedPairs);
+    return out;
+  }
+  function emptyWorldActorsDoc() { return { version: 1, updatedAt: '', actors: [], dismissedPairs: [] }; }
+  function normalizeWorldActorsDoc(raw) {
+    const out = emptyWorldActorsDoc();
+    if (!raw || typeof raw !== 'object') return out;
+    out.updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : '';
+    out.actors = (Array.isArray(raw.actors) ? raw.actors : []).map(normalizeWorldActor).filter(Boolean);
     out.dismissedPairs = normalizeWorldDismissed(raw.dismissedPairs);
     return out;
   }
@@ -14327,8 +14469,8 @@
   const wd = {
     loaded: new Set(), loading: new Map(), tombs: new Map(),
     index: null, dirty: new Set(), stamps: {},
-    concepts: emptyWorldConceptsDoc(), terms: emptyWorldTermsDoc(), strata: emptyWorldStrataDoc(), sources: emptyWorldSourcesDoc(),
-    conceptsDirty: false, termsDirty: false, strataDirty: false, sourcesDirty: false, busy: false,
+    concepts: emptyWorldConceptsDoc(), terms: emptyWorldTermsDoc(), strata: emptyWorldStrataDoc(), actors: emptyWorldActorsDoc(), sources: emptyWorldSourcesDoc(),
+    conceptsDirty: false, termsDirty: false, strataDirty: false, actorsDirty: false, sourcesDirty: false, busy: false,
   };
   function liveWorldMonths() { const t = todayStr(); const a = monthOfDate(addDays(t, -30)), b = monthOfDate(t); return a === b ? [b] : [a, b]; }
   // 起動時に読む月：今月・先月に加えて「未読が残っている月」。月ファイルは
@@ -14367,6 +14509,10 @@
   function persistWorldTerms() {
     wd.terms.updatedAt = nowIso();
     return kvSet('worldTerms', JSON.stringify(wd.terms)).catch(() => {});
+  }
+  function persistWorldActors() {
+    wd.actors.updatedAt = nowIso();
+    return kvSet('worldActors', JSON.stringify(wd.actors)).catch(() => {});
   }
   function persistWorldStrata() {
     wd.strata.updatedAt = nowIso();
@@ -14426,6 +14572,7 @@
     try { wd.concepts = normalizeWorldConceptsDoc(JSON.parse(bootKV.worldConcepts || 'null')); } catch (e) { wd.concepts = emptyWorldConceptsDoc(); }
     try { wd.terms = normalizeWorldTermsDoc(JSON.parse(bootKV.worldTerms || 'null')); } catch (e) { wd.terms = emptyWorldTermsDoc(); }
     try { wd.strata = normalizeWorldStrataDoc(JSON.parse(bootKV.worldStrata || 'null')); } catch (e) { wd.strata = emptyWorldStrataDoc(); }
+    try { wd.actors = normalizeWorldActorsDoc(JSON.parse(bootKV.worldActors || 'null')); } catch (e) { wd.actors = emptyWorldActorsDoc(); }
     try { wd.sources = normalizeWorldSourcesDoc(JSON.parse(bootKV.worldSources || 'null')); } catch (e) { wd.sources = emptyWorldSourcesDoc(); }
     worldEvents = [];
     Object.entries(bootKV.worldDocs || {}).forEach(([m, raw]) => {
@@ -14435,6 +14582,15 @@
     });
     liveWorldMonths().forEach((m) => { if (!wd.loaded.has(m)) applyWorldMonthToMemory(m, emptyWorldMonthDoc(m)); });
     // 地層の初期値。levels は空のまま（推測の数字を入れると信頼が壊れる）
+    // アクターの種。同名のソースがあれば、その stance を初期値に借りる
+    if (!wd.actors.actors.length && !wd.actors.updatedAt) {
+      wd.actors.actors = WORLD_DEFAULT_ACTORS.map((x) => {
+        const src = worldSources().find((sc) => worldNormName(sc.name) === worldNormName(x.name) || (x.aka || []).some((a) => worldNormName(sc.name) === worldNormName(a)));
+        return normalizeWorldActor({ ...x, stance: src ? src.stance : '', eventIds: [], createdAt: nowIso(), updatedAt: nowIso(), lastUsedAt: nowIso() });
+      }).filter(Boolean);
+      wd.actorsDirty = true;
+      persistWorldActors();
+    }
     if (!wd.strata.strata.length && !wd.strata.updatedAt) {
       wd.strata.strata = WORLD_DEFAULT_STRATA.map((x, i) => normalizeWorldStratum({ ...x, levels: [], order: i, active: 1 })).filter(Boolean);
       wd.strataDirty = true;
@@ -14497,14 +14653,14 @@
     new Set([...Object.keys(a.due), ...Object.keys(b.due)]).forEach((d) => {
       out.due[d] = [...new Set([...(a.due[d] || []), ...(b.due[d] || [])])].slice(0, 50);
     });
-    ['concepts', 'terms', 'strata', 'sources'].forEach((k) => { out[k] = (a[k].updatedAt >= b[k].updatedAt) ? a[k] : b[k]; });
+    ['concepts', 'terms', 'strata', 'actors', 'sources'].forEach((k) => { out[k] = (a[k].updatedAt >= b[k].updatedAt) ? a[k] : b[k]; });
     out.updatedAt = a.updatedAt > b.updatedAt ? a.updatedAt : b.updatedAt;
     return out;
   }
   // 概念は id ごとの新しい方が勝つ union。消すのは統合のときだけなので墓標は
   // 持たず、代わりに「別名に吸われた」ことが aka に残る。
   function mergeWorldEntryDocs(a, b, field) {
-    const out = field === 'terms' ? emptyWorldTermsDoc() : emptyWorldConceptsDoc();
+    const out = field === 'terms' ? emptyWorldTermsDoc() : field === 'actors' ? emptyWorldActorsDoc() : emptyWorldConceptsDoc();
     const mA = new Map(a[field].map((c) => [c.id, c])), mB = new Map(b[field].map((c) => [c.id, c]));
     new Set([...mA.keys(), ...mB.keys()]).forEach((id) => {
       const x = mA.get(id), y = mB.get(id);
@@ -14525,6 +14681,7 @@
   }
   function mergeWorldConceptDocs(a, b) { return mergeWorldEntryDocs(a, b, 'concepts'); }
   function mergeWorldTermDocs(a, b) { return mergeWorldEntryDocs(a, b, 'terms'); }
+  function mergeWorldActorDocs(a, b) { return mergeWorldEntryDocs(a, b, 'actors'); }
   // 地層は id ごとの新しい方が勝つ union。levels は日付ごとの和集合にする
   // （別の端末で入れた四半期の値が、片方を丸ごと勝たせると消えるため）。
   function mergeWorldStrataDocs(a, b) {
@@ -14576,6 +14733,7 @@
   function worldEntriesSignature(list, doc) { return list.map((c) => c.id + ':' + c.updatedAt).sort().join('|') + '#' + doc.dismissedPairs.length; }
   function worldConceptsSignature(doc) { return worldEntriesSignature(doc.concepts, doc); }
   function worldTermsSignature(doc) { return worldEntriesSignature(doc.terms, doc); }
+  function worldActorsSignature(doc) { return worldEntriesSignature(doc.actors, doc); }
   function worldSourcesSignature(doc) { return doc.sources.map((s) => s.id + ':' + s.updatedAt).sort().join('|'); }
   async function syncWorldConcepts(token, remoteChanged) {
     if (!wd.conceptsDirty && !remoteChanged) return;
@@ -14606,6 +14764,20 @@
     wd.index.terms = { updatedAt: wd.terms.updatedAt, count: wd.terms.terms.length };
   }
   function worldStrataSignature(doc) { return doc.strata.map((x) => x.id + ':' + x.updatedAt + ':' + x.levels.length).sort().join('|'); }
+  async function syncWorldActors(token, remoteChanged) {
+    if (!wd.actorsDirty && !remoteChanged) return;
+    const got = await ghGetContents(GITHUB_REPO, WORLD_ACTORS_PATH, token);
+    let rdoc = emptyWorldActorsDoc();
+    try { if (got.text) rdoc = normalizeWorldActorsDoc(JSON.parse(got.text)); } catch (e) {}
+    const before = worldActorsSignature(rdoc);
+    wd.actors = mergeWorldActorDocs(wd.actors, rdoc);
+    await persistWorldActors();
+    if (worldActorsSignature(wd.actors) !== before) {
+      await ghPutJson(WORLD_ACTORS_PATH, wd.actors, got.sha, `world actors: ${wd.actors.actors.length}`);
+    }
+    wd.actorsDirty = false;
+    wd.index.actors = { updatedAt: wd.actors.updatedAt, count: wd.actors.actors.length };
+  }
   async function syncWorldStrata(token, remoteChanged) {
     if (!wd.strataDirty && !remoteChanged) return;
     const got = await ghGetContents(GITHUB_REPO, WORLD_STRATA_PATH, token);
@@ -14645,6 +14817,7 @@
       const conceptsChanged = remoteIndex.concepts.updatedAt > (wd.index.concepts.updatedAt || '');
       const termsChanged = remoteIndex.terms.updatedAt > (wd.index.terms.updatedAt || '');
       const strataChanged = remoteIndex.strata.updatedAt > (wd.index.strata.updatedAt || '');
+      const actorsChanged = remoteIndex.actors.updatedAt > (wd.index.actors.updatedAt || '');
       const sourcesChanged = remoteIndex.sources.updatedAt > (wd.index.sources.updatedAt || '');
       const months = new Set([...liveWorldMonths(), ...wd.dirty, ...worldBootMonths(remoteIndex)]);
       wd.loaded.forEach((m) => { const r = remoteIndex.months[m]; if (r && r.updatedAt !== (wd.stamps[m] || '')) months.add(m); });
@@ -14653,8 +14826,9 @@
       await syncWorldConcepts(token, conceptsChanged);
       await syncWorldTerms(token, termsChanged);
       await syncWorldStrata(token, strataChanged);
+      await syncWorldActors(token, actorsChanged);
       await syncWorldSources(token, sourcesChanged);
-      const sig = (ix) => JSON.stringify([Object.keys(ix.months).sort().map((m) => [m, ix.months[m].updatedAt, ix.months[m].unread]), ix.concepts.updatedAt, ix.terms.updatedAt, ix.strata.updatedAt, ix.sources.updatedAt, Object.keys(ix.due).sort()]);
+      const sig = (ix) => JSON.stringify([Object.keys(ix.months).sort().map((m) => [m, ix.months[m].updatedAt, ix.months[m].unread]), ix.concepts.updatedAt, ix.terms.updatedAt, ix.strata.updatedAt, ix.actors.updatedAt, ix.sources.updatedAt, Object.keys(ix.due).sort()]);
       if (sig(wd.index) !== sig(remoteIndex)) {
         try { await ghPutJson(WORLD_INDEX_PATH, wd.index, ri.sha, 'world index'); }
         catch (e) {
@@ -14692,6 +14866,8 @@
   function worldTerms() { return wd.terms.terms.filter((t) => !t.hidden); }
   function worldAllConcepts() { return wd.concepts.concepts; }
   function worldAllTerms() { return wd.terms.terms; }
+  function worldActors() { return wd.actors.actors.filter((a) => !a.hidden); }
+  function worldAllActors() { return wd.actors.actors; }
   function worldHideEntry(entry, on) {
     if (on) { entry.hidden = 1; entry.hiddenAt = nowIso(); } else { delete entry.hidden; delete entry.hiddenAt; }
     entry.updatedAt = nowIso();
@@ -14753,6 +14929,19 @@
         return changed;
       },
     },
+    actor: {
+      key: 'actor', label: 'アクター', idPrefix: 'ac_', minLen: WORLD_ACTOR_MIN_LEN,
+      doc: () => wd.actors, list: worldAllActors,
+      setList: (v) => { wd.actors.actors = v; },
+      save: () => worldSaveActors(),
+      rewrite: (e, from, to) => {
+        let changed = false;
+        const same = (x) => x && worldNormName(x) === worldNormName(from);
+        (e.actors || []).forEach((a) => { if (same(a.name)) { a.name = to; changed = true; } });
+        if (e.flow) { if (same(e.flow.from)) { e.flow.from = to; changed = true; } if (same(e.flow.to)) { e.flow.to = to; changed = true; } }
+        return changed;
+      },
+    },
     term: {
       key: 'term', label: '用語', idPrefix: 'wt_', minLen: WORLD_TERM_MIN_LEN,
       doc: () => wd.terms, list: worldAllTerms,
@@ -14765,7 +14954,10 @@
       },
     },
   };
-  function worldStoreOf(entry) { return String(entry && entry.id).startsWith('wt_') ? WORLD_STORES.term : WORLD_STORES.concept; }
+  function worldStoreOf(entry) {
+    const id = String(entry && entry.id);
+    return id.startsWith('wt_') ? WORLD_STORES.term : id.startsWith('ac_') ? WORLD_STORES.actor : WORLD_STORES.concept;
+  }
 
   function worldFindIn(store, name) {
     const k = worldNormName(name);
@@ -14773,7 +14965,7 @@
     return store.list().find((c) => worldNormName(c.name) === k || (c.aka || []).some((a) => worldNormName(a) === k)) || null;
   }
   function worldByIdIn(store, id) { return store.list().find((c) => c.id === id) || null; }
-  function worldEntryById(id) { return worldByIdIn(WORLD_STORES.concept, id) || worldByIdIn(WORLD_STORES.term, id); }
+  function worldEntryById(id) { return worldByIdIn(WORLD_STORES.concept, id) || worldByIdIn(WORLD_STORES.term, id) || worldByIdIn(WORLD_STORES.actor, id); }
   function worldFindConcept(name) { return worldFindIn(WORLD_STORES.concept, name); }
   function worldFindTerm(name) { return worldFindIn(WORLD_STORES.term, name); }
   function worldConceptById(id) { return worldByIdIn(WORLD_STORES.concept, id); }
@@ -14786,6 +14978,7 @@
   }
   function worldSaveConcepts() { wd.conceptsDirty = true; persistWorldConcepts(); scheduleSync(); }
   function worldSaveTerms() { wd.termsDirty = true; persistWorldTerms(); scheduleSync(); }
+  function worldSaveActors() { wd.actorsDirty = true; persistWorldActors(); scheduleSync(); }
   // 注を開いた印。同期は自分から呼ばない（開くたびに同期が走るのは割に合わ
   // ないので、次の自然な同期に相乗りする）。
   function worldMarkTermSeen(t) {
@@ -14803,8 +14996,9 @@
       createdAt: iso, updatedAt: iso, lastUsedAt: iso,
     };
     if (store.key === 'term') base.kind = o.kind || '';
+    else if (store.key === 'actor') { base.kind = o.kind || ''; base.stance = o.stance || ''; }
     else { base.field = o.field || ''; base.related = []; }
-    const c = normalizeWorldEntry(base, store.key === 'term');
+    const c = normalizeWorldEntry(base, store.key);
     if (c) store.list().push(c);
     return c;
   }
@@ -14880,6 +15074,7 @@
   function worldScanEventLinks(ev) {
     const touched = worldEventConcepts(ev);
     let added = 0;
+    (ev.actors || []).forEach((rec) => { const a = worldFindIn(WORLD_STORES.actor, rec.name); if (a && !a.eventIds.includes(ev.id)) { a.eventIds.push(ev.id); a.updatedAt = nowIso(); added++; } });
     touched.forEach((c) => { if (!c.eventIds.includes(ev.id)) { c.eventIds.push(ev.id); c.updatedAt = nowIso(); added++; } });
     const cooc = touched.slice(0, WORLD_COOC_MAX_PER_EVENT);
     if (cooc.length >= 2) worldLinkCooc(cooc, ev.id);
@@ -14964,7 +15159,7 @@
       keep.rejected = [...new Set([...keep.rejected, ...drop.rejected])].filter((x) => x !== keep.id && x !== drop.id);
       keep.links = keep.links.filter((l) => !keep.rejected.includes(l.id));
       if (!keep.field && drop.field) keep.field = drop.field;
-    } else if (!keep.kind && drop.kind) keep.kind = drop.kind;
+    } else { if (!keep.kind && drop.kind) keep.kind = drop.kind; if (store.key === 'actor' && !keep.stance && drop.stance) keep.stance = drop.stance; }
     keep.updatedAt = nowIso();
     store.setList(store.list().filter((c) => c.id !== drop.id));
     if (store.key === 'concept') {
@@ -15060,7 +15255,7 @@
   // 出来事側の綴りは正式名へ寄せて保存する（あとで統合・名前変更をしたとき
   // 既存の出来事が自動で追従し、同じものが違う綴りで並ぶこともなくなる）。
   function worldApplyEntries(ev) {
-    const created = { concept: [], term: [], unknownConcepts: 0 };
+    const created = { concept: [], term: [], actor: [], unknownConcepts: 0 };
     const CS = WORLD_STORES.concept, TS = WORLD_STORES.term;
 
     // 概念を新しく作るときは、同じ名前の用語が居たら必ず吸わせる。
@@ -15130,7 +15325,35 @@
       return t ? t.name : raw;
     }).filter((n) => { const k = worldNormName(n); if (!k || seen.has(k)) return false; seen.add(k); return true; });
     delete ev._termMeta;
+    worldApplyActors(ev, created);
+    delete ev._actorMeta;
     return created;
+  }
+  // v12: 札の主語をストアに起こす／既存につなぐ。名前は正式名へ寄せる。
+  // did が空・read==said の処理は normalize で済んでいる。
+  function worldApplyActors(ev, created) {
+    const AS = WORLD_STORES.actor;
+    const meta = ev._actorMeta || {};
+    const resolve = (name, make) => {
+      if (!name) return null;
+      let a = worldFindIn(AS, name);
+      if (!a && make) {
+        const src = worldSources().find((sc) => worldNormName(sc.name) === worldNormName(name));
+        a = worldAddIn(AS, { name, aka: [], kind: meta[worldNormName(name)] || '', stance: src ? src.stance : '' }, ev.id);
+        if (a && created) created.actor.push(a.id);
+      }
+      return a;
+    };
+    ev.actors = ev.actors.map((rec) => {
+      const a = resolve(rec.name, true);
+      if (!a) return rec;
+      worldTouchEntry(a, ev.id);
+      return { ...rec, name: a.name };
+    });
+    if (ev.flow) {
+      const f = resolve(ev.flow.from, false); if (f) ev.flow.from = f.name;
+      const t = resolve(ev.flow.to, false); if (t) ev.flow.to = t.name;
+    }
   }
   // 用語 → 概念への昇格。用語側を消して、別名と出た出来事を概念に移す。
   function worldPromoteTermToConcept(term, concept) {
@@ -15280,6 +15503,7 @@
     const anal = worldSourceLines(field, 'analysis');
     const known = worldKnownNames(field);
     const knownTerms = worldKnownTermNames();
+    const knownActors = worldKnownActorLines();
     const strataLines = worldStrataPromptLines();
     return SHOOT_PROMPT_HEAD +
       'あなたは、ある人の世界の見方を少しずつ更新するための材料係です。\n' +
@@ -15319,6 +15543,33 @@
       '- why：なぜ今動いたか。1〜2文。\n' +
       '  誰が何を欲しがり・何を恐れ・何に縛られているかを書く。\n' +
       '  出来事の言い換えを書かない。評価・感想・助言を書かない。\n' +
+      '\n' +
+      // v12: 主語。思惑は必ず捏造されるので3層に分け、said と同じ read は空にさせる。
+      '- actors：この出来事を動かした主体を 1〜' + WORLD_ACTORS_PER_EVENT + 'つ。主語。\n' +
+      '  組織を主体にする（審議委員の発言は「日本銀行」の行動として読む）。\n' +
+      '  個人を主体にするのは、組織と立場が違うときだけ（審議委員が執行部と違う提案をした、\n' +
+      '  閣僚が政権方針と違うことを言った）。そのときだけ kind を "person" にする。\n' +
+      '  - 末尾の「すでに知っているアクター」に当たる名前があればそれを使う。\n' +
+      '    無ければ新しく書いてよい（地層と違って作ってよい）。\n' +
+      '  - 行動が出典に書かれていない主体を書かない。why に出てくるからといって\n' +
+      '    「産油国が…」と書かれると、その札で産油国は何もしていないのに主語になる。\n' +
+      '  - 統計・論文・報告書の公表そのものを行動としない。公表した機関は、それだけでは\n' +
+      '    アクターにならない。行動とは、決定・合意・介入・融資・買い入れ・制裁・提案・撤回など、\n' +
+      '    何かを動かす意思の表れ。統計の札で動かした主体が特定できなければ、actors は空でよい。\n' +
+      '  - 3つに分けて書く。混ぜない。\n' +
+      '    did：出典に書かれた行動。数字・金額はここにだけ。20〜' + WORLD_ACTOR_DID_MAX + '字。\n' +
+      '    said：出典が自ら述べた理由。言い換えず、引用に近く。出典に無ければ空。\n' +
+      '    read：あなたが読んだ思惑。推定であることを前提に書く。\n' +
+      '          said と同じ内容なら空にする。述べたことをなぞって推定に見せない。\n' +
+      '          書くなら、述べたことと違うことを書く。書けなければ空でよい。\n' +
+      '  - kind は state（政府・議会）／cb（中央銀行）／intl（国際機関）／industry（業界・企業）\n' +
+      '    ／person（人物）のどれか。すでに知っているアクターには kind を書かなくてよい。\n' +
+      '  良い例：\n' +
+      '    {"name":"財務省","did":"円買い介入 15兆円","said":"投機的な動きに対応",\n' +
+      '     "read":"円安による輸入物価上昇を止めたい","kind":"state"}\n' +
+      '  悪い例：\n' +
+      '    {"name":"財務省","did":"為替を安定させた","said":"","read":"投機的な動きに対応"}\n' +
+      '    （did に行動でなく評価が書かれ、述べた理由が read に移されている）\n' +
       '\n' +
       '- reason：なぜこの札を選んだかを20字程度で1つ。\n' +
       '  why は「なぜ動いたか」、reason は「なぜ選んだか」。別のものを書く。\n' +
@@ -15402,6 +15653,12 @@
       '  - 誰がどう見ても同じ判定になる書き方にする。\n' +
       '    「市場が落ち着くか」「関係が改善するか」は書かない。\n' +
       '\n' +
+      '- flow：この出来事で動いたお金。無ければ null。無理に書かない。\n' +
+      '  from／to は主体名（アクター名か、「為替市場」のような場所）。what は何をしたか。\n' +
+      '  amount は出典の書き方のまま（「15兆円」「1.4億ドル」）。換算しない。合計しない。\n' +
+      '  出典に金額が無ければ null。\n' +
+      '  例：{"from":"財務省","to":"為替市場","what":"円買い介入","amount":"15兆円"}\n' +
+      '\n' +
       '- detail：数字・当事者・背景。1〜3文。ここには専門用語を書いてよい。\n' +
       '- source：媒体名と発表日。\n' +
       '- url：出典ページ。\n' +
@@ -15419,6 +15676,8 @@
       '  "concepts":["...","..."],\n' +
       '  "terms":[{"name":"IMF","line":"...","kind":"org","aka":["国際通貨基金"]}],\n' +
       '  "strata":["st_jp_rate_long"],\n' +
+      '  "actors":[{"name":"財務省","did":"...","said":"...","read":"...","kind":"state"}],\n' +
+      '  "flow":{"from":"...","to":"...","what":"...","amount":"..."},\n' +
       '  "fork":{"text":"...","type":"level"},\n' +
       '  "detail":"...",\n' +
       '  "source":"...",\n' +
@@ -15429,7 +15688,10 @@
       '  {"kind":"relation","a":"既知の概念1","b":"既知の概念2","line":"..."}\n' +
       'すでに知っている用語： {"name":"IMF"}\n' +
       'どの地層にも乗らないとき： "strata": []\n' +
-      '分かれ目が思いつかないとき： "fork": null\n\n' +
+      '分かれ目が思いつかないとき： "fork": null\n' +
+      'お金の動きが無いとき： "flow": null\n' +
+      '述べた理由が出典に無いとき： "said": ""\n' +
+      '読んだ思惑が述べた理由と同じとき： "read": ""\n\n' +
       // 既知の羅列は末尾に置く。3本になると、上に置いたときに規則を押しのける。
       '────────────────────────────────────────\n' +
       '■ 地層の一覧（strata はこの id から選ぶ。ここに無いものを作らない）\n' +
@@ -15440,7 +15702,102 @@
       (known.length ? known.join(' / ') : '（まだありません）') + '\n\n' +
       '■ すでに知っている用語（説明しなくてよい。名前だけ。最大' + WORLD_KNOWN_TERMS_MAX + '件。\n' +
       '　一覧に無くても、経済・政治の基礎的な用語は説明不要）\n' +
-      (knownTerms.length ? knownTerms.join(' / ') : '（まだありません）');
+      (knownTerms.length ? knownTerms.join(' / ') : '（まだありません）') + '\n\n' +
+      '■ すでに知っているアクター（actors の name はここから探す。無ければ新しく書いてよい。名前（別名）。最大' + WORLD_KNOWN_ACTORS_MAX + '件）\n' +
+      (knownActors.length ? knownActors.join(' / ') : '（まだありません）');
+  }
+  // 名前＋主要な別名（引き当てのため）。lastUsedAt 順
+  function worldKnownActorLines() {
+    return worldActors()
+      .slice().sort((a, b) => (a.lastUsedAt > b.lastUsedAt ? -1 : 1))
+      .slice(0, WORLD_KNOWN_ACTORS_MAX)
+      .map((a) => a.name + (a.aka.length ? '（' + a.aka.slice(0, 2).join('／') + '）' : ''));
+  }
+  // ---- 遡及（既存の札にアクターを付け直す） (v12) -----------------------------
+  // 出典を開き直さないので、通常より厳しく縛る。ev.actors が空の札にだけ足す。
+  function worldRetroTargets() {
+    return worldLiveEvents().filter((e) => !e.actors.length)
+      .sort((a, b) => (a.eventDate > b.eventDate ? -1 : 1)).slice(0, WORLD_RETRO_MAX);
+  }
+  function worldRetroPromptText() {
+    const cards = worldRetroTargets();
+    const knownActors = worldKnownActorLines();
+    return SHOOT_PROMPT_HEAD +
+      'あなたは、すでに取り込んである出来事の札に「動かした主体」を付け直す係です。\n' +
+      '新しい出来事を探しません。web 検索も使いません。\n' +
+      '下に並ぶ札の文章だけを材料にします。\n\n' +
+      '■ 材料の限界を先に言っておきます\n' +
+      '- 出典のページは開けません。fact・why・detail に書かれていることが全部です。\n' +
+      '- だから、通常の生成より厳しく縛ります。書かれていないことを書かないでください。\n' +
+      '- 全部の札に主体が要るわけではありません。材料が足りない札は actors を空の配列にしてください。\n\n' +
+      '■ それぞれの札に書くこと\n' +
+      '- actors：この出来事を動かした主体を 0〜' + WORLD_ACTORS_PER_EVENT + 'つ。\n' +
+      '  - 組織を主体にする。個人は、組織と立場が違うと明記されているときだけ（kind を "person"）。\n' +
+      '  - 末尾の「すでに知っているアクター」に当たる名前があればそれを使う。無ければ新しく書いてよい。\n' +
+      '  - 行動が fact か detail に書かれていない主体を書かない。why にだけ出てくる主体は書かない。\n' +
+      '  - 統計・論文・報告書の公表そのものを行動としない。公表した機関は、それだけではアクターにならない。\n' +
+      '    行動とは、決定・合意・介入・融資・買い入れ・制裁・提案・撤回など、何かを動かす意思の表れ。\n' +
+      '    統計の札で動かした主体が特定できなければ、actors は空でよい。\n' +
+      '  - did：fact か detail に書かれた行動だけ。20〜' + WORLD_ACTOR_DID_MAX + '字。数字・金額はここにだけ。\n' +
+      '        why の文章から行動を作らない。\n' +
+      '  - said：why か detail に、その主体が「述べた」「説明した」「表明した」「掲げた」と\n' +
+      '        分かる形で書かれているときだけ。無ければ空。\n' +
+      '  - read：あなたが読んだ思惑。推定であることを前提に書く。\n' +
+      '        said と同じ内容なら空。書くなら述べたことと違うことを。書けなければ空。\n' +
+      '  - kind：state／cb／intl／industry／person。すでに知っているアクターには書かなくてよい。\n' +
+      '- flow：detail に金額が書かれているときだけ。amount は書かれた文字列のまま。無ければ null。\n\n' +
+      '■ 札\n' +
+      (cards.length ? cards.map((e) =>
+        '[' + e.id + ']\n' +
+        'fact：' + e.fact + '\n' +
+        'why：' + (e.why || '') + '\n' +
+        'detail：' + (e.detail || '') + '\n' +
+        'source：' + (e.source || '')).join('\n\n') : '（対象の札がありません）') + '\n\n' +
+      '■ 出力形式\n' +
+      '{"actors":{"w_20260902_1":[{"name":"日本銀行","did":"...","said":"...","read":"...","kind":"cb"}],\n' +
+      '           "w_20260901_1":[]},\n' +
+      ' "flow":{"w_20260902_1":null,\n' +
+      '         "w_20260901_1":{"from":"...","to":"...","what":"...","amount":"..."}}}\n\n' +
+      '- id は上の札のものだけを使う。\n' +
+      '- 材料が足りない札は actors を [] に、flow を null にする。無理に埋めない。\n' +
+      '- JSON のみ。\n\n' +
+      '────────────────────────────────────────\n' +
+      '■ すでに知っているアクター（name はここから探す。無ければ新しく書いてよい）\n' +
+      (knownActors.length ? knownActors.join(' / ') : '（まだありません）');
+  }
+  // 足すだけ。ev.actors が空の札にだけ。id が端末に無い札は無視。
+  function worldImportRetroJson(raw) {
+    const parsed = shootParseJson(raw);
+    if (!parsed || typeof parsed !== 'object' || !parsed.actors || typeof parsed.actors !== 'object') {
+      return { error: 'JSON として読めませんでした。{"actors":{...},"flow":{...}} の形で貼ってください。' };
+    }
+    const flows = (parsed.flow && typeof parsed.flow === 'object') ? parsed.flow : {};
+    let filled = 0, withRead = 0, withFlow = 0, skipped = 0, unknown = 0;
+    const createdActors = [];
+    const touched = new Set();
+    Object.entries(parsed.actors).forEach(([id, list]) => {
+      const ev = worldLiveEvents().find((e) => e.id === id);
+      if (!ev) { unknown++; return; }
+      if (ev.actors.length) { skipped++; return; }
+      const actors = normalizeWorldActorList(list);
+      const flow = ev.flow ? ev.flow : normalizeWorldFlow(flows[id]);
+      if (!actors.length && !flow) return;
+      ev._actorMeta = {};
+      (Array.isArray(list) ? list : []).forEach((a) => { if (a && a.name) ev._actorMeta[worldNormName(a.name)] = WORLD_ACTOR_KINDS.includes(a.kind) ? a.kind : ''; });
+      ev.actors = actors;
+      if (flow) ev.flow = flow;
+      const created = { actor: [] };
+      worldApplyActors(ev, created);
+      delete ev._actorMeta;
+      created.actor.forEach((x) => createdActors.push(x));
+      if (ev.actors.length) filled++;
+      if (ev.actors.some((a) => a.read)) withRead++;
+      if (ev.flow) withFlow++;
+      ev.updatedAt = nowIso();
+      touched.add(monthOfDate(ev.eventDate));
+    });
+    if (touched.size) { worldSaveActors(); touched.forEach((m) => worldMonthChanged(m)); }
+    return { filled, withRead, withFlow, skipped, unknown, createdActors, candidates: worldMergeCandidatesIn(WORLD_STORES.actor, createdActors) };
   }
 
   // ---- 取り込み ------------------------------------------------------------
@@ -15489,7 +15846,8 @@
     const createdConcepts = [];
     const createdTerms = [];
     const touchedMonths = new Set();
-    let old = 0, forks = 0, onStrata = 0, droppedStrata = 0, unknownConcepts = 0;
+    let old = 0, forks = 0, onStrata = 0, droppedStrata = 0, unknownConcepts = 0, withActors = 0, withRead = 0, withFlow = 0;
+    const createdActors = [];
 
     items.forEach((it, i) => {
       if (!it || typeof it !== 'object') { rejected.fact++; return; }
@@ -15507,6 +15865,7 @@
         field: WORLD_FIELDS.includes(it.field) ? it.field : (worldImportField || 'finance'),
         fact, why: it.why, premise: it.premise, detail: it.detail, source: it.source, url,
         terms: it.terms, fork: it.fork, reason: it.reason,
+        actors: it.actors, flow: it.flow,   // v12: ここで渡さないと normalize に届かない
         // 地層は生成に作らせない。一覧に無い id はここで落とす
         strata: (Array.isArray(it.strata) ? it.strata : []).filter((x) => worldStratumById(String(x))),
         concepts: it.concepts, related: it.related,
@@ -15515,7 +15874,13 @@
       });
       if (!ev) { rejected.date++; return; }
       // 生成が書いた注（line/kind/aka）は ev には残さない。ストアに移してから捨てる。
-      ev._termMeta = {};
+      // 生成が書いた kind だけ、アクターを作るときに使う。ev には残さない
+    ev._actorMeta = {};
+    (Array.isArray(it.actors) ? it.actors : []).forEach((a) => {
+      if (!a || typeof a !== 'object' || !a.name) return;
+      ev._actorMeta[worldNormName(a.name)] = WORLD_ACTOR_KINDS.includes(a.kind) ? a.kind : '';
+    });
+    ev._termMeta = {};
       (Array.isArray(it.terms) ? it.terms : []).forEach((t) => {
         if (!t || typeof t !== 'object' || !t.name) return;
         ev._termMeta[worldNormName(t.name)] = {
@@ -15534,6 +15899,10 @@
       unknownConcepts += made.unknownConcepts;
       if (ev.fork) forks++;
       if (ev.strata.length) onStrata++;
+      if (ev.actors.length) withActors++;
+      if (ev.actors.some((a) => a.read)) withRead++;
+      if (ev.flow) withFlow++;
+      made.actor.forEach((id) => createdActors.push(id));
       const askedStrata = Array.isArray(it.strata) ? it.strata.length : 0;
       droppedStrata += Math.max(0, askedStrata - ev.strata.length);
     });
@@ -15541,6 +15910,7 @@
     if (added.length) {
       worldSaveConcepts();
       worldSaveTerms();
+      worldSaveActors();
       touchedMonths.forEach((m) => worldMonthChanged(m));
     }
     // v11.7 A-2: 取り込みの最後に、端末にある札を全部読み直して出た回数と
@@ -15561,14 +15931,16 @@
     }
     return {
       added: added.length, rejected, old, forks, onStrata, droppedStrata, unknownConcepts,
-      createdConcepts, createdTerms, batchId, linked, partnerIds: [...partnerIds],
+      createdConcepts, createdTerms, createdActors, batchId, linked, partnerIds: [...partnerIds],
+      withActors, withRead, withFlow,
       candidates: worldMergeCandidatesIn(WORLD_STORES.concept, createdConcepts)
-        .concat(worldMergeCandidatesIn(WORLD_STORES.term, createdTerms)),
+        .concat(worldMergeCandidatesIn(WORLD_STORES.term, createdTerms))
+        .concat(worldMergeCandidatesIn(WORLD_STORES.actor, createdActors)),
     };
   }
 
   // ---- 画面 ----------------------------------------------------------------
-  const worldState = { view: 'main', tab: 'events', entryKind: 'concept', entrySort: 'count', conceptId: null, stratumId: null, strataAll: false, sunkOpen: false, openId: null, candidates: [], lastResult: '', search: { events: '', concept: '', term: '' }, searchFocus: '', batchFilter: null, lastBatch: null };
+  const worldState = { view: 'main', tab: 'events', entryKind: 'concept', entrySort: 'count', conceptId: null, stratumId: null, strataAll: false, sunkOpen: false, openId: null, candidates: [], lastResult: '', search: { events: '', concept: '', term: '', actor: '' }, searchFocus: '', batchFilter: null, lastBatch: null };
 
   // 地層の1行。押すとその地層を開く。太くしない。
   function paintStratumLine(el, s) {
@@ -15827,6 +16199,50 @@
     else why.textContent = ev.slim ? '（この出来事は要約だけ残しています）' : '（なぜ今動いたかが書かれていません）';
     box.appendChild(why);
 
+    // v12 動かした側。name + did の1行が既定、押すと述べた／推定が開く。
+    // 推定は色と形で強く分ける（薄いラベルだと読み慣れたとき事実と区別がつかない）。
+    if (ev.actors.length) {
+      const sec = document.createElement('div');
+      sec.className = 'worldActors';
+      const lab = document.createElement('div');
+      lab.className = 'rowLabel';
+      lab.textContent = '動かした側';
+      sec.appendChild(lab);
+      ev.actors.forEach((rec) => {
+        const actor = worldFindIn(WORLD_STORES.actor, rec.name);
+        const row = document.createElement('button');
+        row.type = 'button'; row.className = 'worldActorRow';
+        const n = document.createElement('span'); n.className = 'waName'; n.textContent = rec.name;
+        const d = document.createElement('span'); d.className = 'waDid'; d.textContent = rec.did;
+        row.appendChild(n); row.appendChild(d);
+        sec.appendChild(row);
+        const open = document.createElement('div');
+        open.className = 'worldActorOpen';
+        open.hidden = true;
+        if (rec.said) {
+          const l = document.createElement('div'); l.className = 'waSaid';
+          const k = document.createElement('span'); k.className = 'waKey'; k.textContent = '述べた';
+          l.appendChild(k); l.appendChild(document.createTextNode(rec.said));
+          open.appendChild(l);
+        }
+        if (rec.read) {
+          const l = document.createElement('div'); l.className = 'waRead';
+          const k = document.createElement('span'); k.className = 'guessBadge'; k.textContent = '推定';
+          l.appendChild(k); l.appendChild(document.createTextNode(rec.read));
+          open.appendChild(l);
+        }
+        if (actor) {
+          const go = document.createElement('button');
+          go.type = 'button'; go.className = 'linkLikeBtn'; go.textContent = 'この主体の動きを見る';
+          go.addEventListener('click', (e) => { e.stopPropagation(); openWorldEntry(actor.id); });
+          open.appendChild(go);
+        }
+        sec.appendChild(open);
+        row.addEventListener('click', (e) => { e.stopPropagation(); if (open.children.length) open.hidden = !open.hidden; });
+      });
+      box.appendChild(sec);
+    }
+
     const pre = document.createElement('div');
     pre.className = 'worldPremise';
     const nameEl = document.createElement('div');
@@ -15863,9 +16279,12 @@
 
     // 用語のチップ行。fact にしか出てこない語、2文字以下で本文に当たらなかった
     // 語も、ここからは開ける。
+    // v12: 用語と地層を1行にまとめる（「動かした側」で増えた段を相殺）
+    let metaRow = null;
     if (termEntries.length) {
       const row = document.createElement('div');
       row.className = 'worldTermRow';
+      metaRow = row;
       const lab = document.createElement('span');
       lab.className = 'rowLabel';
       lab.textContent = '用語';
@@ -15887,8 +16306,8 @@
     // 乗っている地層。押すとその地層へ
     const strata = worldStrataOf(ev);
     if (strata.length) {
-      const row = document.createElement('div');
-      row.className = 'strataRow';
+      const row = metaRow || document.createElement('div');
+      if (!metaRow) row.className = 'worldTermRow';
       const lab = document.createElement('span');
       lab.className = 'rowLabel';
       lab.textContent = '地層';
@@ -15900,7 +16319,7 @@
         p.addEventListener('click', (e) => { e.stopPropagation(); openWorldStratum(s.id); });
         row.appendChild(p);
       });
-      box.appendChild(row);
+      if (!metaRow) box.appendChild(row);
     }
 
     // v11.7 A-4 つながる札。概念どうしではなく札どうし。概念は理由として添える。
@@ -15948,10 +16367,18 @@
       p.appendChild(k); p.appendChild(document.createTextNode(ev.reason));
       deep.appendChild(p);
     }
+    if (ev.flow) {
+      const p = document.createElement('div');
+      p.className = 'worldMetaLine';
+      const k = document.createElement('span'); k.className = 'wmKey'; k.textContent = 'お金の動き：';
+      p.appendChild(k); p.appendChild(document.createTextNode(worldFlowLine(ev.flow)));
+      deep.appendChild(p);
+    }
     if (ev.source) { const p = document.createElement('div'); p.textContent = ev.source; deep.appendChild(p); }
-    // 発信者の立場。一次ソースだから中立ではない、を毎回目に入れる
+    // 発信者の立場。一次ソースだから中立ではない、を毎回目に入れる。
+    // v12: その出典が札のアクターに含まれているときは出さない（動かした側に同じことがある）
     {
-      const st = worldStanceFor(ev);
+      const st = worldActorsIncludeSource(ev) ? '' : worldStanceFor(ev);
       if (st) {
         const p = document.createElement('div');
         p.className = 'worldMetaLine';
@@ -16125,6 +16552,26 @@
     const s = worldSources().find((x) => { const sh = worldHostOf(x.url); return sh && (h === sh || h.endsWith('.' + sh) || sh.endsWith('.' + h)); });
     return (s && s.stance) || '';
   }
+  function worldFlowLine(f) {
+    return [f.from || '？', '→', f.to || '？', f.what ? '　' + f.what : '', f.amount ? ' ' + f.amount : ''].join(' ').replace(/\s+/g, ' ').trim();
+  }
+  // 札の出典（url のドメイン）が、その札のアクターのどれかか
+  function worldActorsIncludeSource(ev) {
+    const h = worldHostOf(ev.url);
+    if (!h || !ev.actors.length) return false;
+    const src = worldSources().find((x) => { const sh = worldHostOf(x.url); return sh && (h === sh || h.endsWith('.' + sh) || sh.endsWith('.' + h)); });
+    if (!src) return false;
+    const a = worldFindIn(WORLD_STORES.actor, src.name);
+    return !!a && ev.actors.some((rec) => worldNormName(rec.name) === worldNormName(a.name));
+  }
+  function worldActorsCopyBlock(ev) {
+    if (!ev.actors.length) return '';
+    return '\n【動かした側】\n' + ev.actors.map((a) =>
+      '- ' + a.name + '：' + a.did
+      + (a.said ? '／述べた理由「' + a.said + '」' : '／述べた理由は出典に無い')
+      + (a.read ? '／推定「' + a.read + '」' : '')).join('\n') + '\n'
+      + (ev.flow ? '【お金の動き】' + worldFlowLine(ev.flow) + '\n' : '');
+  }
   function worldPredictionCopyLine(ev) {
     const p = ev.prediction;
     if (!worldPredictionWritten(ev)) return '';
@@ -16157,6 +16604,7 @@
     return '【出来事】' + ev.eventDate + '\n' + ev.fact + '\n\n'
       + '【なぜ今動いたか】\n' + (ev.why || '（なし）') + '\n\n'
       + pre + '\n'
+      + worldActorsCopyBlock(ev)
       + strataBlock
       + termBlock
       + (ev.detail ? '\n【詳細】' + ev.detail + '\n' : '')
@@ -16165,8 +16613,72 @@
       + worldPredictionCopyLine(ev)
       + tail;
   }
+  // ---- アクターの時系列 (v12) ----------------------------------------------
+  // 「財務省：7月 介入 5兆円 → 9月 介入 15兆円」が縦に並ぶ形。同じ単位だけが
+  // 並ぶ（換算しないので、混ざっていれば混ざって見える。合計もしない）。
+  function worldActorRows(c) {
+    const isMe = (n) => n && worldNormName(n) === worldNormName(c.name);
+    return worldLiveEvents()
+      .filter((e) => c.eventIds.includes(e.id))
+      .sort((a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0))
+      .map((e) => {
+        const rec = e.actors.find((a) => isMe(a.name)) || null;
+        const amount = e.flow && (isMe(e.flow.from) || isMe(e.flow.to)) ? e.flow.amount : '';
+        return { event: e, rec, amount };
+      });
+  }
+  function renderWorldActorTimeline(box, c) {
+    box.innerHTML = '';
+    // 端末に無い月を引く（id に eventDate が入っている）
+    const months = [...new Set(c.eventIds.map(monthOfWorldId).filter(Boolean))].filter((m) => !wd.loaded.has(m));
+    if (months.length) {
+      const p = document.createElement('p'); p.className = 'fieldNote'; p.textContent = months.length + 'か月ぶんを読み込み中…';
+      box.appendChild(p);
+      ensureWorldMonths(months).then(() => { if (nav.screen === 'world' && worldState.view === 'concept' && worldState.conceptId === c.id) renderWorldConcept(); });
+    }
+    const rows = worldActorRows(c);
+    if (!rows.length) {
+      const p = document.createElement('p'); p.className = 'emptyMsg';
+      p.textContent = c.eventIds.length ? '動かした月が端末に読み込まれていません。' : 'まだありません。';
+      box.appendChild(p); return;
+    }
+    rows.forEach(({ event: e, rec, amount }) => {
+      const row = document.createElement('button');
+      row.type = 'button'; row.className = 'worldActorTl';
+      const d = document.createElement('span'); d.className = 'tlDate'; d.textContent = worldShortDate(e.eventDate);
+      const did = document.createElement('span'); did.className = 'tlDid'; did.textContent = rec ? rec.did : e.fact;
+      const am = document.createElement('span'); am.className = 'tlAmount'; am.textContent = amount;
+      row.appendChild(d); row.appendChild(did); row.appendChild(am);
+      box.appendChild(row);
+      const open = document.createElement('div');
+      open.className = 'worldActorOpen'; open.hidden = true;
+      if (rec && rec.said) { const l = document.createElement('div'); l.className = 'waSaid'; const k = document.createElement('span'); k.className = 'waKey'; k.textContent = '述べた'; l.appendChild(k); l.appendChild(document.createTextNode(rec.said)); open.appendChild(l); }
+      if (rec && rec.read) { const l = document.createElement('div'); l.className = 'waRead'; const k = document.createElement('span'); k.className = 'guessBadge'; k.textContent = '推定'; l.appendChild(k); l.appendChild(document.createTextNode(rec.read)); open.appendChild(l); }
+      const f = document.createElement('div'); f.className = 'tlFact'; f.textContent = e.fact; open.appendChild(f);
+      const go = document.createElement('button'); go.type = 'button'; go.className = 'linkLikeBtn'; go.textContent = '札を開く';
+      go.addEventListener('click', (ev2) => { ev2.stopPropagation(); openWorldEvent(e.id); });
+      open.appendChild(go);
+      box.appendChild(open);
+      row.addEventListener('click', () => { open.hidden = !open.hidden; });
+    });
+  }
+  function worldActorCopyText(c, ask) {
+    const rows = worldActorRows(c);
+    const borrowed = worldFindIn(WORLD_STORES.term, c.name);
+    return '【主体】' + c.name + (c.aka.length ? '（' + c.aka.join(' / ') + '）' : '') + '\n'
+      + (borrowed && borrowed.line ? borrowed.line + '\n' : '')
+      + (c.stance ? '【ふだん欲しがるもの（私が書いたもの）】' + c.stance + '\n' : '')
+      + '\n【この期間の動き（新しい順）】\n'
+      + (rows.length ? rows.map(({ event: e, rec, amount }) =>
+          '- ' + e.eventDate + '　' + (rec ? rec.did : e.fact) + (amount ? '　' + amount : '')
+          + (rec && rec.said ? '\n    述べた理由「' + rec.said + '」' : '')
+          + (rec && rec.read ? '\n    推定（生成が付けたもの）「' + rec.read + '」' : '')).join('\n')
+        : '（読み込んでいる月にはありません）') + '\n'
+      + (ask ? worldAskTail(ask) : '');
+  }
   function worldConceptCopyText(c, ask) {
     const isTerm = worldStoreOf(c).key === 'term';
+    if (worldStoreOf(c).key === 'actor') return worldActorCopyText(c, ask);
     const events = worldLiveEvents().filter((e) => c.eventIds.includes(e.id)).slice(-5).reverse();
     const related = isTerm ? '' :
       '【つながる概念】' + (worldVisibleLinks(c).map((l) => { const o = worldConceptById(l.id); return o ? o.name : null; }).filter(Boolean).join(' ・ ') || '（なし）') + '\n\n';
@@ -16375,13 +16887,14 @@
   // あって、体系ではない」という位置づけが画面に出るほうを採った。
   function renderWorldConceptsTab(body) {
     const isTerm = worldState.entryKind === 'term';
+    const isActor = worldState.entryKind === 'actor';
 
     const kindRow = document.createElement('div');
     kindRow.className = 'tagFilterRow';
-    [['concept', '概念'], ['term', '用語']].forEach(([k, label]) => {
+    [['concept', '概念'], ['term', '用語'], ['actor', 'アクター']].forEach(([k, label]) => {
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'tagFilterBtn' + (worldState.entryKind === k ? ' selected' : '');
-      b.textContent = label + ' ' + (k === 'term' ? worldTerms().length : worldConcepts().length);
+      b.textContent = label + ' ' + (k === 'term' ? worldTerms().length : k === 'actor' ? worldActors().length : worldConcepts().length);
       b.addEventListener('click', () => { worldState.entryKind = k; renderWorldMain(); });
       kindRow.appendChild(b);
     });
@@ -16389,7 +16902,7 @@
 
     const sortRow = document.createElement('div');
     sortRow.className = 'tagFilterRow';
-    (isTerm ? WORLD_SORTS : WORLD_CONCEPT_SORTS).forEach((s) => {
+    ((isTerm || isActor) ? WORLD_SORTS : WORLD_CONCEPT_SORTS).forEach((s) => {
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'tagFilterBtn' + (worldState.entrySort === s ? ' selected' : '');
       b.textContent = WORLD_SORT_LABEL[s];
@@ -16402,33 +16915,33 @@
       const row = document.createElement('div');
       row.className = 'worldConceptRow' + (child ? ' isChild' : '');
       const n = document.createElement('span');
-      n.textContent = c.name + (isTerm && c.kind ? '（' + WORLD_TERM_KIND_LABEL[c.kind] + '）' : '');
+      n.textContent = c.name + (isTerm && c.kind ? '（' + WORLD_TERM_KIND_LABEL[c.kind] + '）' : '') + (isActor && c.kind ? '（' + WORLD_ACTOR_KIND_LABEL[c.kind] + '）' : '');
       const cnt = document.createElement('span'); cnt.className = 'wcCount'; cnt.textContent = worldConceptCount(c) + '件';
       row.appendChild(n); row.appendChild(cnt);
       row.addEventListener('click', () => openWorldEntry(c.id));
       return row;
     };
 
-    body.appendChild(worldSearchBoxEl(isTerm ? 'term' : 'concept',
-      (isTerm ? '用語' : '概念') + 'を探す（名前・別名・注）', renderWorldMain));
-    const q = worldState.search[isTerm ? 'term' : 'concept'];
+    const kindLabel = isTerm ? '用語' : isActor ? 'アクター' : '概念';
+    body.appendChild(worldSearchBoxEl(worldState.entryKind, kindLabel + 'を探す（名前・別名' + (isActor ? '' : '・注') + '）', renderWorldMain));
+    const q = worldState.search[worldState.entryKind];
 
     // つながりが1本も無いのに札が溜まっているときだけ、作り直しを促す
-    if (!isTerm && !q && worldLiveEvents().length >= WORLD_COOC_HINT_EVENTS && worldCoocLinkCount() === 0) {
+    if (!isTerm && !isActor && !q && worldLiveEvents().length >= WORLD_COOC_HINT_EVENTS && worldCoocLinkCount() === 0) {
       const hint = document.createElement('p');
       hint.className = 'fieldNote warn';
       hint.textContent = 'つながりがまだ作られていません。設定 → 世界 →「概念のつながりを作り直す」で、これまでの札から繋ぎ直せます。';
       body.appendChild(hint);
     }
 
-    const all = (isTerm ? worldTerms() : worldConcepts()).filter((c) => worldMatches(q, [c.name, (c.aka || []).join(' '), c.line]));
+    const all = (isTerm ? worldTerms() : isActor ? worldActors() : worldConcepts()).filter((c) => worldMatches(q, [c.name, (c.aka || []).join(' '), c.line, c.stance]));
     // 用語は、90日どの札にも出ていないものを下段に沈める。消さない。
     const live = isTerm ? all.filter((t) => !worldTermSunk(t)) : all;
     const sunk = isTerm ? all.filter(worldTermSunk) : [];
 
     if (!all.length) {
       const p = document.createElement('p'); p.className = 'emptyMsg';
-      p.textContent = q ? '見つかりませんでした。' : (isTerm ? 'まだ用語がありません。' : 'まだ概念がありません。');
+      p.textContent = q ? '見つかりませんでした。' : ('まだ' + kindLabel + 'がありません。');
       body.appendChild(p); return;
     }
 
@@ -16586,16 +17099,31 @@
   function renderWorldConcept() {
     const c = worldEntryById(worldState.conceptId);
     if (!c) { worldState.view = 'main'; renderWorld(); return; }
-    const isTerm = worldStoreOf(c).key === 'term';
-    document.getElementById('worldConceptName').textContent = c.name + (isTerm && c.kind ? '（' + WORLD_TERM_KIND_LABEL[c.kind] + '）' : '');
+    const storeKey = worldStoreOf(c).key;
+    const isTerm = storeKey === 'term', isActor = storeKey === 'actor';
+    document.getElementById('worldConceptName').textContent = c.name
+      + (isTerm && c.kind ? '（' + WORLD_TERM_KIND_LABEL[c.kind] + '）' : '')
+      + (isActor && c.kind ? '（' + WORLD_ACTOR_KIND_LABEL[c.kind] + '）' : '');
     const aka = document.getElementById('worldConceptAka');
     aka.hidden = !c.aka.length;
     aka.textContent = c.aka.length ? '別名：' + c.aka.join(' / ') : '';
-    document.getElementById('worldConceptLine').textContent = c.line || (isTerm ? '（注がまだありません）' : '（説明がまだありません）');
+    // アクターは注を持たない。同名の用語があれば、その注を借りる（複製しない）
+    const borrowed = isActor ? worldFindIn(WORLD_STORES.term, c.name) : null;
+    document.getElementById('worldConceptLine').textContent = isActor
+      ? (borrowed && borrowed.line ? '注：' + borrowed.line : '')
+      : (c.line || (isTerm ? '（注がまだありません）' : '（説明がまだありません）'));
+    // ふだん欲しがるもの（手書き・任意）
+    const stanceField = document.getElementById('worldActorStanceField');
+    stanceField.hidden = !isActor;
+    if (isActor) {
+      const inp = document.getElementById('worldActorStanceInput');
+      inp.value = c.stance || '';
+      inp.onchange = () => { const v = worldStr(inp.value, WORLD_STANCE_MAX); if (v !== c.stance) { c.stance = v; c.updatedAt = nowIso(); worldSaveActors(); } };
+    }
 
     // 用語は網に参加しないので「つながる概念」を持たない
     const relField = document.getElementById('worldConceptRelatedField');
-    relField.hidden = isTerm;
+    relField.hidden = isTerm || isActor;
     const rel = document.getElementById('worldConceptRelated');
     rel.innerHTML = '';
     const links = isTerm ? [] : worldVisibleLinks(c);
@@ -16626,15 +17154,18 @@
       rel.appendChild(row);
     });
 
-    document.getElementById('worldConceptEventsLabel').textContent = 'この' + (isTerm ? '用語' : '概念') + 'が出た出来事';
+    document.getElementById('worldConceptEventsLabel').textContent = isActor ? 'この主体が動かした札（時系列）' : 'この' + (isTerm ? '用語' : '概念') + 'が出た出来事';
     const evBox = document.getElementById('worldConceptEvents');
-    const events = worldLiveEvents().filter((e) => c.eventIds.includes(e.id)).sort((a, b) => (a.eventDate > b.eventDate ? -1 : 1));
-    renderWorldList(evBox, events, c.eventIds.length ? '出た月が端末に読み込まれていません。' : 'まだありません。');
+    if (isActor) renderWorldActorTimeline(evBox, c);
+    else {
+      const events = worldLiveEvents().filter((e) => c.eventIds.includes(e.id)).sort((a, b) => (a.eventDate > b.eventDate ? -1 : 1));
+      renderWorldList(evBox, events, c.eventIds.length ? '出た月が端末に読み込まれていません。' : 'まだありません。');
+    }
 
     // 概念の詳細は全画面で余白があるので、階層を作らず直接並べる
     const askRow = document.getElementById('worldConceptAskRow');
     askRow.innerHTML = '';
-    WORLD_CONCEPT_ASK_PROMPTS.forEach((ask) => {
+    (isActor ? [WORLD_ACTOR_ASK_PROMPT] : WORLD_CONCEPT_ASK_PROMPTS).forEach((ask) => {
       if (isTerm && ask.key === 'deepen') return;   // 用語は厚くしない（注のままでよい）
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'tagFilterBtn'; b.textContent = ask.label;
@@ -16647,7 +17178,7 @@
 
     // 上位概念（概念だけ。用語は網に参加しない）
     const pField = document.getElementById('worldConceptParentField');
-    pField.hidden = isTerm;
+    pField.hidden = isTerm || isActor;
     if (!isTerm) {
       const pRow = document.getElementById('worldConceptParentRow');
       pRow.innerHTML = '';
@@ -16682,6 +17213,7 @@
 
   function renderWorldImport() {
     document.getElementById('worldImportStatus').textContent = worldState.lastResult;
+    document.getElementById('worldRetroCount').textContent = '対象 ' + worldRetroTargets().length + '件（端末にある札のうち、まだ主語が無いもの）';
     document.getElementById('btnWorldImportShow').hidden = !worldState.lastBatch;
     const field = document.getElementById('worldMergeField');
     const box = document.getElementById('worldMergeList');
@@ -16833,6 +17365,7 @@
     worldEvents.filter((e) => e.hidden).forEach((e) => rows.push({ kind: '出来事', label: e.fact, back: () => worldHideEvent(e, false) }));
     worldAllConcepts().filter((c) => c.hidden).forEach((c) => rows.push({ kind: '概念', label: c.name, back: () => worldHideEntry(c, false) }));
     worldAllTerms().filter((t) => t.hidden).forEach((t) => rows.push({ kind: '用語', label: t.name, back: () => worldHideEntry(t, false) }));
+    worldAllActors().filter((a) => a.hidden).forEach((a) => rows.push({ kind: 'アクター', label: a.name, back: () => worldHideEntry(a, false) }));
     document.getElementById('worldHiddenCount').textContent = rows.length + '件';
     document.getElementById('worldHiddenEmpty').hidden = !!rows.length;
     rows.forEach((r) => {
@@ -16954,6 +17487,8 @@
     if (res.createdConcepts.length) msg += '　新しい概念 ' + res.createdConcepts.length + '件。';
     if (res.createdTerms.length) msg += '　新しい用語 ' + res.createdTerms.length + '件。';
     if (res.added) msg += '　分かれ目つき ' + res.forks + '件、地層に乗った ' + res.onStrata + '件。';
+    if (res.added) msg += '　動かした側つき ' + res.withActors + '件、推定を書いた札 ' + res.withRead + '件／全 ' + res.added + '件、お金の動きつき ' + res.withFlow + '件。';
+    if (res.createdActors && res.createdActors.length) msg += '　新しいアクター ' + res.createdActors.length + '件。';
     if (res.droppedStrata) msg += '　※ 一覧に無い地層 ' + res.droppedStrata + '件を落としました。';
     if (res.unknownConcepts) msg += '　※ 知らない概念名 ' + res.unknownConcepts + '件は無視しました（premise として生まれれば、作り直しで拾われます）。';
     if (res.old) msg += '　※ 90日より古い出来事が ' + res.old + '件あります。';
@@ -16964,6 +17499,25 @@
     worldState.lastResult = msg;
     worldState.lastBatch = res.added ? { id: res.batchId, partnerIds: res.partnerIds, linked: res.linked } : null;
     status.textContent = msg;
+    renderWorldImport();
+  });
+  document.getElementById('btnWorldRetroPrompt').addEventListener('click', () => {
+    copyToClipboard(worldRetroPromptText()).then((ok) => {
+      document.getElementById('worldRetroStatus').textContent = ok ? 'コピーしました。Claude のチャットに貼ってください。' : 'コピーできませんでした。';
+    });
+  });
+  document.getElementById('btnWorldRetroImport').addEventListener('click', () => {
+    const box = document.getElementById('worldRetroPaste');
+    const st = document.getElementById('worldRetroStatus');
+    const res = worldImportRetroJson(box.value);
+    if (res.error) { st.textContent = res.error; return; }
+    let msg = res.filled + '件に動かした側を付けました。推定を書いた札 ' + res.withRead + '件／' + res.filled + '件、お金の動きつき ' + res.withFlow + '件。';
+    if (res.createdActors.length) msg += '　新しいアクター ' + res.createdActors.length + '件。';
+    if (res.skipped) msg += '　既に付いていた ' + res.skipped + '件はそのまま。';
+    if (res.unknown) msg += '　端末に無い札 ' + res.unknown + '件は無視。';
+    if (res.filled || res.withFlow) box.value = '';
+    st.textContent = msg;
+    worldState.candidates = res.candidates;
     renderWorldImport();
   });
   // A-1: 取り込んだ直後に、入れたものを確認できないのは片手落ち

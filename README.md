@@ -139,7 +139,7 @@ iPhone: 設定 → Safari → 詳細 → Web サイトデータ → yutatasaki.g
 | 筋トレ | `training` | `kotoba-data` の `training.json` | |
 | 瞑想 | `meditation:YYYY`（年ごと。全年を端末に持つ）、未同期の年 `meditationDirty`、最後に見た索引 `meditationStamps` | `kotoba-data` の `meditation/YYYY.json` と `meditation/index.json` | v8.0。最初から年ファイル |
 | 世界（出来事） | `world:YYYY-MM`（eventDate の月ごと。**全月は持たない**）、索引 `worldIndex`、未同期の月 `worldDirty`、最後に見た索引 `worldStamps` | `kotoba-data` の `world/YYYY-MM.json` と `world/index.json` | v10。端末に読むのは「今月・先月」＋「索引が未読ありと言う月」 |
-| 世界（概念・用語・地層・ソース） | `worldConcepts` / `worldTerms` / `worldStrata` / `worldSources`（どれも全件） | `kotoba-data` の `world/concepts.json`・`world/terms.json`・`world/strata.json`・`world/sources.json` | 署名が変わったときだけ書く。用語（v10.5）は概念と**別ファイル**（混ぜると概念一覧が固有名詞で埋まる）。地層（v11）は閉じた13件で、生成には作らせない |
+| 世界（概念・用語・地層・アクター・ソース） | `worldConcepts` / `worldTerms` / `worldStrata` / `worldActors` / `worldSources`（どれも全件） | `kotoba-data` の `world/concepts.json`・`world/terms.json`・`world/strata.json`・`world/actors.json`・`world/sources.json` | 署名が変わったときだけ書く。用語（v10.5）は概念と**別ファイル**（混ぜると概念一覧が固有名詞で埋まる）。地層（v11）は閉じた13件で、生成には作らせない。アクター（v12）は種21件を撒いた開いたリスト |
 | 散歩 | `walk`（予備 `walkBackup`） | `walk10000-data` の `data.json` | walk10000 と同じ形 |
 | 設定（トークン・APIキー・モデル名・各種フラグ） | localStorage `kotoba_*` | 置かない | 端末ごと |
 
@@ -226,6 +226,8 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
   prediction: { pick: ''|'up'|'down'|'flat'（v10.5。fork への3択）, text: 自由記述（任意）,
                 days: 30|90|180, writtenDate, dueDate, setAt, history: [{text, at, pick}],
                 result: ''|'hit'|'miss'|'hold', judgedAt, judgeNote },
+  actors: [{name, did, said, read}]（v12。動かした側。did=出典に書かれた行動／said=出典が自ら述べた理由（無ければ空）／read=読んだ思惑（推定。said と同じなら空）。1札2つまで。名前は取り込み時に正式名へ寄せる）,
+  flow: { from, to, what, amount（出典の文字列のまま）, value, unit } | null（v12。換算しない）,
   hit?: 1, hitAt?（v10.5 ★。出来事そのものに付く。言葉側の picks とは別で、重みには使わない）,
   hidden?: 1, hiddenAt?（v11 非表示。本文は月ファイルに残る。設定から戻せる）,
   slim?: 1（段階1.6 の痩せさせ。why と detail を落とした印）,
@@ -265,6 +267,21 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
              active, order, createdAt, updatedAt }] }
 ```
 数十年単位でしか動かない量を13件だけ持つ。**生成には作らせない**（増えると意味がなくなる）ので、プロンプトには id 付きの一覧を差し込み、`strata` に id を返させる。閉じたリストなので表記ゆれが起きない。取り込み時に**一覧に無い id は落とす**。`levels` は上書きせず全部残す（地層の値そのものが「溜まるもの」なので、上書きすると、この機能が防ごうとしている当のものを自分でやることになる）。初期リストの `levels` は空で、数字は `where` の確認先を開いて手で入れる。
+
+**アクター（`world/actors.json`。v12）**
+```
+{ version:1, updatedAt,
+  actors: [{ id:'ac_mof_jp'（種は固定 id。新顔は ac_YYYYMMDD_連番）, name, aka: [別名],
+             kind: 'state'|'cb'|'intl'|'industry'|'person'|'',
+             stance（ふだん欲しがるもの。手書き・任意。種を作るとき同名ソースの stance を初期値に）,
+             eventIds, createdAt, updatedAt, lastUsedAt, hidden }],
+  dismissedPairs: [] }
+```
+このアプリの本当の目的は「すべての物事は人間の思惑で動いている。その思惑はお金の動きや行動に現れる」を見えるようにすること。概念の網は「何の話か」で繋ぐが、見たいのは「**誰が動かしているか**」で繋ぐ軸。用語は「読むための注」、アクターは「動かした主語」——IMF は両方でありうるので、重ねたまま役割で分ける（注は用語側にあり、アクターの詳細はそれを**借りる**。複製しない）。種は21件（「市場参加者」は入れない。市場は思惑を持つ主体ではなく、思惑が現れる場所）。原則は組織を主体にし、個人は組織と立場が違うときだけ `kind:'person'`。
+**思惑は必ず捏造される**ので、札ごとの記録は3層（行動／述べた理由／読んだ思惑）に分け、「**述べた理由と同じなら読んだ思惑は空**」を規則にも取り込みにも入れてある（`normalizeWorldActorRec`：`did` が空の主体は落とす＝行動が出典に書かれていない主体をアクターにしない、`read` を正規化して `said` と同じなら空に）。**統計・論文・報告書の公表そのものは行動としない**（公表機関を主語にすると時系列が「内閣府：7月公表→8月公表」で埋まる）。推定は琥珀色（`--guess`）のバッジ＋左の破線で、事実の行と見間違えない形にしてある。空が多いのは正常で、取り込み結果に「推定を書いた札 N件／全 M件」を出す——高すぎたら生成が推定を作りすぎている。
+`flow` は**換算しない**（円をドルに直した瞬間に生成が為替レートを選ぶ）。`amount` は出典の文字列が正、`value/unit` は「15兆円」「1.4億ドル」のような素直な形だけ端末で解析。合計もしない。
+表示：札の展開の why の直下に「動かした側」（name+did の1行が既定、押すと述べた／推定）。段数を増やさないよう用語と地層を1行にまとめた。出典の立場（v11 C）は、その出典が札のアクターに含まれるときは出さない。アクターの詳細は**時系列**（`eventIds` から月を割り出して必要な月だけ読む）で、`flow` の金額が右端に縦に並ぶ——「7月 介入 5兆円 → 9月 介入 15兆円」がこの層で一番見たい絵。同じ単位だけが並ぶ。
+**遡及**：概念のときと逆に作った（主語の軸は履歴が無いと開く意味がない）。取り込み画面の「アクターを付け直す」でプロンプト（`worldRetroPromptText`。出典を開き直さないぶん縛りが厳しい：did は fact・detail の行動だけ、said は「述べた」と分かる形があるときだけ、read は必ず推定）をコピーし、返った JSON を `ev.actors` が空の札に**だけ足す**。置き換えない。
 
 **ソース（`world/sources.json`）**: `{ version:1, updatedAt, sources: [{id, name, url, field:'finance'|'geo'|'both', role:'primary'|'analysis', stance（v11: この発信者が欲しいもの）, note, updatedAt}] }`
 `role` の `primary`（中銀・政府・国際機関・統計）は出来事・日付・数字の出所。`analysis`（シンクタンク）は why を書くための補助で、**それだけを根拠に出来事を立てさせない**。プロンプトでは2つの一覧を分けて差し込み、使い分けを明記してある。一度も保存されていないときだけ初期リスト22件が入る。
