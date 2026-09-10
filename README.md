@@ -139,7 +139,7 @@ iPhone: 設定 → Safari → 詳細 → Web サイトデータ → yutatasaki.g
 | 筋トレ | `training` | `kotoba-data` の `training.json` | |
 | 瞑想 | `meditation:YYYY`（年ごと。全年を端末に持つ）、未同期の年 `meditationDirty`、最後に見た索引 `meditationStamps` | `kotoba-data` の `meditation/YYYY.json` と `meditation/index.json` | v8.0。最初から年ファイル |
 | 世界（出来事） | `world:YYYY-MM`（eventDate の月ごと。**全月は持たない**）、索引 `worldIndex`、未同期の月 `worldDirty`、最後に見た索引 `worldStamps` | `kotoba-data` の `world/YYYY-MM.json` と `world/index.json` | v10。端末に読むのは「今月・先月」＋「索引が未読ありと言う月」 |
-| 世界（概念・用語・ソース） | `worldConcepts` / `worldTerms` / `worldSources`（どれも全件） | `kotoba-data` の `world/concepts.json`・`world/terms.json`・`world/sources.json` | 署名が変わったときだけ書く。用語（v10.5）は概念と**別ファイル**（混ぜると概念一覧が固有名詞で埋まる） |
+| 世界（概念・用語・地層・ソース） | `worldConcepts` / `worldTerms` / `worldStrata` / `worldSources`（どれも全件） | `kotoba-data` の `world/concepts.json`・`world/terms.json`・`world/strata.json`・`world/sources.json` | 署名が変わったときだけ書く。用語（v10.5）は概念と**別ファイル**（混ぜると概念一覧が固有名詞で埋まる）。地層（v11）は閉じた13件で、生成には作らせない |
 | 散歩 | `walk`（予備 `walkBackup`） | `walk10000-data` の `data.json` | walk10000 と同じ形 |
 | 設定（トークン・APIキー・モデル名・各種フラグ） | localStorage `kotoba_*` | 置かない | 端末ごと |
 
@@ -218,6 +218,8 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
              name/aka（new のとき。aka は別名・訳語・英語名）, a/b（relation のとき。既知の概念2つ）,
              line: 概念（または関係）の説明1文 },
   terms: [用語名]（v10.5。名前だけ。注はストアから引く。取り込み時に正式名へ寄せる）,
+  strata: [地層id]（v11。0〜2件。一覧に無い id は取り込みで落とす）,
+  reason: なぜこの札を選んだか（v11。why =なぜ動いたか、とは別。詳しくの中に出る）,
   fork: { text: 3ヶ月で決着する分かれ目, type: 'level'|'event' } | null（v10.5。思いつかなければ null）,
   detail: 数字・背景, source: 媒体と発表日, url: 出典（空の出来事は取り込まない）,
   concepts: [触れている概念名], related: [premise の概念とつながる概念名],
@@ -225,6 +227,7 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
                 days: 30|90|180, writtenDate, dueDate, setAt, history: [{text, at, pick}],
                 result: ''|'hit'|'miss'|'hold', judgedAt, judgeNote },
   hit?: 1, hitAt?（v10.5 ★。出来事そのものに付く。言葉側の picks とは別で、重みには使わない）,
+  hidden?: 1, hiddenAt?（v11 非表示。本文は月ファイルに残る。設定から戻せる）,
   slim?: 1（段階1.6 の痩せさせ。why と detail を落とした印）,
   batchId, order（その取り込みの中での並び）, createdAt（取り込んだ時刻）, updatedAt }
 ```
@@ -251,8 +254,26 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
 ```
 **概念**は積み上がって網になるもの（外貨準備、コンディショナリティ、シーレーン）。**用語**は読むための注（IMF、EIA、エルサルバドル、EFF、人名）。生成プロンプトの premise にも「組織名・国名・略語・人名は概念ではない」と明記してある（書かないと IMF が概念として立つ）。同じ名前が両方に来たら**概念が本体**：用語として来た名前が概念にあれば用語を作らず、用語だった名前が premise として来たら用語を消して概念に吸わせる。
 
-**ソース（`world/sources.json`）**: `{ version:1, updatedAt, sources: [{id, name, url, field:'finance'|'geo'|'both', role:'primary'|'analysis', note, updatedAt}] }`
+**地層（`world/strata.json`。v11）**
+```
+{ version:1, updatedAt,
+  strata: [{ id:'st_jp_rate_long'（手で付ける英字 id。生成はこれを返す）,
+             name, short（出来事の行に出る2〜4字）, line（長い目で見た一行）,
+             unit, dir:'up'|'down'|'flat', dirSince,
+             where: { source, url }（四半期に一度これを開いて値を入れる）,
+             levels: [{value, at, note}]（新しい順・全部残す）,
+             active, order, createdAt, updatedAt }] }
+```
+数十年単位でしか動かない量を13件だけ持つ。**生成には作らせない**（増えると意味がなくなる）ので、プロンプトには id 付きの一覧を差し込み、`strata` に id を返させる。閉じたリストなので表記ゆれが起きない。取り込み時に**一覧に無い id は落とす**。`levels` は上書きせず全部残す（地層の値そのものが「溜まるもの」なので、上書きすると、この機能が防ごうとしている当のものを自分でやることになる）。初期リストの `levels` は空で、数字は `where` の確認先を開いて手で入れる。
+
+**ソース（`world/sources.json`）**: `{ version:1, updatedAt, sources: [{id, name, url, field:'finance'|'geo'|'both', role:'primary'|'analysis', stance（v11: この発信者が欲しいもの）, note, updatedAt}] }`
 `role` の `primary`（中銀・政府・国際機関・統計）は出来事・日付・数字の出所。`analysis`（シンクタンク）は why を書くための補助で、**それだけを根拠に出来事を立てさせない**。プロンプトでは2つの一覧を分けて差し込み、使い分けを明記してある。一度も保存されていないときだけ初期リスト22件が入る。
+
+**差分だけを見ない仕掛け（v11）**：出来事は「変化したもの」しか映さないので、動かないもの・溜まるものが見えなくなる。**地層**を13件だけ持ち、(1) 出来事の行には `short` のタグを1つ（行は増やさない）、(2) 今日の3件の上と朝の畳んだ行の下に**日替わりで巡回する1行**を出す（`WORLD_STRATUM_ON_COLLAPSED` で朝の分は消せる）。巡回にしてあるのは、変わらないものを毎日同じ形で見せると2週間で見えなくなるため——「今日はどれか」という小さな差を残す。値には「前回更新から N 日」を必ず出す（手で四半期更新するので、古いまま放置されているのが見えないと数字が嘘になる）。
+**発信者の立場**：ソースの `stance`（この発信者が欲しいもの）。出来事の url のドメインから引いて「詳しく」に出す。コピーは**「反対の見方は」にだけ**渡す（反論は前提を突くので効く。他に渡すとノイズ）。
+**非表示（v11）**：出来事・概念・用語に `hidden`。本文は残る。出来事は読み出し口を `worldLiveEvents()` に一本化してある——生の `worldEvents` を使ってよいのは**保存・重複判定・マージ**の3か所だけ。重複判定が非表示のものを見ないと、消した札が次の取り込みで戻ってきて非表示の意味が消える。
+**用語が沈む（v11）**：`lastUsedAt` が90日より古い用語は一覧の下段に畳まれ、生成の既知一覧からも外れる。**`seenAt` は使わない**——注を開くのは「その語を知らなかったとき」なので、`seenAt` で沈めると IMF のように身についた語から先に沈む（意図と逆）。
+**上位概念（v11）**：`parent` を1つ、**2段まで**。手で付ける（生成には選ばせない）。統合のとき、消える側を親にしていた子は残る側へ付け替える。循環は祖先を辿って弾く。並び替えの4つ目「親でまとめる」でだけ効き、他はフラットのまま。
 
 **世界の作り**：生成はアプリの中でやらない（撮る v9.0 と同じ）。分野ごとに2本のプロンプト（金融・経済／地政学・政治）をコピーしてチャットに貼り、返ってきた JSON を貼り戻す。**取り込みは追記のみ**で、置き換えを一切しないので、読んだ出来事と書いた予測が取り込みで消える経路が無い。重複は `eventDate ±3日` の窓で `fact` のバイグラム類似（0.70）と URL 一致を見る（窓が月境を越えるので隣接月も読む）。`url` が空・日付が不正・未来の日付は落として、理由ごとに件数を出す。
 一覧は **fact の1行だけ**で、`why` と `premise` はタップの向こう、数字・出典・URL はさらにその奥。1日に出るのは3件（`WORLD_PER_DAY`）で、**朝のステップか「今日の3件をひらく」を押すまで1件も消費されない**。読まない日があってよく、14日を過ぎた未読は「古い」印が付いてまとめて捨てられる（自動では消さない）。

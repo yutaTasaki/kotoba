@@ -1066,6 +1066,51 @@
   .worldTermNote .wtKind { font-size: 10px; color: var(--text-faint); margin-left: 6px; }
   .worldTermNote .wtEmpty { color: var(--text-faint); }
   .worldAskRow { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+
+  /* --- v11 地層 ---------------------------------------------------------- */
+  /* 動かないものを毎日1行だけ見せる。太くしない - ここが重くなると朝の流れ
+     全体が重くなる。 */
+  .worldStratumLine {
+    display: block; width: 100%; text-align: left;
+    background: none; border: 0; padding: 4px 0 8px; margin: 0;
+    font: inherit; font-size: 11px; line-height: 1.6; color: var(--text-faint);
+    cursor: pointer;
+  }
+  .worldStratumLine .wsName { color: var(--text-dim); }
+  .worldStratumLine .wsVal { color: var(--text-faint); }
+  .worldStratumLine .wsStale { color: var(--danger); }
+  .homeStratumLine { padding: 0 0 10px; margin-top: -6px; }
+  /* 出来事の行のタグ。概念タグより弱くして、押し合わないようにする */
+  .worldRow .wTag.isStratum { color: var(--text-faint); border-color: transparent; background: var(--bg-card); }
+  .strataRow { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; align-items: center; }
+  .strataRow .rowLabel { font-size: 11px; color: var(--text-faint); }
+  .stratumPill {
+    font-size: 12px; padding: 3px 9px; border-radius: 999px;
+    border: 1px solid var(--border); background: none; color: var(--text-dim); cursor: pointer;
+  }
+  .stratumListRow {
+    display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; align-items: baseline;
+    padding: 9px 0; border-top: 1px solid var(--border);
+    cursor: pointer; user-select: none; -webkit-user-select: none;
+  }
+  .stratumListRow:first-child { border-top: none; }
+  .stratumListRow .slName { font-size: 14px; }
+  .stratumListRow .slLine { grid-column: 1 / -1; font-size: 11px; color: var(--text-faint); line-height: 1.5; }
+  .stratumListRow .slVal { font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+  .stratumListRow .slVal.empty { color: var(--danger); }
+  .levelRow {
+    display: flex; justify-content: space-between; gap: 8px;
+    padding: 6px 0; border-top: 1px solid var(--border); font-size: 13px;
+  }
+  .levelRow .lvAt { color: var(--text-faint); font-size: 11px; }
+  .worldMetaLine { font-size: 12px; color: var(--text-faint); line-height: 1.7; margin-top: 6px; }
+  .worldMetaLine .wmKey { color: var(--text-dim); }
+  .sunkHead {
+    font-size: 12px; color: var(--text-faint); margin-top: 14px; padding: 8px 0 4px;
+    border-top: 1px solid var(--border); cursor: pointer;
+  }
+  .parentGroupHead { font-size: 12px; color: var(--text-dim); margin-top: 12px; padding-bottom: 2px; }
+  .worldConceptRow.isChild { padding-left: 14px; }
   .worldForkText { font-size: 13px; line-height: 1.6; color: var(--text-dim); margin-bottom: 6px; }
   .hitBtn.worldHit { font-size: 14px; }
 </style>
@@ -1136,6 +1181,7 @@
       <!-- v10: 朝の流れの一番最後。歩く一連の作業の途中に別の話を挟まない。
            開かなければ今日の3件は確定しない（読まない日があってよい）。 -->
       <button type="button" id="worldCollapsedRow" class="homeStepCollapsed" hidden></button>
+      <button type="button" id="homeStratumLine" class="worldStratumLine homeStratumLine" hidden></button>
       <div id="worldStage" class="morningStage" hidden>
         <div id="homeWorldList"></div>
         <p class="emptyMsg" id="homeWorldEmpty" hidden>新しい分がありません。</p>
@@ -1510,6 +1556,12 @@
         <input type="text" id="worldSourceUrlInput" placeholder="https://www.boj.or.jp/" autocomplete="off">
         <button id="btnWorldSourceAdd" class="secondaryBtn">足す</button>
         <p class="fieldNote" id="worldSourceStatus"></p>
+      </div>
+      <div class="field">
+        <span class="fieldLabel">非表示のもの（<span id="worldHiddenCount"></span>）</span>
+        <p class="fieldNote">本文は残っています。押すと戻ります。非表示のあいだは一覧にも生成の既知一覧にも出ません。</p>
+        <div id="worldHiddenList"></div>
+        <p class="emptyMsg" id="worldHiddenEmpty" hidden>非表示にしたものはありません。</p>
       </div>
       <div class="field">
         <span class="fieldLabel">予測の索引を作り直す</span>
@@ -1913,6 +1965,7 @@
 
       <div class="field" id="worldTodayField">
         <span class="fieldLabel">今日の3件</span>
+        <button type="button" id="worldStratumToday" class="worldStratumLine" hidden></button>
         <div id="worldTodayList"></div>
         <p class="emptyMsg" id="worldTodayEmpty" hidden>新しい分がありません。右上の「取り込む」から入れます。</p>
         <button type="button" id="btnWorldOpenToday" class="secondaryBtn" hidden>今日の3件をひらく</button>
@@ -1953,6 +2006,51 @@
       </div>
     </div>
 
+    <!-- v11 地層：タブ行は増やさず、「今日の1行」から開く独立した画面にする -->
+    <div class="editorBody" id="worldStratumView" hidden>
+      <div id="worldStratumOne">
+        <h3 id="worldStratumName"></h3>
+        <p id="worldStratumLine" style="line-height:1.8;"></p>
+        <p class="fieldNote" id="worldStratumDir"></p>
+        <div class="field">
+          <span class="fieldLabel">いまの水準</span>
+          <p id="worldStratumNow" style="font-size:15px;"></p>
+          <div class="medRow">
+            <button type="button" id="btnWorldLevelOpen" class="tagFilterBtn">値を入れる</button>
+            <button type="button" id="btnWorldStratumWhere" class="tagFilterBtn">確認先を開く</button>
+          </div>
+          <p class="fieldNote" id="worldStratumWhere"></p>
+          <div id="worldLevelPanel" hidden>
+            <input type="text" id="worldLevelValue" placeholder="値（例 1.85）" autocomplete="off">
+            <input type="date" id="worldLevelAt">
+            <input type="text" id="worldLevelNote" placeholder="ひとこと（任意）" autocomplete="off">
+            <div class="medRow">
+              <button type="button" id="btnWorldLevelSave" class="secondaryBtn">入れる</button>
+              <button type="button" id="btnWorldLevelCancel" class="secondaryBtn">やめる</button>
+            </div>
+            <p class="fieldNote" id="worldLevelStatus"></p>
+          </div>
+        </div>
+        <div class="field">
+          <span class="fieldLabel">これまで</span>
+          <div id="worldStratumLevels"></div>
+          <p class="emptyMsg" id="worldStratumLevelsEmpty" hidden>まだ値が入っていません。</p>
+        </div>
+        <div class="field">
+          <span class="fieldLabel">この地層に乗った出来事</span>
+          <div id="worldStratumEvents"></div>
+        </div>
+        <div class="field">
+          <button type="button" id="btnWorldStratumList" class="secondaryBtn">地層の一覧</button>
+        </div>
+      </div>
+
+      <div id="worldStratumAll" hidden>
+        <p class="fieldNote">数十年単位でしか動かない量です。生成には作らせません。値は四半期に一度、確認先を見て手で入れます。</p>
+        <div id="worldStratumListBody"></div>
+      </div>
+    </div>
+
     <div class="editorBody" id="worldConceptView" hidden>
       <h3 id="worldConceptName"></h3>
       <p class="fieldNote" id="worldConceptAka" hidden></p>
@@ -1966,10 +2064,17 @@
         <span class="fieldLabel" id="worldConceptEventsLabel">この概念が出た出来事</span>
         <div id="worldConceptEvents"></div>
       </div>
+      <div class="field" id="worldConceptParentField">
+        <span class="fieldLabel">上位概念</span>
+        <p class="fieldNote">束ねるためのものです。2段まで（親の親は作れません）。生成には選ばせません。</p>
+        <div class="tagFilterRow" id="worldConceptParentRow"></div>
+        <p class="fieldNote" id="worldConceptParentStatus"></p>
+      </div>
       <div class="field">
         <div class="medRow" id="worldConceptAskRow"></div>
         <div class="medRow">
           <button type="button" id="btnWorldConceptRename" class="tagFilterBtn">名前を直す・まとめる</button>
+          <button type="button" id="btnWorldConceptHide" class="tagFilterBtn">非表示</button>
         </div>
         <p class="fieldNote" id="worldConceptStatus"></p>
         <div id="worldConceptRenamePanel" hidden>
@@ -2672,7 +2777,7 @@
   bootKV.medDocs = {};
   try { (await kvGetAllPrefix('meditation:')).forEach((v, k) => { bootKV.medDocs[k.slice(11)] = v; }); } catch (e) {}
   // v10 世界: 全月は読まない。今月・先月と、索引が「未読が残っている」と言う月だけ。
-  for (const k of ['worldIndex', 'worldDirty', 'worldStamps', 'worldConcepts', 'worldTerms', 'worldSources']) { try { bootKV[k] = await kvGet(k); } catch (e) { bootKV[k] = null; } }
+  for (const k of ['worldIndex', 'worldDirty', 'worldStamps', 'worldConcepts', 'worldTerms', 'worldStrata', 'worldSources']) { try { bootKV[k] = await kvGet(k); } catch (e) { bootKV[k] = null; } }
   bootKV.worldDocs = {};
   {
     let wix = null;
@@ -6252,6 +6357,7 @@
     'walkCollapsedRow', 'walkStage', 'walkStatsStage',
     'afterMoodCollapsedRow', 'afterMoodStage',
     'walkShareStage',
+    'homeStratumLine',
   ];
 
   function renderHome() {
@@ -6350,6 +6456,7 @@
     // 畳んだ1行はいつでも出るが、開くまで今日の3件は確定しない。
     renderHomeWorldStep();
     order.push(...homeStepRowIds('world', homeWorldCollapsedLabel(), 'worldStage', 'worldCollapsedRow'));
+    if (WORLD_STRATUM_ON_COLLAPSED && worldTodayStratum()) order.push('homeStratumLine');
 
     const stepsContainer = document.getElementById('homeStepsContainer');
     order.forEach((id) => {
@@ -10400,9 +10507,9 @@
     document.getElementById('summaryTrainingDays').textContent = `${trainingData.days.filter((d) => inMonth(d.date)).length}日`;
     { const ms = medData.sessions.filter((x) => inMonth(x.date)); document.getElementById('summaryMeditation').textContent = ms.length ? `${new Set(ms.map((x) => x.date)).size}日 ／ ${ms.length}回 ${medSum(ms)}分` : '0日'; }
     {
-      const read = worldEvents.filter((e) => inMonth(e.readDate));
-      const wrote = worldEvents.filter((e) => inMonth(e.prediction.writtenDate));
-      const starred = worldEvents.filter((e) => e.hit && inMonth((e.hitAt || '').slice(0, 10)));
+      const read = worldLiveEvents().filter((e) => inMonth(e.readDate));
+      const wrote = worldLiveEvents().filter((e) => inMonth(e.prediction.writtenDate));
+      const starred = worldLiveEvents().filter((e) => e.hit && inMonth((e.hitAt || '').slice(0, 10)));
       document.getElementById('summaryWorld').textContent = `読んだ ${read.length}件 / 予測 ${wrote.length}件 / ★ ${starred.length}件`;
     }
 
@@ -11816,6 +11923,7 @@
     document.getElementById('compressThresholdInput').value = getCompressThreshold();
     renderSourceKindList();
     renderWorldSources();
+    renderWorldHidden();
     document.getElementById('worldRebuildStatus').textContent = '';
     document.getElementById('morningQuoteHeadingInput').value = getMorningQuoteHeading();
     document.getElementById('statNoteCount').textContent = data.notes.length;
@@ -13794,13 +13902,72 @@
   };
   const WORLD_PICK_MARK = { up: '↑', down: '↓', flat: '→' };
   const WORLD_SORTS = ['count', 'kana', 'new'];
-  const WORLD_SORT_LABEL = { count: '回数順', kana: '五十音順', new: '新しい順' };
+  const WORLD_CONCEPT_SORTS = ['count', 'kana', 'new', 'parent'];   // v11: 親でまとめる
+  const WORLD_SORT_LABEL = { count: '回数順', kana: '五十音順', new: '新しい順', parent: '親でまとめる' };
+
+  // v11 地層（strata）: 数十年単位でしか動かない量。10〜20件だけ持ち、
+  // 生成には作らせない（増えたら意味がなくなる）。閉じたリストなので、
+  // 概念・用語と違って id で引ける＝表記ゆれが起きない。
+  const WORLD_STRATA_PER_EVENT     = 2;     // 1件が乗れる地層の数
+  const WORLD_STRATUM_ON_COLLAPSED = true;  // 朝の畳んだ行の下にも地層を1行出すか
+  const WORLD_TERM_SINK_DAYS       = 90;    // これだけ札に出ない用語は一覧の下に沈む
+  const WORLD_CONCEPT_PARENT_DEPTH = 2;     // 上位概念の深さ（親と子だけ）
+  const WORLD_REASON_MAX           = 60;    // なぜこの札を選んだか
+  const WORLD_STANCE_MAX           = 60;    // 発信者の立場
+  const WORLD_STRATUM_DIRS      = ['up', 'down', 'flat'];
+  const WORLD_STRATUM_DIR_LABEL = { up: '上向き', down: '下向き', flat: '横ばい' };
 
   const WORLD_INDEX_PATH    = 'world/index.json';
   const WORLD_CONCEPTS_PATH = 'world/concepts.json';
   const WORLD_TERMS_PATH    = 'world/terms.json';
+  const WORLD_STRATA_PATH   = 'world/strata.json';
   const WORLD_SOURCES_PATH  = 'world/sources.json';
   const worldMonthPath = (m) => 'world/' + m + '.json';
+
+  // 一度も保存されていないときだけ入れる初期値。levels は空のまま登録する
+  // （推測の数字を入れると、この機能の信頼が最初から壊れる）。
+  // where.url は実測で確認済み。
+  const WORLD_DEFAULT_STRATA = [
+    { id: 'st_jp_rate_long', name: '日本の長期金利', short: '日金利', unit: '%', dir: 'up', dirSince: '2022',
+      line: '1990年から30年下がり続け、2022年から上げ',
+      where: { source: '財務省 国債金利情報', url: 'https://www.mof.go.jp/jgbs/reference/interest_rate/' } },
+    { id: 'st_us_rate_long', name: '米国の長期金利', short: '米金利', unit: '%', dir: 'up', dirSince: '2022',
+      line: '1981年から40年下がり続け、2020年に底、2022年から上げ',
+      where: { source: 'FRB H.15', url: 'https://www.federalreserve.gov/releases/h15/' } },
+    { id: 'st_jp_debt_gdp', name: '日本の政府債務/GDP', short: '日債務', unit: '%', dir: 'up', dirSince: '1990s',
+      line: '1990年代から上がり続け、下がった局面がほぼない',
+      where: { source: '財務省 日本の財政関係資料', url: 'https://www.mof.go.jp/policy/budget/fiscal_condition/basic_data/' } },
+    { id: 'st_us_debt_gdp', name: '米国の政府債務/GDP', short: '米債務', unit: '%', dir: 'up', dirSince: '2008',
+      line: '2008年以降上がり続け、2020年に急増',
+      where: { source: 'FRB Z.1', url: 'https://www.federalreserve.gov/releases/z1/' } },
+    { id: 'st_jp_pop_working', name: '日本の生産年齢人口', short: '日人口', unit: '万人', dir: 'down', dirSince: '1995',
+      line: '1995年をピークに減り続けている',
+      where: { source: '総務省統計局 人口推計', url: 'https://www.stat.go.jp/data/jinsui/' } },
+    { id: 'st_cn_pop', name: '中国の人口', short: '中人口', unit: '億人', dir: 'down', dirSince: '2022',
+      line: '2022年から減少に転じた',
+      where: { source: '国連 World Population Prospects', url: 'https://population.un.org/wpp/' } },
+    { id: 'st_boj_assets', name: '日銀の資産規模', short: '日銀資産', unit: '兆円', dir: 'down', dirSince: '2024',
+      line: '2013年から急拡大、2024年から国債買入れ減額へ',
+      where: { source: '日本銀行 営業毎旬報告', url: 'https://www.boj.or.jp/statistics/boj/other/acmai/' } },
+    { id: 'st_jp_fx_reserve', name: '日本の外貨準備残高', short: '外準', unit: '億ドル', dir: 'down', dirSince: '2026',
+      line: '2011年以降1.2〜1.4兆ドルで横ばい、2026年に介入で減少',
+      where: { source: '財務省 外貨準備等の状況', url: 'https://www.mof.go.jp/policy/international_policy/reference/official_reserve_assets/' } },
+    { id: 'st_yen_reer', name: '円の実質実効為替レート', short: '実質円', unit: '指数', dir: 'down', dirSince: '1995',
+      line: '1995年をピークに下がり続け、2022年以降は1970年代の水準',
+      where: { source: 'BIS 実効為替レート', url: 'https://www.bis.org/statistics/eer.htm' } },
+    { id: 'st_jp_energy_self', name: '日本のエネルギー自給率', short: '自給率', unit: '%', dir: 'flat', dirSince: '2011',
+      line: '1960年代から下がり、2011年以降1割前後',
+      where: { source: '資源エネルギー庁 エネルギー白書', url: 'https://www.enecho.meti.go.jp/about/whitepaper/' } },
+    { id: 'st_world_trade_gdp', name: '世界貿易/GDP', short: '貿易', unit: '%', dir: 'flat', dirSince: '2008',
+      line: '1990年代から2008年まで上昇、以降横ばい',
+      where: { source: 'WTO 統計', url: 'https://www.wto.org/english/res_e/statis_e/statis_e.htm' } },
+    { id: 'st_world_military', name: '世界の軍事費', short: '軍事費', unit: '億ドル', dir: 'up', dirSince: '2022',
+      line: '2010年代から増加、2022年以降加速',
+      where: { source: 'SIPRI 軍事費データベース', url: 'https://www.sipri.org/databases/milex' } },
+    { id: 'st_cb_gold', name: '各国中銀の金保有', short: '中銀金', unit: 'トン', dir: 'up', dirSince: '2022',
+      line: '2010年以降純購入が続き、2022年から増加',
+      where: { source: 'World Gold Council 金準備', url: 'https://www.gold.org/goldhub/data/gold-reserves-by-country' } },
+  ];
 
   // 「Claude に聞く」の定型。面倒の正体は質問文を考えることなので、素材の
   // 組み立ては共通にして、ここには依頼文だけを置く。
@@ -13939,6 +14106,9 @@
       premise: normalizeWorldPremise(e.premise),
       // v10.5: 名前だけ。line はストアから引く（複写すると統合のあと古い注が残る）
       terms: (Array.isArray(e.terms) ? e.terms : []).map((x) => worldStr(typeof x === 'string' ? x : (x && x.name), 80)).filter(Boolean).slice(0, 12),
+      // v11: 乗っている地層の id。一覧に無い id は取り込みで落とす
+      strata: (Array.isArray(e.strata) ? e.strata : []).map((x) => worldStr(x, 40)).filter(Boolean).slice(0, WORLD_STRATA_PER_EVENT),
+      reason: worldStr(e.reason, WORLD_REASON_MAX),   // v11: なぜこの札を選んだか（why とは別）
       fork: normalizeWorldFork(e.fork),
       detail: worldStr(e.detail, 600),
       source: worldStr(e.source, 120),
@@ -13954,6 +14124,8 @@
     // v10.5 ★: 出来事そのものに付く。言葉側の picks とは別で、重みには使わない
     if (e.hit) { out.hit = 1; out.hitAt = typeof e.hitAt === 'string' ? e.hitAt : ''; }
     if (e.slim) out.slim = 1;   // 段階1.6（痩せさせ）。読み込みだけ先に通しておく
+    // v11 非表示：本文は月ファイルに残したまま、読み出しから外す
+    if (e.hidden) { out.hidden = 1; out.hiddenAt = typeof e.hiddenAt === 'string' ? e.hiddenAt : ''; }
     return out;
   }
   // 概念と用語は同じ形。ストアを引数で受け取れるように、正規化も共通にする。
@@ -13976,11 +14148,48 @@
     } else {
       out.field = WORLD_FIELDS.includes(c.field) ? c.field : '';
       out.related = (Array.isArray(c.related) ? c.related : []).map(String).slice(0, 40);
+      // v11 上位概念。手で付ける（生成には選ばせない）。2段までで、循環は作らせない
+      if (typeof c.parent === 'string' && c.parent) out.parent = c.parent;
     }
+    if (c.hidden) { out.hidden = 1; out.hiddenAt = typeof c.hiddenAt === 'string' ? c.hiddenAt : ''; }
     return out;
   }
   function normalizeWorldConcept(c) { return normalizeWorldEntry(c, false); }
   function normalizeWorldTerm(c) { return normalizeWorldEntry(c, true); }
+
+  // v11 地層。levels は新しい順で全部残す（上書きすると、この機能が防ごうと
+  // している当のもの＝ストックが見えない、を自分でやることになる）。
+  function normalizeWorldStratum(s) {
+    if (!s || !s.id || !s.name) return null;
+    const w = (s.where && typeof s.where === 'object') ? s.where : {};
+    const out = {
+      id: String(s.id),
+      name: worldStr(s.name, 60),
+      short: worldStr(s.short, 8) || worldStr(s.name, 8),
+      line: worldStr(s.line, 120),
+      unit: worldStr(s.unit, 12),
+      dir: WORLD_STRATUM_DIRS.includes(s.dir) ? s.dir : 'flat',
+      dirSince: worldStr(s.dirSince, 12),
+      where: { source: worldStr(w.source, 80), url: (typeof w.url === 'string' ? (shootSafeUrl(w.url.trim()) || '') : '') },
+      levels: (Array.isArray(s.levels) ? s.levels : [])
+        .filter((l) => l && typeof l.value === 'string' && l.value.trim() && isDateStr(l.at))
+        .map((l) => ({ value: worldStr(l.value, 40), at: l.at, note: worldStr(l.note, 200) }))
+        .sort((a, b) => (a.at > b.at ? -1 : 1)).slice(0, 400),
+      active: s.active === 0 ? 0 : 1,
+      order: Number.isFinite(s.order) ? s.order : 0,
+      createdAt: s.createdAt || nowIso(),
+      updatedAt: s.updatedAt || s.createdAt || nowIso(),
+    };
+    return out;
+  }
+  function emptyWorldStrataDoc() { return { version: 1, updatedAt: '', strata: [] }; }
+  function normalizeWorldStrataDoc(raw) {
+    const out = emptyWorldStrataDoc();
+    if (!raw || typeof raw !== 'object') return out;
+    out.updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : '';
+    out.strata = (Array.isArray(raw.strata) ? raw.strata : []).map(normalizeWorldStratum).filter(Boolean);
+    return out;
+  }
   function normalizeWorldSource(s) {
     if (!s || !s.id || !s.name) return null;
     return {
@@ -13989,6 +14198,9 @@
       url: (typeof s.url === 'string' ? (shootSafeUrl(s.url.trim()) || '') : ''),
       field: (s.field === 'geo' || s.field === 'both') ? s.field : 'finance',
       role: WORLD_ROLES.includes(s.role) ? s.role : 'primary',
+      // v11: この発信者は何を欲しがっているか。一次ソースだから中立ではない、
+      // を毎回目に入れるための1行。分野では変わらないので role とは別項目。
+      stance: worldStr(s.stance, WORLD_STANCE_MAX),
       note: worldStr(s.note, 200),
       updatedAt: s.updatedAt || nowIso(),
     };
@@ -14002,7 +14214,7 @@
     out.deletedIds = (Array.isArray(raw.deletedIds) ? raw.deletedIds : []).filter((t) => t && t.id).map((t) => ({ id: String(t.id), deletedAt: t.deletedAt || nowIso() }));
     return out;
   }
-  function emptyWorldIndex() { return { version: 1, updatedAt: '', months: {}, due: {}, concepts: { updatedAt: '', count: 0 }, terms: { updatedAt: '', count: 0 }, sources: { updatedAt: '', count: 0 } }; }
+  function emptyWorldIndex() { return { version: 1, updatedAt: '', months: {}, due: {}, concepts: { updatedAt: '', count: 0 }, terms: { updatedAt: '', count: 0 }, strata: { updatedAt: '', count: 0 }, sources: { updatedAt: '', count: 0 } }; }
   function normalizeWorldIndex(raw) {
     const out = emptyWorldIndex();
     if (!raw || typeof raw !== 'object') return out;
@@ -14012,7 +14224,7 @@
       out.months[m] = { updatedAt: typeof v.updatedAt === 'string' ? v.updatedAt : '', count: Number(v.count) || 0, unread: Number(v.unread) || 0 };
     });
     Object.entries(raw.due || {}).forEach(([d, ids]) => { if (isDateStr(d) && Array.isArray(ids)) out.due[d] = ids.map(String).slice(0, 50); });
-    ['concepts', 'terms', 'sources'].forEach((k) => {
+    ['concepts', 'terms', 'strata', 'sources'].forEach((k) => {
       const v = raw[k];
       if (v && typeof v === 'object') out[k] = { updatedAt: typeof v.updatedAt === 'string' ? v.updatedAt : '', count: Number(v.count) || 0 };
     });
@@ -14056,8 +14268,8 @@
   const wd = {
     loaded: new Set(), loading: new Map(), tombs: new Map(),
     index: null, dirty: new Set(), stamps: {},
-    concepts: emptyWorldConceptsDoc(), terms: emptyWorldTermsDoc(), sources: emptyWorldSourcesDoc(),
-    conceptsDirty: false, termsDirty: false, sourcesDirty: false, busy: false,
+    concepts: emptyWorldConceptsDoc(), terms: emptyWorldTermsDoc(), strata: emptyWorldStrataDoc(), sources: emptyWorldSourcesDoc(),
+    conceptsDirty: false, termsDirty: false, strataDirty: false, sourcesDirty: false, busy: false,
   };
   function liveWorldMonths() { const t = todayStr(); const a = monthOfDate(addDays(t, -30)), b = monthOfDate(t); return a === b ? [b] : [a, b]; }
   // 起動時に読む月：今月・先月に加えて「未読が残っている月」。月ファイルは
@@ -14097,6 +14309,10 @@
     wd.terms.updatedAt = nowIso();
     return kvSet('worldTerms', JSON.stringify(wd.terms)).catch(() => {});
   }
+  function persistWorldStrata() {
+    wd.strata.updatedAt = nowIso();
+    return kvSet('worldStrata', JSON.stringify(wd.strata)).catch(() => {});
+  }
   function persistWorldSources() {
     wd.sources.updatedAt = nowIso();
     return kvSet('worldSources', JSON.stringify(wd.sources)).catch(() => {});
@@ -14107,7 +14323,7 @@
     if (!wd.index) wd.index = emptyWorldIndex();
     const events = worldEventsOfMonth(m);
     const prev = wd.index.months[m];
-    const unread = events.filter((e) => !e.readDate).length;
+    const unread = events.filter((e) => !e.readDate && !e.hidden).length;
     if (!prev || prev.count !== events.length || prev.unread !== unread) {
       wd.index.months[m] = { updatedAt: nowIso(), count: events.length, unread };
     }
@@ -14136,7 +14352,7 @@
     worldMonthChanged(monthOfDate(ev.eventDate));
   }
   function worldDeleteEvent(id) {
-    const ev = worldEvents.find((e) => e.id === id);
+    const ev = worldLiveEvents().find((e) => e.id === id);
     if (!ev) return;
     const m = monthOfDate(ev.eventDate);
     worldEvents = worldEvents.filter((e) => e.id !== id);
@@ -14150,6 +14366,7 @@
     try { wd.stamps = JSON.parse(bootKV.worldStamps || '{}') || {}; } catch (e) { wd.stamps = {}; }
     try { wd.concepts = normalizeWorldConceptsDoc(JSON.parse(bootKV.worldConcepts || 'null')); } catch (e) { wd.concepts = emptyWorldConceptsDoc(); }
     try { wd.terms = normalizeWorldTermsDoc(JSON.parse(bootKV.worldTerms || 'null')); } catch (e) { wd.terms = emptyWorldTermsDoc(); }
+    try { wd.strata = normalizeWorldStrataDoc(JSON.parse(bootKV.worldStrata || 'null')); } catch (e) { wd.strata = emptyWorldStrataDoc(); }
     try { wd.sources = normalizeWorldSourcesDoc(JSON.parse(bootKV.worldSources || 'null')); } catch (e) { wd.sources = emptyWorldSourcesDoc(); }
     worldEvents = [];
     Object.entries(bootKV.worldDocs || {}).forEach(([m, raw]) => {
@@ -14158,6 +14375,12 @@
       applyWorldMonthToMemory(m, doc || emptyWorldMonthDoc(m));
     });
     liveWorldMonths().forEach((m) => { if (!wd.loaded.has(m)) applyWorldMonthToMemory(m, emptyWorldMonthDoc(m)); });
+    // 地層の初期値。levels は空のまま（推測の数字を入れると信頼が壊れる）
+    if (!wd.strata.strata.length && !wd.strata.updatedAt) {
+      wd.strata.strata = WORLD_DEFAULT_STRATA.map((x, i) => normalizeWorldStratum({ ...x, levels: [], order: i, active: 1 })).filter(Boolean);
+      wd.strataDirty = true;
+      persistWorldStrata();
+    }
     // 初期値は一度も保存されていないときだけ。編集済みなら入れ直さない。
     if (!wd.sources.sources.length && !wd.sources.updatedAt) {
       wd.sources.sources = WORLD_DEFAULT_SOURCES.map((s, i) => normalizeWorldSource({
@@ -14215,7 +14438,7 @@
     new Set([...Object.keys(a.due), ...Object.keys(b.due)]).forEach((d) => {
       out.due[d] = [...new Set([...(a.due[d] || []), ...(b.due[d] || [])])].slice(0, 50);
     });
-    ['concepts', 'sources'].forEach((k) => { out[k] = (a[k].updatedAt >= b[k].updatedAt) ? a[k] : b[k]; });
+    ['concepts', 'terms', 'strata', 'sources'].forEach((k) => { out[k] = (a[k].updatedAt >= b[k].updatedAt) ? a[k] : b[k]; });
     out.updatedAt = a.updatedAt > b.updatedAt ? a.updatedAt : b.updatedAt;
     return out;
   }
@@ -14242,6 +14465,22 @@
   }
   function mergeWorldConceptDocs(a, b) { return mergeWorldEntryDocs(a, b, 'concepts'); }
   function mergeWorldTermDocs(a, b) { return mergeWorldEntryDocs(a, b, 'terms'); }
+  // 地層は id ごとの新しい方が勝つ union。levels は日付ごとの和集合にする
+  // （別の端末で入れた四半期の値が、片方を丸ごと勝たせると消えるため）。
+  function mergeWorldStrataDocs(a, b) {
+    const out = emptyWorldStrataDoc();
+    const mA = new Map(a.strata.map((x) => [x.id, x])), mB = new Map(b.strata.map((x) => [x.id, x]));
+    new Set([...mA.keys(), ...mB.keys()]).forEach((id) => {
+      const x = mA.get(id), y = mB.get(id);
+      const w = (x && y) ? (new Date(x.updatedAt) >= new Date(y.updatedAt) ? x : y) : (x || y);
+      const levels = new Map();
+      [...(y ? y.levels : []), ...(x ? x.levels : [])].forEach((l) => { if (!levels.has(l.at)) levels.set(l.at, l); });
+      out.strata.push({ ...w, where: { ...w.where }, levels: [...levels.values()].sort((p, q) => (p.at > q.at ? -1 : 1)) });
+    });
+    out.strata.sort((p, q) => p.order - q.order);
+    out.updatedAt = a.updatedAt > b.updatedAt ? a.updatedAt : b.updatedAt;
+    return out;
+  }
   function mergeWorldSourceDocs(a, b) {
     const out = emptyWorldSourcesDoc();
     const mA = new Map(a.sources.map((s) => [s.id, s])), mB = new Map(b.sources.map((s) => [s.id, s]));
@@ -14306,6 +14545,21 @@
     wd.termsDirty = false;
     wd.index.terms = { updatedAt: wd.terms.updatedAt, count: wd.terms.terms.length };
   }
+  function worldStrataSignature(doc) { return doc.strata.map((x) => x.id + ':' + x.updatedAt + ':' + x.levels.length).sort().join('|'); }
+  async function syncWorldStrata(token, remoteChanged) {
+    if (!wd.strataDirty && !remoteChanged) return;
+    const got = await ghGetContents(GITHUB_REPO, WORLD_STRATA_PATH, token);
+    let rdoc = emptyWorldStrataDoc();
+    try { if (got.text) rdoc = normalizeWorldStrataDoc(JSON.parse(got.text)); } catch (e) {}
+    const before = worldStrataSignature(rdoc);
+    wd.strata = mergeWorldStrataDocs(wd.strata, rdoc);
+    await persistWorldStrata();
+    if (worldStrataSignature(wd.strata) !== before) {
+      await ghPutJson(WORLD_STRATA_PATH, wd.strata, got.sha, `world strata: ${wd.strata.strata.length}`);
+    }
+    wd.strataDirty = false;
+    wd.index.strata = { updatedAt: wd.strata.updatedAt, count: wd.strata.strata.length };
+  }
   async function syncWorldSources(token, remoteChanged) {
     if (!wd.sourcesDirty && !remoteChanged) return;
     const got = await ghGetContents(GITHUB_REPO, WORLD_SOURCES_PATH, token);
@@ -14330,6 +14584,7 @@
       try { if (ri.text) remoteIndex = normalizeWorldIndex(JSON.parse(ri.text)); } catch (e) {}
       const conceptsChanged = remoteIndex.concepts.updatedAt > (wd.index.concepts.updatedAt || '');
       const termsChanged = remoteIndex.terms.updatedAt > (wd.index.terms.updatedAt || '');
+      const strataChanged = remoteIndex.strata.updatedAt > (wd.index.strata.updatedAt || '');
       const sourcesChanged = remoteIndex.sources.updatedAt > (wd.index.sources.updatedAt || '');
       const months = new Set([...liveWorldMonths(), ...wd.dirty, ...worldBootMonths(remoteIndex)]);
       wd.loaded.forEach((m) => { const r = remoteIndex.months[m]; if (r && r.updatedAt !== (wd.stamps[m] || '')) months.add(m); });
@@ -14337,8 +14592,9 @@
       for (const m of [...months].sort()) { if (!wd.loaded.has(m)) await loadWorldMonth(m); else await syncWorldMonth(token, m); }
       await syncWorldConcepts(token, conceptsChanged);
       await syncWorldTerms(token, termsChanged);
+      await syncWorldStrata(token, strataChanged);
       await syncWorldSources(token, sourcesChanged);
-      const sig = (ix) => JSON.stringify([Object.keys(ix.months).sort().map((m) => [m, ix.months[m].updatedAt, ix.months[m].unread]), ix.concepts.updatedAt, ix.terms.updatedAt, ix.sources.updatedAt, Object.keys(ix.due).sort()]);
+      const sig = (ix) => JSON.stringify([Object.keys(ix.months).sort().map((m) => [m, ix.months[m].updatedAt, ix.months[m].unread]), ix.concepts.updatedAt, ix.terms.updatedAt, ix.strata.updatedAt, ix.sources.updatedAt, Object.keys(ix.due).sort()]);
       if (sig(wd.index) !== sig(remoteIndex)) {
         try { await ghPutJson(WORLD_INDEX_PATH, wd.index, ri.sha, 'world index'); }
         catch (e) {
@@ -14363,8 +14619,60 @@
     try { t = t.normalize('NFKC'); } catch (e) {}
     return t.toLowerCase().replace(/[\s　]+/g, '').replace(/[・･.\-‐‑–—ー−_/()（）]/g, '');
   }
-  function worldConcepts() { return wd.concepts.concepts; }
-  function worldTerms() { return wd.terms.terms; }
+  // v11 非表示：本文は月ファイルに残したまま読み出しから外す。生の worldEvents を
+  // 使ってよいのは3か所だけ（保存・重複判定・マージ）。ほかは必ずここを通す。
+  // 絞り忘れると非表示の札が朝の3件に出る、という一番まずい壊れ方をするため。
+  function worldLiveEvents() { return worldEvents.filter((e) => !e.hidden); }
+  function worldHideEvent(ev, on) {
+    if (on) { ev.hidden = 1; ev.hiddenAt = nowIso(); } else { delete ev.hidden; delete ev.hiddenAt; }
+    worldTouch(ev);
+  }
+
+  function worldConcepts() { return wd.concepts.concepts.filter((c) => !c.hidden); }
+  function worldTerms() { return wd.terms.terms.filter((t) => !t.hidden); }
+  function worldAllConcepts() { return wd.concepts.concepts; }
+  function worldAllTerms() { return wd.terms.terms; }
+  function worldHideEntry(entry, on) {
+    if (on) { entry.hidden = 1; entry.hiddenAt = nowIso(); } else { delete entry.hidden; delete entry.hiddenAt; }
+    entry.updatedAt = nowIso();
+    worldStoreOf(entry).save();
+  }
+
+  // ---- 地層 ----------------------------------------------------------------
+  function worldStrata() { return wd.strata.strata.filter((s) => s.active); }
+  function worldStratumById(id) { return wd.strata.strata.find((s) => s.id === id) || null; }
+  function worldSaveStrata() { wd.strataDirty = true; persistWorldStrata(); scheduleSync(); }
+  function worldStratumLevel(s) { return (s.levels && s.levels[0]) || null; }
+  function worldDaysSince(dateStr) {
+    if (!isDateStr(dateStr)) return null;
+    return Math.round((parseDateStr(todayStr()) - parseDateStr(dateStr)) / 86400000);
+  }
+  // 日替わりで巡回する。保存は要らず、同じ日に何度開いても同じものが出る。
+  // 変わらないものを毎日同じ形で見せると2週間で見えなくなるので、「今日は
+  // どれか」という小さな差を残す。
+  function worldTodayStratum() {
+    const list = worldStrata();
+    if (!list.length) return null;
+    const day = Math.floor(parseDateStr(todayStr()) / 86400000);
+    return list[((day % list.length) + list.length) % list.length];
+  }
+  function worldStratumLine(s) {
+    const lv = worldStratumLevel(s);
+    if (!lv) return '値は未記入';
+    const d = worldDaysSince(lv.at);
+    return lv.value + (s.unit ? ' ' + s.unit : '') + '（' + dotDate(lv.at) + (d === null ? '' : ' ・ ' + d + '日前') + '）';
+  }
+  function worldAddLevel(s, value, at, note) {
+    const v = worldStr(value, 40);
+    if (!v || !isDateStr(at)) return false;
+    s.levels = s.levels.filter((l) => l.at !== at);
+    s.levels.push({ value: v, at, note: worldStr(note, 200) });
+    s.levels.sort((a, b) => (a.at > b.at ? -1 : 1));
+    s.updatedAt = nowIso();
+    worldSaveStrata();
+    return true;
+  }
+  function worldStrataOf(ev) { return (ev.strata || []).map(worldStratumById).filter(Boolean); }
 
   // v10.5: 概念と用語は同じ形なので、引き当て・候補・統合・名前変更は1本に
   // する。しきい値と「別のもの」の記憶を2か所で直す羽目になるのを避ける。
@@ -14372,7 +14680,7 @@
   const WORLD_STORES = {
     concept: {
       key: 'concept', label: '概念', idPrefix: 'wc_', minLen: WORLD_CONCEPT_MIN_LEN,
-      doc: () => wd.concepts, list: worldConcepts,
+      doc: () => wd.concepts, list: worldAllConcepts,
       setList: (v) => { wd.concepts.concepts = v; },
       save: () => worldSaveConcepts(),
       rewrite: (e, from, to) => {
@@ -14387,7 +14695,7 @@
     },
     term: {
       key: 'term', label: '用語', idPrefix: 'wt_', minLen: WORLD_TERM_MIN_LEN,
-      doc: () => wd.terms, list: worldTerms,
+      doc: () => wd.terms, list: worldAllTerms,
       setList: (v) => { wd.terms.terms = v; },
       save: () => worldSaveTerms(),
       rewrite: (e, from, to) => {
@@ -14466,6 +14774,7 @@
       if (!kc) return;
       list.forEach((o) => {
         if (o.id === c.id) return;
+        if (o.hidden || c.hidden) return;   // 非表示のものは候補にしない
         if (dismissed.has(worldPairKey(c.id, o.id))) return;
         if (out.some((p) => worldPairKey(p.a, p.b) === worldPairKey(c.id, o.id))) return;
         const hit = [o.name, ...(o.aka || [])].some((nm) => {
@@ -14505,11 +14814,19 @@
     keep.updatedAt = nowIso();
     store.setList(store.list().filter((c) => c.id !== drop.id));
     if (store.key === 'concept') {
+      // 消える側を親にしていた子を、残る側へ付け替える。消える側が親を
+      // 持っていたら、残る側が親を持たないときだけ引き継ぐ。
+      if (drop.parent && !keep.parent && drop.parent !== keep.id) keep.parent = drop.parent;
       store.list().forEach((c) => {
+        if (c.parent === drop.id) {
+          if (c.id === keep.id) delete c.parent; else c.parent = keep.id;
+          c.updatedAt = nowIso();
+        }
         if (!c.related.includes(drop.id)) return;
         c.related = [...new Set(c.related.filter((x) => x !== drop.id).concat(c.id === keep.id ? [] : [keep.id]))].filter((x) => x !== c.id);
         c.updatedAt = nowIso();
       });
+      if (keep.parent === keep.id) delete keep.parent;
     }
     // 読み込んでいる月の出来事の綴りだけ寄せる（読み込んでいない月は aka が拾う）
     const touched = new Set();
@@ -14539,6 +14856,45 @@
     return c;
   }
 
+  // ---- 上位概念 (v11) ------------------------------------------------------
+  // 手で付ける。生成には選ばせない（地層と同じで当てずっぽうが入る）。
+  // 2段まで（親と子だけ）。孫を許すと一覧が木になり、畳む UI が要る。
+  function worldConceptChildren(id) { return worldConcepts().filter((c) => c.parent === id); }
+  function worldSetParent(child, parentId) {
+    if (!child) return '概念が見つかりません。';
+    if (!parentId) { delete child.parent; child.updatedAt = nowIso(); worldSaveConcepts(); return ''; }
+    if (parentId === child.id) return '自分自身を親にはできません。';
+    const parent = worldConceptById(parentId);
+    if (!parent) return '親にする概念が見つかりません。';
+    if (parent.parent) return '「' + parent.name + '」はすでに子です。上位概念は2段までです。';
+    if (worldConceptChildren(child.id).length) return '「' + child.name + '」には子があります。2段までなので、先に子の親を外してください。';
+    // 循環：祖先を辿って自分が出たら弾く（2段でも、付け替えの途中で起こりうる）
+    let cur = parent, hops = 0;
+    while (cur && hops++ < 8) {
+      if (cur.id === child.id) return 'その組み合わせは循環します。';
+      cur = cur.parent ? worldConceptById(cur.parent) : null;
+    }
+    child.parent = parent.id;
+    child.updatedAt = nowIso();
+    worldSaveConcepts();
+    return '';
+  }
+  // 親になれるのは、親を持たず、自分自身でもない概念だけ
+  function worldParentCandidates(child) {
+    return worldConcepts().filter((c) => c.id !== child.id && !c.parent);
+  }
+
+  // ---- 用語が沈む (v11) ----------------------------------------------------
+  // seenAt は使わない。注を開くのは「その語を知らなかったとき」なので、
+  // seenAt で沈めると IMF のように身についた語から先に沈む（意図と逆）。
+  // 最後にその語が札に出た日で沈める。
+  function worldTermSunk(t) {
+    const last = (t.lastUsedAt || '').slice(0, 10);
+    if (!isDateStr(last)) return false;
+    const d = worldDaysSince(last);
+    return d !== null && d > WORLD_TERM_SINK_DAYS;
+  }
+
   // 取り込んだ1件から概念と用語を起こす／既存につなぐ。
   // 出来事側の綴りは正式名へ寄せて保存する（あとで統合・名前変更をしたとき
   // 既存の出来事が自動で追従し、同じものが違う綴りで並ぶこともなくなる）。
@@ -14546,21 +14902,27 @@
     const created = { concept: [], term: [] };
     const CS = WORLD_STORES.concept, TS = WORLD_STORES.term;
 
+    // 概念を新しく作るときは、同じ名前の用語が居たら必ず吸わせる。
+    // ここを premise.kind==='new' のときだけにしていると、関係の premise
+    // （a と b も概念を作る）から同じ名前が両方のストアに残る。
     const touchConcept = (name, line, aka, makeIfMissing) => {
       if (!name) return null;
       let c = worldFindIn(CS, name);
-      if (!c && makeIfMissing) { c = worldAddIn(CS, { name, line, aka, field: ev.field }, ev.id); if (c) created.concept.push(c.id); }
+      if (!c && makeIfMissing) {
+        const asTerm = worldFindIn(TS, name);
+        c = worldAddIn(CS, { name, line, aka, field: ev.field }, ev.id);
+        if (c) {
+          created.concept.push(c.id);
+          if (asTerm) worldPromoteTermToConcept(asTerm, c);
+        }
+      }
       worldTouchEntry(c, ev.id);
       return c;
     };
 
     let center = null;
     if (ev.premise.kind === 'new') {
-      // 用語だった名前が概念として来たら、用語を消して概念に吸わせる
-      // （同じ名前が両方のストアに居座らないように）。
-      const asTerm = worldFindIn(TS, ev.premise.name);
       center = touchConcept(ev.premise.name, ev.premise.line, ev.premise.aka, true);
-      if (asTerm && center) worldPromoteTermToConcept(asTerm, center);
     } else {
       const a = touchConcept(ev.premise.a, '', [], true);
       const b = touchConcept(ev.premise.b, '', [], true);
@@ -14609,7 +14971,7 @@
     concept.aka = [...akas].slice(0, 12);
     concept.eventIds = [...new Set([...concept.eventIds, ...term.eventIds])];
     concept.updatedAt = nowIso();
-    wd.terms.terms = worldTerms().filter((t) => t.id !== term.id);
+    wd.terms.terms = worldAllTerms().filter((t) => t.id !== term.id);
     worldSaveTerms();
   }
 
@@ -14628,12 +14990,12 @@
   function worldSortQueue(list) {
     return list.slice().sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.order - b.order));
   }
-  function worldUnread() { return worldSortQueue(worldEvents.filter((e) => !e.readDate)); }
+  function worldUnread() { return worldSortQueue(worldLiveEvents().filter((e) => !e.readDate)); }
   function worldStaleUnread() {
     const cut = Date.now() - WORLD_STALE_DAYS * 86400000;
     return worldUnread().filter((e) => new Date(e.createdAt).getTime() < cut);
   }
-  function worldReadOn(date) { return worldSortQueue(worldEvents.filter((e) => e.readDate === date)); }
+  function worldReadOn(date) { return worldSortQueue(worldLiveEvents().filter((e) => e.readDate === date)); }
   // 3件目までに両分野が入るよう、足りない分野の先頭を1つだけ繰り上げる。
   function worldBalance(queue, need, already) {
     const out = [];
@@ -14715,12 +15077,21 @@
       .slice(0, WORLD_KNOWN_MAX)
       .map((c) => c.name);
   }
-  // 用語は概念より速く増えるので、別の上限で切る（名前が短いぶん多く入る）
+  // 用語は概念より速く増えるので、別の上限で切る（名前が短いぶん多く入る）。
+  // 沈んだ用語（90日どの札にも出ていない）は外す。プロンプトが縮む方向に働き、
+  // こちらも忘れている可能性が高いので、もう一度注が付くのは正しい。
+  // 同じ名前が概念側にあるものも外す（概念が本体。既知一覧に二重に出さない）。
   function worldKnownTermNames() {
     return worldTerms()
+      .filter((t) => !worldTermSunk(t) && !worldFindIn(WORLD_STORES.concept, t.name))
       .slice().sort((a, b) => (a.lastUsedAt > b.lastUsedAt ? -1 : 1))
       .slice(0, WORLD_KNOWN_TERMS_MAX)
       .map((c) => c.name);
+  }
+  // 地層は id で選ばせる。閉じたリストなので表記ゆれが起きない。
+  function worldStrataPromptLines() {
+    const pad = (s, n) => { let t = String(s); while (t.length < n) t += '　'; return t; };
+    return worldStrata().map((s) => pad(s.id, 20) + pad(s.name, 12) + s.line);
   }
   function worldSourceLines(field, role) {
     return worldSources()
@@ -14741,6 +15112,7 @@
     const anal = worldSourceLines(field, 'analysis');
     const known = worldKnownNames(field);
     const knownTerms = worldKnownTermNames();
+    const strataLines = worldStrataPromptLines();
     return SHOOT_PROMPT_HEAD +
       'あなたは、ある人の世界の見方を少しずつ更新するための材料係です。\n' +
       '解説記事は書きません。ニュースの要約もしません。\n' +
@@ -14771,12 +15143,6 @@
       '  シンクタンクの論考は「出来事」ではない。\n' +
       '- 解釈のソースは why を書くときにだけ使う。\n' +
       '  その場合も url と source には、一次のソース（出来事そのものの出所）を書く。\n\n' +
-      '■ すでに知っている概念（説明しなくてよい）\n' +
-      (known.length ? known.join(' / ') : '（まだありません）') + '\n' +
-      '（名前だけ。最大' + WORLD_KNOWN_MAX + '件）\n\n' +
-      '■ すでに知っている用語（説明しなくてよい）\n' +
-      (knownTerms.length ? knownTerms.join(' / ') : '（まだありません）') + '\n' +
-      '（名前だけ。最大' + WORLD_KNOWN_TERMS_MAX + '件。一覧に無くても、経済・政治の基礎的な用語は説明不要）\n\n' +
       '■ それぞれの出来事に書くこと\n' +
       '- fact：何が起きたか。1文・' + WORLD_FACT_MAX + '字以内。数字か固有名詞を必ず含む。\n' +
       '  聞く人に向けた文にする。専門用語を並べない。\n' +
@@ -14786,10 +15152,16 @@
       '  誰が何を欲しがり・何を恐れ・何に縛られているかを書く。\n' +
       '  出来事の言い換えを書かない。評価・感想・助言を書かない。\n' +
       '\n' +
+      '- reason：なぜこの札を選んだかを20字程度で1つ。\n' +
+      '  why は「なぜ動いたか」、reason は「なぜ選んだか」。別のものを書く。\n' +
+      '  何が続くから選んだのかを書く。\n' +
+      '  良い例：「減額の速度が財政側の要求で決まる形が続く」\n' +
+      '  悪い例：「重要なニュースだから」「市場への影響が大きい」\n' +
+      '\n' +
       '- premise：この件を理解するのに最低限必要な「概念」を 1つだけ。\n' +
       '  概念とは、積み上がって世界の見方になるもの（外貨準備、コンディショナリティ、\n' +
       '  シーレーン）。組織名・国名・略語・人名は概念ではない。それは terms に書く。\n' +
-      '  - 上の「すでに知っている概念」で足りるなら、新しい概念を作らない。\n' +
+      '  - 末尾の「すでに知っている概念」で足りるなら、新しい概念を作らない。\n' +
       '    そのときは kind を "relation" にして、既知の概念2つ（a と b）の\n' +
       '    関係を line に1文で書く。\n' +
       '  - 新しい概念が要るときは kind を "new" にして、name と line を書く。\n' +
@@ -14819,6 +15191,13 @@
       '  - すでに知っている用語も、本文に出てきたら name だけは必ず書く。\n' +
       '    その場合 line・kind・aka は空でよい。（読むときの目印に使うため）\n' +
       '  - 本文に出てこない語は書かない。\n' +
+      '\n' +
+      '- strata：この出来事が乗っている「地層」の id を0〜' + WORLD_STRATA_PER_EVENT + '個。\n' +
+      '  地層とは、数十年単位でしか動かない量（金利、人口、債務、備蓄）のこと。\n' +
+      '  末尾の一覧にある id だけを使う。名前ではなく id を書く。\n' +
+      '  - 一覧に無い地層を新しく作らない。増えると意味がなくなる。\n' +
+      '  - どれにも乗らないなら空の配列にする。無理に乗せない。\n' +
+      '  - 迷ったら、その出来事が長い目で見て「どの量を動かすか」で選ぶ。\n' +
       '\n' +
       '- fork：おおむね' + Math.round(WORLD_FORK_DAYS / 30) + 'ヶ月で決着する「分かれ目」を1つ。検証可能なものだけ。\n' +
       '  - その出来事が言っていること自体が本当かを問う形にする。\n' +
@@ -14853,9 +15232,10 @@
       '{"events":[{\n' +
       '  "fact":"...",\n' +
       '  "why":"...",\n' +
+      '  "reason":"...",\n' +
       '  "premise":{"kind":"new","name":"...","aka":["...","..."],"line":"..."},\n' +
-      '  "terms":[{"name":"IMF","line":"...","kind":"org","aka":["国際通貨基金"]},\n' +
-      '           {"name":"エルサルバドル","line":"...","kind":"place","aka":[]}],\n' +
+      '  "terms":[{"name":"IMF","line":"...","kind":"org","aka":["国際通貨基金"]}],\n' +
+      '  "strata":["st_jp_rate_long"],\n' +
       '  "fork":{"text":"...","type":"level"},\n' +
       '  "detail":"...",\n' +
       '  "source":"...",\n' +
@@ -14866,15 +15246,25 @@
       '}]}\n\n' +
       'kind が "relation" のときの premise：\n' +
       '  {"kind":"relation","a":"既知の概念1","b":"既知の概念2","line":"..."}\n' +
-      'すでに知っている用語：\n' +
-      '  {"name":"IMF"}\n' +
-      '分かれ目が思いつかないとき：\n' +
-      '  "fork": null';
+      'すでに知っている用語： {"name":"IMF"}\n' +
+      'どの地層にも乗らないとき： "strata": []\n' +
+      '分かれ目が思いつかないとき： "fork": null\n\n' +
+      // 既知の羅列は末尾に置く。3本になると、上に置いたときに規則を押しのける。
+      '────────────────────────────────────────\n' +
+      '■ 地層の一覧（strata はこの id から選ぶ。ここに無いものを作らない）\n' +
+      (strataLines.length ? strataLines.join('\n') : '（まだありません）') + '\n\n' +
+      '■ すでに知っている概念（説明しなくてよい。名前だけ。最大' + WORLD_KNOWN_MAX + '件）\n' +
+      (known.length ? known.join(' / ') : '（まだありません）') + '\n\n' +
+      '■ すでに知っている用語（説明しなくてよい。名前だけ。最大' + WORLD_KNOWN_TERMS_MAX + '件。\n' +
+      '　一覧に無くても、経済・政治の基礎的な用語は説明不要）\n' +
+      (knownTerms.length ? knownTerms.join(' / ') : '（まだありません）');
   }
 
   // ---- 取り込み ------------------------------------------------------------
   // 追記のみ。置き換えを一切しないので、読んだ出来事と書いた予測が取り込みで
   // 消える経路が構造的に無い。
+  // 非表示のものも見る。ここを絞ると、消した札が次の取り込みで戻ってきて
+  // 非表示にした意味が消える。
   function worldDupOf(item, eventDate) {
     const lo = addDays(eventDate, -WORLD_DUP_WINDOW_DAYS), hi = addDays(eventDate, WORLD_DUP_WINDOW_DAYS);
     return worldEvents.find((e) => {
@@ -14916,7 +15306,7 @@
     const createdConcepts = [];
     const createdTerms = [];
     const touchedMonths = new Set();
-    let old = 0, forks = 0;
+    let old = 0, forks = 0, onStrata = 0, droppedStrata = 0;
 
     items.forEach((it, i) => {
       if (!it || typeof it !== 'object') { rejected.fact++; return; }
@@ -14933,7 +15323,9 @@
         readDate: '',
         field: WORLD_FIELDS.includes(it.field) ? it.field : (worldImportField || 'finance'),
         fact, why: it.why, premise: it.premise, detail: it.detail, source: it.source, url,
-        terms: it.terms, fork: it.fork,
+        terms: it.terms, fork: it.fork, reason: it.reason,
+        // 地層は生成に作らせない。一覧に無い id はここで落とす
+        strata: (Array.isArray(it.strata) ? it.strata : []).filter((x) => worldStratumById(String(x))),
         concepts: it.concepts, related: it.related,
         prediction: null, batchId, order: i,
         createdAt: iso, updatedAt: iso,
@@ -14957,6 +15349,9 @@
       made.concept.forEach((id) => createdConcepts.push(id));
       made.term.forEach((id) => createdTerms.push(id));
       if (ev.fork) forks++;
+      if (ev.strata.length) onStrata++;
+      const askedStrata = Array.isArray(it.strata) ? it.strata.length : 0;
+      droppedStrata += Math.max(0, askedStrata - ev.strata.length);
     });
 
     if (added.length) {
@@ -14965,7 +15360,7 @@
       touchedMonths.forEach((m) => worldMonthChanged(m));
     }
     return {
-      added: added.length, rejected, old, forks,
+      added: added.length, rejected, old, forks, onStrata, droppedStrata,
       createdConcepts, createdTerms,
       candidates: worldMergeCandidatesIn(WORLD_STORES.concept, createdConcepts)
         .concat(worldMergeCandidatesIn(WORLD_STORES.term, createdTerms)),
@@ -14973,7 +15368,27 @@
   }
 
   // ---- 画面 ----------------------------------------------------------------
-  const worldState = { view: 'main', tab: 'events', entryKind: 'concept', entrySort: 'count', conceptId: null, openId: null, candidates: [], lastResult: '' };
+  const worldState = { view: 'main', tab: 'events', entryKind: 'concept', entrySort: 'count', conceptId: null, stratumId: null, strataAll: false, sunkOpen: false, openId: null, candidates: [], lastResult: '' };
+
+  // 地層の1行。押すとその地層を開く。太くしない。
+  function paintStratumLine(el, s) {
+    if (!el) return;
+    if (!s) { el.hidden = true; return; }
+    el.hidden = false;
+    el.innerHTML = '';
+    const n = document.createElement('span');
+    n.className = 'wsName';
+    n.textContent = s.name + ' ── ' + s.line;
+    el.appendChild(n);
+    el.appendChild(document.createElement('br'));
+    const lv = worldStratumLevel(s);
+    const v = document.createElement('span');
+    const days = lv ? worldDaysSince(lv.at) : null;
+    v.className = 'wsVal' + (!lv || (days !== null && days > 120) ? ' wsStale' : '');
+    v.textContent = worldStratumLine(s);
+    el.appendChild(v);
+    el.onclick = (e) => { e.stopPropagation(); openWorldStratum(s.id); };
+  }
   let worldImportField = 'finance';   // 最後にコピーしたプロンプトの分野（JSON に field が無いときの既定）
 
   function worldShortDate(d) { const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(d); return m ? Number(m[1]) + '/' + Number(m[2]) : d; }
@@ -15135,6 +15550,13 @@
         mk.textContent = mark;
         right.appendChild(mk);
       }
+      // 地層タグ。行は増やさない。概念タグより弱い色にして押し合わないようにする
+      worldStrataOf(ev).slice(0, 1).forEach((s) => {
+        const t = document.createElement('span');
+        t.className = 'wTag isStratum';
+        t.textContent = s.short;
+        right.appendChild(t);
+      });
       const tagText = worldPremiseTagText(ev);
       if (tagText) {
         const t = document.createElement('span');
@@ -15230,13 +15652,51 @@
     noteHost.hidden = true;
     box.appendChild(noteHost);
 
+    // 乗っている地層。押すとその地層へ
+    const strata = worldStrataOf(ev);
+    if (strata.length) {
+      const row = document.createElement('div');
+      row.className = 'strataRow';
+      const lab = document.createElement('span');
+      lab.className = 'rowLabel';
+      lab.textContent = '地層';
+      row.appendChild(lab);
+      strata.forEach((s) => {
+        const p = document.createElement('button');
+        p.type = 'button'; p.className = 'stratumPill';
+        p.textContent = s.name;
+        p.addEventListener('click', (e) => { e.stopPropagation(); openWorldStratum(s.id); });
+        row.appendChild(p);
+      });
+      box.appendChild(row);
+    }
+
     // 数字・出典・URL は既定で閉じている。ここが「読みに行ってしまう」入口。
     const deep = document.createElement('div');
     deep.className = 'worldDeep';
     deep.hidden = true;
     if (ev.detail) { const p = document.createElement('div'); worldFillWithTerms(p, ev.detail, termEntries, usedTerms, openTerm); deep.appendChild(p); }
     else if (ev.slim) { const p = document.createElement('div'); p.textContent = 'この出来事は要約だけ残しています。'; deep.appendChild(p); }
+    // なぜこの札を選んだか（why とは別）。読むだけ
+    if (ev.reason) {
+      const p = document.createElement('div');
+      p.className = 'worldMetaLine';
+      const k = document.createElement('span'); k.className = 'wmKey'; k.textContent = '選んだ理由：';
+      p.appendChild(k); p.appendChild(document.createTextNode(ev.reason));
+      deep.appendChild(p);
+    }
     if (ev.source) { const p = document.createElement('div'); p.textContent = ev.source; deep.appendChild(p); }
+    // 発信者の立場。一次ソースだから中立ではない、を毎回目に入れる
+    {
+      const st = worldStanceFor(ev);
+      if (st) {
+        const p = document.createElement('div');
+        p.className = 'worldMetaLine';
+        const k = document.createElement('span'); k.className = 'wmKey'; k.textContent = 'この発信者が欲しいもの：';
+        p.appendChild(k); p.appendChild(document.createTextNode(st));
+        deep.appendChild(p);
+      }
+    }
     if (ev.url) {
       const a = document.createElement('a');
       a.href = ev.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
@@ -15298,6 +15758,17 @@
       });
       askRow.appendChild(b);
     });
+
+    const hideBtn = document.createElement('button');
+    hideBtn.type = 'button'; hideBtn.className = 'tagFilterBtn'; hideBtn.textContent = '非表示';
+    hideBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!confirm('この出来事を非表示にします。本文は残り、設定から戻せます。よろしいですか？')) return;
+      worldHideEvent(ev, true);
+      refreshCurrentScreen();
+      if (nav.screen === 'home') renderHome();
+    });
+    btns.appendChild(hideBtn);
 
     box.appendChild(btns);
     box.appendChild(askRow);
@@ -15383,6 +15854,14 @@
     box.appendChild(predBox);
   }
 
+  // 出来事の url のドメインから、登録してあるソースの「立場」を引く
+  function worldHostOf(u) { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return ''; } }
+  function worldStanceFor(ev) {
+    const h = worldHostOf(ev.url);
+    if (!h) return '';
+    const s = worldSources().find((x) => { const sh = worldHostOf(x.url); return sh && (h === sh || h.endsWith('.' + sh) || sh.endsWith('.' + h)); });
+    return (s && s.stance) || '';
+  }
   function worldPredictionCopyLine(ev) {
     const p = ev.prediction;
     if (!worldPredictionWritten(ev)) return '';
@@ -15402,13 +15881,20 @@
     if (ask && ask.terms) {
       const entries = worldTermEntriesOf(ev).filter((t) => t.line);
       if (entries.length) termBlock = '\n【私が既に知っていること】\n' + entries.map((t) => '- ' + t.name + '：' + t.line).join('\n') + '\n';
+      // 立場も「反対の見方は」にだけ渡す。反論は前提を突くので効く
+      const st = worldStanceFor(ev);
+      if (st) termBlock += '\n【この出典が欲しいもの】' + st + '\n';
     }
+    const strataBlock = worldStrataOf(ev).length
+      ? '\n【この件が乗っている、長く動かない量】\n' + worldStrataOf(ev).map((s) => '- ' + s.name + '：' + s.line + (worldStratumLevel(s) ? '（いま ' + worldStratumLine(s) + '）' : '')).join('\n') + '\n'
+      : '';
     const tail = ask
       ? worldAskTail(ask)
       : '\nこの件について、私が見落としている力学を教えてください。\n私は既に上の前提は理解しています。';
     return '【出来事】' + ev.eventDate + '\n' + ev.fact + '\n\n'
       + '【なぜ今動いたか】\n' + (ev.why || '（なし）') + '\n\n'
       + pre + '\n'
+      + strataBlock
       + termBlock
       + (ev.detail ? '\n【詳細】' + ev.detail + '\n' : '')
       + (ev.source ? '【出典】' + ev.source + '\n' : '')
@@ -15418,7 +15904,7 @@
   }
   function worldConceptCopyText(c, ask) {
     const isTerm = worldStoreOf(c).key === 'term';
-    const events = worldEvents.filter((e) => c.eventIds.includes(e.id)).slice(-5).reverse();
+    const events = worldLiveEvents().filter((e) => c.eventIds.includes(e.id)).slice(-5).reverse();
     const related = isTerm ? '' :
       '【つながる概念】' + (c.related.map((id) => { const o = worldConceptById(id); return o ? o.name : null; }).filter(Boolean).join(' ・ ') || '（なし）') + '\n\n';
     return '【' + (isTerm ? '用語' : '概念') + '】' + c.name + (c.aka.length ? '（' + c.aka.join(' / ') + '）' : '') + '\n'
@@ -15444,6 +15930,9 @@
 
   // 朝のステップ。ここを開くまで1件も消費されない。
   function renderHomeWorldStep() {
+    // 畳んだ行の下にも地層を1行。開かないと見えない場所に置くと、A の目的
+    // （毎日見せる）が果たせないため。重くなるなら定数を false に。
+    if (WORLD_STRATUM_ON_COLLAPSED) paintStratumLine(document.getElementById('homeStratumLine'), worldTodayStratum());
     const today = worldReadOn(todayStr());
     renderWorldList(document.getElementById('homeWorldList'), today, '');
     document.getElementById('homeWorldEmpty').hidden = !!today.length;
@@ -15468,8 +15957,10 @@
     document.getElementById('worldMainView').hidden = worldState.view !== 'main';
     document.getElementById('worldImportView').hidden = worldState.view !== 'import';
     document.getElementById('worldConceptView').hidden = worldState.view !== 'concept';
+    document.getElementById('worldStratumView').hidden = worldState.view !== 'stratum';
     if (worldState.view === 'main') renderWorldMain();
     else if (worldState.view === 'concept') renderWorldConcept();
+    else if (worldState.view === 'stratum') renderWorldStratum();
     else renderWorldImport();
   }
   function renderWorldMain() {
@@ -15477,6 +15968,9 @@
     const bar = document.getElementById('worldStaleBar');
     bar.hidden = !stale.length;
     if (stale.length) document.getElementById('worldStaleText').textContent = '古い未読が ' + stale.length + ' 件あります';
+
+    // 今日の地層。出来事があってもなくても出る（変化がないものを毎日見せる）
+    paintStratumLine(document.getElementById('worldStratumToday'), worldTodayStratum());
 
     const todayList = worldReadOn(todayStr());
     renderWorldList(document.getElementById('worldTodayList'), todayList, '');
@@ -15498,7 +15992,7 @@
   }
   function renderWorldEventsTab(body) {
     const byMonth = new Map();
-    worldEvents.slice().sort((a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0)).forEach((e) => {
+    worldLiveEvents().sort((a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0)).forEach((e) => {
       const m = monthOfDate(e.eventDate);
       if (!byMonth.has(m)) byMonth.set(m, []);
       byMonth.get(m).push(e);
@@ -15547,7 +16041,7 @@
 
     const sortRow = document.createElement('div');
     sortRow.className = 'tagFilterRow';
-    WORLD_SORTS.forEach((s) => {
+    (isTerm ? WORLD_SORTS : WORLD_CONCEPT_SORTS).forEach((s) => {
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'tagFilterBtn' + (worldState.entrySort === s ? ' selected' : '');
       b.textContent = WORLD_SORT_LABEL[s];
@@ -15556,25 +16050,63 @@
     });
     body.appendChild(sortRow);
 
-    const list = worldSortEntries(isTerm ? worldTerms() : worldConcepts(), worldState.entrySort);
-    if (!list.length) {
-      const p = document.createElement('p'); p.className = 'emptyMsg';
-      p.textContent = isTerm ? 'まだ用語がありません。' : 'まだ概念がありません。';
-      body.appendChild(p); return;
-    }
-    list.forEach((c) => {
+    const entryRow = (c, child) => {
       const row = document.createElement('div');
-      row.className = 'worldConceptRow';
+      row.className = 'worldConceptRow' + (child ? ' isChild' : '');
       const n = document.createElement('span');
       n.textContent = c.name + (isTerm && c.kind ? '（' + WORLD_TERM_KIND_LABEL[c.kind] + '）' : '');
       const cnt = document.createElement('span'); cnt.className = 'wcCount'; cnt.textContent = worldConceptCount(c) + '件';
       row.appendChild(n); row.appendChild(cnt);
       row.addEventListener('click', () => openWorldEntry(c.id));
-      body.appendChild(row);
-    });
+      return row;
+    };
+
+    const all = isTerm ? worldTerms() : worldConcepts();
+    // 用語は、90日どの札にも出ていないものを下段に沈める。消さない。
+    const live = isTerm ? all.filter((t) => !worldTermSunk(t)) : all;
+    const sunk = isTerm ? all.filter(worldTermSunk) : [];
+
+    if (!all.length) {
+      const p = document.createElement('p'); p.className = 'emptyMsg';
+      p.textContent = isTerm ? 'まだ用語がありません。' : 'まだ概念がありません。';
+      body.appendChild(p); return;
+    }
+
+    if (!isTerm && worldState.entrySort === 'parent') {
+      // 親でまとめる。2段までなので、見出し＋子だけ
+      const parents = worldSortEntries(live.filter((c) => !c.parent), 'count');
+      parents.forEach((p) => {
+        const kids = worldSortEntries(worldConceptChildren(p.id), 'count');
+        if (kids.length) {
+          const h = document.createElement('div');
+          h.className = 'parentGroupHead';
+          h.textContent = p.name + '（' + kids.length + '）';
+          body.appendChild(h);
+        }
+        body.appendChild(entryRow(p, false));
+        kids.forEach((k) => body.appendChild(entryRow(k, true)));
+      });
+    } else {
+      worldSortEntries(live, worldState.entrySort).forEach((c) => body.appendChild(entryRow(c, false)));
+    }
+
+    if (sunk.length) {
+      const head = document.createElement('div');
+      head.className = 'sunkHead';
+      head.textContent = (worldState.sunkOpen ? '▾ ' : '▸ ') + 'しばらく出ていない用語（' + sunk.length + '）';
+      head.addEventListener('click', () => { worldState.sunkOpen = !worldState.sunkOpen; renderWorldMain(); });
+      body.appendChild(head);
+      if (worldState.sunkOpen) {
+        const note = document.createElement('p');
+        note.className = 'fieldNote';
+        note.textContent = WORLD_TERM_SINK_DAYS + '日どの札にも出ていない用語です。消えていません。生成の既知一覧からは外れているので、また出てきたら注が付き直します。';
+        body.appendChild(note);
+        worldSortEntries(sunk, worldState.entrySort).forEach((c) => body.appendChild(entryRow(c, false)));
+      }
+    }
   }
   function renderWorldPredictionsTab(body) {
-    const withPred = worldEvents.filter(worldPredictionWritten);
+    const withPred = worldLiveEvents().filter(worldPredictionWritten);
     const waiting = withPred.filter((e) => !e.prediction.result).sort((a, b) => (a.prediction.dueDate < b.prediction.dueDate ? -1 : 1));
     const done = withPred.filter((e) => e.prediction.result);
 
@@ -15609,6 +16141,68 @@
       renderWorldList(box2, done, '');
       body.appendChild(box2);
     }
+  }
+
+  // ---- 地層の画面 ----------------------------------------------------------
+  function openWorldStratum(id) {
+    worldState.stratumId = id;
+    worldState.strataAll = !id;
+    worldState.view = 'stratum';
+    showScreen('world');
+    renderWorld();
+  }
+  function renderWorldStratum() {
+    const one = document.getElementById('worldStratumOne');
+    const all = document.getElementById('worldStratumAll');
+    const s = worldState.strataAll ? null : worldStratumById(worldState.stratumId);
+    one.hidden = !s;
+    all.hidden = !!s;
+    if (!s) { renderWorldStratumList(); return; }
+
+    document.getElementById('worldStratumName').textContent = s.name;
+    document.getElementById('worldStratumLine').textContent = s.line;
+    document.getElementById('worldStratumDir').textContent =
+      (WORLD_STRATUM_DIR_LABEL[s.dir] || '') + (s.dirSince ? '（' + s.dirSince + 'から）' : '') + (s.unit ? ' ・ 単位 ' + s.unit : '');
+    document.getElementById('worldStratumNow').textContent = worldStratumLine(s);
+    document.getElementById('worldStratumWhere').textContent = s.where.source ? '確認先：' + s.where.source : '確認先が未設定です。';
+    document.getElementById('btnWorldStratumWhere').disabled = !s.where.url;
+
+    const levels = document.getElementById('worldStratumLevels');
+    levels.innerHTML = '';
+    document.getElementById('worldStratumLevelsEmpty').hidden = !!s.levels.length;
+    s.levels.forEach((l) => {
+      const row = document.createElement('div');
+      row.className = 'levelRow';
+      const v = document.createElement('span');
+      v.textContent = l.value + (s.unit ? ' ' + s.unit : '') + (l.note ? ' ・ ' + l.note : '');
+      const at = document.createElement('span');
+      at.className = 'lvAt'; at.textContent = dotDate(l.at);
+      row.appendChild(v); row.appendChild(at);
+      levels.appendChild(row);
+    });
+
+    const evs = worldLiveEvents().filter((e) => (e.strata || []).includes(s.id)).sort((a, b) => (a.eventDate > b.eventDate ? -1 : 1));
+    renderWorldList(document.getElementById('worldStratumEvents'), evs, 'まだありません。');
+
+    document.getElementById('worldLevelPanel').hidden = true;
+    document.getElementById('worldLevelStatus').textContent = '';
+  }
+  function renderWorldStratumList() {
+    const box = document.getElementById('worldStratumListBody');
+    box.innerHTML = '';
+    worldStrata().forEach((s) => {
+      const row = document.createElement('div');
+      row.className = 'stratumListRow';
+      const n = document.createElement('span'); n.className = 'slName'; n.textContent = s.name;
+      const lv = worldStratumLevel(s);
+      const v = document.createElement('span');
+      v.className = 'slVal' + (lv ? '' : ' empty');
+      v.textContent = lv ? lv.value + (s.unit ? ' ' + s.unit : '') + ' ・ ' + (worldDaysSince(lv.at)) + '日前' : '値は未記入';
+      const l = document.createElement('span'); l.className = 'slLine'; l.textContent = s.line;
+      row.appendChild(n); row.appendChild(v); row.appendChild(l);
+      row.addEventListener('click', () => openWorldStratum(s.id));
+      box.appendChild(row);
+    });
   }
 
   function openWorldEntry(id) {
@@ -15646,7 +16240,7 @@
 
     document.getElementById('worldConceptEventsLabel').textContent = 'この' + (isTerm ? '用語' : '概念') + 'が出た出来事';
     const evBox = document.getElementById('worldConceptEvents');
-    const events = worldEvents.filter((e) => c.eventIds.includes(e.id)).sort((a, b) => (a.eventDate > b.eventDate ? -1 : 1));
+    const events = worldLiveEvents().filter((e) => c.eventIds.includes(e.id)).sort((a, b) => (a.eventDate > b.eventDate ? -1 : 1));
     renderWorldList(evBox, events, c.eventIds.length ? '出た月が端末に読み込まれていません。' : 'まだありません。');
 
     // 概念の詳細は全画面で余白があるので、階層を作らず直接並べる
@@ -15662,6 +16256,37 @@
       });
       askRow.appendChild(b);
     });
+
+    // 上位概念（概念だけ。用語は網に参加しない）
+    const pField = document.getElementById('worldConceptParentField');
+    pField.hidden = isTerm;
+    if (!isTerm) {
+      const pRow = document.getElementById('worldConceptParentRow');
+      pRow.innerHTML = '';
+      const status = document.getElementById('worldConceptParentStatus');
+      const kids = worldConceptChildren(c.id);
+      if (kids.length) {
+        status.textContent = 'この概念には子が ' + kids.length + ' 件あります（' + kids.map((k) => k.name).join('・') + '）。2段までなので、親は付けられません。';
+      } else {
+        status.textContent = '';
+        const none = document.createElement('button');
+        none.type = 'button'; none.className = 'tagFilterBtn' + (c.parent ? '' : ' selected');
+        none.textContent = 'なし';
+        none.addEventListener('click', () => { worldSetParent(c, ''); renderWorldConcept(); });
+        pRow.appendChild(none);
+        worldParentCandidates(c).forEach((o) => {
+          const b = document.createElement('button');
+          b.type = 'button'; b.className = 'tagFilterBtn' + (c.parent === o.id ? ' selected' : '');
+          b.textContent = o.name;
+          b.addEventListener('click', () => {
+            const err = worldSetParent(c, o.id);
+            if (err) { document.getElementById('worldConceptParentStatus').textContent = err; return; }
+            renderWorldConcept();
+          });
+          pRow.appendChild(b);
+        });
+      }
+    }
 
     document.getElementById('worldConceptStatus').textContent = '';
     document.getElementById('worldConceptRenamePanel').hidden = true;
@@ -15766,6 +16391,18 @@
       const nm = document.createElement('div'); nm.className = 'wsName'; nm.textContent = s.name;
       const u = document.createElement('div'); u.className = 'wsUrl'; u.textContent = s.url;
       left.appendChild(nm); left.appendChild(u);
+      // v11: この発信者は何を欲しがっているか。出来事の「詳しく」に出る
+      const stance = document.createElement('input');
+      stance.type = 'text';
+      stance.placeholder = 'この発信者が欲しいもの（例：国債の金利を低く保ちたい）';
+      stance.value = s.stance || '';
+      stance.style.marginTop = '4px';
+      stance.addEventListener('change', () => {
+        const v = worldStr(stance.value, WORLD_STANCE_MAX);
+        if (v === s.stance) return;
+        s.stance = v; s.updatedAt = nowIso(); worldSaveSources();
+      });
+      left.appendChild(stance);
       row.appendChild(left);
 
       const btns = document.createElement('div');
@@ -15798,6 +16435,36 @@
       box.appendChild(row);
     });
   }
+  // 非表示にしたものの一覧。本文は残っているので、押せば戻る。
+  function renderWorldHidden() {
+    const box = document.getElementById('worldHiddenList');
+    if (!box) return;
+    box.innerHTML = '';
+    const rows = [];
+    worldEvents.filter((e) => e.hidden).forEach((e) => rows.push({ kind: '出来事', label: e.fact, back: () => worldHideEvent(e, false) }));
+    worldAllConcepts().filter((c) => c.hidden).forEach((c) => rows.push({ kind: '概念', label: c.name, back: () => worldHideEntry(c, false) }));
+    worldAllTerms().filter((t) => t.hidden).forEach((t) => rows.push({ kind: '用語', label: t.name, back: () => worldHideEntry(t, false) }));
+    document.getElementById('worldHiddenCount').textContent = rows.length + '件';
+    document.getElementById('worldHiddenEmpty').hidden = !!rows.length;
+    rows.forEach((r) => {
+      const row = document.createElement('div');
+      row.className = 'worldSourceRow';
+      const left = document.createElement('div');
+      const nm = document.createElement('div'); nm.className = 'wsName'; nm.textContent = r.label;
+      const k = document.createElement('div'); k.className = 'wsUrl'; k.textContent = r.kind;
+      left.appendChild(nm); left.appendChild(k);
+      row.appendChild(left);
+      const btns = document.createElement('div');
+      btns.className = 'tagFilterRow';
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'tagFilterBtn'; b.textContent = '戻す';
+      b.addEventListener('click', () => { r.back(); renderWorldHidden(); });
+      btns.appendChild(b);
+      row.appendChild(btns);
+      box.appendChild(row);
+    });
+  }
+
   // due（期限の索引）を全部の月から組み直す。索引が合わなくなったときの逃げ道。
   async function worldRebuildDue() {
     const el = document.getElementById('worldRebuildStatus');
@@ -15818,7 +16485,8 @@
   // ---- つなぎ --------------------------------------------------------------
   document.getElementById('btnOpenWorld').addEventListener('click', openWorld);
   document.getElementById('backFromWorld').addEventListener('click', () => {
-    if (worldState.view !== 'main') { worldState.view = 'main'; renderWorld(); return; }
+    if (worldState.view === 'stratum' && !worldState.strataAll) { worldState.strataAll = true; renderWorld(); return; }
+    if (worldState.view !== 'main') { worldState.view = 'main'; worldState.strataAll = false; renderWorld(); return; }
     openRecords();
   });
   document.getElementById('btnHomeWorldOpen').addEventListener('click', openWorld);
@@ -15870,7 +16538,8 @@
     if (drops.length) msg += '　' + drops.join('／') + ' を落としました。';
     if (res.createdConcepts.length) msg += '　新しい概念 ' + res.createdConcepts.length + '件。';
     if (res.createdTerms.length) msg += '　新しい用語 ' + res.createdTerms.length + '件。';
-    if (res.added) msg += '　分かれ目つき ' + res.forks + '件。';
+    if (res.added) msg += '　分かれ目つき ' + res.forks + '件、地層に乗った ' + res.onStrata + '件。';
+    if (res.droppedStrata) msg += '　※ 一覧に無い地層 ' + res.droppedStrata + '件を落としました。';
     if (res.old) msg += '　※ 90日より古い出来事が ' + res.old + '件あります。';
     if (unread > WORLD_QUEUE_WARN) msg += '　未読が ' + unread + '件です。読む速さより入れる速さが上回っています。';
     if (res.added) box.value = '';
@@ -15913,6 +16582,41 @@
     renderWorldSources();
   });
   document.getElementById('btnWorldRebuildDue').addEventListener('click', worldRebuildDue);
+
+  // ---- 地層のつなぎ --------------------------------------------------------
+  document.getElementById('btnWorldStratumList').addEventListener('click', () => { worldState.strataAll = true; renderWorld(); });
+  document.getElementById('btnWorldStratumWhere').addEventListener('click', () => {
+    const s = worldStratumById(worldState.stratumId);
+    if (s && s.where.url) window.open(s.where.url, '_blank', 'noopener');
+  });
+  document.getElementById('btnWorldLevelOpen').addEventListener('click', () => {
+    const s = worldStratumById(worldState.stratumId);
+    if (!s) return;
+    document.getElementById('worldLevelValue').value = '';
+    document.getElementById('worldLevelAt').value = todayStr();
+    document.getElementById('worldLevelNote').value = '';
+    document.getElementById('worldLevelStatus').textContent = '';
+    document.getElementById('worldLevelPanel').hidden = false;
+  });
+  document.getElementById('btnWorldLevelCancel').addEventListener('click', () => { document.getElementById('worldLevelPanel').hidden = true; });
+  document.getElementById('btnWorldLevelSave').addEventListener('click', () => {
+    const s = worldStratumById(worldState.stratumId);
+    if (!s) return;
+    const v = document.getElementById('worldLevelValue').value.trim();
+    const at = document.getElementById('worldLevelAt').value;
+    const note = document.getElementById('worldLevelNote').value.trim();
+    if (!worldAddLevel(s, v, at, note)) { document.getElementById('worldLevelStatus').textContent = '値と日付を入れてください。'; return; }
+    renderWorldStratum();
+  });
+  document.getElementById('btnWorldConceptHide').addEventListener('click', () => {
+    const c = worldEntryById(worldState.conceptId);
+    if (!c) return;
+    const store = worldStoreOf(c);
+    if (!confirm('この' + store.label + 'を非表示にします。本文は残り、設定から戻せます。よろしいですか？')) return;
+    worldHideEntry(c, true);
+    worldState.view = 'main';
+    renderWorld();
+  });
 
   const INPUT_DRAFT_KEY = 'kotoba_inputDraft';
   const INPUT_DRAFT_MAX_AGE_MS = 48 * 3600 * 1000;
