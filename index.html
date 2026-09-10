@@ -2219,9 +2219,9 @@
             <span id="worldProbeCount"></span>
           </div>
           <p class="fieldNote">確認先を差し込んだプロンプトをコピーします。返ってきた値は、出典URL と基準日が揃っているものだけ入ります。推測は入りません。月に一度、または赤が残っているときに。</p>
-          <button type="button" id="btnWorldProbePrompt" class="tagFilterBtn">プロンプトをコピー</button>
+          <button type="button" id="btnWorldProbePrompt" class="tagFilterBtn">現在値を調べるプロンプトをコピー</button>
           <textarea id="worldProbePaste" rows="3" placeholder='{"levels":[...]} をここに貼る' autocomplete="off"></textarea>
-          <button type="button" id="btnWorldProbeImport" class="secondaryBtn">取り込む</button>
+          <button type="button" id="btnWorldProbeImport" class="secondaryBtn">値を取り込む</button>
           <p class="fieldNote" id="worldProbeStatus"></p>
         </div>
         <div id="worldStratumListBody"></div>
@@ -18554,7 +18554,12 @@
     b.addEventListener('click', () => { worldState.tab = b.dataset.wtab; renderWorldMain(); });
   });
   document.getElementById('btnWorldOpenToday').addEventListener('click', () => { worldPickToday(); renderWorldMain(); });
-  document.getElementById('btnWorldStrataOpen').addEventListener('click', () => openWorldStratum(null));
+  document.getElementById('btnWorldStrataOpen').addEventListener('click', () => {
+    // 一覧にいるときに押すと何も起きなかった。押して何も起きないボタンは、
+    // 壊れているのと見分けがつかない。一覧にいるときだけ戻る側にする。
+    if (worldState.view === 'stratum' && worldState.strataAll) { worldState.view = 'main'; renderWorld(); return; }
+    openWorldStratum(null);
+  });
   document.getElementById('btnWorldImportOpen').addEventListener('click', () => { worldState.view = 'import'; renderWorld(); });
   document.getElementById('btnWorldImportBack').addEventListener('click', () => { worldState.view = 'main'; renderWorld(); });
   document.getElementById('btnWorldDropStale').addEventListener('click', () => {
