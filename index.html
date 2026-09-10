@@ -1081,7 +1081,7 @@
   .worldStratumLine .wsStale { color: var(--danger); }
   .homeStratumLine { padding: 0 0 10px; margin-top: -6px; }
   /* 出来事の行のタグ。概念タグより弱くして、押し合わないようにする */
-  .worldRow .wTag.isStratum { color: var(--text-faint); border-color: transparent; background: var(--bg-card); }
+  .worldRow .wTag.isStratum { color: var(--text-faint); border-color: transparent; background: var(--bg-card); font: inherit; font-size: 10px; cursor: pointer; }
   .strataRow { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; align-items: center; }
   .strataRow .rowLabel { font-size: 11px; color: var(--text-faint); }
   .stratumPill {
@@ -1953,6 +1953,7 @@
       <button class="backBtn" id="backFromWorld">← 戻る</button>
       <div class="topbar-title">世界</div>
       <div class="topbarBtnGroup">
+        <button id="btnWorldStrataOpen" class="iconBtn">地層</button>
         <button id="btnWorldImportOpen" class="iconBtn">取り込む</button>
       </div>
     </header>
@@ -15552,9 +15553,11 @@
       }
       // 地層タグ。行は増やさない。概念タグより弱い色にして押し合わないようにする
       worldStrataOf(ev).slice(0, 1).forEach((s) => {
-        const t = document.createElement('span');
+        const t = document.createElement('button');
+        t.type = 'button';
         t.className = 'wTag isStratum';
         t.textContent = s.short;
+        t.addEventListener('click', (e) => { e.stopPropagation(); openWorldStratum(s.id); });
         right.appendChild(t);
       });
       const tagText = worldPremiseTagText(ev);
@@ -16499,6 +16502,7 @@
     b.addEventListener('click', () => { worldState.tab = b.dataset.wtab; renderWorldMain(); });
   });
   document.getElementById('btnWorldOpenToday').addEventListener('click', () => { worldPickToday(); renderWorldMain(); });
+  document.getElementById('btnWorldStrataOpen').addEventListener('click', () => openWorldStratum(null));
   document.getElementById('btnWorldImportOpen').addEventListener('click', () => { worldState.view = 'import'; renderWorld(); });
   document.getElementById('btnWorldImportBack').addEventListener('click', () => { worldState.view = 'main'; renderWorld(); });
   document.getElementById('btnWorldDropStale').addEventListener('click', () => {
