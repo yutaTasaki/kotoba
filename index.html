@@ -1123,6 +1123,8 @@
     background: none; color: inherit; text-align: left; font: inherit; cursor: pointer;
   }
   .worldMoneyRow .wmDate { font-size: 11px; color: var(--text-faint); white-space: nowrap; }
+  /* v18 A-3: 主体の詳細のお金の段。向きと相手を、額より先に置く */
+  .worldMoneyRow .wmPeer { font-size: 13px; }
   .worldMoneyRow .wmAmount { font-size: 13px; white-space: nowrap; }
   .worldMoneyRow .wmWhat { font-size: 12px; color: var(--text-dim); }
   .worldMoneyRow .wmSpan { font-size: 11px; color: var(--text-faint); }
@@ -2324,6 +2326,10 @@
       <div class="field" id="worldActorStanceField" hidden>
         <span class="fieldLabel">ふだん欲しがるもの<span class="fieldNote inlineNote">（手書き・任意）</span></span>
         <input type="text" id="worldActorStanceInput" placeholder="例：国債の金利を低く保ちたい" autocomplete="off">
+      </div>
+      <div class="field" id="worldActorMoneyField" hidden>
+        <span class="fieldLabel">この主体が動かしたお金</span>
+        <div id="worldActorMoney"></div>
       </div>
       <div class="field" id="worldConceptRelatedField">
         <span class="fieldLabel">つながる概念</span>
@@ -17688,6 +17694,33 @@
         return { event: e, rec, amount };
       });
   }
+  // v18 A-3: 主体の詳細で、お金を一番上に出すための行。flow がある札だけ。
+  // 時系列の右端にも同じ数字が出るが、役割が違う——上は「お金の話」、下は「行動の話」。
+  function worldActorFlowRows(c) {
+    const isMe = (n) => n && worldNormName(n) === worldNormName(c.name);
+    return worldLiveEvents()
+      .filter((e) => c.eventIds.includes(e.id) && e.flow && (e.flow.amount || e.flow.from || e.flow.to))
+      .sort((a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0))
+      .map((e) => ({
+        event: e,
+        // 自分がどちら側かで向きを変える。どちらでもない札は両側をそのまま出す
+        peer: isMe(e.flow.from) ? '→ ' + (e.flow.to || '？')
+            : isMe(e.flow.to) ? '← ' + (e.flow.from || '？')
+            : (e.flow.from || '？') + ' → ' + (e.flow.to || '？'),
+      }));
+  }
+  // 通貨ごとに区切る。合計は出さない（為替レートを選ぶと推定が事実の顔をして混ざる）
+  function worldActorMoneyGroups(rows) {
+    const byUnit = new Map();
+    rows.forEach((r) => {
+      const u = r.event.flow.unit || '';
+      if (!byUnit.has(u)) byUnit.set(u, []);
+      byUnit.get(u).push(r);
+    });
+    return [...byUnit.keys()]
+      .sort((a, b) => (a ? WORLD_FLOW_UNITS.indexOf(a) : 99) - (b ? WORLD_FLOW_UNITS.indexOf(b) : 99))
+      .map((u) => ({ unit: u, label: WORLD_FLOW_UNIT_LABEL[u] || u, rows: byUnit.get(u) }));
+  }
   // ---- 主体の盤面 (v13) ----------------------------------------------------
   // 回数と最終日は id から出すので、月を読み込んでいなくても正確。
   // 読み込み済みの月については実物で判定する（非表示・削除された札を数えない）。
@@ -17818,6 +17851,36 @@
       body.appendChild(p);
       ensureWorldMonths(need).then(() => { if (nav.screen === 'world' && worldState.view === 'main' && worldState.tab === 'board') renderWorldMain(); });
     }
+  }
+  // v18 A-3: お金が動いた事実から、何を暗に実現したいかを逆に読むための段。
+  // 主体の詳細の一番上に置く（下に 行動 → 述べた理由 → 読んだ思惑 が続く）。
+  function renderWorldActorMoney(box, rows) {
+    box.innerHTML = '';
+    const groups = worldActorMoneyGroups(rows);
+    groups.forEach((g) => {
+      // 通貨が1つなら見出しは要らない（額の文字列に単位が入っている）
+      if (groups.length > 1) {
+        const uh = document.createElement('div');
+        uh.className = 'worldMoneyUnit'; uh.textContent = g.label;
+        box.appendChild(uh);
+      }
+      g.rows.forEach(({ event: e, peer }) => {
+        const row = document.createElement('button');
+        row.type = 'button'; row.className = 'worldMoneyRow';
+        const d = document.createElement('span'); d.className = 'wmDate'; d.textContent = worldShortDate(e.eventDate);
+        const p = document.createElement('span'); p.className = 'wmPeer'; p.textContent = peer;
+        const a = document.createElement('span'); a.className = 'wmAmount'; a.textContent = e.flow.amount || '（額なし）';
+        const w = document.createElement('span'); w.className = 'wmWhat'; w.textContent = e.flow.what || e.fact;
+        row.appendChild(d); row.appendChild(p); row.appendChild(a); row.appendChild(w);
+        if (e.flow.span) {
+          const s = document.createElement('span');
+          s.className = 'wmSpan'; s.textContent = '（' + e.flow.span + 'の累計）';
+          row.appendChild(s);
+        }
+        row.addEventListener('click', () => openWorldEvent(e.id));
+        box.appendChild(row);
+      });
+    });
   }
   function renderWorldActorTimeline(box, c) {
     box.innerHTML = '';
@@ -18737,6 +18800,12 @@
       inp.value = c.stance || '';
       inp.onchange = () => { const v = worldStr(inp.value, WORLD_STANCE_MAX); if (v !== c.stance) { c.stance = v; c.updatedAt = nowIso(); worldSaveActors(); } };
     }
+
+    // v18 A-3: お金を一番上に。flow が1件も無い主体では、この段を出さない
+    const moneyField = document.getElementById('worldActorMoneyField');
+    const moneyRows = isActor ? worldActorFlowRows(c) : [];
+    moneyField.hidden = !moneyRows.length;
+    if (moneyRows.length) renderWorldActorMoney(document.getElementById('worldActorMoney'), moneyRows);
 
     // 用語は網に参加しないので「つながる概念」を持たない
     const relField = document.getElementById('worldConceptRelatedField');
