@@ -1123,6 +1123,11 @@
     background: none; color: inherit; text-align: left; font: inherit; cursor: pointer;
   }
   .worldMoneyRow .wmDate { font-size: 11px; color: var(--text-faint); white-space: nowrap; }
+  /* v18 A-2: 「もっと見る」の1行。畳むのではなく件数を絞るので、先があることは必ず出す */
+  .worldMoreLine {
+    display: block; width: 100%; text-align: left;
+    padding: 8px 0; border-top: 1px solid var(--border);
+  }
   /* v18 A-3: 主体の詳細のお金の段。向きと相手を、額より先に置く */
   .worldMoneyRow .wmPeer { font-size: 13px; }
   .worldMoneyRow .wmAmount { font-size: 13px; white-space: nowrap; }
@@ -1732,6 +1737,11 @@
         <p class="emptyMsg" id="worldHiddenEmpty" hidden>非表示にしたものはありません。</p>
       </div>
       <div class="field">
+        <span class="fieldLabel">概念・用語・アクターを整理する</span>
+        <p class="fieldNote">名前を直す・まとめる・非表示にする・親でまとめる。月に一度あるかどうかの操作なので、ふだんの画面からは外してあります。一覧と並べ替えもここです。</p>
+        <button id="btnWorldTidyOpen" class="secondaryBtn">整理をひらく</button>
+      </div>
+      <div class="field">
         <span class="fieldLabel">概念のつながりを作り直す</span>
         <p class="fieldNote">ふだんは取り込みのたびに自動で数え直します。端末に無い月の札まで含めて繋ぎ直したいとき、または数が合わないときに押します。何度押しても同じ本数になります。手で外したつながりと、生成が指定したつながりは残ります。</p>
         <button id="btnWorldRebuildCooc" class="secondaryBtn">作り直す</button>
@@ -2138,22 +2148,16 @@
         <button type="button" id="btnWorldDropStale" class="tagFilterBtn">まとめて捨てる</button>
       </div>
 
+      <button type="button" id="worldStratumToday" class="worldStratumLine" hidden></button>
+
       <div class="field" id="worldTodayField">
         <span class="fieldLabel" id="worldTodayLabel">今日動いた主体</span>
-        <button type="button" id="worldStratumToday" class="worldStratumLine" hidden></button>
         <div id="worldTodayList"></div>
         <p class="emptyMsg" id="worldTodayEmpty" hidden>新しい分がありません。右上の「取り込む」から入れます。</p>
         <button type="button" id="btnWorldOpenToday" class="secondaryBtn" hidden>今日の分をひらく</button>
       </div>
 
-      <div class="tagFilterRow" id="worldTabRow">
-        <button type="button" class="tagFilterBtn" data-wtab="board">主体</button>
-        <button type="button" class="tagFilterBtn" data-wtab="events">出来事</button>
-        <button type="button" class="tagFilterBtn" data-wtab="concepts">概念</button>
-        <button type="button" class="tagFilterBtn" data-wtab="predictions">予測</button>
-      </div>
-
-      <div id="worldTabBody"></div>
+      <div id="worldMainBody"></div>
     </div>
 
     <div class="editorBody" id="worldImportView" hidden>
@@ -2278,6 +2282,11 @@
         </div>
       </div>
       <div class="field">
+        <span class="fieldLabel">答え合わせ待ち<span class="fieldNote inlineNote" id="worldJudgeWaitCount"></span></span>
+        <div id="worldJudgeWaiting"></div>
+        <p class="emptyMsg" id="worldJudgeWaitEmpty" hidden>まだ予測がありません。</p>
+      </div>
+      <div class="field">
         <span class="fieldLabel">判定したもの</span>
         <div id="worldJudgeList"></div>
         <p class="emptyMsg" id="worldJudgeEmpty" hidden>まだ判定したものがありません。</p>
@@ -2348,7 +2357,7 @@
       </div>
       <div class="field">
         <div class="medRow" id="worldConceptAskRow"></div>
-        <div class="medRow">
+        <div class="medRow" id="worldConceptTidyRow" hidden>
           <button type="button" id="btnWorldConceptRename" class="tagFilterBtn">名前を直す・まとめる</button>
           <button type="button" id="btnWorldConceptHide" class="tagFilterBtn">非表示</button>
         </div>
@@ -2363,6 +2372,39 @@
       </div>
       <div class="field">
         <button type="button" id="btnWorldConceptBack" class="secondaryBtn">戻る</button>
+      </div>
+    </div>
+
+    <!-- v18 A-2: 一時的な札の一覧。既定の画面からは開けない（入口が必ず何かの結果） -->
+    <div class="editorBody" id="worldCardsView" hidden>
+      <div class="worldSectionHead">
+        <h3 style="margin:0;" id="worldCardsTitle"></h3>
+      </div>
+      <div id="worldCardsBody"></div>
+      <div class="field">
+        <button type="button" id="btnWorldCardsBack" class="secondaryBtn">戻る</button>
+      </div>
+    </div>
+
+    <div class="editorBody" id="worldActorsView" hidden>
+      <div class="worldSectionHead">
+        <h3 style="margin:0;">動いている主体</h3>
+        <span id="worldActorsCount"></span>
+      </div>
+      <div id="worldActorsBody"></div>
+      <div class="field">
+        <button type="button" id="btnWorldActorsBack" class="secondaryBtn">戻る</button>
+      </div>
+    </div>
+
+    <div class="editorBody" id="worldTidyView" hidden>
+      <div class="worldSectionHead">
+        <h3 style="margin:0;">整理</h3>
+      </div>
+      <p class="fieldNote">名前を直す・まとめる・非表示にする・親でまとめる。月に一度あるかどうかの操作なので、ふだんの画面には出しません。</p>
+      <div id="worldTidyBody"></div>
+      <div class="field">
+        <button type="button" id="btnWorldTidyBack" class="secondaryBtn">戻る</button>
       </div>
     </div>
   </section>
@@ -14191,7 +14233,7 @@
   const WORLD_OUTCOMES        = ['up', 'down', 'flat'];
   // 札の画面で、生成の見立て（方向）まで隠すか。理由（because）は押すまで畳む
   // のが既定で、方向は出す——方向1つなら引きずられる度合いが小さく、隠すと
-  // 「AI はこう思っている」が予測タブでしか見られなくなるため。
+  // 「AI はこう思っている」が答え合わせの画面でしか見られなくなるため。
   const WORLD_LEAN_HIDDEN     = false;
   const WORLD_SORTS = ['count', 'kana', 'new'];
   const WORLD_CONCEPT_SORTS = ['count', 'kana', 'new', 'parent'];   // v11: 親でまとめる
@@ -14246,6 +14288,9 @@
   const WORLD_FLOW_UNIT_LABEL  = { JPY: '円', USD: 'ドル', EUR: 'ユーロ', CNY: '元', '%': '割合', '': '単位が読めないもの' };
   // v13 主体の盤面：既定の画面。「今日どんな出来事があったか」ではなく
   // 「いま誰が何を動かそうとしているか」を最初に見る。
+  const WORLD_MONEY_BRIEF   = 3;   // v18 A-2: 既定の画面に出すお金の本数
+  const WORLD_SEARCH_SHOW   = 6;   // v18 A-2: 探すの結果を出す件数（先は一覧へ）
+  const WORLD_SEARCH_KINDS  = [['card', '札'], ['concept', '概念'], ['term', '用語'], ['actor', 'アクター'], ['money', 'お金']];
   const WORLD_BOARD_FOLD = 5;    // 盤面の既定の件数
   const WORLD_BOARD_MAX  = 20;   // 「もっと見る」で出す上限
   const WORLD_BOARD_LEGEND_KEY = 'kotoba_worldBoardLegend';   // 凡例を畳んだか
@@ -16974,7 +17019,7 @@
   }
 
   // ---- 画面 ----------------------------------------------------------------
-  const worldState = { view: 'main', tab: 'board', boardAll: false, entryFrom: 'list', askText: '', askId: '', askWord: '', askWordOpen: false, askNewOnly: false, askResult: '', askOpenId: '', entryKind: 'concept', entrySort: 'count', eventKind: 'card', conceptId: null, stratumId: null, strataAll: false, sunkOpen: false, bgOpen: false, openId: null, candidates: [], lastResult: '', search: { events: '', concept: '', term: '', actor: '', money: '' }, searchFocus: '', batchFilter: null, lastBatch: null };
+  const worldState = { view: 'main', entryFrom: 'list', askText: '', askId: '', askWord: '', askWordOpen: false, askNewOnly: false, askResult: '', askOpenId: '', entryKind: 'concept', entrySort: 'count', actorSort: 'new', searchKind: 'card', searchAll: false, tidy: false, cards: null, cardsOpenId: null, conceptId: null, stratumId: null, strataAll: false, sunkOpen: false, bgOpen: false, openId: null, candidates: [], lastResult: '', search: { main: '', concept: '', term: '', actor: '', money: '' }, searchFocus: '', lastBatch: null };
 
   // 地層の1行。押すとその地層を開く。太くしない。
   function paintStratumLine(el, s) {
@@ -17030,7 +17075,7 @@
     return list[0] || null;
   }
   // v17 C: 生成の見立て（lean）が自動で入るので、「自分が書いた」と「何か予測が
-  // 付いている」を分ける。予測タブと due 索引は Any、コピー文は Mine。
+  // 付いている」を分ける。答え合わせと due 索引は Any、コピー文は Mine。
   function worldPredictionWritten(ev) { return worldPredictionMine(ev); }
   const WORLD_RESULT_LABEL = { hit: '当たり', miss: '外れ', hold: '保留' };
   // v17 C: 答え合わせの画面には3択のボタンが無いので、ボタンの文言（上／下）を
@@ -17537,7 +17582,7 @@
       forkEl.textContent = ev.fork.text;
       predBox.appendChild(forkEl);
       // v17 C: 生成の見立ては3択の上。方向1つなら引きずられる度合いが小さく、
-      // 隠すと「AI はこう思っている」が予測タブでしか見られなくなる。理由は
+      // 隠すと「AI はこう思っている」が答え合わせの画面でしか見られなくなる。理由は
       // 自分が押すまで畳む——先に読むと、自分の考えではなく理由の追認になる。
       if (ev.prediction.lean && !WORLD_LEAN_HIDDEN) {
         const lw = document.createElement('div');
@@ -17797,90 +17842,6 @@
     row.addEventListener('click', onClick);
     return row;
   }
-  function renderWorldBoardTab(body) {
-    // 盤面と同じ「主体を見る」入口だが向きが逆（盤面＝動いている主体から、
-    // 問い＝知りたいことから）。タブに5つ目を足すと390pxで崩れる。
-    const ask = document.createElement('button');
-    ask.type = 'button'; ask.className = 'worldAskEntry';
-    ask.textContent = '知りたいことから引く' + (worldAsks().length ? '（' + worldAsks().length + '）' : '') + '　▸';
-    ask.addEventListener('click', () => { worldState.view = 'ask'; renderWorld(); });
-    body.appendChild(ask);
-
-    // v14.1: 最近の問いを盤面から見せる。問いは在庫ではなく自分が立てた立場なので、
-    // 「知りたいことから引く」の中だけに置くと、戻ったとき消えたように見える。
-    const recent = worldAsks()
-      .filter((a) => a.runs.length)
-      .sort((a, b) => { const x = a.runs[a.runs.length - 1].at, y = b.runs[b.runs.length - 1].at; return x > y ? -1 : x < y ? 1 : 0; })
-      .slice(0, WORLD_BOARD_ASKS);
-    if (recent.length) {
-      const box = document.createElement('div');
-      box.className = 'worldAskRecent';
-      recent.forEach((a) => {
-        const last = a.runs[a.runs.length - 1];
-        const row = document.createElement('button');
-        row.type = 'button'; row.className = 'worldAskRecentRow';
-        const t = document.createElement('span'); t.className = 'warqText'; t.textContent = a.text;
-        const v = document.createElement('span'); v.className = 'warqView'; v.textContent = last.view || '';
-        const d = document.createElement('span'); d.className = 'warqDate'; d.textContent = worldShortDate(last.at);
-        row.appendChild(t); row.appendChild(d); row.appendChild(v);
-        row.addEventListener('click', () => {
-          worldState.view = 'ask';
-          worldState.askOpenId = a.id;      // 前回の見立てを開いた状態で
-          worldState.askId = ''; worldState.askText = ''; worldState.askResult = '';
-          renderWorld();
-        });
-        box.appendChild(row);
-      });
-      body.appendChild(box);
-    }
-
-    const rows = worldBoardRows();
-    if (!rows.length) {
-      const p = document.createElement('p'); p.className = 'emptyMsg';
-      p.textContent = 'まだ動いた主体がありません。札に「動かした側」が付くと、ここに並びます。';
-      body.appendChild(p); return;
-    }
-    const shown = worldState.boardAll ? rows.slice(0, WORLD_BOARD_MAX) : rows.slice(0, WORLD_BOARD_FOLD);
-
-    const head = document.createElement('div');
-    head.className = 'worldSectionHead';
-    const l = document.createElement('span'); l.textContent = '動いている主体';
-    const leg = document.createElement('button');
-    leg.type = 'button'; leg.className = 'linkLikeBtn wbLegend';
-    const open = worldBoardLegendOpen();
-    leg.textContent = open ? '述＝述べた理由がある／推＝推定がある ▾' : '凡例 ▸';
-    leg.addEventListener('click', () => {
-      try { localStorage.setItem(WORLD_BOARD_LEGEND_KEY, open ? '0' : '1'); } catch (e) {}
-      renderWorldMain();
-    });
-    head.appendChild(l); head.appendChild(leg);
-    body.appendChild(head);
-
-    shown.forEach((r) => {
-      body.appendChild(worldBoardRowEl(r, () => { worldState.entryFrom = 'board'; openWorldEntry(r.actor.id); }));
-    });
-
-    if (!worldState.boardAll && rows.length > WORLD_BOARD_FOLD) {
-      const more = document.createElement('button');
-      more.type = 'button'; more.className = 'linkLikeBtn';
-      more.textContent = 'もっと見る（あと ' + (Math.min(rows.length, WORLD_BOARD_MAX) - WORLD_BOARD_FOLD) + '件）';
-      more.addEventListener('click', () => { worldState.boardAll = true; renderWorldMain(); });
-      body.appendChild(more);
-    } else if (worldState.boardAll && rows.length > WORLD_BOARD_MAX) {
-      const p = document.createElement('p'); p.className = 'fieldNote';
-      p.textContent = 'ほか ' + (rows.length - WORLD_BOARD_MAX) + '件は「概念」タブの［アクター］で見られます。';
-      body.appendChild(p);
-    }
-
-    // 行動の文と述べた／推定は、読み込んだ月からしか取れない。裏で読んで埋める
-    const need = [...new Set(shown.filter((r) => r.partial).flatMap((r) => r.months))].filter((m) => !wd.loaded.has(m));
-    if (need.length) {
-      const p = document.createElement('p'); p.className = 'fieldNote';
-      p.textContent = need.length + 'か月ぶんを読み込み中…（回数と日付は正確です）';
-      body.appendChild(p);
-      ensureWorldMonths(need).then(() => { if (nav.screen === 'world' && worldState.view === 'main' && worldState.tab === 'board') renderWorldMain(); });
-    }
-  }
   // v18 A-3: お金が動いた事実から、何を暗に実現したいかを逆に読むための段。
   // 主体の詳細の一番上に置く（下に 行動 → 述べた理由 → 読んだ思惑 が続く）。
   function renderWorldActorMoney(box, rows) {
@@ -18001,7 +17962,8 @@
     return el;
   }
 
-  // 検索。タブをまたぐ横断検索は作らない（探すときは何を探しているか分かっている）
+  // 検索。v18 A-2 で「探す」は型をまたぐが、型の切替は語を入れたあとにだけ出す
+  // （探すときは何を探しているか自分で分かっているので、先に選ばせない）
   function worldSearchKey(s) { return worldNormName(s); }
   function worldSearchBoxEl(key, placeholder, onChange) {
     const wrap = document.createElement('div');
@@ -18013,7 +17975,7 @@
     input.addEventListener('input', () => {
       worldState.search[key] = input.value;
       worldState.searchFocus = key;
-      onChange();   // タブごと描き直すので、下でフォーカスを戻す
+      onChange();   // まるごと描き直すので、下でフォーカスを戻す
     });
     input.addEventListener('blur', () => { if (worldState.searchFocus === key) worldState.searchFocus = ''; });
     wrap.appendChild(input);
@@ -18082,20 +18044,24 @@
     document.getElementById('worldStratumView').hidden = worldState.view !== 'stratum';
     document.getElementById('worldAskView').hidden = worldState.view !== 'ask';
     document.getElementById('worldJudgeView').hidden = worldState.view !== 'judge';
+    document.getElementById('worldCardsView').hidden = worldState.view !== 'cards';
+    document.getElementById('worldActorsView').hidden = worldState.view !== 'actors';
+    document.getElementById('worldTidyView').hidden = worldState.view !== 'tidy';
     if (worldState.view === 'ask') renderWorldAsk();
     else if (worldState.view === 'judge') renderWorldJudge();
     else if (worldState.view === 'main') renderWorldMain();
     else if (worldState.view === 'concept') renderWorldConcept();
     else if (worldState.view === 'stratum') renderWorldStratum();
+    else if (worldState.view === 'cards') renderWorldCards();
+    else if (worldState.view === 'actors') renderWorldActors();
+    else if (worldState.view === 'tidy') renderWorldTidy();
     else renderWorldImport();
   }
   // v18 A-1: 今日の単位は「札」ではなく「主体」。readDate はそのまま残す
   // （朝の畳んだ行・記録の月まとめ・worldReadOn が依存している）。
-  function renderWorldTodayActors(box, list) {
+  function renderWorldTodayActors(box, list, rows, bg) {
     box.innerHTML = '';
     if (!list.length) return;
-    const rows = worldDayActorRows(list);
-    const bg = worldBackgroundCards(list);
     const common = worldCommonLineEl(list);
     if (common) box.appendChild(common);
     if (!rows.length) {
@@ -18103,12 +18069,14 @@
       box.appendChild(worldSunkCardsEl(bg, '今日は動いた主体がありません（背景の札 ' + bg.length + '件）'));
       return;
     }
-    rows.forEach((r) => box.appendChild(worldBoardRowEl(r, () => {
-      if (r.actor) { worldState.entryFrom = 'board'; openWorldEntry(r.actor.id); }
+    rows.slice(0, WORLD_BOARD_FOLD).forEach((r) => box.appendChild(worldBoardRowEl(r, () => {
+      if (r.actor) openWorldEntry(r.actor.id, 'board');
       else openWorldEvent(r.cards[0].id);
     })));
-    // 取り込んだのに画面から消える札を作らないための1行。0件の日は出さない
-    if (bg.length) box.appendChild(worldSunkCardsEl(bg, '背景に沈めた札 ' + bg.length + '件'));
+    // 畳むのではなく件数を絞る。先は「動いている主体」の一覧（並べ替えもそこ）
+    box.appendChild(worldMoreLineEl(
+      rows.length > WORLD_BOARD_FOLD ? 'ほか ' + (rows.length - WORLD_BOARD_FOLD) + '主体 ・ もっと見る' : 'もっと見る',
+      () => { worldState.view = 'actors'; renderWorld(); }));
   }
   // 押すと畳んだ札の一覧が開く1行
   function worldSunkCardsEl(cards, label) {
@@ -18125,6 +18093,41 @@
     }
     return wrap;
   }
+  // 盤面と同じ「主体を見る」入口だが向きが逆（既定＝動いた主体から、
+  // 問い＝知りたいことから）。問いは在庫ではなく自分が立てた立場なので、
+  // 「知りたいことから引く」の中だけに置くと、戻ったとき消えたように見える。
+  function renderWorldAskBrief(body) {
+    const ask = document.createElement('button');
+    ask.type = 'button'; ask.className = 'worldAskEntry';
+    ask.textContent = '知りたいことから引く' + (worldAsks().length ? '（' + worldAsks().length + '）' : '') + '　▸';
+    ask.addEventListener('click', () => { worldState.view = 'ask'; renderWorld(); });
+    body.appendChild(ask);
+
+    const recent = worldAsks()
+      .filter((a) => a.runs.length)
+      .sort((a, b) => { const x = a.runs[a.runs.length - 1].at, y = b.runs[b.runs.length - 1].at; return x > y ? -1 : x < y ? 1 : 0; })
+      .slice(0, WORLD_BOARD_ASKS);
+    if (!recent.length) return;
+    const box = document.createElement('div');
+    box.className = 'worldAskRecent';
+    recent.forEach((a) => {
+      const last = a.runs[a.runs.length - 1];
+      const row = document.createElement('button');
+      row.type = 'button'; row.className = 'worldAskRecentRow';
+      const t = document.createElement('span'); t.className = 'warqText'; t.textContent = a.text;
+      const v = document.createElement('span'); v.className = 'warqView'; v.textContent = last.view || '';
+      const d = document.createElement('span'); d.className = 'warqDate'; d.textContent = worldShortDate(last.at);
+      row.appendChild(t); row.appendChild(d); row.appendChild(v);
+      row.addEventListener('click', () => {
+        worldState.view = 'ask';
+        worldState.askOpenId = a.id;      // 前回の見立てを開いた状態で
+        worldState.askId = ''; worldState.askText = ''; worldState.askResult = '';
+        renderWorld();
+      });
+      box.appendChild(row);
+    });
+    body.appendChild(box);
+  }
   function renderWorldMain() {
     const stale = worldStaleUnread();
     const bar = document.getElementById('worldStaleBar');
@@ -18135,8 +18138,9 @@
     paintStratumLine(document.getElementById('worldStratumToday'), worldTodayStratum());
 
     const todayList = worldReadOn(todayStr());
-    renderWorldTodayActors(document.getElementById('worldTodayList'), todayList);
     const actorRows = worldDayActorRows(todayList);
+    const bg = worldBackgroundCards(todayList);
+    renderWorldTodayActors(document.getElementById('worldTodayList'), todayList, actorRows, bg);
     document.getElementById('worldTodayLabel').textContent =
       '今日動いた主体' + (actorRows.length ? '（' + actorRows.length + '）' : '');
     const unread = worldUnread().length;
@@ -18148,13 +18152,16 @@
     // 消費するのはここを押したときだけ（朝のステップを開くのと同じ扱い）
     document.getElementById('btnWorldOpenToday').hidden = !!todayList.length || !unread;
 
-    document.querySelectorAll('#worldTabRow .tagFilterBtn').forEach((b) => b.classList.toggle('selected', b.dataset.wtab === worldState.tab));
-    const body = document.getElementById('worldTabBody');
+    // 12〜15行の1本の導線。ここから下は、押した結果でしか広がらない
+    const body = document.getElementById('worldMainBody');
     body.innerHTML = '';
-    if (worldState.tab === 'board') renderWorldBoardTab(body);
-    else if (worldState.tab === 'events') renderWorldEventsTab(body);
-    else if (worldState.tab === 'concepts') renderWorldConceptsTab(body);
-    else renderWorldPredictionsTab(body);
+    renderWorldMoneyBrief(body);
+    // 背景の札は、動いた主体がある日だけ独立した1行にする（主体が0の日は
+    // 「今日は動いた主体がありません（背景の札 N件）」に含まれている）
+    if (actorRows.length && bg.length) body.appendChild(worldSunkCardsEl(bg, '背景に沈めた札 ' + bg.length + '件'));
+    renderWorldAskBrief(body);
+    renderWorldJudgeBrief(body);
+    renderWorldSearch(body);
   }
   // v15 お金の一覧。通貨ごとに区切り（換算しないので足せない）、from→to の組で
   // まとめ、2回以上ある組を上に出す。合計は出さない——「財務省 合計20兆円」を
@@ -18189,7 +18196,8 @@
     ['部分的に追える', '企業の設備投資（決算ベース・遅い）、対外投資残高（四半期遅れ）、エネルギーの貿易額'],
     ['ほぼ追えない', '誰がいつ何を売買したか、実需と投機の内訳、非公開の政治資金、迂回取引'],
   ];
-  function renderWorldMoneyTab(body) {
+  // v18 A-2: 出来事タブが無くなったので、札の一覧画面（view:'cards'）の中身になる
+  function renderWorldMoneyList(body) {
     const head = document.createElement('div');
     head.className = 'worldSectionHead';
     const l = document.createElement('span'); l.textContent = 'お金の流れ';
@@ -18199,7 +18207,7 @@
     leg.textContent = '追えるのは公のお金だけ ' + (open ? '▾' : '▸');
     leg.addEventListener('click', () => {
       try { localStorage.setItem(WORLD_MONEY_LEGEND_KEY, open ? '0' : '1'); } catch (e) {}
-      renderWorldMain();
+      renderWorld();
     });
     head.appendChild(l); head.appendChild(leg);
     body.appendChild(head);
@@ -18217,7 +18225,7 @@
       body.appendChild(box);
     }
 
-    body.appendChild(worldSearchBoxEl('money', 'お金を探す（誰から・誰へ・何を・いくら）', renderWorldMain));
+    body.appendChild(worldSearchBoxEl('money', 'お金を探す（誰から・誰へ・何を・いくら）', renderWorld));
     const groups = worldMoneyGroups(worldState.search.money);
     if (!groups.length) {
       const p = document.createElement('p'); p.className = 'emptyMsg';
@@ -18264,94 +18272,18 @@
     note.textContent = '合計は出しません。通貨をまたいで足すには為替レートを選ぶことになり、推定が事実の顔をして混ざります。';
     body.appendChild(note);
   }
-  function renderWorldEventsTab(body) {
-    // v15: タブ行を増やさず、出来事タブの中の切替に置く（v17 のタブ再編で
-    // 出来事タブが「探す」に畳まれるとき、お金もそのまま一緒に移る）。
-    const kindRow = document.createElement('div');
-    kindRow.className = 'tagFilterRow';
-    [['card', '札'], ['money', 'お金']].forEach(([k, label]) => {
-      const b = document.createElement('button');
-      b.type = 'button'; b.className = 'tagFilterBtn' + (worldState.eventKind === k ? ' selected' : '');
-      b.textContent = label + (k === 'money' ? ' ' + worldLiveEvents().filter((e) => e.flow).length : '');
-      b.addEventListener('click', () => { worldState.eventKind = k; worldState.batchFilter = null; renderWorldMain(); });
-      kindRow.appendChild(b);
-    });
-    if (!worldState.batchFilter) body.appendChild(kindRow);
-    if (worldState.eventKind === 'money' && !worldState.batchFilter) { renderWorldMoneyTab(body); return; }
-
-    const bf = worldState.batchFilter;
-    if (bf) {
-      const mine = bf.id ? worldLiveEvents().filter((e) => e.batchId === bf.id).sort((a, b) => a.order - b.order) : [];
-      const head = document.createElement('div');
-      head.className = 'worldSectionHead';
-      const l = document.createElement('span');
-      l.textContent = bf.askText ? '「' + bf.askText + '」の札（' + bf.partnerIds.length + '）' : 'この回に入れた札（' + mine.length + '）';
-      const all = document.createElement('button');
-      all.type = 'button'; all.className = 'linkLikeBtn'; all.textContent = '全部を見る';
-      all.addEventListener('click', () => { worldState.batchFilter = null; renderWorldMain(); });
-      head.appendChild(l); head.appendChild(all);
-      body.appendChild(head);
-      const box = document.createElement('div');
-      if (mine.length || !bf.askText) renderWorldList(box, mine, 'この回の札は端末に残っていません。');
-      body.appendChild(box);
-      const partners = worldLiveEvents().filter((e) => bf.partnerIds.includes(e.id)).sort((a, b) => (a.eventDate > b.eventDate ? -1 : 1));
-      if (partners.length && !bf.askText) {
-        const h2 = document.createElement('div');
-        h2.className = 'worldSectionHead';
-        const l2 = document.createElement('span'); l2.textContent = 'つながった相手の札（' + partners.length + '）';
-        const r2 = document.createElement('span'); r2.textContent = bf.linked + '本';
-        h2.appendChild(l2); h2.appendChild(r2);
-        body.appendChild(h2);
-        const box2 = document.createElement('div');
-        renderWorldList(box2, partners, '');
-        body.appendChild(box2);
-      } else if (partners.length) {
-        const box2 = document.createElement('div');
-        renderWorldList(box2, partners, '');
-        body.appendChild(box2);
-      }
-      return;
-    }
-    body.appendChild(worldSearchBoxEl('events', '出来事を探す（本文・出典）', renderWorldMain));
-    const q = worldState.search.events;
-    const byMonth = new Map();
-    worldLiveEvents()
-      .filter((e) => worldMatches(q, [e.fact, e.why, e.detail, e.source]))
-      .sort((a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0)).forEach((e) => {
-      const m = monthOfDate(e.eventDate);
-      if (!byMonth.has(m)) byMonth.set(m, []);
-      byMonth.get(m).push(e);
-    });
-    if (!byMonth.size) {
-      const p = document.createElement('p'); p.className = 'emptyMsg';
-      p.textContent = q ? '見つかりませんでした（端末に読み込んでいる月だけを探しています）。' : 'まだ出来事がありません。';
-      body.appendChild(p); return;
-    }
-    [...byMonth.keys()].sort().reverse().forEach((m) => {
-      const head = document.createElement('div');
-      head.className = 'worldSectionHead';
-      const l = document.createElement('span'); l.textContent = m.replace('-', '.');
-      const r = document.createElement('span'); r.textContent = byMonth.get(m).length + '件';
-      head.appendChild(l); head.appendChild(r);
-      body.appendChild(head);
-      const box = document.createElement('div');
-      renderWorldList(box, byMonth.get(m), '');
-      body.appendChild(box);
-    });
-    const note = document.createElement('p');
-    note.className = 'fieldNote';
-    note.textContent = '端末に読み込んでいる月だけを出しています（今月・先月と、未読が残っている月）。';
-    body.appendChild(note);
-  }
   function worldSortEntries(list, sort) {
     const copy = list.slice();
     if (sort === 'kana') return copy.sort((a, b) => a.name.localeCompare(b.name, 'ja'));
     if (sort === 'new') return copy.sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1));
     return copy.sort((a, b) => worldConceptCount(b) - worldConceptCount(a) || a.name.localeCompare(b.name, 'ja'));
   }
-  // 用語はタブ行を増やさず、概念の中の切替に置く。「用語は読むための道具で
-  // あって、体系ではない」という位置づけが画面に出るほうを採った。
-  function renderWorldConceptsTab(body) {
+  // ---- 整理 (v18 A-2) --------------------------------------------------------
+  // 概念・用語・アクターの一覧と、統合・名前直し・非表示・親でまとめる。
+  // 月に一度あるかどうかの操作なので、設定の中に置く（既定の画面に出さない）。
+  function renderWorldTidy() {
+    const body = document.getElementById('worldTidyBody');
+    body.innerHTML = '';
     const isTerm = worldState.entryKind === 'term';
     const isActor = worldState.entryKind === 'actor';
 
@@ -18361,7 +18293,7 @@
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'tagFilterBtn' + (worldState.entryKind === k ? ' selected' : '');
       b.textContent = label + ' ' + (k === 'term' ? worldTerms().length : k === 'actor' ? worldActors().length : worldConcepts().length);
-      b.addEventListener('click', () => { worldState.entryKind = k; renderWorldMain(); });
+      b.addEventListener('click', () => { worldState.entryKind = k; renderWorldTidy(); });
       kindRow.appendChild(b);
     });
     body.appendChild(kindRow);
@@ -18372,7 +18304,7 @@
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'tagFilterBtn' + (worldState.entrySort === s ? ' selected' : '');
       b.textContent = WORLD_SORT_LABEL[s];
-      b.addEventListener('click', () => { worldState.entrySort = s; renderWorldMain(); });
+      b.addEventListener('click', () => { worldState.entrySort = s; renderWorldTidy(); });
       sortRow.appendChild(b);
     });
     body.appendChild(sortRow);
@@ -18384,12 +18316,12 @@
       n.textContent = c.name + (isTerm && c.kind ? '（' + WORLD_TERM_KIND_LABEL[c.kind] + '）' : '') + (isActor && c.kind ? '（' + WORLD_ACTOR_KIND_LABEL[c.kind] + '）' : '');
       const cnt = document.createElement('span'); cnt.className = 'wcCount'; cnt.textContent = worldConceptCount(c) + '件';
       row.appendChild(n); row.appendChild(cnt);
-      row.addEventListener('click', () => openWorldEntry(c.id));
+      row.addEventListener('click', () => openWorldEntry(c.id, 'tidy'));
       return row;
     };
 
     const kindLabel = isTerm ? '用語' : isActor ? 'アクター' : '概念';
-    body.appendChild(worldSearchBoxEl(worldState.entryKind, kindLabel + 'を探す（名前・別名' + (isActor ? '' : '・注') + '）', renderWorldMain));
+    body.appendChild(worldSearchBoxEl(worldState.entryKind, kindLabel + 'を探す（名前・別名' + (isActor ? '' : '・注') + '）', renderWorldTidy));
     const q = worldState.search[worldState.entryKind];
 
     // つながりが1本も無いのに札が溜まっているときだけ、作り直しを促す
@@ -18433,7 +18365,7 @@
       const head = document.createElement('div');
       head.className = 'sunkHead';
       head.textContent = (worldState.sunkOpen ? '▾ ' : '▸ ') + 'しばらく出ていない用語（' + sunk.length + '）';
-      head.addEventListener('click', () => { worldState.sunkOpen = !worldState.sunkOpen; renderWorldMain(); });
+      head.addEventListener('click', () => { worldState.sunkOpen = !worldState.sunkOpen; renderWorldTidy(); });
       body.appendChild(head);
       if (worldState.sunkOpen) {
         const note = document.createElement('p');
@@ -18444,65 +18376,6 @@
       }
     }
   }
-  function renderWorldPredictionsTab(body) {
-    // v17 C: 期限が来た日だけ入口を出す。在庫の一覧を既定に置かない
-    const targets = worldJudgeTargets();
-    if (targets.length) {
-      const b = document.createElement('button');
-      b.type = 'button'; b.className = 'worldAskEntry';
-      b.textContent = '答え合わせ ' + targets.length + '件　▸';
-      b.addEventListener('click', () => { worldState.view = 'judge'; renderWorld(); });
-      body.appendChild(b);
-    }
-    const st = worldJudgeStats();
-    if (st.leanHit + st.leanMiss + st.mineHit + st.mineMiss) {
-      const h = document.createElement('div');
-      h.className = 'worldSectionHead';
-      const l = document.createElement('span'); l.textContent = '的中率';
-      const r = document.createElement('button');
-      r.type = 'button'; r.className = 'linkLikeBtn';
-      r.textContent = '生成 ' + worldRateText(st.leanHit, st.leanMiss) + ' ・ 自分 ' + worldRateText(st.mineHit, st.mineMiss);
-      r.addEventListener('click', () => { worldState.view = 'judge'; renderWorld(); });
-      h.appendChild(l); h.appendChild(r);
-      body.appendChild(h);
-    }
-    const withPred = worldLiveEvents().filter(worldPredictionAny);
-    const waiting = withPred.filter((e) => !e.prediction.judgedAt).sort((a, b) => (a.prediction.dueDate < b.prediction.dueDate ? -1 : 1));
-    const done = withPred.filter((e) => e.prediction.judgedAt);
-
-    const head = document.createElement('div');
-    head.className = 'worldSectionHead';
-    const l = document.createElement('span'); l.textContent = '答え合わせ待ち';
-    const r = document.createElement('span'); r.textContent = waiting.length + '件';
-    head.appendChild(l); head.appendChild(r);
-    body.appendChild(head);
-    const box = document.createElement('div');
-    renderWorldList(box, waiting, 'まだ予測がありません。');
-    body.appendChild(box);
-
-    if (!targets.length) {
-      const note = document.createElement('p');
-      note.className = 'fieldNote';
-      note.textContent = '期限が来た分かれ目はまだありません。';
-      body.appendChild(note);
-    }
-
-    if (done.length) {
-      const h2 = document.createElement('div');
-      h2.className = 'worldSectionHead';
-      const c = { hit: 0, miss: 0, hold: 0 };
-      // 自分が押したものだけ数える（押さなかったものを外れにしない）
-      done.forEach((e) => { if (e.prediction.result) c[e.prediction.result]++; });
-      const l2 = document.createElement('span'); l2.textContent = '済み（' + done.length + '件）';
-      const r2 = document.createElement('span'); r2.textContent = `自分の分 当たり ${c.hit} ・ 外れ ${c.miss} ・ 保留 ${c.hold}`;
-      h2.appendChild(l2); h2.appendChild(r2);
-      body.appendChild(h2);
-      const box2 = document.createElement('div');
-      renderWorldList(box2, done, '');
-      body.appendChild(box2);
-    }
-  }
-
   // ---- 答え合わせの画面 (v17 C) ----------------------------------------------
   function renderWorldJudge() {
     const targets = worldJudgeTargets();
@@ -18519,6 +18392,14 @@
     const st = worldJudgeStats();
     document.getElementById('worldJudgeRate').textContent =
       '生成 ' + worldRateText(st.leanHit, st.leanMiss) + '　自分 ' + worldRateText(st.mineHit, st.mineMiss);
+
+    // v18 A-2: 予測タブを消したので、待ちの一覧はここに入る
+    const withPred = worldLiveEvents().filter(worldPredictionAny);
+    const waiting = withPred.filter((e) => !e.prediction.judgedAt)
+      .sort((a, b) => (a.prediction.dueDate < b.prediction.dueDate ? -1 : 1));
+    document.getElementById('worldJudgeWaitCount').textContent = waiting.length ? '（' + waiting.length + '件）' : '';
+    document.getElementById('worldJudgeWaitEmpty').hidden = !!waiting.length;
+    renderWorldList(document.getElementById('worldJudgeWaiting'), waiting, '');
 
     const box = document.getElementById('worldJudgeList');
     box.innerHTML = '';
@@ -18695,7 +18576,7 @@
         if (a.actorId && worldByIdIn(WORLD_STORES.actor, a.actorId)) {
           const go = document.createElement('button');
           go.type = 'button'; go.className = 'linkLikeBtn waqGo'; go.textContent = '→詳細';
-          go.addEventListener('click', (e) => { e.stopPropagation(); worldState.entryFrom = 'list'; openWorldEntry(a.actorId); });
+          go.addEventListener('click', (e) => { e.stopPropagation(); openWorldEntry(a.actorId, 'board'); });
           row.appendChild(go);
         }
         list.appendChild(row);
@@ -18715,11 +18596,9 @@
     if (total) {
       cards.textContent = 'この回で入った札 ' + r.added.length + '件 ・ 既にあった札 ' + r.eventIds.length + '件';
       const go = document.createElement('button');
-      go.type = 'button'; go.className = 'linkLikeBtn'; go.textContent = '出来事タブで見る';
+      go.type = 'button'; go.className = 'linkLikeBtn'; go.textContent = '札を見る';
       go.addEventListener('click', () => {
-        worldState.view = 'main'; worldState.tab = 'events';
-        worldState.batchFilter = { id: '', partnerIds: [...r.added, ...r.eventIds], linked: 0, askText: ask.text };
-        renderWorld();
+        openWorldCards({ title: '「' + ask.text + '」の札', ids: [...r.added, ...r.eventIds] });
       });
       cards.appendChild(go);
       inner.appendChild(cards);
@@ -18827,25 +18706,268 @@
     });
   }
 
-  // 特定の札を、出来事タブで開いた状態にする（つながる札から飛ぶため）
+  // v18 A-2: 特定の札を、札の一覧画面で開いた状態にする。いま出ている一覧に
+  // その札が居るなら、その場で開く（一覧から札1枚の画面へ落として文脈を失わない）
   function openWorldEvent(id) {
-    worldState.view = 'main'; worldState.tab = 'events'; worldState.eventKind = 'card';
-    worldState.batchFilter = null; worldState.search.events = '';
-    showScreen('world');
-    renderWorld();
-    const wrap = document.querySelector('#worldTabBody [data-event-id="' + id + '"]');
-    if (!wrap) return;
-    const row = wrap.querySelector('.worldRow');
-    if (row) row.click();
-    try { wrap.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e) {}
+    const cur = worldState.cards;
+    if (worldState.view === 'cards' && cur && cur.ids && cur.ids.includes(id)) {
+      worldState.cardsOpenId = id;
+      renderWorld();
+      return;
+    }
+    const ev = worldLiveEvents().find((e) => e.id === id);
+    openWorldCards({ title: (ev ? worldShortDate(ev.eventDate) + ' の札' : '札'), ids: [id], openId: id });
   }
-  function openWorldEntry(id) {
-    if (worldState.view !== 'concept') worldState.entryFrom = worldState.tab === 'board' ? 'board' : 'list';
+  // from: 'board'（動いた主体から）／'tidy'（整理から）／'list'（探すなど）
+  function openWorldEntry(id, from) {
+    if (worldState.view !== 'concept') worldState.entryFrom = from || 'list';
+    worldState.tidy = worldState.entryFrom === 'tidy';
     worldState.conceptId = id;
     worldState.view = 'concept';
     showScreen('world');
     renderWorld();
   }
+  // ---- 既定の画面 (v18 A-2) ------------------------------------------------
+  // タブを消して1本の導線にする。畳むのではなく件数を絞る（畳んだものは
+  // 押されない、を地層の一覧で一度確かめている）。
+  // 一覧を足すのではなく既定を組み替える——在庫リストを増やさないため。
+
+  // お金は既定に WORLD_MONEY_BRIEF 本だけ。全部は「お金の一覧」の先
+  function worldFlowEvents(q) {
+    return worldLiveEvents()
+      .filter((e) => e.flow && (e.flow.amount || e.flow.from || e.flow.to))
+      .filter((e) => worldMatches(q, [e.flow.from, e.flow.to, e.flow.what, e.flow.amount]))
+      .sort((a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0));
+  }
+  function worldMoneyBriefRowEl(e) {
+    const row = document.createElement('button');
+    row.type = 'button'; row.className = 'worldMoneyRow';
+    const d = document.createElement('span'); d.className = 'wmDate'; d.textContent = worldShortDate(e.eventDate);
+    const p = document.createElement('span'); p.className = 'wmPeer';
+    p.textContent = (e.flow.from || '？') + ' → ' + (e.flow.to || '？');
+    const a = document.createElement('span'); a.className = 'wmAmount'; a.textContent = e.flow.amount || '（額なし）';
+    row.appendChild(d); row.appendChild(p); row.appendChild(a);
+    if (e.flow.span) {
+      const sp = document.createElement('span');
+      sp.className = 'wmSpan'; sp.textContent = '（' + e.flow.span + 'の累計）';
+      row.appendChild(sp);
+    }
+    row.addEventListener('click', () => openWorldEvent(e.id));
+    return row;
+  }
+  function worldMoreLineEl(text, onClick) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'linkLikeBtn worldMoreLine';
+    b.textContent = text;
+    b.addEventListener('click', onClick);
+    return b;
+  }
+  function renderWorldMoneyBrief(body) {
+    const all = worldFlowEvents('');
+    if (!all.length) return;
+    const head = document.createElement('div');
+    head.className = 'worldSectionHead';
+    const l = document.createElement('span'); l.textContent = 'お金の流れ';
+    const go = document.createElement('button');
+    go.type = 'button'; go.className = 'linkLikeBtn';
+    go.textContent = 'お金の一覧（' + all.length + '）';
+    go.addEventListener('click', () => { worldState.search.money = ''; openWorldCards({ title: 'お金の一覧', money: true }); });
+    head.appendChild(l); head.appendChild(go);
+    body.appendChild(head);
+    all.slice(0, WORLD_MONEY_BRIEF).forEach((e) => body.appendChild(worldMoneyBriefRowEl(e)));
+  }
+  // 答え合わせは期限が来た日だけ1行。予測の一覧はその先（在庫を既定に置かない）
+  function renderWorldJudgeBrief(body) {
+    const targets = worldJudgeTargets();
+    if (!targets.length) return;
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'worldAskEntry';
+    b.textContent = '答え合わせ ' + targets.length + '件　▸';
+    b.addEventListener('click', () => { worldState.view = 'judge'; renderWorld(); });
+    body.appendChild(b);
+  }
+  // 探す。語を入れるまで何も出さない。型の切替も、打った結果の中で
+  // 絞りたくなったときにだけ出す（既定に押せるボタンを増やさない）。
+  function worldSearchHits(kind, q) {
+    if (!q) return [];
+    if (kind === 'card') {
+      return worldLiveEvents().filter((e) => worldMatches(q, [e.fact, e.why, e.detail, e.source]))
+        .sort((a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0));
+    }
+    if (kind === 'money') return worldFlowEvents(q);
+    const list = kind === 'term' ? worldTerms() : kind === 'actor' ? worldActors() : worldConcepts();
+    return list.filter((c) => worldMatches(q, [c.name, (c.aka || []).join(' '), c.line, c.stance]));
+  }
+  function worldEntryRowEl(c, kind, child) {
+    const row = document.createElement('div');
+    row.className = 'worldConceptRow' + (child ? ' isChild' : '');
+    const n = document.createElement('span');
+    n.textContent = c.name
+      + (kind === 'term' && c.kind ? '（' + WORLD_TERM_KIND_LABEL[c.kind] + '）' : '')
+      + (kind === 'actor' && c.kind ? '（' + WORLD_ACTOR_KIND_LABEL[c.kind] + '）' : '');
+    const cnt = document.createElement('span'); cnt.className = 'wcCount'; cnt.textContent = worldConceptCount(c) + '件';
+    row.appendChild(n); row.appendChild(cnt);
+    row.addEventListener('click', () => openWorldEntry(c.id, 'list'));
+    return row;
+  }
+  function renderWorldSearch(body) {
+    const head = document.createElement('div');
+    head.className = 'worldSectionHead';
+    const l = document.createElement('span'); l.textContent = '探す';
+    head.appendChild(l);
+    body.appendChild(head);
+    body.appendChild(worldSearchBoxEl('main', '札・概念・用語・アクター・お金を探す', renderWorldMain));
+    const q = worldState.search.main || '';
+    if (!q.trim()) return;   // 語を入れるまで何も出さない
+
+    const counts = {};
+    WORLD_SEARCH_KINDS.forEach(([k]) => { counts[k] = worldSearchHits(k, q).length; });
+    // 空の型を選んだままにしない（打つたびに「見つかりません」に落ちるのを防ぐ）
+    if (!counts[worldState.searchKind]) {
+      const first = WORLD_SEARCH_KINDS.map(([k]) => k).find((k) => counts[k]);
+      if (first) { worldState.searchKind = first; worldState.searchAll = false; }
+    }
+    const row = document.createElement('div');
+    row.className = 'tagFilterRow';
+    WORLD_SEARCH_KINDS.forEach(([k, label]) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'tagFilterBtn' + (worldState.searchKind === k ? ' selected' : '');
+      b.textContent = label + ' ' + counts[k];
+      b.disabled = !counts[k];
+      b.addEventListener('click', () => { worldState.searchKind = k; worldState.searchAll = false; renderWorldMain(); });
+      row.appendChild(b);
+    });
+    body.appendChild(row);
+
+    const kind = worldState.searchKind;
+    const hits = worldSearchHits(kind, q);
+    if (!hits.length) {
+      const p = document.createElement('p'); p.className = 'emptyMsg';
+      p.textContent = '見つかりませんでした（端末に読み込んでいる月だけを探しています）。';
+      body.appendChild(p); return;
+    }
+    if (kind === 'card' || kind === 'money') {
+      const shown = hits.slice(0, WORLD_SEARCH_SHOW);
+      if (kind === 'card') { const box = document.createElement('div'); renderWorldList(box, shown, ''); body.appendChild(box); }
+      else shown.forEach((e) => body.appendChild(worldMoneyBriefRowEl(e)));
+      if (hits.length > WORLD_SEARCH_SHOW) {
+        body.appendChild(worldMoreLineEl('ほか ' + (hits.length - WORLD_SEARCH_SHOW) + '件 ・ すべて見る', () => {
+          if (kind === 'money') { worldState.search.money = q; openWorldCards({ title: '「' + q + '」のお金', money: true }); }
+          else openWorldCards({ title: '「' + q + '」の札', ids: hits.map((e) => e.id) });
+        }));
+      }
+      return;
+    }
+    const cap = worldState.searchAll ? hits.length : WORLD_SEARCH_SHOW;
+    hits.slice(0, cap).forEach((c) => body.appendChild(worldEntryRowEl(c, kind, false)));
+    if (hits.length > cap) {
+      body.appendChild(worldMoreLineEl('ほか ' + (hits.length - cap) + '件 ・ すべて見る',
+        () => { worldState.searchAll = true; renderWorldMain(); }));
+    }
+  }
+
+  // ---- 一時的な札の一覧 (v18 A-2) -------------------------------------------
+  // 入口は必ず何かの結果（入れた札・つながる札・問いの札・探す・お金）。
+  // 既定の画面からは開けないので、在庫にならない。
+  function openWorldCards(desc) {
+    worldState.cards = desc;
+    worldState.cardsOpenId = desc.openId || null;
+    worldState.view = 'cards';
+    showScreen('world');
+    renderWorld();
+  }
+  function renderWorldCards() {
+    const d = worldState.cards;
+    if (!d) { worldState.view = 'main'; renderWorld(); return; }
+    const body = document.getElementById('worldCardsBody');
+    body.innerHTML = '';
+    if (d.money) {
+      document.getElementById('worldCardsTitle').textContent = d.title;
+      renderWorldMoneyList(body);
+      return;
+    }
+    const byDate = (a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0);
+    const list = worldLiveEvents().filter((e) => d.ids.includes(e.id)).sort(byDate);
+    document.getElementById('worldCardsTitle').textContent = d.title + '（' + list.length + '）';
+    const box = document.createElement('div');
+    renderWorldList(box, list, '端末に残っていません（読み込んでいない月の札です）。');
+    body.appendChild(box);
+    const extra = d.extraIds ? worldLiveEvents().filter((e) => d.extraIds.includes(e.id)).sort(byDate) : [];
+    if (extra.length) {
+      const h = document.createElement('div');
+      h.className = 'worldSectionHead';
+      const l = document.createElement('span'); l.textContent = d.extraTitle + '（' + extra.length + '）';
+      h.appendChild(l);
+      if (d.linked) { const r = document.createElement('span'); r.textContent = d.linked + '本'; h.appendChild(r); }
+      body.appendChild(h);
+      const box2 = document.createElement('div');
+      renderWorldList(box2, extra, '');
+      body.appendChild(box2);
+    }
+    if (worldState.cardsOpenId) {
+      const id = worldState.cardsOpenId;
+      worldState.cardsOpenId = null;
+      const wrap = body.querySelector('[data-event-id="' + id + '"]');
+      if (wrap) {
+        const row = wrap.querySelector('.worldRow');
+        if (row) row.click();
+        try { wrap.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e) {}
+      }
+    }
+  }
+
+  // ---- 動いている主体の一覧 (v18 A-2) ---------------------------------------
+  // 「今日動いた主体」の「もっと見る」の先。並べ替えはここに置く。
+  function worldSortBoardRows(rows, sort) {
+    const out = rows.slice();
+    if (sort === 'kana') out.sort((a, b) => (a.actor.name < b.actor.name ? -1 : a.actor.name > b.actor.name ? 1 : 0));
+    else if (sort === 'count') out.sort((a, b) => (b.count - a.count) || (a.date > b.date ? -1 : 1));
+    else out.sort((a, b) => (a.date > b.date ? -1 : a.date < b.date ? 1 : b.count - a.count));
+    return out;
+  }
+  function renderWorldActors() {
+    const body = document.getElementById('worldActorsBody');
+    body.innerHTML = '';
+    const all = worldBoardRows();
+    document.getElementById('worldActorsCount').textContent = all.length + '主体';
+    if (!all.length) {
+      const p = document.createElement('p'); p.className = 'emptyMsg';
+      p.textContent = 'まだ動いた主体がありません。札に「動かした側」が付くと、ここに並びます。';
+      body.appendChild(p); return;
+    }
+    const sortRow = document.createElement('div');
+    sortRow.className = 'tagFilterRow';
+    WORLD_SORTS.forEach((k) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'tagFilterBtn' + (worldState.actorSort === k ? ' selected' : '');
+      b.textContent = WORLD_SORT_LABEL[k];
+      b.addEventListener('click', () => { worldState.actorSort = k; renderWorld(); });
+      sortRow.appendChild(b);
+    });
+    body.appendChild(sortRow);
+
+    const leg = document.createElement('p');
+    leg.className = 'fieldNote';
+    leg.textContent = '述＝述べた理由がある／推＝推定がある。述べずに動いている主体は「・推」で目立たせています。';
+    body.appendChild(leg);
+
+    const shown = worldSortBoardRows(all, worldState.actorSort).slice(0, WORLD_BOARD_MAX);
+    shown.forEach((r) => body.appendChild(worldBoardRowEl(r, () => openWorldEntry(r.actor.id, 'board'))));
+    if (all.length > WORLD_BOARD_MAX) {
+      const p = document.createElement('p'); p.className = 'fieldNote';
+      p.textContent = 'ほか ' + (all.length - WORLD_BOARD_MAX) + '主体は「探す」で名前から引けます。';
+      body.appendChild(p);
+    }
+    // 行動の文と述べた／推定は、読み込んだ月からしか取れない。裏で読んで埋める
+    const need = [...new Set(shown.filter((r) => r.partial).flatMap((r) => r.months))].filter((m) => !wd.loaded.has(m));
+    if (need.length) {
+      const p = document.createElement('p'); p.className = 'fieldNote';
+      p.textContent = need.length + 'か月ぶんを読み込み中…（回数と日付は正確です）';
+      body.appendChild(p);
+      ensureWorldMonths(need).then(() => { if (nav.screen === 'world' && worldState.view === 'actors') renderWorld(); });
+    }
+  }
+
   function renderWorldConcept() {
     const c = worldEntryById(worldState.conceptId);
     if (!c) { worldState.view = 'main'; renderWorld(); return; }
@@ -18932,10 +19054,14 @@
       askRow.appendChild(b);
     });
 
+    // v18 A-2: 整理の操作（名前直し・非表示・親でまとめる）は設定の「整理」から
+    // 入ったときだけ出す。ふだんの詳細には、月に一度のボタンを置かない
+    const tidy = !!worldState.tidy;
+    document.getElementById('worldConceptTidyRow').hidden = !tidy;
     // 上位概念（概念だけ。用語は網に参加しない）
     const pField = document.getElementById('worldConceptParentField');
-    pField.hidden = isTerm || isActor;
-    if (!isTerm) {
+    pField.hidden = isTerm || isActor || !tidy;
+    if (!isTerm && tidy) {
       const pRow = document.getElementById('worldConceptParentRow');
       pRow.innerHTML = '';
       const status = document.getElementById('worldConceptParentStatus');
@@ -19048,7 +19174,7 @@
         const b = document.createElement('div'); b.className = 'liBottomRow'; b.textContent = marks.filter(Boolean).join(' ・ ');
         row.appendChild(b);
       }
-      row.addEventListener('click', () => { worldState.view = 'main'; worldState.tab = 'events'; openWorld(); });
+      row.addEventListener('click', () => openWorldEvent(ev.id));
       item.appendChild(row);
     });
     return item;
@@ -19189,17 +19315,29 @@
   document.getElementById('btnOpenWorld').addEventListener('click', openWorld);
   document.getElementById('backFromWorld').addEventListener('click', () => {
     if (worldState.view === 'stratum' && !worldState.strataAll) { worldState.strataAll = true; renderWorld(); return; }
-    if (worldState.view !== 'main') { worldState.view = 'main'; worldState.strataAll = false; renderWorld(); return; }
+    // 整理は設定から入る画面なので、設定に返す
+    if (worldState.view === 'tidy') { worldState.view = 'main'; openSettings(); return; }
+    if (worldState.view !== 'main') {
+      worldState.view = 'main'; worldState.strataAll = false; worldState.cards = null;
+      renderWorld(); return;
+    }
     openRecords();
   });
   document.getElementById('btnHomeWorldOpen').addEventListener('click', openWorld);
   document.getElementById('worldCollapsedRow').addEventListener('click', () => {
-    // 開くときにだけ今日の3件を確定させる（畳んだ行を見ただけでは消費しない）
+    // 開くときにだけ今日の分を確定させる（畳んだ行を見ただけでは消費しない）
     if (!homeExpandOverrides.has('world')) worldPickToday();
     toggleHomeExpand('world');
   });
-  document.querySelectorAll('#worldTabRow .tagFilterBtn').forEach((b) => {
-    b.addEventListener('click', () => { worldState.tab = b.dataset.wtab; renderWorldMain(); });
+  document.getElementById('btnWorldCardsBack').addEventListener('click', () => {
+    worldState.cards = null; worldState.view = 'main'; renderWorld();
+  });
+  document.getElementById('btnWorldActorsBack').addEventListener('click', () => { worldState.view = 'main'; renderWorld(); });
+  document.getElementById('btnWorldTidyBack').addEventListener('click', () => { worldState.view = 'main'; openSettings(); });
+  document.getElementById('btnWorldTidyOpen').addEventListener('click', () => {
+    worldState.view = 'tidy';
+    showScreen('world');
+    renderWorld();
   });
   document.getElementById('btnWorldOpenToday').addEventListener('click', () => { worldPickToday(); renderWorldMain(); });
   document.getElementById('btnWorldStrataOpen').addEventListener('click', () => {
@@ -19294,10 +19432,13 @@
   });
   // A-1: 取り込んだ直後に、入れたものを確認できないのは片手落ち
   document.getElementById('btnWorldImportShow').addEventListener('click', () => {
-    if (!worldState.lastBatch) return;
-    worldState.batchFilter = worldState.lastBatch;
-    worldState.view = 'main'; worldState.tab = 'events';
-    renderWorld();
+    const b = worldState.lastBatch;
+    if (!b) return;
+    openWorldCards({
+      title: 'この回に入れた札',
+      ids: worldLiveEvents().filter((e) => e.batchId === b.id).map((e) => e.id),
+      extraTitle: 'つながった相手の札', extraIds: b.partnerIds, linked: b.linked,
+    });
   });
   document.getElementById('btnWorldAskBack').addEventListener('click', () => { worldState.view = 'main'; renderWorld(); });
   document.getElementById('worldAskInput').addEventListener('input', (e) => {
@@ -19350,9 +19491,8 @@
     renderWorldAsk();
   });
   document.getElementById('btnWorldConceptBack').addEventListener('click', () => {
-    // 盤面から入ったのに一覧に落ちる、を防ぐ
-    worldState.view = 'main';
-    if (worldState.entryFrom === 'board') worldState.tab = 'board';
+    // 入ってきた場所に返す（整理から入ったのに既定の画面に落ちる、を防ぐ）
+    worldState.view = worldState.entryFrom === 'tidy' ? 'tidy' : 'main';
     renderWorld();
   });
   document.getElementById('btnWorldConceptRename').addEventListener('click', () => {
