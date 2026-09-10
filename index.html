@@ -14286,6 +14286,12 @@
   const WORLD_ACTOR_KINDS      = ['state', 'cb', 'intl', 'industry', 'person'];
   const WORLD_ACTOR_KIND_LABEL = { state: '政府', cb: '中銀', intl: '国際機関', industry: '業界', person: '人物', '': 'その他' };
   const WORLD_FLOW_UNITS       = ['JPY', 'USD', 'EUR', 'CNY', '%'];
+  // v19 段階3：動いたものの種類。既定の画面に並べるのは money だけ。
+  // goods（物）と people（人）には金額が付かないので、単独で並べると点が並ぶだけに戻る。
+  const WORLD_FLOW_KINDS      = ['money', 'goods', 'people'];
+  const WORLD_FLOW_KIND_MARK  = { money: '', goods: '［物］', people: '［人］' };
+  const WORLD_FLOW_KIND_LABEL = { money: 'お金の動き', goods: '物の動き', people: '人の動き' };
+  const WORLD_EVENT_ID_RE     = /^w_\d{8}_\d+$/;
   const WORLD_RETRO_MAX        = 40;    // 遡及プロンプトに載せる札の数
   // v15 お金：残高は flow に入れない（from も to も無い flow は「流れ」ではない）。
   // 残高は地層の levels に入れる。器はもともとある。
@@ -14554,8 +14560,13 @@
       span: worldStr(f.span, WORLD_FLOW_SPAN_MAX),
       // v15: この金が動かした地層。一覧に無い id は取り込みで落とす
       strata: (Array.isArray(f.strata) ? f.strata : []).map((x) => worldStr(x, 40)).filter(Boolean).slice(0, WORLD_FLOW_STRATA_MAX),
+      // v19 段階3：お金の動きの id は札の id そのもの（札1枚にお金の動き1つ）。
+      // after はどの動きの続きか。札の id の形のときだけ残す（#N は取り込みで置き換える）
+      kind: WORLD_FLOW_KINDS.includes(f.kind) ? f.kind : 'money',
+      after: WORLD_EVENT_ID_RE.test(String(f.after || '')) ? String(f.after) : '',
     };
   }
+  function worldIsMoneyFlow(e) { return !!(e && e.flow && e.flow.kind === 'money'); }
   function normalizeWorldFork(f) {
     if (!f || typeof f !== 'object') return null;
     const text = worldStr(f.text, 200);
@@ -16906,6 +16917,45 @@
     taken.add(base + n);
     return base + n;
   }
+  // v19 段階3：after（どの動きの続きか）を確かめる。
+  //  "#N"  … 同じ JSON の N 番目（1から。落とす前の並び）。自分より前だけ。
+  //          指していた札が重複・URL なしなどで落とされていたら空にする（gone）
+  //  "w_…" … 既存の札。端末に無い月は読み込んでから確かめる
+  //  どちらでも、お金の動きを持つ札でなければ空にする（missing）
+  async function worldResolveAfters(pending, idAt, added) {
+    const stats = { afterLinked: 0, afterMissing: 0, afterGone: 0 };
+    if (!pending.length) return stats;
+    const months = [...new Set(pending.map((p) => monthOfWorldId(p.raw)).filter(Boolean))];
+    if (months.length) await ensureWorldMonths(months);
+    const byId = new Map(worldLiveEvents().map((e) => [e.id, e]));
+    added.forEach((e) => byId.set(e.id, e));
+    pending.forEach((p) => {
+      let target = null;
+      const m = /^#(\d+)$/.exec(p.raw);
+      if (m) {
+        const n = Number(m[1]) - 1;
+        if (n < 0 || n >= p.i) { stats.afterMissing++; p.ev.flow.after = ''; return; }   // 自分と後ろは指せない
+        if (!idAt[n]) { stats.afterGone++; p.ev.flow.after = ''; return; }              // 落とされた札
+        target = byId.get(idAt[n]);
+      } else if (WORLD_EVENT_ID_RE.test(p.raw)) {
+        target = byId.get(p.raw);
+      }
+      if (!target || !target.flow || target.id === p.ev.id) { stats.afterMissing++; p.ev.flow.after = ''; return; }
+      p.ev.flow.after = target.id;
+      stats.afterLinked++;
+    });
+    return stats;
+  }
+  function worldFlowKindCounts(list) {
+    const c = { flowMoney: 0, flowAmount: 0, flowGoods: 0, flowPeople: 0 };
+    list.forEach((e) => {
+      if (!e.flow) return;
+      if (e.flow.kind === 'goods') c.flowGoods++;
+      else if (e.flow.kind === 'people') c.flowPeople++;
+      else { c.flowMoney++; if (e.flow.amount) c.flowAmount++; }
+    });
+    return c;
+  }
   async function worldImportJson(raw, viaAsk) {
     const parsed = shootParseJson(raw);
     const items = parsed ? (Array.isArray(parsed) ? parsed : Array.isArray(parsed.events) ? parsed.events : null) : null;
@@ -16935,6 +16985,9 @@
     let old = 0, forks = 0, leans = 0, droppedForks = 0, onStrata = 0, droppedStrata = 0, unknownConcepts = 0, withActors = 0, withRead = 0, withFlow = 0;
     const createdActors = [];
     const lv = { levelsFilled: 0, levelsDup: 0, levelsUnknown: 0 };   // v15
+    // v19 段階3：#N は「生成が返したそのままの並び」で数える。落とした札の番号は空のまま
+    const idAt = [];
+    const pendingAfter = [];
 
     items.forEach((it, i) => {
       if (!it || typeof it !== 'object') { rejected.fact++; return; }
@@ -16986,6 +17039,9 @@
       worldEvents.push(ev);
       touchedMonths.add(monthOfDate(ev.eventDate));
       added.push(ev);
+      idAt[i] = ev.id;
+      const rawAfter = (it.flow && typeof it.flow === 'object' && it.flow.after != null) ? String(it.flow.after).trim() : '';
+      if (ev.flow && rawAfter && rawAfter !== 'null') pendingAfter.push({ ev, raw: rawAfter, i });
       if (ev.eventDate < addDays(today, -WORLD_OLD_EVENT_DAYS)) old++;
       const made = worldApplyEntries(ev);
       made.concept.forEach((id) => createdConcepts.push(id));
@@ -17017,6 +17073,9 @@
       }
     });
 
+    // v19 段階3：after を確かめる。お金の動きを持つ札を指していなければ空にする
+    const afterStats = await worldResolveAfters(pendingAfter, idAt, added);
+
     if (added.length) {
       worldSaveConcepts();
       worldSaveTerms();
@@ -17044,6 +17103,7 @@
       createdConcepts, createdTerms, createdActors, batchId, linked, partnerIds: [...partnerIds],
       addedIds: added.map((e) => e.id),
       withActors, withRead, withFlow,
+      ...worldFlowKindCounts(added), ...afterStats,   // v19 段階3
       ...lv,   // v15: levelsFilled / levelsDup / levelsUnknown
       candidates: worldMergeCandidatesIn(WORLD_STORES.concept, createdConcepts)
         .concat(worldMergeCandidatesIn(WORLD_STORES.term, createdTerms))
@@ -17505,8 +17565,9 @@
     if (ev.flow) {
       const p = document.createElement('div');
       p.className = 'worldMetaLine';
-      const k = document.createElement('span'); k.className = 'wmKey'; k.textContent = 'お金の動き：';
-      p.appendChild(k); p.appendChild(document.createTextNode(worldFlowLine(ev.flow)));
+      const k = document.createElement('span'); k.className = 'wmKey';
+      k.textContent = (WORLD_FLOW_KIND_LABEL[ev.flow.kind] || 'お金の動き') + '：';
+      p.appendChild(k); p.appendChild(document.createTextNode(WORLD_FLOW_KIND_MARK[ev.flow.kind] + worldFlowLine(ev.flow)));
       deep.appendChild(p);
     }
     if (ev.source) { const p = document.createElement('div'); p.textContent = ev.source; deep.appendChild(p); }
@@ -17733,7 +17794,7 @@
       '- ' + a.name + '：' + a.did
       + (a.said ? '／述べた理由「' + a.said + '」' : '／述べた理由は出典に無い')
       + (a.read ? '／推定「' + a.read + '」' : '')).join('\n') + '\n'
-      + (ev.flow ? '【お金の動き】' + worldFlowLine(ev.flow) + '\n' : '');
+      + (ev.flow ? '【' + (WORLD_FLOW_KIND_LABEL[ev.flow.kind] || 'お金の動き') + '】' + WORLD_FLOW_KIND_MARK[ev.flow.kind] + worldFlowLine(ev.flow) + '\n' : '');
   }
   function worldPredictionCopyLine(ev) {
     const p = ev.prediction;
@@ -17792,7 +17853,7 @@
       .sort((a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0))
       .map((e) => {
         const rec = e.actors.find((a) => isMe(a.name)) || null;
-        const amount = e.flow && (isMe(e.flow.from) || isMe(e.flow.to)) ? e.flow.amount : '';
+        const amount = worldIsMoneyFlow(e) && (isMe(e.flow.from) || isMe(e.flow.to)) ? e.flow.amount : '';
         return { event: e, rec, amount };
       });
   }
@@ -17801,7 +17862,7 @@
   function worldActorFlowRows(c) {
     const isMe = (n) => n && worldNormName(n) === worldNormName(c.name);
     return worldLiveEvents()
-      .filter((e) => c.eventIds.includes(e.id) && e.flow && (e.flow.amount || e.flow.from || e.flow.to))
+      .filter((e) => c.eventIds.includes(e.id) && worldIsMoneyFlow(e) && (e.flow.amount || e.flow.from || e.flow.to))
       .sort((a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0))
       .map((e) => ({
         event: e,
@@ -18202,7 +18263,7 @@
   function worldMoneyGroups(q) {
     const byUnit = new Map();
     worldLiveEvents()
-      .filter((e) => e.flow && (e.flow.amount || e.flow.from || e.flow.to))
+      .filter((e) => worldIsMoneyFlow(e) && (e.flow.amount || e.flow.from || e.flow.to))
       .filter((e) => worldMatches(q, [e.flow.from, e.flow.to, e.flow.what, e.flow.amount]))
       .sort((a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0))
       .forEach((e) => {
@@ -18768,7 +18829,7 @@
   // お金は既定に WORLD_MONEY_BRIEF 本だけ。全部は「お金の一覧」の先
   function worldFlowEvents(q) {
     return worldLiveEvents()
-      .filter((e) => e.flow && (e.flow.amount || e.flow.from || e.flow.to))
+      .filter((e) => worldIsMoneyFlow(e) && (e.flow.amount || e.flow.from || e.flow.to))
       .filter((e) => worldMatches(q, [e.flow.from, e.flow.to, e.flow.what, e.flow.amount]))
       .sort((a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0));
   }
@@ -19608,7 +19669,14 @@
     if (res.createdTerms.length) msg += '　新しい用語 ' + res.createdTerms.length + '件。';
     if (res.added) msg += '　分かれ目つき ' + res.forks + '件（うち生成の見立てつき ' + res.leans + '件）、地層に乗った ' + res.onStrata + '件。';
     if (res.droppedForks) msg += '　※ ' + (WORLD_FORK_PER_BATCH + 1) + '件目以降の分かれ目 ' + res.droppedForks + '件を落としました（答え合わせが追いつかなくなるため）。';
-    if (res.added) msg += '　動かした側つき ' + res.withActors + '件、推定を書いた札 ' + res.withRead + '件／全 ' + res.added + '件、お金の動きつき ' + res.withFlow + '件。';
+    if (res.added) msg += '　動かした側つき ' + res.withActors + '件、推定を書いた札 ' + res.withRead + '件／全 ' + res.added + '件。';
+    // v19 段階3
+    if (res.added) {
+      msg += '　お金つき ' + res.withFlow + '件（金額あり ' + res.flowAmount + '・物 ' + res.flowGoods + '・人 ' + res.flowPeople + '）／続き ' + res.afterLinked + '件';
+      if (res.afterMissing) msg += '／指し先が無くて外した続き ' + res.afterMissing + '件';
+      if (res.afterGone) msg += '／落ちた札を指していて外した続き ' + res.afterGone + '件';
+      msg += '。';
+    }
     if (res.createdActors && res.createdActors.length) msg += '　新しいアクター ' + res.createdActors.length + '件。';
     if (res.levelsFilled) msg += '　地層の値 ' + res.levelsFilled + '件を入れました。';
     if (res.levelsDup) msg += '　※ 同じ日付で重なった地層の値 ' + res.levelsDup + '件は落としました（履歴なので上書きしません）。';
