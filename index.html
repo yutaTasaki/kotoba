@@ -2972,7 +2972,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.5.1';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.6';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -14702,6 +14702,10 @@
     { id: 'st_us_debt_gdp', cadence: 'quarter', name: '米国の政府債務/GDP', short: '米債務', unit: '%', dir: 'up', dirSince: '2008',
       line: '2008年以降上がり続け、2020年に急増',
       where: { source: 'FRB Z.1', url: 'https://www.federalreserve.gov/releases/z1/' } },
+    // v20.6 段階B：Debt to the Penny の月末の値（1993年4月から）。値は API が入れる（出どころ api）
+    { id: 'st_us_debt_total', cadence: 'month', name: '米国の政府債務総額', short: '米債務額', unit: '兆ドル', dir: 'up', dirSince: '1993',
+      line: '1993年4月末の4.25兆ドルから増え続け、2008年に10兆・2017年に20兆・2022年に30兆・2026年に40兆ドルを超えた',
+      where: { source: 'Debt to the Penny（米財務省）', url: 'https://fiscaldata.treasury.gov/datasets/debt-to-the-penny/' } },
     { id: 'st_jp_pop_working', cadence: 'year', name: '日本の生産年齢人口', short: '日人口', unit: '万人', dir: 'down', dirSince: '1995',
       line: '1995年をピークに減り続けている',
       where: { source: '総務省統計局 人口推計', url: 'https://www.stat.go.jp/data/jinsui/' } },
@@ -15136,10 +15140,10 @@
           part: worldStr(l.part, 30),   // v19.12：内訳の名前（「国債」「金」）。構成でない値は空
           source: worldStr(l.source, 120),
           url: typeof l.url === 'string' ? (shootSafeUrl(l.url.trim()) || '') : '',
-          via: (l.via === 'card' || l.via === 'probe') ? l.via : 'hand',
+          via: (l.via === 'card' || l.via === 'probe' || l.via === 'api') ? l.via : 'hand',   // v20.6：API から入れた値
           eventId: worldStr(l.eventId, 40),
         }))
-        .sort((a, b) => (a.at > b.at ? -1 : 1)).slice(0, 400),
+        .sort((a, b) => (a.at > b.at ? -1 : 1)).slice(0, 1000),   // v20.6：400→1000（米国の政府債務総額は1993年からの月末の値で400点を超える。古い値を消さないため）
       active: s.active === 0 ? 0 : 1,
       order: Number.isFinite(s.order) ? s.order : 0,
       createdAt: s.createdAt || nowIso(),
@@ -15446,6 +15450,12 @@
       wd.strata.strata = WORLD_DEFAULT_STRATA.map((x, i) => normalizeWorldStratum({ ...x, levels: [], order: i, active: 1 })).filter(Boolean);
       wd.strataDirty = true;
       persistWorldStrata();
+    }
+    // v20.6 段階B：前からある端末に「米国の政府債務総額」の地層を一度だけ足す（隠した地層も「ある」とみなし、入れ直さない）
+    if (wd.strata.strata.length && !wd.strata.strata.some((x) => x.id === 'st_us_debt_total')) {
+      const def = WORLD_DEFAULT_STRATA.find((x) => x.id === 'st_us_debt_total');
+      const add = def && normalizeWorldStratum({ ...def, levels: [], order: Math.max(0, ...wd.strata.strata.map((x) => x.order || 0)) + 1, active: 1, updatedAt: nowIso() });
+      if (add) { wd.strata.strata.push(add); wd.strata.updatedAt = nowIso(); wd.strataDirty = true; persistWorldStrata(); }
     }
     // 初期値は一度も保存されていないときだけ。編集済みなら入れ直さない。
     if (!wd.sources.sources.length && !wd.sources.updatedAt) {
@@ -15764,6 +15774,7 @@
       await syncWorldActors(token, actorsChanged);
       await syncWorldAsks(token, asksChanged);
       await syncWorldSources(token, sourcesChanged);
+      try { await syncWorldFigures(token); } catch (e) { worldFigLastCheck = 0; }   // v20.6 段階B
       const sig = (ix) => JSON.stringify([ix.epoch || 0, Object.keys(ix.months).sort().map((m) => [m, ix.months[m].updatedAt, ix.months[m].unread]), ix.concepts.updatedAt, ix.terms.updatedAt, ix.strata.updatedAt, ix.actors.updatedAt, ix.asks.updatedAt, ix.sources.updatedAt, Object.keys(ix.due).sort(), Object.keys(ix.pulls || {}).sort().map((k) => [k, ix.pulls[k]]), Object.keys(ix.seeds || {}).sort().map((k) => [k, ix.seeds[k].at, ix.seeds[k].n])]);
       if (sig(wd.index) !== sig(remoteIndex)) {
         try { await ghPutJson(WORLD_INDEX_PATH, wd.index, ri.sha, 'world index'); }
@@ -15848,7 +15859,9 @@
     if (!m || !WORLD_BIG_UNITS.includes(m[3] || unit)) return v;
     const n = Number(m[2].replace(/,/g, ''));
     if (!Number.isFinite(n)) return v;
-    const t = m[2].includes('.') ? n.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : n.toLocaleString('en-US');
+    // v20.6：兆ドルは小数2桁（米国の政府債務総額「40.18兆ドル」。1桁だと月ごとの動きが見えない）。ほかは今までどおり1桁
+    const fd = (m[3] || unit) === '兆ドル' ? 2 : 1;
+    const t = m[2].includes('.') ? n.toLocaleString('en-US', { minimumFractionDigits: fd, maximumFractionDigits: fd }) : n.toLocaleString('en-US');
     return m[1] + t + (m[3] || '');
   }
   // 詰め込まれた内訳（「国債:519.9,貸付金:71.8」）を、表示のときだけ分ける。v19.13 までの地層を調べる取り込みは
@@ -15951,11 +15964,17 @@
   function worldAddLevel(s, value, at, note, meta) {
     const v = worldStr(value, 40);
     if (!v || !isDateStr(at)) return false;
-    const via = (meta && (meta.via === 'card' || meta.via === 'probe')) ? meta.via : 'hand';
+    const via = (meta && (meta.via === 'card' || meta.via === 'probe' || meta.via === 'api')) ? meta.via : 'hand';
     // v19.12：重なりの判定は「日付＋内訳」。同じ日に国債と金の2つが入る
     const part = worldStr(meta && meta.part, 30);
     const same = (l) => l.at === at && (l.part || '') === part;
-    if (via !== 'hand' && s.levels.some(same)) return false;
+    // v20.6：API の値は、同じ日の API の値だけ新しい方で置き換える（米財務省の訂正を拾う）。手・札の値には触らない
+    if (via === 'api') {
+      const old = s.levels.find((l) => same(l) && l.via === 'api');
+      if (old && old.value === v) return false;
+      if (!old && s.levels.some(same)) return false;
+      s.levels = s.levels.filter((l) => !(same(l) && l.via === 'api'));
+    } else if (via !== 'hand' && s.levels.some(same)) return false;
     if (via === 'hand') s.levels = s.levels.filter((l) => !same(l));
     s.levels.push({
       value: v, at, part, note: worldStr(note, 200),
@@ -15966,7 +15985,7 @@
     });
     s.levels.sort((a, b) => (a.at > b.at ? -1 : 1));
     s.updatedAt = nowIso();
-    worldSaveStrata();
+    if (!(meta && meta.noSave)) worldSaveStrata();   // v20.6：まとめて入れるときは最後に1回だけ保存
     return true;
   }
   // v15: 札が運んできた地層の値を入れる。一覧に無い id は落とす（生成に地層を
@@ -19680,7 +19699,19 @@
     document.getElementById('worldStratumLevelsEmpty').hidden = !!s.levels.length;
     const mix = worldStratumMixDiff(s);   // v19.12
     if (mix) levels.appendChild(mix);
-    s.levels.forEach((l) => {
+    // v20.6：値が多い地層（米国の政府債務総額は1993年から約400点）は新しい24点だけ並べ、残りは押して開く（値は全部残る）
+    const LV_FOLD = 24;
+    const allLv = worldState.stratumAllLevels === s.id;
+    const shownLevels = allLv ? s.levels : s.levels.slice(0, LV_FOLD);
+    if (s.levels.length > LV_FOLD) {
+      const more = document.createElement('button');
+      more.type = 'button'; more.className = 'linkLikeBtn';
+      more.textContent = allLv ? '新しい' + LV_FOLD + '点だけにする'
+        : '新しい' + LV_FOLD + '点を出しています。古い値 ' + (s.levels.length - LV_FOLD) + '件を見る（' + dotDate(s.levels[s.levels.length - 1].at) + ' から）';
+      more.addEventListener('click', () => { worldState.stratumAllLevels = allLv ? '' : s.id; renderWorldStratum(); });
+      levels.appendChild(more);
+    }
+    shownLevels.forEach((l) => {
       const row = document.createElement('div');
       row.className = 'levelRow';
       const v = document.createElement('span');
@@ -22166,43 +22197,233 @@
     if (!j || !Array.isArray(j.data)) throw new Error('返ってきた形が変わっています（data が無い）');
     return j;
   }
+  // ---- v20.6 段階B：数字を貯める（sekai_api_shiyou_B.md）----
+  // 毎朝は、貯めた分が比べる履歴（60営業日）を覆っていれば、最後に貯めた日の少し前（約5営業日）から今日までだけ取って上書きする
+  // （米財務省の訂正を拾う）。覆っていなければ95暦日分。取れなくても、貯めた分でプロンプトを作る
+  const WORLD_FIG_DIR      = 'world/figures/';
+  const WORLD_FIG_INDEX    = 'world/figures/index.json';
+  const WORLD_FIG_WINDOW   = 95;       // 比べる履歴に使う範囲（暦日）。60営業日を覆う
+  const WORLD_FIG_REFETCH  = 9;        // 最後に貯めた日のこの暦日前から取り直す（約5営業日）
+  const WORLD_FIG_GAP      = 30;       // 最後に貯めた日がこれより古ければ、95暦日分を取り直す
+  const WORLD_FIG_CHECK_MS = 3600e3;   // 相手の端末が貯めた月を見に行く間隔
+  const WORLD_DEBT_STRATUM = 'st_us_debt_total';
+  let worldFigStore = null, worldFigLastCheck = 0;
+  // 端末の中（ほどいた形）：{ months: { 'YYYY-MM': { month, updatedAt, days: { 'YYYY-MM-DD': {
+  //   dts: { at, rows: [[type, catg, amt]] }, tga: { at, rows: [[account_type, open, close]] }, debt: { at, v: [総額, 市場が持つ分, 政府の中の基金が持つ分] } } } } },
+  //   index: { 'YYYY-MM': updatedAt }, dirty: ['YYYY-MM'] }。at は取った日時（同じ日の値は新しく取った方を採る）
+  // 保存・同期（詰めた形）：入出金の項目名を items にまとめ、日ごとは [番号, 額]。確認先の URL は種類ごとに1つ（src）
+  function worldFigPack(mo) {
+    const items = [], idx = new Map(), days = {};
+    Object.keys(mo.days).sort().forEach((d) => {
+      const x = mo.days[d], o = {};
+      if (x.dts) o.dts = { at: x.dts.at, r: x.dts.rows.map(([t, c, a]) => { const k = t + '|' + c; if (!idx.has(k)) { idx.set(k, items.length); items.push([t, c]); } return [idx.get(k), a]; }) };
+      if (x.tga) o.tga = { at: x.tga.at, r: x.tga.rows };
+      if (x.debt) o.debt = { at: x.debt.at, v: x.debt.v };
+      days[d] = o;
+    });
+    return { version: 1, month: mo.month, updatedAt: mo.updatedAt, src: { dts: WORLD_DTS_URL_DW, tga: WORLD_DTS_URL_OCB, debt: WORLD_DEBT_URL }, items, days };
+  }
+  function worldFigUnpack(doc, m) {
+    const mo = { month: m, updatedAt: '', days: {} };
+    if (!doc || typeof doc !== 'object') return mo;
+    mo.updatedAt = typeof doc.updatedAt === 'string' ? doc.updatedAt : '';
+    const items = Array.isArray(doc.items) ? doc.items : [];
+    Object.entries(doc.days || {}).forEach(([d, x]) => {
+      if (!isDateStr(d) || d.slice(0, 7) !== m || !x || typeof x !== 'object') return;
+      const o = {};
+      if (x.dts && Array.isArray(x.dts.r)) o.dts = { at: String(x.dts.at || ''), rows: x.dts.r.filter((p) => Array.isArray(p) && Array.isArray(items[p[0]])).map((p) => [String(items[p[0]][0]), items[p[0]][1] == null ? '' : String(items[p[0]][1]), Number(p[1]) || 0]) };
+      if (x.tga && Array.isArray(x.tga.r)) o.tga = { at: String(x.tga.at || ''), rows: x.tga.r.filter(Array.isArray).map((p) => [String(p[0] || ''), p[1] == null ? null : String(p[1]), p[2] == null ? null : String(p[2])]) };
+      if (x.debt && Array.isArray(x.debt.v)) o.debt = { at: String(x.debt.at || ''), v: x.debt.v.map((y) => (y == null ? null : String(y))) };
+      if (o.dts || o.tga || o.debt) mo.days[d] = o;
+    });
+    return mo;
+  }
+  // 2つの月を合わせる。同じ日の同じ種類（入出金・口座残高・債務総額）は、新しく取った方（at が新しい方）を採る
+  function worldFigMergeMonth(a, b, m) {
+    const out = { month: m, updatedAt: '', days: {} };
+    const A = (a && a.days) || {}, B = (b && b.days) || {};
+    new Set([...Object.keys(A), ...Object.keys(B)]).forEach((d) => {
+      const x = A[d] || {}, y = B[d] || {}, o = {};
+      ['dts', 'tga', 'debt'].forEach((k) => { const p = x[k], q = y[k]; const w = p && q ? ((q.at || '') > (p.at || '') ? q : p) : (p || q); if (w) o[k] = w; });
+      out.days[d] = o;
+    });
+    out.updatedAt = [a && a.updatedAt, b && b.updatedAt].filter(Boolean).sort().pop() || '';
+    return out;
+  }
+  function worldFigSig(mo) {
+    return JSON.stringify(Object.keys(mo.days).sort().map((d) => [d, ['dts', 'tga', 'debt'].map((k) => (mo.days[d][k] ? mo.days[d][k].at : ''))]));
+  }
+  async function worldFigLoad() {
+    if (worldFigStore) return worldFigStore;
+    const st = { months: {}, index: {}, dirty: [] };
+    try {
+      const raw = JSON.parse((await kvGet('worldFigures')) || 'null');
+      if (raw && raw.months) Object.entries(raw.months).forEach(([m, doc]) => { if (/^\d{4}-\d{2}$/.test(m)) st.months[m] = worldFigUnpack(doc, m); });
+      if (raw && raw.index) Object.entries(raw.index).forEach(([m, u]) => { if (/^\d{4}-\d{2}$/.test(m) && typeof u === 'string') st.index[m] = u; });
+      if (raw && Array.isArray(raw.dirty)) st.dirty = raw.dirty.filter((m) => /^\d{4}-\d{2}$/.test(m));
+    } catch (e) {}
+    worldFigStore = st;
+    return st;
+  }
+  // 端末の中の置き場所は「worldFigures」。「world:」で始めないので、世界のデータを捨てても消えない
+  function worldFigSave(st) {
+    const months = {};
+    Object.entries(st.months).forEach(([m, mo]) => { months[m] = worldFigPack(mo); });
+    return kvSet('worldFigures', JSON.stringify({ months, index: st.index, dirty: st.dirty })).catch(() => {});
+  }
+  // 取った値を貯める（日ごと・種類ごとに、新しく取った方で上書き）。値が変わった月を返す
+  function worldFigPut(st, kind, byDate, at) {
+    const touched = new Set();
+    Object.entries(byDate).forEach(([d, val]) => {
+      const m = d.slice(0, 7);
+      if (!st.months[m]) st.months[m] = { month: m, updatedAt: '', days: {} };
+      const day = st.months[m].days[d] || (st.months[m].days[d] = {});
+      const prev = day[kind];
+      if (prev && JSON.stringify(kind === 'debt' ? prev.v : prev.rows) === JSON.stringify(val)) return;   // 同じ値なら触らない
+      day[kind] = kind === 'debt' ? { at, v: val } : { at, rows: val };
+      touched.add(m);
+    });
+    return touched;
+  }
+  function worldFigDates(st, kind) {
+    const out = [];
+    Object.values(st.months).forEach((mo) => Object.entries(mo.days).forEach(([d, x]) => { if (x[kind]) out.push(d); }));
+    return out.sort();
+  }
+  // 貯めた分を、API の行の形に戻す（段階Aの判定・読み取りの関数をそのまま使うため）
+  function worldFigRows(st, from, to) {
+    const dts = [], ocb = [], debt = [];
+    Object.values(st.months).forEach((mo) => Object.entries(mo.days).forEach(([d, x]) => {
+      if (d < from || d > to) return;
+      if (x.dts) x.dts.rows.forEach(([t, c, a]) => dts.push({ record_date: d, transaction_type: t, transaction_catg: c, transaction_today_amt: String(a) }));
+      if (x.tga) x.tga.rows.forEach(([ty, o, c]) => ocb.push({ record_date: d, account_type: ty, open_today_bal: o, close_today_bal: c }));
+      if (x.debt) debt.push({ record_date: d, tot_pub_debt_out_amt: x.debt.v[0], debt_held_public_amt: x.debt.v[1], intragov_hold_amt: x.debt.v[2] });
+    }));
+    debt.sort((a, b) => (a.record_date < b.record_date ? 1 : -1));
+    return { dts, ocb, debt };
+  }
+  // API の行を、日ごとに分ける
+  function worldFigGroup(rows, kind) {
+    const by = {};
+    rows.forEach((x) => {
+      const d = x.record_date;
+      if (!isDateStr(d)) return;
+      if (kind === 'dts') (by[d] = by[d] || []).push([String(x.transaction_type || ''), x.transaction_catg == null ? '' : String(x.transaction_catg), Number(x.transaction_today_amt) || 0]);
+      else if (kind === 'tga') (by[d] = by[d] || []).push([String(x.account_type || ''), x.open_today_bal == null ? null : String(x.open_today_bal), x.close_today_bal == null ? null : String(x.close_today_bal)]);
+      else by[d] = [x.tot_pub_debt_out_amt == null ? null : String(x.tot_pub_debt_out_amt), x.debt_held_public_amt == null ? null : String(x.debt_held_public_amt), x.intragov_hold_amt == null ? null : String(x.intragov_hold_amt)];
+    });
+    return by;
+  }
+  // 地層「米国の政府債務総額」：終わった月の、最後の日の値（兆ドル・小数2桁）
+  function worldDebtMonthEnds(rows, today) {
+    const cur = String(today).slice(0, 7), me = {};
+    rows.forEach((r) => { const d = r.record_date, m = String(d).slice(0, 7); if (!isDateStr(d) || m >= cur) return; if (!me[m] || d > me[m].record_date) me[m] = r; });
+    return Object.values(me).map((r) => ({ at: r.record_date, value: (Number(r.tot_pub_debt_out_amt) / 1e12).toFixed(2) })).filter((x) => Number(x.value) > 0);
+  }
+  function worldDebtStratumApply(list) {
+    const s = worldStratumById(WORLD_DEBT_STRATUM);
+    if (!s || !list.length) return 0;
+    let n = 0;
+    list.forEach((x) => { if (worldAddLevel(s, x.value, x.at, '', { via: 'api', source: 'Debt to the Penny（米財務省）', url: WORLD_DEBT_URL, noSave: true })) n++; });
+    if (n) worldSaveStrata();
+    return n;
+  }
   async function worldFetchFigures() {
     const t0 = Date.now();
     const today = todayStr();
+    const st = await worldFigLoad();
+    const windowFrom = addDays(today, -WORLD_FIG_WINDOW);
+    const have = worldFigDates(st, 'dts');
+    const last = have.length ? have[have.length - 1] : '';
+    const recent = have.filter((d) => d >= windowFrom).length >= WORLD_DTS_HISTORY && last >= addDays(today, -WORLD_FIG_GAP);
+    const from = recent ? addDays(last, -WORLD_FIG_REFETCH) : windowFrom;
     const ctl = typeof AbortController === 'function' ? new AbortController() : null;
     const timer = setTimeout(() => { if (ctl) ctl.abort(); }, WORLD_FIGURES_TIMEOUT);
     const api = (path, params) => WORLD_FISCAL_API + path + '?' + params;
     const dw = (page) => api('v1/accounting/dts/deposits_withdrawals_operating_cash',
-      'filter=record_date:gte:' + addDays(today, -95) + '&fields=record_date,transaction_type,transaction_catg,transaction_today_amt'
+      'filter=record_date:gte:' + from + '&fields=record_date,transaction_type,transaction_catg,transaction_today_amt'
       + '&page%5Bsize%5D=10000&page%5Bnumber%5D=' + page + '&sort=-record_date');
     const get = (u) => worldFetchJson(u, ctl && ctl.signal);
-    // 60営業日は約12,800行で、1ページの上限は10,000行。2ページ目も同時に取る
-    const [dw1, dw2, ocb, debt] = await Promise.allSettled([
-      get(dw(1)), get(dw(2)),
-      get(api('v1/accounting/dts/operating_cash_balance', 'filter=record_date:gte:' + addDays(today, -14) + '&sort=-record_date&page%5Bsize%5D=100')),
-      get(api('v2/accounting/od/debt_to_penny', 'sort=-record_date&page%5Bsize%5D=2')),
-    ]);
+    // 地層に API の値がまだ無ければ、1993年からの毎日の総額を1回だけ取る（月末の値を拾う）
+    const ds = worldStratumById(WORLD_DEBT_STRATUM);
+    const needBack = !!ds && !ds.levels.some((l) => l.via === 'api');
+    const reqs = [
+      get(dw(1)), recent ? Promise.resolve({ data: [] }) : get(dw(2)),   // 95暦日分は約12,000行で、1ページの上限は10,000行
+      get(api('v1/accounting/dts/operating_cash_balance', 'filter=record_date:gte:' + from + '&fields=record_date,account_type,open_today_bal,close_today_bal&sort=-record_date&page%5Bsize%5D=1000')),
+      get(api('v2/accounting/od/debt_to_penny', 'filter=record_date:gte:' + from + '&fields=record_date,tot_pub_debt_out_amt,debt_held_public_amt,intragov_hold_amt&sort=-record_date&page%5Bsize%5D=1000')),
+      needBack ? get(api('v2/accounting/od/debt_to_penny', 'fields=record_date,tot_pub_debt_out_amt&sort=-record_date&page%5Bsize%5D=10000')) : Promise.resolve(null),
+    ];
+    const [dw1, dw2, ocb, debt, back] = await Promise.allSettled(reqs);
     clearTimeout(timer);
-    const fig = { date: '', tga: null, debt: null, dts: null, reasons: [], stale: '', ms: 0 };
+    const fig = { date: '', tga: null, debt: null, dts: null, reasons: [], stale: '', ms: 0, got: { recent, days: 0 } };
+    const at = nowIso();
+    const touched = new Set();
+    const add = (set) => set.forEach((m) => touched.add(m));
     if (dw1.status === 'fulfilled') {
       const rows = dw1.value.data.concat(dw2.status === 'fulfilled' ? dw2.value.data : []);
       const r0 = rows[0];
-      if (!r0 || !('record_date' in r0) || !('transaction_catg' in r0) || !('transaction_today_amt' in r0)) fig.reasons.push('入出金：返ってきた形が変わっています（' + (r0 ? 'transaction_today_amt などが無い' : '行が無い') + '）');
-      else fig.dts = worldClassifyDts(rows);
+      if (r0 && !('transaction_today_amt' in r0)) fig.reasons.push('入出金：返ってきた形が変わっています（transaction_today_amt が無い）');
+      else {
+        const by = worldFigGroup(rows, 'dts');
+        fig.got.days = Object.keys(by).length;
+        add(worldFigPut(st, 'dts', by, at));
+      }
       if (dw2.status !== 'fulfilled') fig.reasons.push('入出金の2ページ目：' + dw2.reason.message + '（比べる履歴が短くなっています）');
     } else fig.reasons.push('入出金：' + dw1.reason.message);
-    if (ocb.status === 'fulfilled') {
-      fig.tga = worldReadTga(ocb.value.data);
-      if (!fig.tga) fig.reasons.push('口座残高：返ってきた形が変わっています（Closing Balance の行が無い）');
-    } else fig.reasons.push('口座残高：' + ocb.reason.message);
-    if (debt.status === 'fulfilled') {
-      fig.debt = worldReadDebt(debt.value.data);
-      if (!fig.debt) fig.reasons.push('政府債務：返ってきた形が変わっています（tot_pub_debt_out_amt が無い）');
-    } else fig.reasons.push('政府債務：' + debt.reason.message);
+    if (ocb.status === 'fulfilled') add(worldFigPut(st, 'tga', worldFigGroup(ocb.value.data, 'tga'), at));
+    else fig.reasons.push('口座残高：' + ocb.reason.message);
+    if (debt.status === 'fulfilled') add(worldFigPut(st, 'debt', worldFigGroup(debt.value.data, 'debt'), at));
+    else fig.reasons.push('政府債務：' + debt.reason.message);
+    if (touched.size) {
+      touched.forEach((m) => { st.months[m].updatedAt = at; if (!st.dirty.includes(m)) st.dirty.push(m); });
+      await worldFigSave(st);
+      scheduleSync();
+    }
+    // 貯めた分から作る（取れなかった分があっても、貯めた分は使う）
+    const rows = worldFigRows(st, windowFrom, today);
+    if (rows.dts.length) fig.dts = worldClassifyDts(rows.dts);
+    if (rows.ocb.length) { fig.tga = worldReadTga(rows.ocb); if (!fig.tga) fig.reasons.push('口座残高：返ってきた形が変わっています（Closing Balance の行が無い）'); }
+    if (rows.debt.length) { fig.debt = worldReadDebt(rows.debt); if (!fig.debt) fig.reasons.push('政府債務：返ってきた形が変わっています（tot_pub_debt_out_amt が無い）'); }
+    // 地層：終わった月の月末の値（1回目は1993年から）
+    const monthEnds = worldDebtMonthEnds(rows.debt, today);
+    if (back.status === 'fulfilled' && back.value && Array.isArray(back.value.data)) monthEnds.push(...worldDebtMonthEnds(back.value.data, today));
+    else if (needBack && back.status === 'rejected') fig.reasons.push('債務総額の1993年からの値：' + back.reason.message + '（次に取るときにもう一度）');
+    fig.got.levels = worldDebtStratumApply(monthEnds);
     fig.date = (fig.dts && fig.dts.date) || (fig.tga && fig.tga.date) || '';
     if (fig.date && worldUsBusinessDaysAfter(fig.date, today) > WORLD_DTS_STALE_DAYS) fig.stale = '公表がまだです（最新は ' + worldShortDate(fig.date) + ' 分）';
     fig.ms = Date.now() - t0;
     return fig;
+  }
+  // 貯めた数字の同期。月ごとのファイルと、月の一覧（world/figures/index.json）。世界の索引とは別に持つ（世界のデータを捨てても残す）
+  async function syncWorldFigures(token) {
+    const st = await worldFigLoad();
+    if (!st.dirty.length && Date.now() - worldFigLastCheck < WORLD_FIG_CHECK_MS) return;
+    worldFigLastCheck = Date.now();
+    const ri = await ghGetContents(GITHUB_REPO, WORLD_FIG_INDEX, token);
+    let rix = {};
+    try { if (ri.text) { const j = JSON.parse(ri.text); if (j && j.months && typeof j.months === 'object') rix = j.months; } } catch (e) {}
+    const months = new Set(st.dirty.concat(Object.keys(rix).filter((m) => /^\d{4}-\d{2}$/.test(m) && (rix[m] || '') > (st.index[m] || ''))));
+    for (const m of [...months].sort()) {
+      const path = WORLD_FIG_DIR + m + '.json';
+      const got = await ghGetContents(GITHUB_REPO, path, token);
+      let remote = null;
+      try { if (got.text) remote = worldFigUnpack(JSON.parse(got.text), m); } catch (e) {}
+      const merged = worldFigMergeMonth(st.months[m], remote, m);
+      if (!remote || worldFigSig(merged) !== worldFigSig(remote)) {
+        merged.updatedAt = nowIso();
+        await ghPutJson(path, worldFigPack(merged), got.sha, 'world figures ' + m);
+      }
+      st.months[m] = merged;
+      st.index[m] = merged.updatedAt;
+    }
+    st.dirty = [];
+    await worldFigSave(st);
+    const outIx = { ...rix };
+    Object.entries(st.index).forEach(([m, u]) => { if (!outIx[m] || u > outIx[m]) outIx[m] = u; });
+    if (JSON.stringify(outIx) !== JSON.stringify(rix)) {
+      try { await ghPutJson(WORLD_FIG_INDEX, { version: 1, months: outIx }, ri.sha, 'world figures index'); }
+      catch (e) { if (e.status !== 409) throw e; worldFigLastCheck = 0; }   // 相手が同時に書いた。次の同期で合わせ直す
+    }
   }
   // プロンプトに差し込む節（sekai_api_shiyou_A.md の 3 章）
   function worldFiguresSection(fig) {
@@ -22254,7 +22475,9 @@
   function worldFiguresStatus(fig) {
     const any = fig && (fig.tga || fig.debt || fig.dts);
     if (!any) return '今日の数字は取れませんでした（' + ((fig && fig.reasons.join('／')) || '理由不明') + '）。数字なしのプロンプトをコピーします。';
-    return '今日の数字：' + worldShortDate(fig.date) + ' 分を取りました（' + (fig.ms / 1000).toFixed(1) + '秒）'
+    return '今日の数字：' + worldShortDate(fig.date) + ' 分（' + (fig.ms / 1000).toFixed(1) + '秒'
+      + (fig.got ? (fig.got.recent ? '・直近 ' + fig.got.days + '日分を取り直し、貯めた分と合わせました' : '・' + WORLD_FIG_WINDOW + '暦日分を取って貯めました') : '')
+      + (fig.got && fig.got.levels ? '・地層「米国の政府債務総額」に ' + fig.got.levels + '点' : '') + '）'
       + (fig.stale ? '。' + fig.stale : '') + (fig.reasons.length ? '。取れなかったもの：' + fig.reasons.join('／') : '');
   }
   // 待ちを挟むコピー。押した瞬間にコピーを始め、中身は後で決める
