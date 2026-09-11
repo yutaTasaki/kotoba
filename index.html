@@ -2343,6 +2343,13 @@
         <p class="fieldNote" id="worldPromptStatus"></p>
         <p class="fieldNote" id="worldFiguresStatus"></p>
       </div>
+      <!-- v20.2 M2：初期投入。地域ごとのプロンプト。何度でも流せる -->
+      <div class="field">
+        <span class="fieldLabel">初期投入（地図の材料を一度に集める）</span>
+        <p class="fieldNote">地域ごとのプロンプトです。直近90日に国をまたいでお金が動いた出来事を、1回12件まで集めます。何度でも流せます（同じ札は重複として落ちます）。返ってきた JSON は、下の「2 返ってきた JSON を貼る」に貼ってください。初期投入の札は朝の一覧には出ず、地図・お金の一覧・探すに出ます。</p>
+        <div id="worldSeedList" class="tagFilterRow"></div>
+        <p class="fieldNote" id="worldSeedStatus"></p>
+      </div>
       <div class="field">
         <span class="fieldLabel">2 返ってきた JSON を貼る</span>
         <textarea id="worldImportPaste" rows="4" placeholder='{"events":[...]} をここに貼る' autocomplete="off"></textarea>
@@ -2913,7 +2920,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.1.1';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.2';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -14521,6 +14528,14 @@
   const WORLD_MAP_ZOOM_MAX       = 8;    // v20.1 指でつまむ拡大の上限（1倍＝寄せた地域の全体）
   const WORLD_MAP_TAP_MOVE_PX    = 6;    // これ以上指が動いたら、押したとは見なさない（地図を動かしたつもりで札が開くのを防ぐ）
   const WORLD_MAP_SLOTS          = ['MKT', 'INT', 'REG'];
+  // v20.2 M2 初期投入：地域ごとのプロンプト。何度でも流せる（重複は取り込みが落とす）
+  const WORLD_SEED_REGIONS = [
+    ['americas', '米州', '北米と中南米（米国・カナダ・メキシコ・ブラジル・アルゼンチンなど）'],
+    ['europe', '欧州・ロシア', '欧州・英国・ロシア・ウクライナ・トルコなど'],
+    ['mideast_africa', '中東・アフリカ', '中東（サウジアラビア・イラン・イスラエル・湾岸諸国など）とアフリカ'],
+    ['asia_pacific', 'アジア・太平洋', '日本・中国・韓国・台湾・インド・東南アジア・オーストラリアなど'],
+  ];
+  const WORLD_SEED_DAYS = 90;   // 初期投入で集める期間
   const WORLD_MAP_SLOT_LABEL     = { MKT: '市場', INT: '国際機関', REG: '地域' };
   const WORLD_MAP_REGIONS = [
     ['world', '全体', null], ['americas', '米州', [[-170, -58], [-30, 72]]], ['europe', '欧州', [[-25, 34], [45, 71]]],
@@ -14962,6 +14977,8 @@
     if (e.hit) { out.hit = 1; out.hitAt = typeof e.hitAt === 'string' ? e.hitAt : ''; }
     if (e.slim) out.slim = 1;   // 段階1.6（痩せさせ）。読み込みだけ先に通しておく
     if (e.viaAsk) out.viaAsk = String(e.viaAsk);   // v14: どの問いから掘り当てたか
+    // v20.2：初期投入の札（地域のキー）。未読にも「今日読んだ札」にも数えない
+    if (['americas', 'europe', 'mideast_africa', 'asia_pacific'].includes(e.seed)) out.seed = e.seed;
     // v11 非表示：本文は月ファイルに残したまま、読み出しから外す
     if (e.hidden) { out.hidden = 1; out.hiddenAt = typeof e.hiddenAt === 'string' ? e.hiddenAt : ''; }
     return out;
@@ -15093,7 +15110,7 @@
     out.deletedIds = (Array.isArray(raw.deletedIds) ? raw.deletedIds : []).filter((t) => t && t.id).map((t) => ({ id: String(t.id), deletedAt: t.deletedAt || nowIso() }));
     return out;
   }
-  function emptyWorldIndex() { return { version: 1, updatedAt: '', epoch: 0, resetAt: '', months: {}, due: {}, concepts: { updatedAt: '', count: 0 }, terms: { updatedAt: '', count: 0 }, strata: { updatedAt: '', count: 0 }, actors: { updatedAt: '', count: 0 }, asks: { updatedAt: '', count: 0 }, sources: { updatedAt: '', count: 0 }, pulls: {} }; }
+  function emptyWorldIndex() { return { version: 1, updatedAt: '', epoch: 0, resetAt: '', months: {}, due: {}, concepts: { updatedAt: '', count: 0 }, terms: { updatedAt: '', count: 0 }, strata: { updatedAt: '', count: 0 }, actors: { updatedAt: '', count: 0 }, asks: { updatedAt: '', count: 0 }, sources: { updatedAt: '', count: 0 }, pulls: {}, seeds: {} }; }
   function normalizeWorldIndex(raw) {
     const out = emptyWorldIndex();
     if (!raw || typeof raw !== 'object') return out;
@@ -15109,6 +15126,11 @@
     // v19.4 段階5：ソースごとの最後に取り込んだ日。ソースの側に持たないのは、ソースは新しい側が丸ごと勝つので、
     // 取り込みで日付が進むたびに、別の端末で直した立場の1行が負けて消えることがあるため
     Object.entries(raw.pulls || {}).forEach(([id, d]) => { if (id && isDateStr(d)) out.pulls[id] = d; });
+    // v20.2：初期投入をどの地域でいつ・何回流したか。{ americas: { at: 'YYYY-MM-DD', n: 2 } }
+    Object.entries(raw.seeds || {}).forEach(([k, v]) => {
+      if (!['americas', 'europe', 'mideast_africa', 'asia_pacific'].includes(k) || !v || !isDateStr(v.at)) return;
+      out.seeds[k] = { at: v.at, n: Math.max(1, Math.floor(Number(v.n) || 1)) };
+    });
     ['concepts', 'terms', 'strata', 'actors', 'asks', 'sources'].forEach((k) => {
       const v = raw[k];
       if (v && typeof v === 'object') out[k] = { updatedAt: typeof v.updatedAt === 'string' ? v.updatedAt : '', count: Number(v.count) || 0 };
@@ -15272,7 +15294,7 @@
     if (!wd.index) wd.index = emptyWorldIndex();
     const events = worldEventsOfMonth(m);
     const prev = wd.index.months[m];
-    const unread = events.filter((e) => !e.readDate && !e.hidden).length;
+    const unread = events.filter((e) => !e.readDate && !e.hidden && !e.seed).length;   // v20.2
     if (!prev || prev.count !== events.length || prev.unread !== unread) {
       wd.index.months[m] = { updatedAt: nowIso(), count: events.length, unread };
     }
@@ -15448,6 +15470,11 @@
     new Set([...Object.keys(a.pulls || {}), ...Object.keys(b.pulls || {})]).forEach((id) => {
       const x = (a.pulls || {})[id] || '', y = (b.pulls || {})[id] || '';
       out.pulls[id] = x > y ? x : y;
+    });
+    // v20.2：地域ごとに新しい日付と大きい回数を採る
+    new Set([...Object.keys(a.seeds || {}), ...Object.keys(b.seeds || {})]).forEach((k) => {
+      const x = (a.seeds || {})[k], y = (b.seeds || {})[k];
+      out.seeds[k] = { at: [x && x.at, y && y.at].filter(Boolean).sort().pop(), n: Math.max((x && x.n) || 0, (y && y.n) || 0) };
     });
     ['concepts', 'terms', 'strata', 'actors', 'asks', 'sources'].forEach((k) => { out[k] = (a[k].updatedAt >= b[k].updatedAt) ? a[k] : b[k]; });
     out.updatedAt = a.updatedAt > b.updatedAt ? a.updatedAt : b.updatedAt;
@@ -15663,7 +15690,7 @@
       await syncWorldActors(token, actorsChanged);
       await syncWorldAsks(token, asksChanged);
       await syncWorldSources(token, sourcesChanged);
-      const sig = (ix) => JSON.stringify([ix.epoch || 0, Object.keys(ix.months).sort().map((m) => [m, ix.months[m].updatedAt, ix.months[m].unread]), ix.concepts.updatedAt, ix.terms.updatedAt, ix.strata.updatedAt, ix.actors.updatedAt, ix.asks.updatedAt, ix.sources.updatedAt, Object.keys(ix.due).sort(), Object.keys(ix.pulls || {}).sort().map((k) => [k, ix.pulls[k]])]);
+      const sig = (ix) => JSON.stringify([ix.epoch || 0, Object.keys(ix.months).sort().map((m) => [m, ix.months[m].updatedAt, ix.months[m].unread]), ix.concepts.updatedAt, ix.terms.updatedAt, ix.strata.updatedAt, ix.actors.updatedAt, ix.asks.updatedAt, ix.sources.updatedAt, Object.keys(ix.due).sort(), Object.keys(ix.pulls || {}).sort().map((k) => [k, ix.pulls[k]]), Object.keys(ix.seeds || {}).sort().map((k) => [k, ix.seeds[k].at, ix.seeds[k].n])]);
       if (sig(wd.index) !== sig(remoteIndex)) {
         try { await ghPutJson(WORLD_INDEX_PATH, wd.index, ri.sha, 'world index'); }
         catch (e) {
@@ -16364,12 +16391,12 @@
   function worldSortQueue(list) {
     return list.slice().sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.order - b.order));
   }
-  function worldUnread() { return worldSortQueue(worldLiveEvents().filter((e) => !e.readDate)); }
+  function worldUnread() { return worldSortQueue(worldLiveEvents().filter((e) => !e.readDate && !e.seed)); }   // v20.2：初期投入の札は数えない
   function worldStaleUnread() {
     const cut = Date.now() - WORLD_STALE_DAYS * 86400000;
     return worldUnread().filter((e) => new Date(e.createdAt).getTime() < cut);
   }
-  function worldReadOn(date) { return worldSortQueue(worldLiveEvents().filter((e) => e.readDate === date)); }
+  function worldReadOn(date) { return worldSortQueue(worldLiveEvents().filter((e) => e.readDate === date && !e.seed)); }
   // 今日の分を確定させる。**開いたときにだけ呼ぶ。** 描画からは呼ばない。
   // v18 A-1: 上限を外した。取り込んだ回の札は全部その日の分にする——3件ずつ
   // 出していると、入れた札の大半が数週間どこにも出ないまま古くなる。
@@ -16557,9 +16584,22 @@
         + (e.flow.from || '？') + '→' + (e.flow.to || '？') + '　' + (e.flow.what || '')
         + (e.flow.amount ? '　' + e.flow.amount : '') + (e.flow.span ? '（' + e.flow.span + 'の累計）' : ''));
   }
+  // v20.2 M2：初期投入の節。規則の文は毎朝と同じにし、ここで地域・期間・主体・国・印だけを足す
+  function worldSeedPromptPart(seed) {
+    return '■ 初期投入（' + seed[1] + '）\n' +
+      'これは毎朝の取り込みとは別の、地図の材料を一度に集めるための取り込みです。\n' +
+      '- 地域：' + seed[2] + '。この地域の国が、出す側か受ける側にいる出来事だけ。\n' +
+      '- 期間：直近' + WORLD_SEED_DAYS + '日。\n' +
+      '- 集めるもの：国をまたいで大きなお金（または物・人）が動いた出来事。' + WORLD_PROMPT_COUNT + '件まで。\n' +
+      '- 主体：政府・中央銀行・財務省・政府系ファンド・大企業・集まり（富裕層・家計など）。\n' +
+      '  個人は、公職として動いた人だけ（大統領・首相・閣僚・中央銀行総裁など）。私人は入れない。\n' +
+      '- actors の country を必ず書く（3文字コード。市場は MKT、国際機関は INT、EU や国の集まりは REG）。\n' +
+      '- 返す JSON の一番上に "seed":"' + seed[0] + '" を書く（初期投入の印）。\n\n';
+  }
   function worldPromptText(opts) {
+    const seed = (opts && opts.seed) ? WORLD_SEED_REGIONS.find((x) => x[0] === opts.seed) || null : null;   // v20.2
     // v19.1 必ず見るもの。v19.4：今日の取り込みは期限の来たものだけ、いつもの「取り込む」は全部
-    const daily = (opts && opts.sourceIds) ? worldDailySources().filter((d) => opts.sourceIds.includes(d.id)) : worldDailySources();
+    const daily = seed ? [] : (opts && opts.sourceIds) ? worldDailySources().filter((d) => opts.sourceIds.includes(d.id)) : worldDailySources();   // v20.2：初期投入では必ず見るものを外す
     const prim = worldAllSourceLines('primary');
     const anal = worldAllSourceLines('analysis');
     const known = worldKnownNames();
@@ -16577,6 +16617,7 @@
       'あなたは、ある人の世界の見方を少しずつ更新するための材料係です。\n' +
       '解説記事は書きません。ニュースの要約もしません。\n' +
       '「これから効き続ける動き」だけを、決められた形で返します。\n\n' +
+      (seed ? worldSeedPromptPart(seed) : '') +   // v20.2
       // v19.3：確認しきれなかったものを黙って捨てない。確度を付けて返させる
       '■ 必ず守ること\n' +
       '- web 検索を必ず使う。検索せずに書かない。\n' +
@@ -16604,7 +16645,7 @@
       '  統計や見通しだけの札は、お金の動きか主体の行動のどちらかが書けるときだけ返す。\n' +
       '- 同じくらい重要なら、金額が出典に書かれている方を選ぶ。\n\n' +
       '■ 期間\n' +
-      '直近7日間に動いたもの。ただし「その日のニュース」ではなく、\n' +
+      (seed ? '直近' + WORLD_SEED_DAYS + '日間に動いたもの。ただし「その日のニュース」ではなく、\n' : '直近7日間に動いたもの。ただし「その日のニュース」ではなく、\n') +   // v20.2
       'これから数ヶ月〜数年にわたって効き続ける動きを選ぶ。\n' +
       '発表そのものより、発表が示している力学を選ぶ。\n\n' +
       // v19.3：探す先の縛り（固定ソースのドメインだけ）をやめ、探し方を書く
@@ -16615,7 +16656,7 @@
       '  （発表文・統計・決算・議事録・報告書）。報道や解説は一次資料ではない。\n' +
       '- 一次資料が見つからず、報道・解説しか無いときも返してよい。そのときは source に媒体名を書き、\n' +
       '  confidence を下げ、confidenceWhy に「一次資料に当たれず報道のみ」と書く。\n' +
-      '- 下の「よく使う出典」は、ここによくある、という目安。縛りではない。一覧の外を探してよい。\n\n' +
+      (seed ? '\n' : '- 下の「よく使う出典」は、ここによくある、という目安。縛りではない。一覧の外を探してよい。\n\n') +   // v20.2：初期投入では一覧を外す
       // v19.1：必ず見る2件は他と分ける。見たが該当が無かったのか、開いていないのかを毎回返させる
       (daily.length
         ? '■ 毎回必ず見るもの（一次。毎回かならず開く。「取るもの」に従う。\n' +
@@ -16629,10 +16670,11 @@
         : '') +
       // v19.13：今日の数字は材料なので上に置く（最近のお金の動きは候補なので末尾のまま）
       ((opts && opts.figures) ? opts.figures + '\n' : '') +
-      '■ よく使う出典：一次（ここによくある。縛りではない）\n' +
-      (prim.length ? prim.join('\n') : '（未設定）') + '\n\n' +
-      '■ よく使う出典：解釈（why を書くときの補助）\n' +
-      (anal.length ? anal.join('\n') : '（未設定）') + '\n\n' +
+      (seed ? '' :   // v20.2：初期投入では「よく使う出典」を外す（字数のため）
+        '■ よく使う出典：一次（ここによくある。縛りではない）\n' +
+        (prim.length ? prim.join('\n') : '（未設定）') + '\n\n' +
+        '■ よく使う出典：解釈（why を書くときの補助）\n' +
+        (anal.length ? anal.join('\n') : '（未設定）') + '\n\n') +
       '■ 解釈の使い方\n' +
       '- シンクタンクの論考は「出来事」ではない。解釈の出典だけを根拠に出来事を立てない。\n' +
       '- 解釈の出典は why を書くときにだけ使う。そのときも url と source には、出来事そのものの出所を書く。\n\n' +
@@ -16849,7 +16891,7 @@
       '■ 並べ方\n' +
       '重要だと思う順に並べる。上から読まれる。\n\n' +
       '■ 出力形式\n' +
-      '{"events":[{\n' +
+      (seed ? '{"seed":"' + seed[0] + '",\n"events":[{\n' : '{"events":[{\n') +   // v20.2：初期投入の印
       '  "fact":"...",\n' +
       '  "why":"...",\n' +
       '  "reason":"...",\n' +
@@ -17608,6 +17650,8 @@
     const items = parsed ? (Array.isArray(parsed) ? parsed : Array.isArray(parsed.events) ? parsed.events : null) : null;
     if (!items) return { error: 'JSON として読めませんでした。{"events":[...]} の形で貼ってください。' };
     const checked = worldReadChecked(parsed);   // v19.1：保存しない。結果の1行に出すだけ
+    // v20.2：初期投入の印。JSON の一番上の "seed" が地域のキーのときだけ。印の無い JSON（毎朝の分）には付けない
+    const seedRegion = (parsed && !Array.isArray(parsed) && WORLD_SEED_REGIONS.some((x) => x[0] === parsed.seed)) ? parsed.seed : '';
 
     const today = todayStr();
     const rejected = { fact: 0, url: 0, date: 0, future: 0, dup: 0 };
@@ -17656,6 +17700,7 @@
         fact, why: it.why, premise: it.premise, detail: it.detail, source: it.source, url,
         wants: it.wants, confidence: it.confidence, confidenceWhy: it.confidenceWhy,   // v19.3
         srcCadence: it.srcCadence,   // v19.11
+        seed: seedRegion || undefined,   // v20.2
         terms: it.terms, fork: it.fork, reason: it.reason,
         actors: it.actors, flow: it.flow,   // v12: ここで渡さないと normalize に届かない
         viaAsk: viaAsk || it.viaAsk || '',   // v14: どの問いから掘り当てたか
@@ -17771,7 +17816,7 @@
       added: added.length, rejected, old, forks, leans, droppedForks, onStrata, droppedStrata, unknownConcepts,
       createdConcepts, createdTerms, createdActors, batchId, linked, partnerIds: [...partnerIds],
       addedIds: added.map((e) => e.id),
-      withActors, withRead, withFlow, checked,
+      withActors, withRead, withFlow, checked, seed: seedRegion,   // v20.2
       outside, lowConf, sunkConf, noConf, tracked,   // v19.3
       // v19.11：周期は札の推定のうち一番多いもの。無ければ quarter
       outsideSources: [...outsideMap.values()].map((o) => ({
@@ -17980,7 +18025,7 @@
     const wrap = document.createElement('div');
     wrap.dataset.eventId = ev.id;
     const row = document.createElement('div');
-    row.className = 'worldRow' + (ev.readDate ? '' : ' unreadRow');
+    row.className = 'worldRow' + ((ev.readDate || ev.seed) ? '' : ' unreadRow');   // v20.2：初期投入の札は未読の太字にしない
 
     const d = document.createElement('span');
     d.className = 'wDate';
@@ -20585,7 +20630,42 @@
       box.appendChild(row);
     });
   }
+  // v20.2：初期投入の4つのボタン。流した後も押せるまま。「米州 9/12（2回目）」
+  function renderWorldSeedList() {
+    const box = document.getElementById('worldSeedList');
+    box.innerHTML = '';
+    const seeds = (wd.index && wd.index.seeds) || {};
+    WORLD_SEED_REGIONS.forEach(([k, label]) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'tagFilterBtn' + (seeds[k] ? ' selected' : '');
+      b.textContent = label + (seeds[k] ? ' ' + worldShortDate(seeds[k].at) + '（' + seeds[k].n + '回目）' : '');
+      b.addEventListener('click', () => {
+        const text = worldPromptText({ seed: k });
+        const el = document.getElementById('worldSeedStatus');
+        copyToClipboard(text).then((ok) => {
+          el.textContent = ok
+            ? label + 'の初期投入のプロンプトをコピーしました（' + text.length.toLocaleString() + '字）。Claude のチャットに貼り、返ってきた JSON を下に貼ってください。'
+            : 'コピーできませんでした。下の欄に出したので、選んでコピーしてください。';
+          if (!ok) document.getElementById('worldImportPaste').value = text;
+        });
+      });
+      box.appendChild(b);
+    });
+  }
+  // 取り込めた初期投入を索引に残す（最後に流した日と回数）。取り込みの結果の1行に使う
+  function worldMarkSeed(k) {
+    if (!wd.index) wd.index = emptyWorldIndex();
+    if (!wd.index.seeds) wd.index.seeds = {};
+    const prev = wd.index.seeds[k];
+    wd.index.seeds[k] = { at: todayStr(), n: ((prev && prev.n) || 0) + 1 };
+    wd.index.updatedAt = nowIso();
+    persistWorldIndex();
+    scheduleSync();
+    const r = WORLD_SEED_REGIONS.find((x) => x[0] === k);
+    return { label: r ? r[1] : k, n: wd.index.seeds[k].n };
+  }
   function renderWorldImport() {
+    renderWorldSeedList();   // v20.2
     renderWorldOutside();   // v19.11
     document.getElementById('worldImportStatus').textContent = worldState.lastResult;
     document.getElementById('worldRetroCount').textContent = '対象 ' + worldRetroTargets().length + '件（端末にある札のうち新しい順）';
@@ -21348,7 +21428,9 @@
     status.textContent = '取り込み中…';
     const res = await worldImportJson(box.value);
     if (res.error) { status.textContent = res.error; worldState.lastResult = res.error; return; }
-    const pulledIds = worldMarkPulled();   // v19.4 段階5：取り込めたら、札が0件でも「見た」ことにする
+    // v20.2：初期投入の JSON では、朝の「今日の取り込み」の日付を進めない（必ず見るものを見ていないため）
+    const pulledIds = res.seed ? [] : worldMarkPulled();   // v19.4 段階5：取り込めたら、札が0件でも「見た」ことにする
+    const seedInfo = res.seed ? worldMarkSeed(res.seed) : null;
     const r = res.rejected;
     const drops = [];
     if (r.url) drops.push('URL なし ' + r.url + '件');
@@ -21357,7 +21439,7 @@
     if (r.fact) drops.push('本文なし ' + r.fact + '件');
     if (r.dup) drops.push('重複 ' + r.dup + '件');
     const unread = worldUnread().length;
-    let msg = res.added + '件を入れました。';
+    let msg = (seedInfo ? '初期投入（' + seedInfo.label + '・' + seedInfo.n + '回目）：' : '') + res.added + '件を入れました。';
     if (drops.length) msg += '　' + drops.join('／') + ' を落としました。';
     if (res.createdConcepts.length) msg += '　新しい概念 ' + res.createdConcepts.length + '件。';
     if (res.createdTerms.length) msg += '　新しい用語 ' + res.createdTerms.length + '件。';
@@ -21372,7 +21454,7 @@
       msg += '。';
     }
     // v19.1：毎回必ず見るもの。0件でも出す（開けなかったのか該当が無かったのかを毎回見るため）
-    const checkedText = worldCheckedText(res.checked, pulledIds.length ? pulledIds : null);
+    const checkedText = res.seed ? '' : worldCheckedText(res.checked, pulledIds.length ? pulledIds : null);   // v20.2：初期投入では出さない
     if (checkedText) msg += '　' + checkedText + '。';
     // v19.3
     if (res.added) {
