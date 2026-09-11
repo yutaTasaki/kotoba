@@ -1198,6 +1198,12 @@
   .worldMapBox .wmSlot .wmSlotNames { fill: var(--text); font-size: 9px; }
   .worldMapBox .wmSlot.empty .wmSlotNames { fill: var(--text-faint); }
   .worldMapBox .wmLabel { fill: var(--text-dim); font-size: 9px; }
+  /* v20.3 M3：太さの見本（地図の左下。押しても何も起きないので指を通す）・札の換算の注 */
+  .worldMapBox .wmLegend { pointer-events: none; }
+  .worldMapBox .wmLegendBg { fill: var(--bg); opacity: 0.8; stroke: var(--border); stroke-width: 0.5; }
+  .worldMapBox .wmLegendLine { stroke: var(--accent); opacity: 0.85; }
+  .worldMapBox .wmLegendText { fill: var(--text-dim); font-size: 8px; }
+  .wmUsd { color: var(--text-faint); font-size: 11px; margin-left: 4px; }
   #worldMapChooser { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
   /* v19.15 同じ動きを別の出典からも確かめた印。行の右端に小さく */
   .worldMoneyRow .wmSrc { margin-left: auto; font-size: 10px; color: var(--text-faint); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; white-space: nowrap; }
@@ -2328,6 +2334,7 @@
     <div class="editorBody" id="worldMapView" hidden>
       <div class="tagFilterRow" id="worldMapRegions"></div>
       <div id="worldMapBox" class="worldMapBox"></div>
+      <p class="fieldNote" id="worldMapUsdNote" hidden></p>
       <div id="worldMapChooser" hidden></div>
       <p class="fieldNote" id="worldMapStatus"></p>
       <div id="worldMapUnknown"></div>
@@ -2920,7 +2927,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.2.2';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.3';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -14867,6 +14874,19 @@
     });
     return { value, unit };
   }
+  // v20.3 M3：ドル換算（推定）。端末だけが書く。amount はその時に換算した元の書き方（元の書き方が変わったら換算し直す）
+  function normalizeWorldUsd(u) {
+    if (!u || typeof u !== 'object' || !Number.isFinite(u.value) || u.value <= 0) return null;
+    const out = {
+      value: u.value, approx: !!u.approx, rate: Number.isFinite(u.rate) ? u.rate : null,
+      rateDate: isDateStr(u.rateDate) ? u.rateDate : '', source: worldStr(u.source, 40),
+      url: typeof u.url === 'string' ? (shootSafeUrl(u.url.trim()) || '') : '',
+      by: worldStr(u.by, 10), at: isDateStr(u.at) ? u.at : '', cur: worldStr(u.cur, 3), amount: worldStr(u.amount, 20),
+    };
+    if (u.per) out.per = worldStr(u.per, 6);
+    if (u.paren) out.paren = 1;
+    return out;
+  }
   function normalizeWorldFlow(f) {
     if (!f || typeof f !== 'object') return null;
     const from = worldStr(f.from, 40), to = worldStr(f.to, 40), what = worldStr(f.what, 30), amount = worldStr(f.amount, 20);
@@ -14983,6 +15003,8 @@
     if (e.viaAsk) out.viaAsk = String(e.viaAsk);   // v14: どの問いから掘り当てたか
     // v20.2：初期投入の札（地域のキー）。未読にも「今日読んだ札」にも数えない
     if (['americas', 'europe', 'mideast_africa', 'asia_pacific'].includes(e.seed)) out.seed = e.seed;
+    // v20.3 M3：端末が書いたドル換算
+    if (e.usd) { const u = normalizeWorldUsd(e.usd); if (u) out.usd = u; }
     // v11 非表示：本文は月ファイルに残したまま、読み出しから外す
     if (e.hidden) { out.hidden = 1; out.hiddenAt = typeof e.hiddenAt === 'string' ? e.hiddenAt : ''; }
     return out;
@@ -18342,7 +18364,7 @@
       p.className = 'worldMetaLine';
       const k = document.createElement('span'); k.className = 'wmKey';
       k.textContent = (WORLD_FLOW_KIND_LABEL[ev.flow.kind] || 'お金の動き') + '：';
-      p.appendChild(k); p.appendChild(document.createTextNode(WORLD_FLOW_KIND_MARK[ev.flow.kind] + worldFlowLine(ev.flow)));
+      p.appendChild(k); p.appendChild(document.createTextNode(WORLD_FLOW_KIND_MARK[ev.flow.kind] + worldFlowLine(ev.flow) + (worldUsdText(ev) ? ' ' + worldUsdText(ev) : '')));   // v20.3
       deep.appendChild(p);
     }
     if (ev.source) { const p = document.createElement('div'); p.textContent = ev.source; deep.appendChild(p); }
@@ -18596,7 +18618,7 @@
       '- ' + a.name + '：' + a.did
       + (a.said ? '／述べた理由「' + a.said + '」' : '／述べた理由は出典に無い')
       + (a.read ? '／推定「' + a.read + '」' : '')).join('\n') + '\n'
-      + (ev.flow ? '【' + (WORLD_FLOW_KIND_LABEL[ev.flow.kind] || 'お金の動き') + '】' + WORLD_FLOW_KIND_MARK[ev.flow.kind] + worldFlowLine(ev.flow) + '\n' : '');
+      + (ev.flow ? '【' + (WORLD_FLOW_KIND_LABEL[ev.flow.kind] || 'お金の動き') + '】' + WORLD_FLOW_KIND_MARK[ev.flow.kind] + worldFlowLine(ev.flow) + (worldUsdText(ev) ? ' ' + worldUsdText(ev) : '') + '\n' : '');   // v20.3
   }
   function worldPredictionCopyLine(ev) {
     const p = ev.prediction;
@@ -18759,6 +18781,7 @@
         const a = document.createElement('span'); a.className = 'wmAmount'; a.textContent = e.flow.amount || '（額なし）';
         const w = document.createElement('span'); w.className = 'wmWhat'; w.textContent = e.flow.what || e.fact;
         row.appendChild(d); row.appendChild(p); row.appendChild(a); row.appendChild(w);
+        worldAppendUsd(row, e);   // v20.3
         if (e.flow.span) {
           const s = document.createElement('span');
           s.className = 'wmSpan'; s.textContent = '（' + e.flow.span + 'の累計）';
@@ -19181,6 +19204,7 @@
           const a = document.createElement('span'); a.className = 'wmAmount'; a.textContent = e.flow.amount || '（額なし）';
           const w = document.createElement('span'); w.className = 'wmWhat'; w.textContent = e.flow.what || e.fact;
           row.appendChild(d); row.appendChild(a); row.appendChild(w);
+          worldAppendUsd(row, e);   // v20.3
           if (e.flow.span) {
             const s = document.createElement('span');
             s.className = 'wmSpan'; s.textContent = '（' + e.flow.span + 'の累計）';
@@ -19587,6 +19611,7 @@
       const a = document.createElement('span'); a.className = 'wmAmount'; a.textContent = e.flow.amount || '';
       const w = document.createElement('span'); w.className = 'wmWhat'; w.textContent = e.flow.what || '';
       row.appendChild(d); row.appendChild(n); row.appendChild(a); row.appendChild(w);
+      worldAppendUsd(row, e);   // v20.3
       if (e.flow.span) { const sp = document.createElement('span'); sp.className = 'wmSpan'; sp.textContent = '（' + e.flow.span + 'の累計）'; row.appendChild(sp); }
       row.addEventListener('click', () => openWorldEvent(e.id));
       fbox.appendChild(row);
@@ -19733,6 +19758,7 @@
       + (e.flow.kind && e.flow.kind !== 'money' ? '　' + WORLD_FLOW_KIND_MARK[e.flow.kind] + (e.flow.what || '') : '');   // v20：鎖から回ってきた物・人
     const a = document.createElement('span'); a.className = 'wmAmount'; a.textContent = e.flow.amount || '（額なし）';
     row.appendChild(d); row.appendChild(p); row.appendChild(a);
+    worldAppendUsd(row, e);   // v20.3
     if (e.flow.span) {
       const sp = document.createElement('span');
       sp.className = 'wmSpan'; sp.textContent = '（' + e.flow.span + 'の累計）';
@@ -20073,6 +20099,297 @@
     if (ids.length === 1) { worldState.cards = null; openWorldCards({ title, ids, openId: ids[0], from: 'map' }); return; }
     openWorldCards({ title, ids, from: 'map' });
   }
+  // ---- v20.3 M3：ドル換算と線の太さ ----------------------------------------
+  // 太さの5段：この額（ドル）未満ならこの太さ（px）
+  const WORLD_USD_STEPS = [[1e8, 1], [1e9, 2], [1e10, 3.5], [1e11, 5], [Infinity, 7]];
+  const WORLD_USD_LOOKBACK = 7;   // ECB：動きの日に値が無ければ、この日数まで遡る
+  const WORLD_ECB_URL = 'https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html';
+  const WORLD_TRE_URL = 'https://fiscaldata.treasury.gov/datasets/treasury-reporting-rates-exchange/treasury-reporting-rates-of-exchange';
+  // ECB の参照レートにある通貨（ユーロ建て）
+  const WORLD_ECB_CURS = ['USD', 'JPY', 'CZK', 'DKK', 'GBP', 'HUF', 'PLN', 'RON', 'SEK', 'CHF', 'ISK', 'NOK', 'TRY', 'AUD', 'BRL', 'CAD', 'CNY', 'HKD', 'IDR', 'ILS', 'INR', 'KRW', 'MXN', 'MYR', 'NZD', 'PHP', 'SGD', 'THB', 'ZAR'];
+  // ECB に無い通貨は米財務省の為替レート（国-通貨の名前で引く。2026-06-30 の表で名前を確かめた）
+  const WORLD_TRE_CURS = {
+    RUB: 'Russia-Ruble', TWD: 'Taiwan-Dollar', GHS: 'Ghana-Cedi', SAR: 'Saudi Arabia-Riyal', AED: 'United Arab Emirates-Dirham', QAR: 'Qatar-Riyal',
+    KWD: 'Kuwait-Dinar', OMR: 'Oman-Rial', BHD: 'Bahrain-Dinar', JOD: 'Jordan-Dinar', IQD: 'Iraq-Dinar', IRR: 'Iran-Rial', EGP: 'Egypt-Pound',
+    NGN: 'Nigeria-Naira', KES: 'Kenya-Shilling', ETB: 'Ethiopia-Birr', MAD: 'Morocco-Dirham', DZD: 'Algeria-Dinar', TND: 'Tunisia-Dinar',
+    LYD: 'Libya-Dinar', AOA: 'Angola-Kwanza', ZMW: 'Zambia-New Kwacha', SYP: 'Syria-Pound', ARS: 'Argentina-Peso', CLP: 'Chile-Peso',
+    COP: 'Colombia-Peso', PEN: 'Peru-Sol', BOB: 'Bolivia-Boliviano', GTQ: 'Guatemala-Quetzal', VES: 'Venezuela-Bolivar Soberano',
+    VND: 'Vietnam-Dong', PKR: 'Pakistan-Rupee', BDT: 'Bangladesh-Taka', LKR: 'Sri Lanka-Rupee', NPR: 'Nepal-Rupee', UAH: 'Ukraine-Hryvnia',
+    KZT: 'Kazakhstan-Tenge', MNT: 'Mongolia-Tugrik', KHR: 'Cambodia-Riel', LAK: 'Laos-Kip', MMK: 'Myanmar-Kyat',
+  };
+  // 日本語の通貨の名前。使うときは長い方から当てる（「台湾ドル」を米ドルにしない）
+  const WORLD_CUR_JA = [
+    ['米ドル', 'USD'], ['ドル', 'USD'], ['台湾ドル', 'TWD'], ['新台湾ドル', 'TWD'], ['台湾元', 'TWD'], ['香港ドル', 'HKD'], ['豪ドル', 'AUD'], ['カナダドル', 'CAD'],
+    ['シンガポールドル', 'SGD'], ['NZドル', 'NZD'], ['ユーロ', 'EUR'], ['円', 'JPY'], ['元', 'CNY'], ['人民元', 'CNY'], ['ポンド', 'GBP'], ['英ポンド', 'GBP'],
+    ['エジプトポンド', 'EGP'], ['ウォン', 'KRW'], ['ルーブル', 'RUB'], ['セディ', 'GHS'], ['レアル', 'BRL'], ['ランド', 'ZAR'], ['ルピア', 'IDR'], ['バーツ', 'THB'],
+    ['リンギ', 'MYR'], ['リンギット', 'MYR'], ['ナイラ', 'NGN'], ['シェケル', 'ILS'], ['リラ', 'TRY'], ['トルコリラ', 'TRY'], ['グリブナ', 'UAH'], ['フリヴニャ', 'UAH'],
+    ['テンゲ', 'KZT'], ['ズロチ', 'PLN'], ['フォリント', 'HUF'], ['コルナ', 'CZK'], ['スイスフラン', 'CHF'], ['メキシコペソ', 'MXN'], ['フィリピンペソ', 'PHP'],
+    ['アルゼンチンペソ', 'ARS'], ['チリペソ', 'CLP'], ['コロンビアペソ', 'COP'], ['インドルピー', 'INR'], ['パキスタンルピー', 'PKR'], ['サウジリヤル', 'SAR'],
+    ['カタールリヤル', 'QAR'], ['UAEディルハム', 'AED'], ['スウェーデンクローナ', 'SEK'], ['ノルウェークローネ', 'NOK'], ['デンマーククローネ', 'DKK'],
+  ];
+  // どの国の通貨か決まらない名前（確定5）。3文字コードか括弧のドルが無ければ換算しない
+  const WORLD_CUR_AMBIG = ['ペソ', 'ルピー', 'ディナール', 'フラン', 'リヤル', 'リアル', 'ディルハム', 'クローナ', 'クローネ'];
+  const WORLD_CUR_SYM = [['US$', 'USD'], ['$', 'USD'], ['€', 'EUR'], ['£', 'GBP'], ['¥', 'JPY']];
+  const WORLD_CUR_WORD_EN = { dollar: 'USD', dollars: 'USD', euro: 'EUR', euros: 'EUR', yen: 'JPY', pound: 'GBP', pounds: 'GBP', yuan: 'CNY', renminbi: 'CNY', ruble: 'RUB', rubles: 'RUB', rouble: 'RUB', roubles: 'RUB' };
+  // 換算しないもの（物・人の単位）。読めなかったときの理由の言葉にだけ使う
+  const WORLD_NOT_MONEY_UNITS = ['バレル', 'オンス', 'トン', '人', '隻', '台', 'barrels', 'barrel', 'ounces', 'tonnes', 'tons', 'people'];
+  const WORLD_MONEY_PER = ['四半期', '毎月', '毎年', '年間', '月間', '日量', '月', '年', '週'];
+  const WORLD_MONEY_APPROX_HEAD = /^(約|およそ|推定|概算|最大|最低|少なくとも|over|more than|about|around|approximately|roughly|nearly|almost|up to)\s*/i;
+  const WORLD_MONEY_APPROX_TAIL = /(超|以上|以下|未満|程度|前後|強|弱|余り|あまり|近く|規模)$/;
+
+  // 「1兆1225億」「9937.5万」「6億9000万」「3,500百万」を数にする。読めなければ null
+  function worldMoneyJaNumber(t) {
+    const s0 = String(t || '').replace(/[,\s]/g, '');
+    if (!s0) return null;
+    const parts = s0.match(/[0-9]+(?:\.[0-9]+)?(?:兆|億|百万|万)?/g);
+    if (!parts || parts.join('') !== s0) return null;
+    let v = 0;
+    for (const p of parts) { const g = /^([0-9.]+)(兆|億|百万|万)?$/.exec(p); v += Number(g[1]) * ({ '兆': 1e12, '億': 1e8, '百万': 1e6, '万': 1e4 }[g[2]] || 1); }
+    return Number.isFinite(v) && v > 0 ? v : null;
+  }
+  // 幅も括弧も無い1つの金額を読む。{ value, cur, approx, per } ／ { ambig } ／ null
+  function worldReadMoneyOne(raw) {
+    let t = String(raw || '').trim(), approx = false, per = '';
+    for (let i = 0; i < 2; i++) {
+      if (WORLD_MONEY_APPROX_HEAD.test(t)) { approx = true; t = t.replace(WORLD_MONEY_APPROX_HEAD, ''); }
+      const pw = WORLD_MONEY_PER.find((w) => t.startsWith(w) && /^[0-9約]/.test(t.slice(w.length).trim()));
+      if (pw && !per) { per = pw; t = t.slice(pw.length).trim(); }
+    }
+    t = t.replace(/相当$/, '').trim();
+    if (WORLD_MONEY_APPROX_TAIL.test(t)) { approx = true; t = t.replace(WORLD_MONEY_APPROX_TAIL, '').trim(); }
+    // 英語：$3.3 billion ／ EUR 90 billion ／ €70 billion ／ 100 billion dollars（後ろに続く言葉は読まない）
+    const codes = ['USD', 'EUR', 'RMB'].concat(WORLD_ECB_CURS, Object.keys(WORLD_TRE_CURS));
+    const m = /^(US\$|\$|€|£|¥)?\s*([A-Za-z]{3}(?![A-Za-z]))?\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*(thousand|million|billion|trillion|bn|tn|mn|k|m|b)?(?![A-Za-z])\s*([A-Za-z]+)?/i.exec(t);
+    if (m) {
+      const code = m[2] && codes.includes(m[2].toUpperCase()) ? m[2].toUpperCase().replace('RMB', 'CNY') : '';
+      const word = m[5] ? WORLD_CUR_WORD_EN[m[5].toLowerCase()] || '' : '';
+      const sym = m[1] ? WORLD_CUR_SYM.find((x) => x[0] === m[1])[1] : '';
+      const cur = sym || code || word;
+      if (cur && !(m[2] && !code)) {
+        const scale = m[4] ? { thousand: 1e3, k: 1e3, million: 1e6, m: 1e6, mn: 1e6, billion: 1e9, bn: 1e9, b: 1e9, trillion: 1e12, tn: 1e12 }[m[4].toLowerCase()] : 1;
+        const v = Number(m[3].replace(/,/g, '')) * scale;
+        if (Number.isFinite(v) && v > 0) return { value: v, cur, approx, per };
+      }
+    }
+    // 日本語：数字＋桁＋通貨の名前（長い名前から当てる）
+    const names = WORLD_CUR_JA.concat(WORLD_CUR_AMBIG.map((n) => [n, ''])).sort((x, y) => y[0].length - x[0].length);
+    for (const [name, code] of names) {
+      if (!t.endsWith(name)) continue;
+      const v = worldMoneyJaNumber(t.slice(0, -name.length));
+      if (v == null) return null;
+      if (!code) return { ambig: true };
+      return { value: v, cur: code, approx, per };
+    }
+    return null;
+  }
+  // 幅（「600〜640億ドル」「80億〜110億ドル」「$60-64 billion」）なら、小さい方の書き方を返す。幅でなければ ''
+  function worldMoneyRangeLow(t) {
+    const m = /^(.*?)([0-9][0-9,.]*)(兆|億|百万|万)?\s*[〜~\-–—]\s*([0-9][0-9,.]*)(.*)$/.exec(t);
+    if (!m) return '';
+    return m[3] ? m[1] + m[2] + m[3] + m[5].replace(/^(兆|億|百万|万)+/, '') : m[1] + m[2] + m[5];
+  }
+  // ドル換算の専用の読み方（仕様書 3.1 と確定の6つ）。今の worldParseAmount（お金の一覧の通貨分け）は変えない。
+  // { ok, value, cur, approx, per, paren } ／ { ok: false, why }
+  function worldParseMoney(amount) {
+    let raw = String(amount || '').trim();
+    if (!raw) return { ok: false, why: '' };
+    try { raw = raw.normalize('NFKC'); } catch (e) {}
+    // 1. 括弧の中のドル：換算せず、そのドルを使う。括弧の中がドル以外・言葉だけなら外側を読む
+    const paren = /^(.*?)\s*\(([^()]*)\)\s*$/.exec(raw);
+    let body = raw;
+    if (paren) {
+      const inner = worldReadMoneyOne(paren[2]);
+      if (inner && inner.cur === 'USD') {
+        const pw = WORLD_MONEY_PER.find((w) => paren[1].trim().startsWith(w)) || '';
+        return { ok: true, value: inner.value, cur: 'USD', approx: !!inner.approx, per: inner.per || pw, paren: true };
+      }
+      body = paren[1].trim();
+    }
+    // 2. 幅：小さい方を使い、「以上」の印
+    const low = worldMoneyRangeLow(body);
+    const r = worldReadMoneyOne(low || body);
+    if (r && r.ambig) return { ok: false, why: '通貨が決まらない' };
+    if (!r) {
+      const unit = WORLD_NOT_MONEY_UNITS.find((u) => raw.toLowerCase().includes(u));
+      return { ok: false, why: unit ? unit.replace(/^(barrels?)$/, 'バレル').replace(/^ounces$/, 'オンス').replace(/^(tonnes|tons)$/, 'トン').replace(/^people$/, '人') : '読めない書き方' };
+    }
+    return { ok: true, value: r.value, cur: r.cur, approx: !!r.approx || !!low, per: r.per || '' };
+  }
+  // 換算しない理由の言葉（地図の下の1行に添える）
+  function worldMoneyWhy(e) {
+    const f = e.flow || {};
+    if (f.kind && f.kind !== 'money') {
+      const unit = WORLD_NOT_MONEY_UNITS.find((u) => String(f.amount || '').includes(u));
+      return unit || (f.kind === 'people' ? '人' : '物の動き');
+    }
+    return worldParseMoney(f.amount).why || '読めない書き方';
+  }
+  function worldUsdWidth(v) { return WORLD_USD_STEPS.find(([lim]) => v < lim)[1]; }
+  // ECB：動きの日の値。無ければ7日前まで遡る。rate は「その通貨1単位＝何ドル」（円はユーロを挟んで割る）
+  function worldEcbRate(cur, date, rates) {
+    for (let i = 0; i <= WORLD_USD_LOOKBACK; i++) {
+      const d = addDays(date, -i), day = rates.ecb && rates.ecb[d];
+      if (day && day.USD && (cur === 'EUR' || day[cur])) return { rate: cur === 'EUR' ? day.USD : day.USD / day[cur], date: d };
+    }
+    return null;
+  }
+  // 米財務省：効き始めの日が動きの日以前で一番新しい値（四半期末の値と、途中の直し）。exchange_rate は「1ドル＝何単位」
+  function worldTreRate(cur, date, rates) {
+    const rows = ((rates.tre && rates.tre[cur] && rates.tre[cur].rows) || []).filter((r) => r[0] <= date);
+    if (!rows.length) return null;
+    rows.sort((x, y) => (x[0] === y[0] ? (x[1] < y[1] ? 1 : -1) : (x[0] < y[0] ? 1 : -1)));
+    return rows[0][2] > 0 ? { rate: 1 / rows[0][2], date: rows[0][0] } : null;
+  }
+  // 読んだ金額をドルにする。どちらのレートにも無ければ null（換算しない）
+  function worldUsdFromRates(p, date, rates) {
+    if (p.cur === 'USD') return { value: p.value, rate: 1, rateDate: date, source: 'ドル建て', url: '' };
+    if (p.cur === 'EUR' || WORLD_ECB_CURS.includes(p.cur)) {
+      const r = worldEcbRate(p.cur, date, rates);
+      return r ? { value: p.value * r.rate, rate: r.rate, rateDate: r.date, source: 'ECB 参照レート', url: WORLD_ECB_URL } : null;
+    }
+    if (WORLD_TRE_CURS[p.cur]) {
+      const r = worldTreRate(p.cur, date, rates);
+      return r ? { value: p.value * r.rate, rate: r.rate, rateDate: r.date, source: '米財務省 為替レート', url: WORLD_TRE_URL } : null;
+    }
+    return null;
+  }
+  // 「160億」「1.2兆」「6.9億」「99百万」
+  function worldUsdShort(v) {
+    if (v >= 1e12) return String(Math.round(v / 1e11) / 10).replace(/\.0$/, '') + '兆';
+    if (v >= 1e9) return String(Math.round(v / 1e8)) + '億';
+    if (v >= 1e8) return String(Math.round(v / 1e7) / 10).replace(/\.0$/, '') + '億';
+    return String(Math.round(v / 1e6)) + '百万';
+  }
+  // 今の元の書き方で換算した usd だけを使う（元の書き方が変わったら使わない）
+  function worldUsdOf(e) {
+    const u = e && e.usd;
+    return u && e.flow && (!u.amount || u.amount === e.flow.amount) ? u : null;
+  }
+  // 札・一覧に添える「約160億ドル（推定・ECB 9/10）」。ドル建て・括弧のドルは元の書き方にドルがあるので添えない
+  function worldUsdText(e) {
+    const u = worldUsdOf(e);
+    if (!u || u.cur === 'USD' || u.paren) return '';
+    const src = u.source === 'ECB 参照レート' ? 'ECB ' : u.source.indexOf('米財務省') === 0 ? '米財務省 ' : '';
+    return (u.per || '') + '約' + worldUsdShort(u.value) + 'ドル（推定・' + src + worldShortDate(u.rateDate) + '）';
+  }
+  function worldAppendUsd(row, e) {
+    const t = worldUsdText(e);
+    if (!t) return;
+    const sp = document.createElement('span'); sp.className = 'wmUsd'; sp.textContent = t; row.appendChild(sp);
+  }
+  // レートは端末に覚える（日付と通貨ごと）。同じ日のレートを何度も取りに行かない
+  function worldRatesLoad() {
+    try { const r = JSON.parse(localStorage.getItem('kotoba_worldRates') || 'null'); if (r && r.ecb && r.tre) return { ecb: r.ecb, ecbGot: r.ecbGot || [], tre: r.tre }; } catch (e) {}
+    return { ecb: {}, ecbGot: [], tre: {} };
+  }
+  function worldRatesSave(r) { try { localStorage.setItem('kotoba_worldRates', JSON.stringify(r)); } catch (e) {} }
+  // v20.3：「今日の数字」の worldFetchJson（data の欄が要る）と名前を分ける
+  async function worldRateFetchJson(url) {
+    const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+    const tm = setTimeout(() => { if (ctl) ctl.abort(); }, 15000);
+    try {
+      const res = await fetch(url, ctl ? { signal: ctl.signal } : {});
+      if (res.status === 404) return null;   // ECB：その期間に値が無い（週末だけ等）
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.json();
+    } finally { clearTimeout(tm); }
+  }
+  function worldParseEcb(j, rates) {
+    const set = j && j.dataSets && j.dataSets[0] && j.dataSets[0].series;
+    if (!set) return;
+    const dims = j.structure.dimensions.series, ci = dims.findIndex((d) => d.id === 'CURRENCY');
+    const days = j.structure.dimensions.observation[0].values.map((v) => v.id);
+    Object.entries(set).forEach(([k, sr]) => {
+      const cur = dims[ci].values[Number(k.split(':')[ci])].id;
+      Object.entries(sr.observations || {}).forEach(([i, v]) => {
+        const d = days[Number(i)];
+        if (d && Number.isFinite(v[0])) (rates.ecb[d] = rates.ecb[d] || {})[cur] = v[0];
+      });
+    });
+  }
+  let worldUsdBusy = false;
+  // v20.3：換算していない札を、地図を開いたときに埋める（過去の札も）。元の amount は書き換えない。
+  // 返り値の text は地図の下の1行（換算した札が0件なら空）
+  async function worldFillUsd() {
+    if (worldUsdBusy) return { converted: 0, text: '' };
+    worldUsdBusy = true;
+    try {
+      const today = todayStr();
+      const targets = [], cannot = [];
+      const touched = new Set();
+      worldLiveEvents().forEach((e) => {
+        if (!e.flow) return;
+        const amt = String(e.flow.amount || '').trim();
+        if (e.usd && e.usd.amount && e.usd.amount !== e.flow.amount) { delete e.usd; e.updatedAt = nowIso(); touched.add(monthOfDate(e.eventDate)); }   // 元の書き方が直された
+        if (!amt || worldUsdOf(e)) return;
+        if (e.flow.kind && e.flow.kind !== 'money') { cannot.push(worldMoneyWhy(e)); return; }   // 物・人は換算しない（確定6）
+        const p = worldParseMoney(amt);
+        if (!p.ok) { cannot.push(p.why || '読めない書き方'); return; }
+        targets.push({ e, p });
+      });
+      const rates = worldRatesLoad();
+      let failed = '';
+      // ECB：足りない日と通貨をまとめて1回で取る
+      const covered = (cur, date) => rates.ecbGot.some(([f, t, cs]) => f <= addDays(date, -WORLD_USD_LOOKBACK) && t >= date && cs.includes(cur === 'EUR' ? 'USD' : cur));
+      const needEcb = targets.filter(({ e, p }) => (p.cur === 'EUR' || (p.cur !== 'USD' && WORLD_ECB_CURS.includes(p.cur))) && !worldEcbRate(p.cur, e.eventDate, rates) && !covered(p.cur, e.eventDate));
+      if (needEcb.length) {
+        const curs = [...new Set(['USD'].concat(needEcb.map(({ p }) => p.cur).filter((c) => c !== 'EUR')))];
+        const dates = needEcb.map(({ e }) => e.eventDate).sort();
+        const from = addDays(dates[0], -WORLD_USD_LOOKBACK), to = dates[dates.length - 1];
+        try {
+          const j = await worldRateFetchJson('https://data-api.ecb.europa.eu/service/data/EXR/D.' + curs.join('+') + '.EUR.SP00.A?startPeriod=' + from + '&endPeriod=' + to + '&format=jsondata');
+          worldParseEcb(j, rates);
+          rates.ecbGot = rates.ecbGot.concat([[from, to, curs]]).slice(-60);
+        } catch (err) { failed = 'ECB：' + ((err && err.name === 'AbortError') ? '時間切れ' : (err && err.message) || '通信'); }
+      }
+      // 米財務省：ECB に無い通貨。1週間より古い控えは取り直す（四半期の途中の直しを拾う）
+      const needTre = [...new Set(targets.filter(({ p }) => WORLD_TRE_CURS[p.cur] && (!rates.tre[p.cur] || (rates.tre[p.cur].at || '') < addDays(today, -7))).map(({ p }) => p.cur))];
+      if (needTre.length) {
+        const byDesc = {}; needTre.forEach((c) => { byDesc[WORLD_TRE_CURS[c]] = c; });
+        const from = addDays(targets.map(({ e }) => e.eventDate).sort()[0], -400);
+        try {
+          const j = await worldRateFetchJson('https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1/accounting/od/rates_of_exchange?fields=record_date,country_currency_desc,exchange_rate,effective_date'
+            + '&filter=country_currency_desc:in:(' + needTre.map((c) => encodeURIComponent(WORLD_TRE_CURS[c])).join(',') + '),record_date:gte:' + from + '&sort=-record_date&page[size]=500');
+          needTre.forEach((c) => { rates.tre[c] = { at: today, rows: [] }; });
+          ((j && j.data) || []).forEach((r) => {
+            const c = byDesc[r.country_currency_desc], v = Number(r.exchange_rate);
+            if (c && isDateStr(r.effective_date) && isDateStr(r.record_date) && v > 0) rates.tre[c].rows.push([r.effective_date, r.record_date, v]);
+          });
+        } catch (err) { failed = (failed ? failed + '・' : '') + '米財務省：' + ((err && err.name === 'AbortError') ? '時間切れ' : (err && err.message) || '通信'); }
+      }
+      worldRatesSave(rates);
+      let converted = 0;
+      const latest = {};
+      targets.forEach(({ e, p }) => {
+        const r = p.paren ? { value: p.value, rate: 1, rateDate: e.eventDate, source: '出典の書き方', url: e.url || '' } : worldUsdFromRates(p, e.eventDate, rates);
+        if (!r) { if (!failed) cannot.push('レートが無い'); return; }
+        e.usd = normalizeWorldUsd({ value: Math.round(r.value), approx: p.approx, rate: r.rate, rateDate: r.rateDate, source: r.source, url: r.url, by: '端末', at: today, cur: p.cur, amount: e.flow.amount, per: p.per, paren: p.paren });
+        if (!e.usd) return;
+        e.updatedAt = nowIso();
+        touched.add(monthOfDate(e.eventDate));
+        converted++;
+        const tag = r.source === 'ECB 参照レート' ? 'ECB' : r.source.indexOf('米財務省') === 0 ? '米財務省' : '';
+        if (tag && (!latest[tag] || r.rateDate > latest[tag])) latest[tag] = r.rateDate;
+      });
+      touched.forEach((m) => worldMonthChanged(m));
+      let text = '';
+      if (converted) {
+        const src = Object.entries(latest).map(([k, d]) => k + ' ' + worldShortDate(d)).join('・');
+        text = converted + '件を換算しました' + (src ? '（' + src + '）' : '');
+        if (cannot.length) text += '／' + cannot.length + '件は換算できません（' + [...new Set(cannot)].slice(0, 5).join('・') + '）';
+      }
+      if (failed) text = (text ? text + '。' : '') + 'レートを取れませんでした（' + failed + '）。次に地図を開いたときにもう一度試します';
+      return { converted, cannot: cannot.length, text };
+    } finally { worldUsdBusy = false; }
+  }
+  // 地図の下の1行。換算した日だけ出す（同じ日のうちは残す。換算する札が0件の日は出さない）
+  function worldPaintUsdNote() {
+    const el = document.getElementById('worldMapUsdNote');
+    if (!el) return;
+    const n = worldState.usdNote;
+    const show = !!(n && n.date === todayStr() && n.text);
+    el.hidden = !show; el.textContent = show ? n.text : '';
+  }
   function renderWorldMap() {
     const box = document.getElementById('worldMapBox');
     const st = document.getElementById('worldMapStatus');
@@ -20090,6 +20407,7 @@
       b.addEventListener('click', () => { worldState.mapRegion = k; renderWorldMap(); });
       regions.appendChild(b);
     });
+    worldPaintUsdNote();   // v20.3
     if (!box.firstChild) st.textContent = '地図を読み込んでいます…';
     const token = ++worldMapToken;
     worldLoadMapLib().then(async (lib) => {
@@ -20099,6 +20417,12 @@
       await ensureWorldMonths(months);
       if (token !== worldMapToken || worldState.view !== 'map') return;
       worldDrawMap(lib, worldMapModel(lib, from), cur);
+      // v20.3 M3：換算していない札を埋める（過去の札も）。埋めたら描き直して、地図の下に1行
+      const res = await worldFillUsd();
+      if (res.text) worldState.usdNote = { date: todayStr(), text: res.text };
+      if (token !== worldMapToken || worldState.view !== 'map') return;
+      worldPaintUsdNote();
+      if (res.converted) worldDrawMap(lib, worldMapModel(lib, from), cur);
     }).catch((e) => {
       if (token !== worldMapToken) return;
       box.innerHTML = '';
@@ -20184,7 +20508,8 @@
     box.innerHTML = '';
     const svg = worldSvg('svg', { viewBox: '0 0 ' + W + ' ' + total, width: W, height: total, role: 'img', 'aria-label': 'お金の流れの地図' }, box);
     const defs = worldSvg('defs', {}, svg);
-    const mk = worldSvg('marker', { id: 'wmArrow', viewBox: '0 0 10 10', refX: '9', refY: '5', markerWidth: '6', markerHeight: '6', orient: 'auto-start-reverse' }, defs);
+    // v20.3：矢印の大きさは線の太さに比例させない（7px の線で矢印が大きくなりすぎるため）
+    const mk = worldSvg('marker', { id: 'wmArrow', viewBox: '0 0 10 10', refX: '9', refY: '5', markerUnits: 'userSpaceOnUse', markerWidth: '9', markerHeight: '9', orient: 'auto-start-reverse' }, defs);
     worldSvg('path', { d: 'M0,0 L10,5 L0,10 z', class: 'wmArrowHead' }, mk);
     // v20.1.1：地図の範囲は入れ子の svg で切り取る（どのブラウザでも、自分の四角の外は描かない）。
     // clipPath を <g> に付ける形は、iPhone の Safari で拡大すると効かず、地図が下の枠に重なった
@@ -20233,6 +20558,9 @@
     };
     const pairs = new Map();
     model.lines.forEach((r) => { const k = r.places.join('>'); if (!pairs.has(k)) pairs.set(k, []); pairs.get(k).push(r); });
+    // v20.3：同じ組に何本もあるときは、太い順に5本まで（同じ太さなら新しい順のまま）
+    const usdOfRow = (r) => { const e = r.rep || r; return (!r.flow.kind || r.flow.kind === 'money') ? worldUsdOf(e) : null; };
+    pairs.forEach((rows) => rows.sort((x, y) => ((usdOfRow(y) || {}).value || 0) - ((usdOfRow(x) || {}).value || 0)));
     let dots = [];
     const drawOverlay = () => {
       land.setAttribute('transform', 'translate(' + view.tx.toFixed(2) + ',' + view.ty.toFixed(2) + ') scale(' + view.k.toFixed(4) + ')');
@@ -20253,8 +20581,12 @@
           const off = dist * 0.18 + (i - (shown.length - 1) / 2) * 9;
           const cx = (p1[0] + p2[0]) / 2 + nx * off, cy = (p1[1] + p2[1]) / 2 + ny * off;
           const d = 'M' + p1[0].toFixed(1) + ',' + p1[1].toFixed(1) + ' Q' + cx.toFixed(1) + ',' + cy.toFixed(1) + ' ' + p2[0].toFixed(1) + ',' + p2[1].toFixed(1);
-          const kind = r.flow.kind && r.flow.kind !== 'money' ? ' dot' : r.flow.span ? ' dash' : '';
-          worldSvg('path', { d, class: 'wmL' + kind, 'marker-end': 'url(#wmArrow)' }, parent);
+          // v20.3：物・人・換算できないものは細い点線。累計（span）と期間あたり（月・年）は破線。太さはドル換算の5段
+          const u = usdOfRow(r);
+          const kind = !u ? ' dot' : (r.flow.span || u.per) ? ' dash' : '';
+          const la = { d, class: 'wmL' + kind, 'marker-end': 'url(#wmArrow)' };
+          if (u) la.style = 'stroke-width:' + worldUsdWidth(u.value) + 'px';
+          worldSvg('path', la, parent);
           const hit = worldSvg('path', { d, class: 'wmHit' }, parent);
           hit.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -20284,6 +20616,20 @@
     drawOverlay();
     // v20.1.1：枠を一番上に（線や地図に隠されない）
     svg.querySelectorAll(':scope > .wmSlot').forEach((g) => svg.appendChild(g));
+    // v20.3 M3：太さの見本（地図の左下。拡大しても動かない）
+    {
+      const lg = worldSvg('g', { class: 'wmLegend' }, svg);
+      const rowH = 10, lx = 7, lh = 14 + WORLD_USD_STEPS.length * rowH, ly = H - lh - 4;
+      worldSvg('rect', { x: lx - 4, y: ly, width: 84, height: lh, rx: 4, ry: 4, class: 'wmLegendBg' }, lg);
+      const title = worldSvg('text', { x: lx, y: ly + 9, class: 'wmLegendText' }, lg);
+      title.textContent = 'ドル換算（推定）';
+      ['1億未満', '1億〜', '10億〜', '100億〜', '1000億〜'].forEach((label, i) => {
+        const y = ly + 17 + i * rowH;
+        worldSvg('line', { x1: lx, y1: y, x2: lx + 22, y2: y, class: 'wmLegendLine', style: 'stroke-width:' + WORLD_USD_STEPS[i][1] + 'px' }, lg);
+        const t = worldSvg('text', { x: lx + 28, y: y + 3, class: 'wmLegendText' }, lg);
+        t.textContent = label;
+      });
+    }
     // ---- 指でつまむ拡大・縮小と、なぞって動かす ----
     // 拡大していないときの1本指はページのスクロールに任せる（地図の上に指を置いてもページが動くように）
     const setTouch = () => { svg.style.touchAction = view.k > 1.001 ? 'none' : 'pan-y'; };
