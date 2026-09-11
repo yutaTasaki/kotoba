@@ -2738,7 +2738,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v19';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v19.1';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -14495,10 +14495,12 @@
   ];
 
   // v19 段階4：日次のお金の源。note は「何を取るか」の1行としてプロンプトに出る
+  // v19.1：label はプロンプトの「毎日必ず見るもの」と checked の source の名前、short は取り込み結果の1行、
+  // match は checked の source が label と少し違って返ってきたときの引き当て
   const WORLD_MONEY_SOURCES = [
-    { id: 'ws_money_dts', name: '米財務省 Daily Treasury Statement', url: 'https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/', role: 'primary',
+    { id: 'ws_money_dts', label: '米財務省 DTS', short: 'DTS', match: ['DTS', 'Treasury'], name: '米財務省 Daily Treasury Statement', url: 'https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/', role: 'primary',
       note: 'その日の支払い・受け取りのうち、金額の大きい順に最大' + WORLD_DTS_MAX_PER_DAY + '件。毎日ある定例のもの（社会保障の給付、国債の償還、税の還付）は除く。from は「米財務省」' },
-    { id: 'ws_money_boj_juq', name: '日本銀行 当座預金増減要因と金融調節（毎営業日）', url: 'https://www.boj.or.jp/statistics/boj/fm/juq/index.htm', role: 'primary',
+    { id: 'ws_money_boj_juq', label: '日銀 当座預金増減要因', short: '日銀', match: ['日銀', '日本銀行', '当座預金'], name: '日本銀行 当座預金増減要因と金融調節（毎営業日）', url: 'https://www.boj.or.jp/statistics/boj/fm/juq/index.htm', role: 'primary',
       note: '「財政等要因」（政府と民間のあいだ）と「日銀のオペ」（日銀から金融機関）の金額。大きく動いた日だけ札にする' },
   ];
 
@@ -16033,8 +16035,41 @@
   // v19 段階4：分野で分けない。note があれば「取るもの」として添える
   function worldAllSourceLines(role) {
     return worldSources()
-      .filter((s) => s.role === role)
+      .filter((s) => s.role === role && !worldDailySourceDef(s.id))
       .map((s) => '- ' + s.name + ' ' + s.url + (s.note ? '\n  取るもの：' + s.note : ''));
+  }
+  // v19.1：毎日必ず見るもの。黙って消えないように、札にできなくても checked で報告させる
+  function worldDailySourceDef(id) { return WORLD_MONEY_SOURCES.find((x) => x.id === id) || null; }
+  function worldDailySources() {
+    return WORLD_MONEY_SOURCES.map((x) => {
+      const s = worldSources().find((sc) => sc.id === x.id);
+      return s ? { ...s, label: x.label, short: x.short } : null;
+    }).filter(Boolean);
+  }
+  // 返ってきた checked を読む。保存しない（取り込み結果の1行に出すだけ）
+  function worldReadChecked(parsed) {
+    if (!parsed || Array.isArray(parsed) || !Array.isArray(parsed.checked)) return null;
+    return parsed.checked.filter((c) => c && typeof c === 'object').map((c) => {
+      const name = worldStr(c.source, 80);
+      const def = WORLD_MONEY_SOURCES.find((x) => name === x.label || x.match.some((k) => name.includes(k)));
+      return {
+        id: def ? def.id : '',
+        short: def ? def.short : (name || '？'),
+        opened: c.opened === true || c.opened === 'true',
+        picked: Math.max(0, parseInt(c.picked, 10) || 0),
+        note: worldStr(c.note, 40),
+      };
+    });
+  }
+  // 「毎日見るもの：DTS 2件／日銀 開けず（PDFの中身が読めなかった）」。報告が抜けた源は「報告なし」
+  function worldCheckedText(checked) {
+    const daily = worldDailySources();
+    if (!daily.length) return '';
+    if (!checked) return '毎日見るもの：報告なし';
+    const parts = checked.map((c) => c.short + ' ' + (c.opened ? c.picked + '件' : '開けず')
+      + (c.note && (!c.opened || !c.picked) ? '（' + c.note + '）' : ''));
+    daily.forEach((d) => { if (!checked.some((c) => c.id === d.id)) parts.push(d.short + ' 報告なし'); });
+    return '毎日見るもの：' + parts.join('／');
   }
   // after の候補。直近 WORLD_RECENT_FLOWS_DAYS 日のうち、お金を先に、新しい順
   function worldRecentFlowLines() {
@@ -16049,6 +16084,7 @@
         + (e.flow.amount ? '　' + e.flow.amount : '') + (e.flow.span ? '（' + e.flow.span + 'の累計）' : ''));
   }
   function worldPromptText() {
+    const daily = worldDailySources();   // v19.1
     const prim = worldAllSourceLines('primary');
     const anal = worldAllSourceLines('analysis');
     const known = worldKnownNames();
@@ -16057,13 +16093,18 @@
     const flowLines = worldRecentFlowLines();
     // v19: 既知の概念が少ないうちは「既知から必ず探す」が成り立たない。件数で自動で切り替える
     const boot = worldConcepts().length < WORLD_CONCEPT_BOOTSTRAP;
+    // v19.1：禁止例は concepts の行のすぐ次に置く（premise の項に離して置いたら読まれず、「ホルムズ海峡」が入った）
+    const conceptNg =
+      '  - その札の中でしか使わない固有名詞を概念にしない。\n' +
+      '    悪い例：「GDP2次速報」「ホルムズ海峡」「フロンティアAI」\n' +
+      '    良い例：「交易条件」「金融政策の正常化」「外貨準備」\n';
     return SHOOT_PROMPT_HEAD +
       'あなたは、ある人の世界の見方を少しずつ更新するための材料係です。\n' +
       '解説記事は書きません。ニュースの要約もしません。\n' +
       '「これから効き続ける動き」だけを、決められた形で返します。\n\n' +
       '■ 必ず守ること\n' +
       '- web 検索を必ず使う。検索せずに書かない。\n' +
-      '- 下の「ソース」に挙げたドメインで確認できた出来事だけを返す。\n' +
+      '- 下に挙げたソースのドメインで確認できた出来事だけを返す。\n' +
       '- 日付・数字は、出典ページに書かれているものだけを書く。\n' +
       '  推定値・概算を書くときは detail に「推定」と明記する。\n' +
       '- URL は実在するページのものだけ。開けるか確かめる。\n' +
@@ -16085,9 +16126,19 @@
       '直近7日間に動いたもの。ただし「その日のニュース」ではなく、\n' +
       'これから数ヶ月〜数年にわたって効き続ける動きを選ぶ。\n' +
       '発表そのものより、発表が示している力学を選ぶ。\n\n' +
-      '■ ソース：一次（fact・eventDate・detail の数字はここでしか確認できない。「取るもの」があるソースはそれに従う）\n' +
+      // v19.1：日次の2件は他と分ける。見たが該当が無かったのか、開いていないのかを毎回返させる
+      (daily.length
+        ? '■ 毎日必ず見るもの（一次。毎回かならず開く。「取るもの」に従う）\n' +
+          daily.map((d) => '- ' + d.label + '：' + d.name + ' ' + d.url + (d.note ? '\n  取るもの：' + d.note : '')).join('\n') + '\n' +
+          '- この' + daily.length + '件は、札にできてもできなくても、JSON の末尾の "checked" に1件ずつ報告する。\n' +
+          '  source：上の「：」の前の名前をそのまま書く（' + daily.map((d) => d.label).join('／') + '）。\n' +
+          '  opened：ページを開いて、数字まで読めたら true。開けない・PDF の中身が読めないなら false。\n' +
+          '  picked：そこから札にした件数。該当が無ければ 0。\n' +
+          '  note：開けなかった理由か、札にしなかった理由を1句。無ければ空。\n\n'
+        : '') +
+      '■ そのほかのソース：一次（fact・eventDate・detail の数字はここでしか確認できない。「取るもの」があるソースはそれに従う）\n' +
       (prim.length ? prim.join('\n') : '（未設定）') + '\n\n' +
-      '■ ソース：解釈（why を書くための補助）\n' +
+      '■ そのほかのソース：解釈（why を書くための補助）\n' +
       (anal.length ? anal.join('\n') : '（未設定）') + '\n\n' +
       '■ ソースの使い分け（厳守）\n' +
       '- fact・eventDate・detail の数字は、一次のソースで確認できたものだけを書く。\n' +
@@ -16144,9 +16195,7 @@
       '- premise：この件を理解するのに最低限必要な「概念」を 1つだけ。\n' +
       '  概念とは、積み上がって世界の見方になるもの（外貨準備、交易条件、\n' +
       '  金融政策の正常化）。組織名・国名・略語・人名は概念ではない。\n' +
-      '  - その札の中でしか使わない固有名詞を概念にしない。\n' +
-      '    悪い例：「GDP2次速報」「ホルムズ海峡」「フロンティアAI」\n' +
-      '    良い例：「交易条件」「金融政策の正常化」「外貨準備」\n' +
+      '  - 概念にしない固有名詞の例は、下の concepts の項にある（premise にも同じく当てはまる）。\n' +
       (boot
         ? '  - いま知っている概念はまだ少ない（' + worldConcepts().length + '件）。足りなければ新しく作ってよい。\n' +
           '    そのときは kind を "new" にして、name と line を書く。\n'
@@ -16159,8 +16208,10 @@
       '\n' +
       (boot
         ? '- concepts：premise に書いた概念だけでよい（いまは既知の概念が少ないため）。\n' +
+          conceptNg +
           '  末尾の「すでに知っている概念」にこの出来事にも当てはまるものがあれば、足してよい。\n'
         : '- concepts：この出来事が触れている「概念」を 2〜4個。premise に書いたものも含める。\n' +
+          conceptNg +
           '  概念の意味は premise と同じ。積み上がって世界の見方になるものだけを書く。\n' +
           '  - 末尾の「すでに知っている概念」を必ず見て、この出来事にも当てはまるものが\n' +
           '    あれば挙げる。当てはまるかどうかは、その概念がこの出来事を説明するのに\n' +
@@ -16218,6 +16269,16 @@
       // v19: お金の欄を必須寄りに。kind と after を足す
       '- flow：この出来事で動いたもの。お金を優先して書く。\n' +
       '  - 出典に金額が書かれていれば、必ず書く。\n' +
+      // v19.1：残高の札で、裏で動いたお金が抜けた（外貨準備の札で介入の金額が flow に無かった）
+      '  - actors の did に金額が書かれているなら、その動きは flow にも書く。\n' +
+      '    札の主題が残高や統計であっても同じ。\n' +
+      '  - 残高の値（levels）と、その残高を動かしたお金（flow）は別のものとして両方書く。\n' +
+      '    残高を書いたから flow は不要、ではない。\n' +
+      '    悪い例：外貨準備が減った札で、levels に外貨準備の値だけを書き、flow は null。\n' +
+      '            （actors の財務省の did には「円買い・ドル売り介入 総額15兆3993億円」とある）\n' +
+      '    良い例：levels に外貨準備の値、flow に\n' +
+      '            {"from":"財務省","to":"為替市場","what":"円買い・ドル売り介入","amount":"15兆3993億円",\n' +
+      '             "kind":"money","span":"7月30日〜8月26日"}\n' +
       '  - 金額が書かれていなくても、誰から誰へ動いたかが出典に書かれていれば、\n' +
       '    from と to だけ書く（amount は空）。\n' +
       '  - 出典に書かれていない移動は書かない。金額を推定しない。換算しない。合計しない。\n' +
@@ -16271,13 +16332,16 @@
       '  "source":"...",\n' +
       '  "url":"https://...",\n' +
       '  "eventDate":"YYYY-MM-DD"\n' +
-      '}]}\n\n' +
+      '}]' + (daily.length
+        ? ',\n"checked":[\n' + daily.map((d) => '  {"source":"' + d.label + '","opened":true,"picked":0,"note":""}').join(',\n') + '\n]'
+        : '') + '}\n\n' +
       (boot ? '' : 'kind が "relation" のときの premise：\n' +
         '  {"kind":"relation","a":"既知の概念1","b":"既知の概念2","line":"..."}\n') +
       'どの地層にも乗らないとき： "strata": []\n' +
       '分かれ目が思いつかないとき： "fork": null\n' +
       '動いたものが無い・書けないとき： "flow": null\n' +
       '前の動きの続きでないとき： "after": null\n' +
+      (daily.length ? '毎日必ず見るものから札にしなかったとき： "checked" は省かず "picked": 0\n' : '') +
       '地層の値が出典に書かれていないとき： "levels": []\n' +
       '述べた理由が出典に無いとき： "said": ""\n' +
       '読んだ思惑が述べた理由と同じとき： "read": ""\n\n' +
@@ -16990,6 +17054,7 @@
     const parsed = shootParseJson(raw);
     const items = parsed ? (Array.isArray(parsed) ? parsed : Array.isArray(parsed.events) ? parsed.events : null) : null;
     if (!items) return { error: 'JSON として読めませんでした。{"events":[...]} の形で貼ってください。' };
+    const checked = worldReadChecked(parsed);   // v19.1：保存しない。結果の1行に出すだけ
 
     const today = todayStr();
     const rejected = { fact: 0, url: 0, date: 0, future: 0, dup: 0 };
@@ -17132,7 +17197,7 @@
       added: added.length, rejected, old, forks, leans, droppedForks, onStrata, droppedStrata, unknownConcepts,
       createdConcepts, createdTerms, createdActors, batchId, linked, partnerIds: [...partnerIds],
       addedIds: added.map((e) => e.id),
-      withActors, withRead, withFlow,
+      withActors, withRead, withFlow, checked,
       ...worldFlowKindCounts(added), ...afterStats,   // v19 段階3
       ...lv,   // v15: levelsFilled / levelsDup / levelsUnknown
       candidates: worldMergeCandidatesIn(WORLD_STORES.concept, createdConcepts)
@@ -19707,6 +19772,9 @@
       if (res.afterGone) msg += '／落ちた札を指していて外した続き ' + res.afterGone + '件';
       msg += '。';
     }
+    // v19.1：毎日必ず見るもの。0件でも出す（開けなかったのか該当が無かったのかを毎回見るため）
+    const checkedText = worldCheckedText(res.checked);
+    if (checkedText) msg += '　' + checkedText + '。';
     if (res.createdActors && res.createdActors.length) msg += '　新しいアクター ' + res.createdActors.length + '件。';
     if (res.levelsFilled) msg += '　地層の値 ' + res.levelsFilled + '件を入れました。';
     if (res.levelsDup) msg += '　※ 同じ日付で重なった地層の値 ' + res.levelsDup + '件は落としました（履歴なので上書きしません）。';
