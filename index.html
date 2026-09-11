@@ -309,6 +309,27 @@
     flex-wrap: wrap;
     gap: 6px;
   }
+  /* v19.8 設定のグループ */
+  .settingsBody { gap: 10px; }
+  .setHint { margin: 0 0 4px; font-size: 12px; color: var(--text-faint); }
+  .setGroup { border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card); }
+  .setGroup > summary {
+    list-style: none; cursor: pointer; padding: 14px; display: flex; align-items: baseline; gap: 10px;
+    font: inherit; color: var(--text);
+  }
+  .setGroup > summary::-webkit-details-marker { display: none; }
+  .setGroup > summary::before { content: '▸'; font-size: 11px; color: var(--text-faint); flex: 0 0 auto; }
+  .setGroup[open] > summary::before { content: '▾'; }
+  .sgTitle { font-size: 15px; flex: 0 0 auto; }
+  .sgSub { font-size: 12px; color: var(--text-faint); margin-left: auto; text-align: right; min-width: 0; overflow-wrap: anywhere; }
+  .setBody { display: flex; flex-direction: column; gap: 18px; padding: 14px 14px 16px; border-top: 1px solid var(--border); }
+  .setMore { border-top: 1px dashed var(--border); padding-top: 12px; }
+  .setMore > summary { list-style: none; cursor: pointer; font-size: 12px; color: var(--text-dim); }
+  .setMore > summary::-webkit-details-marker { display: none; }
+  .setMore > summary::before { content: '▸ '; color: var(--text-faint); }
+  .setMore[open] > summary::before { content: '▾ '; }
+  .setMore > .setBody { padding: 14px 0 0; border-top: none; }
+  .setDanger { border: 1px dashed var(--danger); border-radius: 10px; padding: 12px; }
   .detailLinksSection h3, .settingsBody h3 {
     font-size: 15px;
     color: var(--text-dim);
@@ -1566,249 +1587,327 @@
       <div style="width:40px;"></div>
     </header>
     <div class="settingsBody">
-      <div class="field">
-        <h3>1. 同期</h3>
-        <p class="fieldNote">同期先: yutaTasaki/kotoba-data と yutaTasaki/walk10000-data（いずれもprivate）。両方への Contents: Read and write 権限を持つトークンを1つ入力してください。</p>
-        <input id="ghTokenInput" type="text" placeholder="github_pat_..." autocomplete="off" spellcheck="false">
-        <button id="btnSaveGhToken" class="secondaryBtn">保存</button>
-        <div class="statRow"><span>同期状態</span><span id="statSyncState"></span></div>
-        <div class="statRow"><span>最終同期時刻</span><span id="statLastSync"></span></div>
-        <div class="statRow"><span>最終同期エラー</span><span id="statLastSyncError"></span></div>
-        <div class="statRow"><span>データ量</span><span id="statDataSize"></span></div>
-        <p class="fieldNote" id="statDataSizeNote"></p>
-        <div class="statRow"><span>記録の保存方式</span><span id="statJournalMode"></span></div>
-        <p class="fieldNote">「月ファイル」は記録（朝・相談・引く・問い）を kotoba-data の journal/YYYY-MM.json に月ごとに分けて置く方式です。移行の前に kotoba-data のバックアップを取ってください。戻すこともできます。</p>
-        <button id="btnJournalMigrate" class="secondaryBtn">記録を月ファイル方式に移行</button>
-        <button id="btnJournalRevert" class="secondaryBtn">記録を data.json 方式に戻す</button>
-        <p class="fieldNote" id="journalMigrateStatus"></p>
-        <div class="statRow"><span>言葉の保存方式</span><span id="statNotesMode"></span></div>
-        <p class="fieldNote">「月ファイル」は言葉（ノート）を作成月ごとに kotoba-data の notes/YYYY-MM.json に分けて置く方式です。端末には全件を持つので網・相談は変わりません。同期で送るのは触った月の分だけになります。</p>
-        <button id="btnNotesMigrate" class="secondaryBtn">言葉を月ファイル方式に移行</button>
-        <button id="btnNotesRevert" class="secondaryBtn">言葉を data.json 方式に戻す</button>
-        <p class="fieldNote" id="notesMigrateStatus"></p>
-        <div class="statRow"><span>瞑想の保存方式</span><span id="statMeditationMode"></span></div>
-        <p class="fieldNote">瞑想の記録は最初から kotoba-data の meditation/YYYY.json（年ごと）＋ meditation/index.json に置きます。端末には全年分を持ちます。</p>
-        <button id="btnClearLegacyStorage" class="secondaryBtn">古い保存形式のコピーを消す（localStorage）</button>
-        <p class="fieldNote">v6 からデータは端末の IndexedDB に保存されます。localStorage に残った古いコピーは旧バージョンへ戻すときの保険です。容量が気になるときだけ消してください。</p>
-        <button id="btnSyncNow" class="secondaryBtn">今すぐ同期</button>
-      </div>
-      <hr>
-      <div class="field">
-        <h3>2. Claude API</h3>
-        <p class="fieldNote">console.anthropic.com で発行したAPIキーを入力してください。キーは端末のlocalStorageにのみ保存され、data.jsonには含まれません。</p>
-        <input id="claudeApiKeyInput" type="text" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
-        <span class="fieldLabel">自動関連づけのモデル</span>
-        <input id="claudeModelAutoLinkInput" type="text" placeholder="claude-haiku-4-5" autocomplete="off" spellcheck="false">
-        <span class="fieldLabel">朝の言葉・相談のモデル</span>
-        <input id="claudeModelChatInput" type="text" placeholder="claude-sonnet-5" autocomplete="off" spellcheck="false">
-        <span class="fieldLabel">問いのモデル</span>
-        <p class="fieldNote">「問いを引く」に使うモデルです。空欄にすると「朝の言葉・相談のモデル」と同じになります。</p>
-        <input id="claudeModelQuestionInput" type="text" placeholder="claude-sonnet-5" autocomplete="off" spellcheck="false">
-        <span class="fieldLabel">月の上限（USD）</span>
-        <p class="fieldNote">今月の概算費用がこの割合（50% / 80% / 100%）に達すると朝タブに知らせます。100%を超えると自動関連づけと朝の言葉を自動で止めます（相談は確認のうえ続行できます）。</p>
-        <input id="usageBudgetInput" type="text" inputmode="decimal" placeholder="2.00" autocomplete="off">
-        <span class="fieldLabel">この端末の名前</span>
-        <p class="fieldNote">使用量の内訳で、この端末を区別するための表示名です（例: PC、iPhone）。</p>
-        <input id="deviceLabelInput" type="text" placeholder="この端末" autocomplete="off">
-        <button id="btnSaveClaudeSettings" class="secondaryBtn">保存</button>
-        <label class="checkboxRow">
-          <input type="checkbox" id="autoLinkToggle">
-          保存時に自動で関連づける
-        </label>
-        <label class="checkboxRow">
-          <input type="checkbox" id="morningEnabledToggle">
-          朝、体調から言葉を受け取る
-        </label>
-      </div>
-      <hr>
-      <div class="field">
-        <h3>3. 散歩</h3>
-        <span class="fieldLabel">開始日の変更</span>
-        <input type="date" id="walkStartDateInput">
-        <button id="btnSaveWalkStartDate" class="secondaryBtn">保存</button>
-      </div>
-      <div class="field">
-        <span class="fieldLabel">初期セットアップ</span>
-        <p class="fieldNote">開始日から連続で、指定した日数分をまとめて記録済みにします。</p>
-        <input type="number" id="walkInitialCountInput" min="0" placeholder="ここまで歩いた回数">
-        <button id="btnWalkInitialSetup" class="secondaryBtn">登録</button>
-      </div>
-      <div class="field">
-        <span class="fieldLabel">最長連続の手動設定</span>
-        <p class="fieldNote">実データから計算した最長連続より大きい場合だけ有効になります（記録が追いつくと自動的に上書きされます）。</p>
-        <input type="number" id="walkBestStreakInput" min="0" placeholder="最長連続（日）">
-        <button id="btnSaveWalkBestStreak" class="secondaryBtn">保存</button>
-      </div>
-      <div class="field">
-        <span class="fieldLabel">歩数・距離の記録（日付指定）</span>
-        <p class="fieldNote">日付を選ぶと、その日にすでに記録した値が表示されます。空欄で保存するとその項目は未記録になります。</p>
-        <input type="date" id="walkStatsDateInput">
-        <input type="number" id="walkStatsStepsInput" min="0" placeholder="歩数（歩）">
-        <input type="number" id="walkStatsDistanceInput" min="0" placeholder="距離（m）">
-        <button id="btnSaveWalkStats2" class="secondaryBtn">保存</button>
-      </div>
-      <div class="field">
-        <span class="fieldLabel">投稿画像のプレビュー</span>
-        <canvas id="walkSettingsPreviewCanvas" width="1080" height="1080" style="width:100%;border-radius:14px;"></canvas>
-      </div>
-      <div class="field">
-        <button id="btnWalkDeleteAll" class="dangerBtn">散歩データを全て削除</button>
-      </div>
-      <hr>
-      <div class="field">
-        <h3>4. 言葉</h3>
-        <span class="fieldLabel">朝の投稿文の見出し</span>
-        <p class="fieldNote">Xで投稿するときの、今朝の言葉の前に付く見出しです。</p>
-        <input id="morningQuoteHeadingInput" type="text" placeholder="今日の言葉" autocomplete="off">
-        <button id="btnSaveMorningQuoteHeading" class="secondaryBtn">保存</button>
-      </div>
-      <div class="field">
-        <span class="fieldLabel">出典ごとの種類</span>
-        <p class="fieldNote">出典（本・名言集・人名）ごとに、その言葉の種類（名言／本／自分）をまとめて設定します。押すとその出典の言葉すべてに反映されます。</p>
-        <div id="sourceKindList"></div>
-      </div>
-      <div class="field">
-        <span class="fieldLabel">候補の言葉の上限</span>
-        <p class="fieldNote">言葉がこの数以下なら全件を（キャッシュして）モデルに渡します。超えたら、相談・関連づけのたびに「入力に近い言葉」をこの数だけ端末側で選んで渡します。</p>
-        <input id="compressThresholdInput" type="text" inputmode="numeric" placeholder="200" autocomplete="off">
-        <button id="btnSaveCompressThreshold" class="secondaryBtn">保存</button>
-      </div>
-      <div class="field">
-        <span class="fieldLabel">全ノートを一括で関連づけ</span>
-        <p class="fieldNote">まだ自動関連づけをしていないノートだけを対象に、古い順に処理します。</p>
-        <button id="btnBatchAutoLink" class="secondaryBtn">全ノートを一括で関連づけ</button>
-        <div id="batchProgress" class="fieldNote" hidden></div>
-        <button id="btnBatchStop" class="dangerBtn" hidden>停止</button>
-      </div>
-      <div class="field">
-        <span class="fieldLabel">全件やり直し</span>
-        <p class="fieldNote">既存の自動リンクをすべて消して、全ノートを今の基準（対立がありうるなら必ず1件）で関連づけ直します。手動リンクと却下済みは残ります。進捗と停止は上の欄に出ます。</p>
-        <button id="btnRelinkAll" class="dangerBtn">全件やり直し（既存の自動リンクを消して再生成）</button>
-      </div>
-      <div class="field" id="errorNotesSection" hidden>
-        <span class="fieldLabel">エラーが出たノート（<span id="errorNoteCount"></span>件）</span>
-        <div id="errorNotesList" class="detailLinksList"></div>
-      </div>
-      <div class="field">
-        <span class="fieldLabel">重複を探す</span>
-        <p class="fieldNote">全ノートを比較し、似ている組を一覧にします（API は使いません）。</p>
-        <button id="btnFindDuplicates" class="secondaryBtn">重複を探す</button>
-        <div id="duplicateProgress" class="fieldNote" hidden></div>
-        <div id="duplicateResults"></div>
-        <p class="emptyMsg" id="duplicateEmptyMsg" hidden>似ている組は見つかりませんでした。</p>
-      </div>
-      <div class="field">
-        <span class="fieldLabel">消した言葉（<span id="trashCount"></span>件）</span>
-        <p class="fieldNote">消したノートは本文ごとここに残ります。一覧・検索・引く・網・朝・相談・問いには出ません。復元すると一覧に戻り、まだ残っている関連ノートとのリンクもつなぎ直します。</p>
-        <div id="trashList" class="detailLinksList"></div>
-        <p class="emptyMsg" id="trashEmptyMsg" hidden>消した言葉はありません。</p>
-        <p class="fieldNote" id="trashStatus"></p>
-      </div>
-      <hr>
-      <div class="field">
-        <h3>5. データ</h3>
-        <button id="btnExport" class="secondaryBtn">言葉のデータをエクスポート（ダウンロード）</button>
-        <button id="btnExportWalk" class="secondaryBtn">散歩のデータをエクスポート（ダウンロード）</button>
-        <label class="secondaryBtn fileLabel" for="importFileInput">言葉のインポート（読み込み）</label>
-        <input id="importFileInput" type="file" accept="application/json" hidden>
-        <label class="secondaryBtn fileLabel" for="importWalkFileInput">散歩のインポート（読み込み）</label>
-        <input id="importWalkFileInput" type="file" accept="application/json" hidden>
-        <button id="btnReloadFromRemote" class="dangerBtn">リモートから読み込み直す（両方・ローカルを破棄）</button>
-      </div>
-      <hr>
-      <div class="field">
-        <h3>6. 世界</h3>
-        <span class="fieldLabel">ソース</span>
-        <p class="fieldNote">生成プロンプトに差し込む出所です。「一次」は出来事・日付・数字の出所（中銀・政府・国際機関・統計）。「解釈」はなぜ動いたかを書くための補助（シンクタンク）。解釈だけを根拠に出来事を立てさせません。</p>
-        <div id="worldSourceList"></div>
-        <p class="emptyMsg" id="worldSourceEmpty" hidden>ソースがありません。</p>
-      </div>
-      <div class="field">
-        <span class="fieldLabel">まとめて貼る（ソースの立場・地層の確認先）</span>
-        <p class="fieldNote">1行1件。先頭が地層の id（st_…）なら地層、そうでなければソースの名前として読みます。<br>
-          ソース：<code>名前［タブかコロン］この発信者が欲しいもの</code><br>
-          地層（3列）：<code>id［タブ］確認先の名前［タブ］URL</code><br>
-          地層（5列）：<code>id［タブ］名前［タブ］説明［タブ］確認先の名前［タブ］URL</code><br>
-          ソースの立場は空欄のものだけ埋めます。地層の確認先は差し替えが目的なので上書きします。新しいソースや地層は作りません。当たらなかった行は下に出します。</p>
-        <textarea id="worldBulkPaste" rows="4" placeholder="日本銀行&#9;物価目標への信認。市場に織り込まれた状態で動きたい" autocomplete="off"></textarea>
-        <label class="checkboxRow"><input type="checkbox" id="worldBulkOverwrite"> すでに入っている立場も上書きする</label>
-        <button id="btnWorldBulkApply" class="secondaryBtn">取り込む</button>
-        <p class="fieldNote" id="worldBulkStatus"></p>
-      </div>
-      <div class="field">
-        <span class="fieldLabel">ソースを足す</span>
-        <input type="text" id="worldSourceNameInput" placeholder="名前（例：日本銀行）" autocomplete="off">
-        <input type="text" id="worldSourceUrlInput" placeholder="https://www.boj.or.jp/" autocomplete="off">
-        <button id="btnWorldSourceAdd" class="secondaryBtn">足す</button>
-        <p class="fieldNote" id="worldSourceStatus"></p>
-      </div>
-      <div class="field">
-        <span class="fieldLabel">非表示のもの（<span id="worldHiddenCount"></span>）</span>
-        <p class="fieldNote">本文は残っています。押すと戻ります。非表示のあいだは一覧にも生成の既知一覧にも出ません。</p>
-        <div id="worldHiddenList"></div>
-        <p class="emptyMsg" id="worldHiddenEmpty" hidden>非表示にしたものはありません。</p>
-      </div>
-      <div class="field">
-        <span class="fieldLabel">概念・用語・アクターを整理する</span>
-        <p class="fieldNote">名前を直す・まとめる・非表示にする・親でまとめる。月に一度あるかどうかの操作なので、ふだんの画面からは外してあります。一覧と並べ替えもここです。</p>
-        <button id="btnWorldTidyOpen" class="secondaryBtn">整理をひらく</button>
-      </div>
-      <div class="field">
-        <span class="fieldLabel">概念のつながりを作り直す</span>
-        <p class="fieldNote">ふだんは取り込みのたびに自動で数え直します。端末に無い月の札まで含めて繋ぎ直したいとき、または数が合わないときに押します。何度押しても同じ本数になります。手で外したつながりと、生成が指定したつながりは残ります。</p>
-        <button id="btnWorldRebuildCooc" class="secondaryBtn">作り直す</button>
-        <p class="fieldNote" id="worldCoocStatus"></p>
-      </div>
-      <!-- v19.5 段階2：予測を畳んだので隠す（処理は残す） -->
-      <div class="field" hidden>
-        <span class="fieldLabel">予測の索引を作り直す</span>
-        <p class="fieldNote">答え合わせの期限一覧が合わなくなったときに使います。全部の月を読み直して組み直すので少し時間がかかります。</p>
-        <button id="btnWorldRebuildDue" class="secondaryBtn">作り直す</button>
-        <p class="fieldNote" id="worldRebuildStatus"></p>
-      </div>
-      <!-- v19 段階1：一度きりの削除。上から順にしか押せない（1 保存庫 → 2 端末 → 3 捨てる） -->
-      <div class="field">
-        <span class="fieldLabel">世界のデータを捨てる</span>
-        <p class="fieldNote">札・概念・用語・問いを消します。主体・地層の値・ソースは残します。消す前に、保存庫とこの端末にバックアップを作ります。もう一方の端末は、次に開いたときに同じように消えます。</p>
-        <button id="btnWorldBackupMake" class="secondaryBtn">1 バックアップを作る</button>
-        <button id="btnWorldBackupSave" class="secondaryBtn" disabled>2 この端末に保存</button>
-        <button id="btnWorldReset" class="dangerBtn" disabled>3 捨てる</button>
-        <p class="fieldNote" id="worldResetStatus"></p>
-        <p class="fieldNote" id="worldEpochLine"></p>
-        <button id="btnAppReloadFresh" class="linkLikeBtn">最新の版を読み込む</button>
-      </div>
-      <hr>
-      <div class="field statsField">
-        <h3>7. 統計</h3>
-        <div class="statRow"><span>ノート総数</span><span id="statNoteCount"></span></div>
-        <div class="statRow"><span>タグ数</span><span id="statTagCount"></span></div>
-        <div class="statRow"><span>自動リンク数</span><span id="statAutoLinkCount"></span></div>
-        <div class="statRow"><span>手動リンク数</span><span id="statManualLinkCount"></span></div>
-        <div class="statRow"><span>散歩日数</span><span id="statWalkDays"></span></div>
-        <div class="statRow"><span>連続</span><span id="statWalkStreak"></span></div>
-        <div class="statRow"><span>最終エラー</span><span id="statLastAutoLinkError"></span></div>
-      </div>
-      <div class="field statsField">
-        <span class="fieldLabel">API使用量・今月（機能別）</span>
-        <div class="statRow"><span>自動関連づけ</span><span id="statUsageMonthAutolink"></span></div>
-        <div class="statRow"><span>朝</span><span id="statUsageMonthMorning"></span></div>
-        <div class="statRow"><span>相談</span><span id="statUsageMonthConsult"></span></div>
-        <div class="statRow"><span>探し直し</span><span id="statUsageMonthSearchAgain"></span></div>
-        <div class="statRow"><span>一括入力</span><span id="statUsageMonthBulk"></span></div>
-        <div class="statRow"><span>問い</span><span id="statUsageMonthQuestion"></span></div>
-        <div class="statRow"><span>筋肉の対応</span><span id="statUsageMonthMuscle"></span></div>
-        <div class="statRow"><span>読書メモ</span><span id="statUsageMonthReading"></span></div>
-        <div class="statRow"><span>撮るのカード（v9.0 で終了）</span><span id="statUsageMonthCards"></span></div>
-        <div class="statRow"><span>答えを壊す（v9.0 で終了）</span><span id="statUsageMonthBreak"></span></div>
-        <div class="statRow"><span>今月・合計</span><span id="statUsageMonthTotal"></span></div>
-        <div id="statUsagePerDevice"></div>
-      </div>
-      <div class="field statsField">
-        <div class="statRow"><span>先月・合計</span><span id="statUsagePrevMonthTotal"></span></div>
-        <div class="statRow"><span>累計・合計</span><span id="statUsageAllTimeTotal"></span></div>
-        <p class="fieldNote">アプリ内の金額はすべて概算です。月に一度は Anthropic コンソールの実際の請求と見比べてください。</p>
-        <a href="https://platform.claude.com" target="_blank" rel="noopener" class="secondaryBtn usageConsoleLink">Anthropic コンソールで実際の使用量を見る</a>
-      </div>
+      <!-- v19.8：設定を6つのグループに畳む。ふだん触るものだけ上に出し、めったに使わない操作は
+           各グループの「くわしく」の中。id はすべて前のまま（処理は変えていない） -->
+      <p class="setHint">押すと開きます。めったに使わない操作は、各グループの「くわしく」の中にあります。</p>
+
+      <details class="setGroup" data-group="sync">
+        <summary><span class="sgTitle">同期</span><span class="sgSub" id="setSubSync"></span></summary>
+        <div class="setBody">
+          <div class="field">
+            <span class="fieldLabel">GitHub トークン</span>
+            <p class="fieldNote">同期先は yutaTasaki/kotoba-data と walk10000-data（どちらも private）。両方に Contents: Read and write を持つトークンを1つ。</p>
+            <input id="ghTokenInput" type="text" placeholder="github_pat_..." autocomplete="off" spellcheck="false">
+            <button id="btnSaveGhToken" class="secondaryBtn">保存</button>
+          </div>
+          <div class="field">
+            <div class="statRow"><span>同期状態</span><span id="statSyncState"></span></div>
+            <div class="statRow"><span>最終同期</span><span id="statLastSync"></span></div>
+            <div class="statRow"><span>最終エラー</span><span id="statLastSyncError"></span></div>
+            <button id="btnSyncNow" class="secondaryBtn">今すぐ同期</button>
+          </div>
+          <details class="setMore">
+            <summary>くわしく：保存方式・書き出し／読み込み・古いコピー</summary>
+            <div class="setBody">
+              <div class="field">
+                <div class="statRow"><span>データ量</span><span id="statDataSize"></span></div>
+                <p class="fieldNote" id="statDataSizeNote"></p>
+              </div>
+              <div class="field">
+                <span class="fieldLabel">書き出し／読み込み</span>
+                <button id="btnExport" class="secondaryBtn">言葉のデータを書き出す（ダウンロード）</button>
+                <button id="btnExportWalk" class="secondaryBtn">散歩のデータを書き出す（ダウンロード）</button>
+                <label class="secondaryBtn fileLabel" for="importFileInput">言葉を読み込む</label>
+                <input id="importFileInput" type="file" accept="application/json" hidden>
+                <label class="secondaryBtn fileLabel" for="importWalkFileInput">散歩を読み込む</label>
+                <input id="importWalkFileInput" type="file" accept="application/json" hidden>
+              </div>
+              <div class="field">
+                <div class="statRow"><span>記録の保存方式</span><span id="statJournalMode"></span></div>
+                <p class="fieldNote">「月ファイル」は記録（朝・相談・引く・問い）を journal/YYYY-MM.json に月ごとに置く方式。移行の前にバックアップを。戻せます。</p>
+                <button id="btnJournalMigrate" class="secondaryBtn">記録を月ファイル方式に移行</button>
+                <button id="btnJournalRevert" class="secondaryBtn">記録を data.json 方式に戻す</button>
+                <p class="fieldNote" id="journalMigrateStatus"></p>
+              </div>
+              <div class="field">
+                <div class="statRow"><span>言葉の保存方式</span><span id="statNotesMode"></span></div>
+                <p class="fieldNote">「月ファイル」は言葉を作成月ごとに notes/YYYY-MM.json に置く方式。端末には全件を持つので、網・相談は変わりません。</p>
+                <button id="btnNotesMigrate" class="secondaryBtn">言葉を月ファイル方式に移行</button>
+                <button id="btnNotesRevert" class="secondaryBtn">言葉を data.json 方式に戻す</button>
+                <p class="fieldNote" id="notesMigrateStatus"></p>
+              </div>
+              <div class="field">
+                <div class="statRow"><span>瞑想の保存方式</span><span id="statMeditationMode"></span></div>
+                <p class="fieldNote">瞑想の記録は最初から meditation/YYYY.json（年ごと）＋ index.json です。</p>
+              </div>
+              <div class="field">
+                <button id="btnClearLegacyStorage" class="secondaryBtn">古い保存形式のコピーを消す（localStorage）</button>
+                <p class="fieldNote">v6 からデータは IndexedDB に保存されます。localStorage の古いコピーは旧バージョンへ戻すときの保険。容量が気になるときだけ。</p>
+              </div>
+              <div class="field setDanger">
+                <button id="btnReloadFromRemote" class="dangerBtn">リモートから読み込み直す（両方・ローカルを破棄）</button>
+              </div>
+            </div>
+          </details>
+        </div>
+      </details>
+
+      <details class="setGroup" data-group="api">
+        <summary><span class="sgTitle">Claude API</span><span class="sgSub" id="setSubApi"></span></summary>
+        <div class="setBody">
+          <div class="field">
+            <span class="fieldLabel">API キー</span>
+            <p class="fieldNote">console.anthropic.com で発行したキー。端末の localStorage にだけ保存され、data.json には含まれません。</p>
+            <input id="claudeApiKeyInput" type="text" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
+          </div>
+          <div class="field">
+            <span class="fieldLabel">月の上限（USD）</span>
+            <p class="fieldNote">今月の概算がこの 50／80／100% に達すると朝タブに知らせ、100% を超えると自動関連づけと朝の言葉を止めます（相談は確認のうえ続行できます）。</p>
+            <input id="usageBudgetInput" type="text" inputmode="decimal" placeholder="2.00" autocomplete="off">
+          </div>
+          <label class="checkboxRow">
+            <input type="checkbox" id="autoLinkToggle">
+            保存時に自動で関連づける
+          </label>
+          <label class="checkboxRow">
+            <input type="checkbox" id="morningEnabledToggle">
+            朝、体調から言葉を受け取る
+          </label>
+          <details class="setMore">
+            <summary>くわしく：モデル・端末の名前</summary>
+            <div class="setBody">
+              <div class="field">
+                <span class="fieldLabel">自動関連づけのモデル</span>
+                <input id="claudeModelAutoLinkInput" type="text" placeholder="claude-haiku-4-5" autocomplete="off" spellcheck="false">
+              </div>
+              <div class="field">
+                <span class="fieldLabel">朝の言葉・相談のモデル</span>
+                <input id="claudeModelChatInput" type="text" placeholder="claude-sonnet-5" autocomplete="off" spellcheck="false">
+              </div>
+              <div class="field">
+                <span class="fieldLabel">問いのモデル</span>
+                <p class="fieldNote">空欄なら「朝の言葉・相談のモデル」と同じ。</p>
+                <input id="claudeModelQuestionInput" type="text" placeholder="claude-sonnet-5" autocomplete="off" spellcheck="false">
+              </div>
+              <div class="field">
+                <span class="fieldLabel">この端末の名前</span>
+                <p class="fieldNote">使用量の内訳でこの端末を区別する表示名（例：PC、iPhone）。</p>
+                <input id="deviceLabelInput" type="text" placeholder="この端末" autocomplete="off">
+              </div>
+            </div>
+          </details>
+          <button id="btnSaveClaudeSettings" class="secondaryBtn">Claude API の設定を保存</button>
+        </div>
+      </details>
+
+      <details class="setGroup" data-group="words">
+        <summary><span class="sgTitle">言葉</span><span class="sgSub" id="setSubWords"></span></summary>
+        <div class="setBody">
+          <div class="field">
+            <span class="fieldLabel">朝の投稿文の見出し</span>
+            <p class="fieldNote">X で投稿するときの、今朝の言葉の前に付く見出し。</p>
+            <input id="morningQuoteHeadingInput" type="text" placeholder="今日の言葉" autocomplete="off">
+            <button id="btnSaveMorningQuoteHeading" class="secondaryBtn">保存</button>
+          </div>
+          <div class="field">
+            <span class="fieldLabel">消した言葉（<span id="trashCount"></span>件）</span>
+            <p class="fieldNote">本文ごと残ります。復元すると一覧に戻り、残っている関連ノートとのリンクもつなぎ直します。</p>
+            <div id="trashList" class="detailLinksList"></div>
+            <p class="emptyMsg" id="trashEmptyMsg" hidden>消した言葉はありません。</p>
+            <p class="fieldNote" id="trashStatus"></p>
+          </div>
+          <details class="setMore">
+            <summary>くわしく：出典ごとの種類・候補の上限・関連づけ・重複</summary>
+            <div class="setBody">
+              <div class="field">
+                <span class="fieldLabel">出典ごとの種類</span>
+                <p class="fieldNote">出典（本・名言集・人名）ごとに、言葉の種類（名言／本／自分）をまとめて設定。押すとその出典の言葉すべてに反映。</p>
+                <div id="sourceKindList"></div>
+              </div>
+              <div class="field">
+                <span class="fieldLabel">候補の言葉の上限</span>
+                <p class="fieldNote">言葉がこの数以下なら全件をモデルに渡し、超えたら「入力に近い言葉」をこの数だけ端末側で選んで渡します。</p>
+                <input id="compressThresholdInput" type="text" inputmode="numeric" placeholder="200" autocomplete="off">
+                <button id="btnSaveCompressThreshold" class="secondaryBtn">保存</button>
+              </div>
+              <div class="field">
+                <span class="fieldLabel">全ノートを一括で関連づけ</span>
+                <p class="fieldNote">まだ自動関連づけをしていないノートだけを、古い順に。</p>
+                <button id="btnBatchAutoLink" class="secondaryBtn">一括で関連づけ</button>
+                <div id="batchProgress" class="fieldNote" hidden></div>
+                <button id="btnBatchStop" class="dangerBtn" hidden>停止</button>
+              </div>
+              <div class="field" id="errorNotesSection" hidden>
+                <span class="fieldLabel">エラーが出たノート（<span id="errorNoteCount"></span>件）</span>
+                <div id="errorNotesList" class="detailLinksList"></div>
+              </div>
+              <div class="field">
+                <span class="fieldLabel">重複を探す</span>
+                <p class="fieldNote">全ノートを比べて似ている組を一覧にします（API は使いません）。</p>
+                <button id="btnFindDuplicates" class="secondaryBtn">重複を探す</button>
+                <div id="duplicateProgress" class="fieldNote" hidden></div>
+                <div id="duplicateResults"></div>
+                <p class="emptyMsg" id="duplicateEmptyMsg" hidden>似ている組は見つかりませんでした。</p>
+              </div>
+              <div class="field setDanger">
+                <span class="fieldLabel">全件やり直し</span>
+                <p class="fieldNote">既存の自動リンクをすべて消して、全ノートを今の基準で関連づけ直します。手動リンクと却下済みは残ります。進捗と停止は上の欄に出ます。</p>
+                <button id="btnRelinkAll" class="dangerBtn">全件やり直し（自動リンクを消して再生成）</button>
+              </div>
+            </div>
+          </details>
+        </div>
+      </details>
+
+      <details class="setGroup" data-group="walk">
+        <summary><span class="sgTitle">散歩</span><span class="sgSub" id="setSubWalk"></span></summary>
+        <div class="setBody">
+          <div class="field">
+            <span class="fieldLabel">歩数・距離の記録（日付指定）</span>
+            <p class="fieldNote">日付を選ぶと、その日の記録が出ます。空欄で保存するとその項目は未記録になります。</p>
+            <input type="date" id="walkStatsDateInput">
+            <input type="number" id="walkStatsStepsInput" min="0" placeholder="歩数（歩）">
+            <input type="number" id="walkStatsDistanceInput" min="0" placeholder="距離（m）">
+            <button id="btnSaveWalkStats2" class="secondaryBtn">保存</button>
+          </div>
+          <details class="setMore">
+            <summary>くわしく：開始日・初期セットアップ・最長連続・投稿画像・削除</summary>
+            <div class="setBody">
+              <div class="field">
+                <span class="fieldLabel">開始日の変更</span>
+                <input type="date" id="walkStartDateInput">
+                <button id="btnSaveWalkStartDate" class="secondaryBtn">保存</button>
+              </div>
+              <div class="field">
+                <span class="fieldLabel">初期セットアップ</span>
+                <p class="fieldNote">開始日から連続で、指定した日数分をまとめて記録済みにします。</p>
+                <input type="number" id="walkInitialCountInput" min="0" placeholder="ここまで歩いた回数">
+                <button id="btnWalkInitialSetup" class="secondaryBtn">登録</button>
+              </div>
+              <div class="field">
+                <span class="fieldLabel">最長連続の手動設定</span>
+                <p class="fieldNote">実データの最長連続より大きいときだけ有効（記録が追いつくと自動で上書き）。</p>
+                <input type="number" id="walkBestStreakInput" min="0" placeholder="最長連続（日）">
+                <button id="btnSaveWalkBestStreak" class="secondaryBtn">保存</button>
+              </div>
+              <div class="field">
+                <span class="fieldLabel">投稿画像のプレビュー</span>
+                <canvas id="walkSettingsPreviewCanvas" width="1080" height="1080" style="width:100%;border-radius:14px;"></canvas>
+              </div>
+              <div class="field setDanger">
+                <button id="btnWalkDeleteAll" class="dangerBtn">散歩データを全て削除</button>
+              </div>
+            </div>
+          </details>
+        </div>
+      </details>
+
+      <details class="setGroup" data-group="world">
+        <summary><span class="sgTitle">世界</span><span class="sgSub" id="setSubWorld"></span></summary>
+        <div class="setBody">
+          <div class="field">
+            <p class="fieldNote" id="worldEpochLine"></p>
+            <button id="btnAppReloadFresh" class="linkLikeBtn">最新の版を読み込む</button>
+          </div>
+          <div class="field">
+            <span class="fieldLabel">ソース</span>
+            <p class="fieldNote">生成プロンプトに差し込む出所。「一次」は出来事・日付・数字の出所、「解釈」は why を書くための補助。周期を付けたソースが「必ず見るもの」になり、期限の来た日に朝の「今日の取り込み」に入ります。</p>
+            <div id="worldSourceList"></div>
+            <p class="emptyMsg" id="worldSourceEmpty" hidden>ソースがありません。</p>
+          </div>
+          <div class="field">
+            <span class="fieldLabel">ソースを足す</span>
+            <input type="text" id="worldSourceNameInput" placeholder="名前（例：日本銀行）" autocomplete="off">
+            <input type="text" id="worldSourceUrlInput" placeholder="https://www.boj.or.jp/" autocomplete="off">
+            <button id="btnWorldSourceAdd" class="secondaryBtn">足す</button>
+            <p class="fieldNote" id="worldSourceStatus"></p>
+          </div>
+          <details class="setMore">
+            <summary>くわしく：整理・非表示・まとめて貼る・作り直す・捨てる</summary>
+            <div class="setBody">
+              <div class="field">
+                <span class="fieldLabel">概念・アクターを整理する</span>
+                <p class="fieldNote">名前を直す・まとめる・非表示にする・親でまとめる。一覧と並べ替えもここ。</p>
+                <button id="btnWorldTidyOpen" class="secondaryBtn">整理をひらく</button>
+              </div>
+              <div class="field">
+                <span class="fieldLabel">非表示のもの（<span id="worldHiddenCount"></span>）</span>
+                <p class="fieldNote">本文は残っています。押すと戻ります。</p>
+                <div id="worldHiddenList"></div>
+                <p class="emptyMsg" id="worldHiddenEmpty" hidden>非表示にしたものはありません。</p>
+              </div>
+              <div class="field">
+                <span class="fieldLabel">まとめて貼る（ソースの立場・地層の確認先）</span>
+                <p class="fieldNote">1行1件。先頭が地層の id（st_…）なら地層、そうでなければソースの名前。<br>
+                  ソース：<code>名前［タブかコロン］この発信者が欲しいもの</code><br>
+                  地層（3列）：<code>id［タブ］確認先の名前［タブ］URL</code><br>
+                  地層（5列）：<code>id［タブ］名前［タブ］説明［タブ］確認先の名前［タブ］URL</code><br>
+                  立場は空欄のものだけ埋め、地層の確認先は上書きします。新しいソースや地層は作りません。</p>
+                <textarea id="worldBulkPaste" rows="4" placeholder="日本銀行&#9;物価目標への信認。市場に織り込まれた状態で動きたい" autocomplete="off"></textarea>
+                <label class="checkboxRow"><input type="checkbox" id="worldBulkOverwrite"> すでに入っている立場も上書きする</label>
+                <button id="btnWorldBulkApply" class="secondaryBtn">取り込む</button>
+                <p class="fieldNote" id="worldBulkStatus"></p>
+              </div>
+              <div class="field">
+                <span class="fieldLabel">概念のつながりを作り直す</span>
+                <p class="fieldNote">ふだんは取り込みのたびに自動で数え直します。数が合わないときだけ。何度押しても同じ本数になります。</p>
+                <button id="btnWorldRebuildCooc" class="secondaryBtn">作り直す</button>
+                <p class="fieldNote" id="worldCoocStatus"></p>
+              </div>
+              <!-- v19.5 段階2：予測を畳んだので隠す（処理は残す） -->
+              <div class="field" hidden>
+                <span class="fieldLabel">予測の索引を作り直す</span>
+                <button id="btnWorldRebuildDue" class="secondaryBtn">作り直す</button>
+                <p class="fieldNote" id="worldRebuildStatus"></p>
+              </div>
+              <!-- v19 段階1：一度きりの削除。上から順にしか押せない（1 保存庫 → 2 端末 → 3 捨てる） -->
+              <div class="field setDanger">
+                <span class="fieldLabel">世界のデータを捨てる</span>
+                <p class="fieldNote">札・概念・用語・問いを消します。主体・地層の値・ソースは残します。消す前に保存庫とこの端末にバックアップを作ります。もう一方の端末は、次に開いたときに同じように消えます。</p>
+                <button id="btnWorldBackupMake" class="secondaryBtn">1 バックアップを作る</button>
+                <button id="btnWorldBackupSave" class="secondaryBtn" disabled>2 この端末に保存</button>
+                <button id="btnWorldReset" class="dangerBtn" disabled>3 捨てる</button>
+                <p class="fieldNote" id="worldResetStatus"></p>
+              </div>
+            </div>
+          </details>
+        </div>
+      </details>
+
+      <details class="setGroup" data-group="stats">
+        <summary><span class="sgTitle">統計と使用量</span><span class="sgSub" id="setSubStats"></span></summary>
+        <div class="setBody">
+          <div class="field statsField">
+            <span class="fieldLabel">API 使用量・今月（機能別）</span>
+            <div class="statRow"><span>自動関連づけ</span><span id="statUsageMonthAutolink"></span></div>
+            <div class="statRow"><span>朝</span><span id="statUsageMonthMorning"></span></div>
+            <div class="statRow"><span>相談</span><span id="statUsageMonthConsult"></span></div>
+            <div class="statRow"><span>探し直し</span><span id="statUsageMonthSearchAgain"></span></div>
+            <div class="statRow"><span>一括入力</span><span id="statUsageMonthBulk"></span></div>
+            <div class="statRow"><span>問い</span><span id="statUsageMonthQuestion"></span></div>
+            <div class="statRow"><span>筋肉の対応</span><span id="statUsageMonthMuscle"></span></div>
+            <div class="statRow"><span>読書メモ</span><span id="statUsageMonthReading"></span></div>
+            <div class="statRow"><span>撮るのカード（v9.0 で終了）</span><span id="statUsageMonthCards"></span></div>
+            <div class="statRow"><span>答えを壊す（v9.0 で終了）</span><span id="statUsageMonthBreak"></span></div>
+            <div class="statRow"><span>今月・合計</span><span id="statUsageMonthTotal"></span></div>
+            <div id="statUsagePerDevice"></div>
+            <div class="statRow"><span>先月・合計</span><span id="statUsagePrevMonthTotal"></span></div>
+            <div class="statRow"><span>累計・合計</span><span id="statUsageAllTimeTotal"></span></div>
+            <p class="fieldNote">アプリ内の金額はすべて概算です。月に一度は Anthropic コンソールの実際の請求と見比べてください。</p>
+            <a href="https://platform.claude.com" target="_blank" rel="noopener" class="secondaryBtn usageConsoleLink">Anthropic コンソールで実際の使用量を見る</a>
+          </div>
+          <div class="field statsField">
+            <span class="fieldLabel">数</span>
+            <div class="statRow"><span>ノート総数</span><span id="statNoteCount"></span></div>
+            <div class="statRow"><span>タグ数</span><span id="statTagCount"></span></div>
+            <div class="statRow"><span>自動リンク数</span><span id="statAutoLinkCount"></span></div>
+            <div class="statRow"><span>手動リンク数</span><span id="statManualLinkCount"></span></div>
+            <div class="statRow"><span>散歩日数</span><span id="statWalkDays"></span></div>
+            <div class="statRow"><span>連続</span><span id="statWalkStreak"></span></div>
+            <div class="statRow"><span>関連づけの最終エラー</span><span id="statLastAutoLinkError"></span></div>
+          </div>
+        </div>
+      </details>
     </div>
   </section>
 
@@ -2754,7 +2853,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v19.7';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v19.8';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -12258,8 +12357,36 @@
       box.appendChild(row);
     });
   }
+  // v19.8：設定のグループ。開いたものは端末に覚える（次に開いたとき同じ場所から続けられる）
+  const SETTINGS_OPEN_KEY = 'kotoba_settingsOpen';
+  let settingsGroupsWired = false;
+  function wireSettingsGroups() {
+    if (settingsGroupsWired) return;
+    settingsGroupsWired = true;
+    const groups = [...document.querySelectorAll('#screen-settings .setGroup')];
+    let open = [];
+    try { open = JSON.parse(localStorage.getItem(SETTINGS_OPEN_KEY) || '[]'); } catch (e) {}
+    groups.forEach((g) => {
+      g.open = open.includes(g.dataset.group);
+      g.addEventListener('toggle', () => {
+        const now = groups.filter((x) => x.open).map((x) => x.dataset.group);
+        try { localStorage.setItem(SETTINGS_OPEN_KEY, JSON.stringify(now)); } catch (e) {}
+      });
+    });
+  }
+  function paintSettingsSummaries() {
+    const set = (id, t) => { const el = document.getElementById(id); if (el) el.textContent = t; };
+    set('setSubSync', getGhToken() ? '設定済み' : 'トークン未設定');
+    set('setSubApi', getClaudeApiKey() ? (getClaudeChatModel() + ' ・ 上限 $' + getUsageBudget().toFixed(2)) : 'キー未設定');
+    set('setSubWords', data.notes.length + '件');
+    set('setSubWalk', computeWalkDerived().n + '日');
+    set('setSubWorld', 'ソース ' + worldSources().length + '件 ・ 版 ' + APP_BUILD);
+    set('setSubStats', '');
+  }
   function openSettings() {
     showScreen('settings');
+    wireSettingsGroups();
+    paintSettingsSummaries();
     document.getElementById('ghTokenInput').value = getGhToken();
     document.getElementById('claudeApiKeyInput').value = getClaudeApiKey();
     document.getElementById('claudeModelAutoLinkInput').value = getClaudeAutoLinkModel();
