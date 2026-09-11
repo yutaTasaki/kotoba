@@ -995,6 +995,9 @@
   }
   .worldRow .wTag.isNew { color: var(--accent); border-color: var(--accent-dim); }
   .worldRow .wMark { font-size: 10px; color: var(--accent); white-space: nowrap; }
+  /* v19.6 段階6 お金の鎖 */
+  .worldChainHead { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; font-weight: 700; margin: 8px 0 2px; }
+  .worldChainBody { padding-left: 12px; border-left: 2px solid var(--border); margin-bottom: 6px; }
   /* v19.3 確度。高いものは目立たせない。低いものだけ点線の枠（推定の琥珀とは別の印） */
   .worldRow .wConf { font-size: 10px; color: var(--text-faint); white-space: nowrap; margin-left: 4px; }
   .worldRow .wConf.isLow { color: var(--text); border: 1px dotted var(--text-dim); border-radius: 3px; padding: 0 3px; font-weight: 700; }
@@ -2170,6 +2173,9 @@
 
       <button type="button" id="worldStratumToday" class="worldStratumLine" hidden></button>
 
+      <!-- v19.6 段階6：お金の鎖と単発。既定の画面の地層の1行のすぐ下 -->
+      <div id="worldMoneyTop"></div>
+
       <div class="field" id="worldTodayField">
         <span class="fieldLabel" id="worldTodayLabel">今日動いた主体</span>
         <div id="worldTodayList"></div>
@@ -2747,7 +2753,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v19.5';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v19.6';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -14314,7 +14320,11 @@
   const WORLD_CADENCES_SRC      = ['', 'day', 'week', 'dekad', 'month', 'quarter'];
   const WORLD_CADENCE_SRC_DAYS  = { day: 1, week: 7, dekad: 10, month: 30, quarter: 90 };
   const WORLD_CADENCE_SRC_LABEL = { '': '周期なし', day: '毎日', week: '週1', dekad: '旬', month: '月1', quarter: '四半期' };
-  const WORLD_PULL_PENDING_KEY  = 'kotoba_worldPullPending';   // コピーしたプロンプトに入れた必ず見るもの（端末に控える）
+  const WORLD_PULL_PENDING_KEY  = 'kotoba_worldPullPending';
+  // v19.6 段階6：お金の鎖
+  const WORLD_CHAIN_DEPTH_MAX   = 12;   // 鎖を辿る深さ
+  const WORLD_CHAINS_SHOWN      = 3;    // 既定の画面に出す鎖の数
+  const WORLD_SINGLES_SHOWN     = 3;    // 鎖に入らないお金の動き（単発）の数   // コピーしたプロンプトに入れた必ず見るもの（端末に控える）
   const WORLD_FLOW_KIND_MARK  = { money: '', goods: '［物］', people: '［人］' };
   const WORLD_FLOW_KIND_LABEL = { money: 'お金の動き', goods: '物の動き', people: '人の動き' };
   const WORLD_EVENT_ID_RE     = /^w_\d{8}_\d+$/;
@@ -18522,9 +18532,12 @@
     document.getElementById('btnWorldOpenToday').hidden = !!todayList.length || !unread;
 
     // 12〜15行の1本の導線。ここから下は、押した結果でしか広がらない
+    // v19.6 段階6：お金の鎖と単発を「今日動いた主体」の上に
+    const top = document.getElementById('worldMoneyTop');
+    top.innerHTML = '';
+    renderWorldMoneyTop(top);
     const body = document.getElementById('worldMainBody');
     body.innerHTML = '';
-    renderWorldMoneyBrief(body);
     // 背景の札は、動いた主体がある日だけ独立した1行にする（主体が0の日は
     // 「今日は動いた主体がありません（背景の札 N件）」に含まれている）
     if (actorRows.length && bg.length) body.appendChild(worldSunkCardsEl(bg, '背景に沈めた札 ' + bg.length + '件'));
@@ -19137,6 +19150,93 @@
     b.textContent = text;
     b.addEventListener('click', onClick);
     return b;
+  }
+  // v19.6 段階6：お金の鎖。読み込んでいる月の札から、after で繋がった塊を作る（前へ辿る＋続きの一覧で後ろへ辿る）。
+  // 一度通った札は覚えて止める（輪を防ぐ）。辿る深さは最大 WORLD_CHAIN_DEPTH_MAX。2件以上の塊が鎖。何も保存しない
+  function worldMoneyChains() {
+    const flows = worldLiveEvents().filter((e) => e.flow && !worldIsLowConf(e));
+    const byId = new Map(flows.map((e) => [e.id, e]));
+    const next = new Map();
+    flows.forEach((e) => {
+      if (!e.flow.after || !byId.has(e.flow.after)) return;
+      if (!next.has(e.flow.after)) next.set(e.flow.after, []);
+      next.get(e.flow.after).push(e.id);
+    });
+    const seen = new Set();
+    const chains = [];
+    flows.forEach((start) => {
+      if (seen.has(start.id)) return;
+      const group = new Set();
+      const walk = [[start.id, 0]];
+      while (walk.length) {
+        const [id, depth] = walk.pop();
+        if (group.has(id) || depth > WORLD_CHAIN_DEPTH_MAX) continue;
+        group.add(id);
+        const e = byId.get(id);
+        if (e.flow.after && byId.has(e.flow.after)) walk.push([e.flow.after, depth + 1]);
+        (next.get(id) || []).forEach((n) => walk.push([n, depth + 1]));
+      }
+      group.forEach((id) => seen.add(id));
+      if (group.size < 2) return;
+      const cards = [...group].map((id) => byId.get(id))
+        .sort((a, b) => (a.eventDate < b.eventDate ? -1 : a.eventDate > b.eventDate ? 1 : 0));
+      // 見出しは from・to に一番多く出た主体
+      const count = new Map();
+      cards.forEach((e) => [e.flow.from, e.flow.to].forEach((n) => { const k = worldNormName(n); if (k) count.set(k, { name: n, n: ((count.get(k) || {}).n || 0) + 1 }); }));
+      const hub = [...count.values()].sort((a, b) => b.n - a.n)[0];
+      chains.push({ cards, hub: hub ? hub.name : '', last: cards[cards.length - 1].eventDate });
+    });
+    return chains.sort((a, b) => (a.last > b.last ? -1 : a.last < b.last ? 1 : 0));
+  }
+  function worldChainRowEl(e) {
+    const row = document.createElement('button');
+    row.type = 'button'; row.className = 'worldMoneyRow';
+    const d = document.createElement('span'); d.className = 'wmDate'; d.textContent = worldShortDate(e.eventDate);
+    const p = document.createElement('span'); p.className = 'wmPeer';
+    // 物・人の動きは、鎖の中の一手としてだけ出す（［物］［人］の印つき）
+    p.textContent = (e.flow.from || '？') + ' → ' + (e.flow.to || '？') + '　' + WORLD_FLOW_KIND_MARK[e.flow.kind] + (e.flow.what || '');
+    const a = document.createElement('span'); a.className = 'wmAmount'; a.textContent = e.flow.amount || '';
+    row.appendChild(d); row.appendChild(p); row.appendChild(a);
+    if (e.flow.span) { const sp = document.createElement('span'); sp.className = 'wmSpan'; sp.textContent = '（' + e.flow.span + 'の累計）'; row.appendChild(sp); }
+    row.addEventListener('click', () => openWorldEvent(e.id));
+    return row;
+  }
+  // 既定の画面の一番上：お金の鎖（最大3本・最後に動いた順）と、お金の動き（単発）3本＋「お金の一覧」
+  function renderWorldMoneyTop(body) {
+    const all = worldFlowEvents('').filter((e) => !worldIsLowConf(e));
+    const chains = worldMoneyChains();
+    if (!all.length && !chains.length) return;
+    if (chains.length) {
+      const head = document.createElement('div');
+      head.className = 'worldSectionHead';
+      const l = document.createElement('span'); l.textContent = 'お金の鎖';
+      head.appendChild(l);
+      body.appendChild(head);
+      chains.slice(0, WORLD_CHAINS_SHOWN).forEach((c) => {
+        const h = document.createElement('div');
+        h.className = 'worldChainHead';
+        const t = document.createElement('span'); t.textContent = (c.hub ? c.hub + 'を中心に ' : '') + c.cards.length + '件';
+        const last = document.createElement('span'); last.className = 'wmDate'; last.textContent = '最後 ' + worldShortDate(c.last);
+        h.appendChild(t); h.appendChild(last);
+        body.appendChild(h);
+        const box = document.createElement('div');
+        box.className = 'worldChainBody';
+        c.cards.forEach((e) => box.appendChild(worldChainRowEl(e)));
+        body.appendChild(box);
+      });
+    }
+    const inChain = new Set(chains.flatMap((c) => c.cards.map((e) => e.id)));
+    const singles = all.filter((e) => !inChain.has(e.id));
+    const head = document.createElement('div');
+    head.className = 'worldSectionHead';
+    const l = document.createElement('span'); l.textContent = chains.length ? 'お金の動き（単発）' : 'お金の流れ';
+    const go = document.createElement('button');
+    go.type = 'button'; go.className = 'linkLikeBtn';
+    go.textContent = 'お金の一覧（' + worldFlowEvents('').length + '）';
+    go.addEventListener('click', () => { worldState.search.money = ''; openWorldCards({ title: 'お金の一覧', money: true }); });
+    head.appendChild(l); head.appendChild(go);
+    body.appendChild(head);
+    singles.slice(0, WORLD_SINGLES_SHOWN).forEach((e) => body.appendChild(worldMoneyBriefRowEl(e)));
   }
   function renderWorldMoneyBrief(body) {
     const all = worldFlowEvents('').filter((e) => !worldIsLowConf(e));   // v19.3
