@@ -1755,7 +1755,8 @@
         <button id="btnWorldRebuildCooc" class="secondaryBtn">作り直す</button>
         <p class="fieldNote" id="worldCoocStatus"></p>
       </div>
-      <div class="field">
+      <!-- v19.5 段階2：予測を畳んだので隠す（処理は残す） -->
+      <div class="field" hidden>
         <span class="fieldLabel">予測の索引を作り直す</span>
         <p class="fieldNote">答え合わせの期限一覧が合わなくなったときに使います。全部の月を読み直して組み直すので少し時間がかかります。</p>
         <button id="btnWorldRebuildDue" class="secondaryBtn">作り直す</button>
@@ -2746,7 +2747,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v19.4';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v19.5';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -14334,7 +14335,8 @@
   // 「いま誰が何を動かそうとしているか」を最初に見る。
   const WORLD_MONEY_BRIEF   = 3;   // v18 A-2: 既定の画面に出すお金の本数
   const WORLD_SEARCH_SHOW   = 6;   // v18 A-2: 探すの結果を出す件数（先は一覧へ）
-  const WORLD_SEARCH_KINDS  = [['card', '札'], ['concept', '概念'], ['term', '用語'], ['actor', 'アクター'], ['money', 'お金']];
+  // v19.5 段階2：用語集をやめたので、探すの型から「用語」を外す（注そのものは札の本文に残る）
+  const WORLD_SEARCH_KINDS  = [['card', '札'], ['concept', '概念'], ['actor', 'アクター'], ['money', 'お金']];
   const WORLD_BOARD_FOLD = 5;    // 盤面の既定の件数
   const WORLD_BOARD_MAX  = 20;   // 「もっと見る」で出す上限
   const WORLD_BOARD_LEGEND_KEY = 'kotoba_worldBoardLegend';   // 凡例を畳んだか
@@ -17863,7 +17865,7 @@
     predBtn.type = 'button'; predBtn.className = 'tagFilterBtn';
     predBtn.textContent = worldPredictionMine(ev) ? '予測を直す' : '予測';
     predBtn.addEventListener('click', (e) => { e.stopPropagation(); predBox.hidden = !predBox.hidden; });
-    btns.appendChild(predBtn);
+    // v19.5 段階2：予測のボタンは出さない（prediction のデータは残す）
 
     // 定型の依頼文。押す気が起きるように、質問文を考える工数をゼロにする。
     const askRow = document.createElement('div');
@@ -17914,8 +17916,9 @@
     if (ev.fork) {
       const forkEl = document.createElement('div');
       forkEl.className = 'worldForkText';
-      forkEl.textContent = ev.fork.text;
-      predBox.appendChild(forkEl);
+      forkEl.textContent = '分かれ目：' + ev.fork.text;
+      // v19.5 段階2：予測の枠の外に出して常に出す（枠ごと画面から外したので、中に置くと見えなくなる）
+      box.appendChild(forkEl);
       // v17 C: 生成の見立ては3択の上。方向1つなら引きずられる度合いが小さく、
       // 隠すと「AI はこう思っている」が答え合わせの画面でしか見られなくなる。理由は
       // 自分が押すまで畳む——先に読むと、自分の考えではなく理由の追認になる。
@@ -18004,7 +18007,7 @@
       }).join(' ／ ');
       predBox.appendChild(hist);
     }
-    box.appendChild(predBox);
+    // v19.5 段階2：予測の枠（3択・一言・期限）は画面に付けない
   }
 
   // 出来事の url のドメインから、登録してあるソースの「立場」を引く
@@ -18526,7 +18529,7 @@
     // 「今日は動いた主体がありません（背景の札 N件）」に含まれている）
     if (actorRows.length && bg.length) body.appendChild(worldSunkCardsEl(bg, '背景に沈めた札 ' + bg.length + '件'));
     renderWorldAskBrief(body);
-    renderWorldJudgeBrief(body);
+    // v19.5 段階2：「答え合わせ N件」の行を外す（答え合わせの画面へはここからしか入らない）
     renderWorldSearch(body);
   }
   // v15 お金の一覧。通貨ごとに区切り（換算しないので足せない）、from→to の組で
@@ -18650,12 +18653,14 @@
   function renderWorldTidy() {
     const body = document.getElementById('worldTidyBody');
     body.innerHTML = '';
+    // v19.5 段階2：整理の型から「用語」を外す。「しばらく出ていない用語」も用語の型でしか出ないので一緒に消える
+    if (worldState.entryKind === 'term') worldState.entryKind = 'concept';
     const isTerm = worldState.entryKind === 'term';
     const isActor = worldState.entryKind === 'actor';
 
     const kindRow = document.createElement('div');
     kindRow.className = 'tagFilterRow';
-    [['concept', '概念'], ['term', '用語'], ['actor', 'アクター']].forEach(([k, label]) => {
+    [['concept', '概念'], ['actor', 'アクター']].forEach(([k, label]) => {
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'tagFilterBtn' + (worldState.entryKind === k ? ' selected' : '');
       b.textContent = label + ' ' + (k === 'term' ? worldTerms().length : k === 'actor' ? worldActors().length : worldConcepts().length);
@@ -19187,7 +19192,7 @@
     const l = document.createElement('span'); l.textContent = '探す';
     head.appendChild(l);
     body.appendChild(head);
-    body.appendChild(worldSearchBoxEl('main', '札・概念・用語・アクター・お金を探す', renderWorldMain));
+    body.appendChild(worldSearchBoxEl('main', '札・概念・アクター・お金を探す', renderWorldMain));
     const q = worldState.search.main || '';
     if (!q.trim()) return;   // 語を入れるまで何も出さない
 
@@ -20007,7 +20012,7 @@
     if (drops.length) msg += '　' + drops.join('／') + ' を落としました。';
     if (res.createdConcepts.length) msg += '　新しい概念 ' + res.createdConcepts.length + '件。';
     if (res.createdTerms.length) msg += '　新しい用語 ' + res.createdTerms.length + '件。';
-    if (res.added) msg += '　分かれ目つき ' + res.forks + '件（うち生成の見立てつき ' + res.leans + '件）、地層に乗った ' + res.onStrata + '件。';
+    if (res.added) msg += '　分かれ目つき ' + res.forks + '件、地層に乗った ' + res.onStrata + '件。';   // v19.5
     if (res.droppedForks) msg += '　※ ' + (WORLD_FORK_PER_BATCH + 1) + '件目以降の分かれ目 ' + res.droppedForks + '件を落としました（答え合わせが追いつかなくなるため）。';
     if (res.added) msg += '　動かした側つき ' + res.withActors + '件、推定を書いた札 ' + res.withRead + '件／全 ' + res.added + '件。';
     // v19 段階3
