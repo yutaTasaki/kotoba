@@ -2853,7 +2853,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v19.8';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v19.9';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -14429,8 +14429,9 @@
   const WORLD_ACTOR_DID_MAX    = 40;
   const WORLD_ACTOR_SAID_MAX   = 60;
   const WORLD_ACTOR_READ_MAX   = 60;
-  const WORLD_ACTOR_KINDS      = ['state', 'cb', 'intl', 'industry', 'person'];
-  const WORLD_ACTOR_KIND_LABEL = { state: '政府', cb: '中銀', intl: '国際機関', industry: '業界', person: '人物', '': 'その他' };
+  // v19.9：group＝集まりとしての主体（富裕層・家計・海外投資家）。出典にその集まりの数字があるときだけ立てる
+  const WORLD_ACTOR_KINDS      = ['state', 'cb', 'intl', 'industry', 'person', 'group'];
+  const WORLD_ACTOR_KIND_LABEL = { state: '政府', cb: '中銀', intl: '国際機関', industry: '業界', person: '人物', group: '集まり', '': 'その他' };
   const WORLD_FLOW_UNITS       = ['JPY', 'USD', 'EUR', 'CNY', '%'];
   // v19 段階3：動いたものの種類。既定の画面に並べるのは money だけ。
   // goods（物）と people（人）には金額が付かないので、単独で並べると点が並ぶだけに戻る。
@@ -16421,7 +16422,16 @@
       '          said と同じ内容なら空にする。述べたことをなぞって推定に見せない。\n' +
       '          書くなら、述べたことと違うことを書く。書けなければ空でよい。\n' +
       '  - kind は state（政府・議会）／cb（中央銀行）／intl（国際機関）／industry（業界・企業）\n' +
-      '    ／person（人物）のどれか。すでに知っているアクターには kind を書かなくてよい。\n' +
+      '    ／person（人物）／group（集まり）のどれか。すでに知っているアクターには kind を書かなくてよい。\n' +
+      // v19.9：集まりとしての主体。富裕層の札で主語が空になるのを防ぐ
+      '  - group（集まり）：富裕層・家計・海外投資家のように、組織ではない集まりを主体にしてよい。\n' +
+      '    立てる条件は、出典にその集まりの数字（人数・金額・割合）が書かれていること。\n' +
+      '    値動きから推し量った説明（「市場参加者が売った」「投資家が嫌気した」）は主体にしない。\n' +
+      '    said は空にする（誰も述べていない）。read だけ書く。did にはその数字を書く。\n' +
+      '    良い例：出典に「純資産3000万ドル以上の人が2026年に英国から1万6500人流出した」とあれば\n' +
+      '      {"name":"英国の富裕層","did":"2026年に1万6500人が英国から流出","said":"",\n' +
+      '       "read":"税制の変更を嫌って出た","kind":"group"}\n' +
+      '    悪い例：「円が売られた」→ 主体を立てない（誰が売ったか出典に無い）\n' +
       '  良い例：\n' +
       '    {"name":"財務省","did":"円買い介入 15兆円","said":"投機的な動きに対応",\n' +
       '     "read":"円安による輸入物価上昇を止めたい","kind":"state"}\n' +
