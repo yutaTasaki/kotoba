@@ -2972,7 +2972,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.7';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.8';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -14706,6 +14706,14 @@
     { id: 'st_us_debt_total', cadence: 'month', name: '米国の政府債務総額', short: '米債務額', unit: '兆ドル', dir: 'up', dirSince: '1993',
       line: '1993年4月末の4.25兆ドルから増え続け、2008年に10兆・2017年に20兆・2022年に30兆・2026年に40兆ドルを超えた',
       where: { source: 'Debt to the Penny（米財務省）', url: 'https://fiscaldata.treasury.gov/datasets/debt-to-the-penny/' } },
+    // v20.8 富裕層：FRB の分配された金融勘定（DFA）の純資産の割合。2本並べて、差が開いていくのを見る。
+    // 過去の147点（1989年7〜9月期から）は WORLD_DFA_SEED から一度だけ入れる。上位1%は作らない（CSV に無い。足すと「合計しない」を破る）
+    { id: 'st_us_wealth_top01', cadence: 'quarter', name: '米国 上位0.1%の富の割合', short: '上位0.1%', unit: '%', dir: 'up', dirSince: '1989',
+      line: '米国の世帯の純資産のうち上位0.1%が持つ割合。1989年の8.6%から上がり、2026年は14.4%',
+      where: { source: 'FRB 分配された金融勘定（DFA）', url: 'https://www.federalreserve.gov/releases/efa/efa-distributional-financial-accounts.htm' } },
+    { id: 'st_us_wealth_bottom50', cadence: 'quarter', name: '米国 下半分の富の割合', short: '下半分', unit: '%', dir: 'down', dirSince: '1989',
+      line: '米国の世帯の純資産のうち下半分が持つ割合。1989年の3.5%から2011年に0.4%まで下がり、2026年は2.5%',
+      where: { source: 'FRB 分配された金融勘定（DFA）', url: 'https://www.federalreserve.gov/releases/efa/efa-distributional-financial-accounts.htm' } },
     { id: 'st_jp_pop_working', cadence: 'year', name: '日本の生産年齢人口', short: '日人口', unit: '万人', dir: 'down', dirSince: '1995',
       line: '1995年をピークに減り続けている',
       where: { source: '総務省統計局 人口推計', url: 'https://www.stat.go.jp/data/jinsui/' } },
@@ -14734,6 +14742,32 @@
       line: '2010年以降純購入が続き、2022年から増加',
       where: { source: 'World Gold Council 金準備', url: 'https://www.gold.org/goldhub/data/gold-reserves-by-country' } },
   ];
+
+  // v20.8：DFA の過去の値。2026-09-11 に落とした dfa.zip の dfa-networth-shares.csv、Net worth の列（TopPt1 と Bottom50）。
+  // zip も表のページ（JS）もブラウザから読めないので、ここに一度だけ置く。1989年7〜9月期から2026年1〜3月期まで、四半期の末日の順
+  const WORLD_DFA_IDS = ['st_us_wealth_top01', 'st_us_wealth_bottom50'];
+  const WORLD_DFA_SEED = {
+    from: '1989-09-30', source: 'FRB 分配された金融勘定（DFA）の CSV', url: 'https://www.federalreserve.gov/releases/z1/dataviz/download/zips/dfa.zip',
+    values: {
+      st_us_wealth_top01: '8.6 8.7 8.6 8.7 8.5 8.7 8.9 8.8 8.8 9.1 9 8.9 8.9 9.2 9.5 9.6 9.8 10.1 10.2 10.3 10.5 10.8 10.9 11.1 11.4 11.5 11.5 11.4 11.3 11.4 11.2 11.4 11.4 11.5 11.7 11.7 11.2 11.5 11.2 11.3 11 11.3 11.2 10.9 10.7 10.4 9.9 9.9 9.6 9.7 9.6 9.4 9 9 8.8 9.2 9.2 9.5 9.9 9.9 10 10.2 10.2 10.4 10.5 10.6 11 11 11.1 11.3 11.6 11.7 11.9 11.8 11.6 11.4 11.1 10.6 10.3 10.3 10.6 10.5 10.6 10.5 10.7 11 11.2 11.3 11 11.2 11.5 11.6 11.8 11.8 12 12 12.1 12.2 12.3 12.5 12.5 12.6 12.6 12.7 12.5 12.5 12.5 12.6 12.6 12.5 12.5 12.5 12.5 12.5 12.4 12.3 12.4 11.9 12.3 12.3 12.1 12.4 11.7 12.3 12.5 13 13.2 13.4 13.5 13.7 13.6 13.1 13.2 13.4 13.5 13.5 13.4 13.6 13.8 13.7 14 14 13.9 14.1 14.4 14.5 14.4',
+      st_us_wealth_bottom50: '3.5 3.4 3.5 3.4 3.5 3.6 3.5 3.5 3.7 3.7 3.8 3.8 4.1 4 3.8 3.8 3.8 3.7 3.5 3.4 3.5 3.5 3.5 3.6 3.7 3.6 3.5 3.4 3.5 3.4 3.4 3.4 3.4 3.3 3.3 3.2 3.5 3.3 3.4 3.2 3.3 3.2 3.2 3.2 3.2 3.2 3.2 3.1 3.1 3 3 2.9 3 2.9 2.8 2.6 2.6 2.6 2.5 2.6 2.5 2.5 2.5 2.4 2.5 2.5 2.4 2.4 2.4 2.3 2.2 2.1 2 1.7 1.5 1.5 1.2 1 0.7 0.7 0.7 0.6 0.5 0.5 0.5 0.4 0.4 0.4 0.4 0.4 0.4 0.6 0.6 0.7 0.7 0.8 0.9 0.9 0.9 1 1 1 1 1.1 1.1 1.2 1.2 1.2 1.3 1.3 1.3 1.4 1.4 1.4 1.5 1.6 1.5 1.6 1.6 1.6 1.7 1.7 1.8 2 2.1 2.2 2.3 2.3 2.4 2.4 2.5 2.7 2.7 2.6 2.6 2.6 2.5 2.5 2.5 2.5 2.4 2.5 2.5 2.5 2.5 2.5 2.5',
+    },
+  };
+  const WORLD_QUARTER_ENDS = ['03-31', '06-30', '09-30', '12-31'];
+  // 'YYYY-MM-DD' → その四半期の末日。FRED は四半期を最初の日（2026-01-01）で書くので、DFA の地層に入る値はここで寄せる
+  function worldQuarterEnd(d) { return d.slice(0, 4) + '-' + WORLD_QUARTER_ENDS[Math.floor((Number(d.slice(5, 7)) - 1) / 3)]; }
+  function worldLevelAt(s, at) { return s && WORLD_DFA_IDS.includes(s.id) && isDateStr(at) ? worldQuarterEnd(at) : at; }
+  // 地層を足すときに一緒に入れる過去の値（出どころ csv）。DFA 以外は空
+  function worldDfaSeedLevels(id) {
+    const vals = WORLD_DFA_SEED.values[id];
+    if (!vals) return [];
+    let y = Number(WORLD_DFA_SEED.from.slice(0, 4)), q = Math.floor((Number(WORLD_DFA_SEED.from.slice(5, 7)) - 1) / 3);
+    return vals.split(' ').map((v) => {
+      const at = y + '-' + WORLD_QUARTER_ENDS[q];
+      if (++q === 4) { q = 0; y++; }
+      return { value: v, at, note: '', part: '', source: WORLD_DFA_SEED.source, url: WORLD_DFA_SEED.url, via: 'csv', eventId: '' };
+    });
+  }
 
   // v19.12：資産の構成の器。移動（どこからどこへ）は flow、構成（何を何%持っているか）は残高側＝levels。
   // 名前に「内訳」とある地層は、1つの日付に内訳の数だけ値を持つ（part）。決まった id で無ければ足す
@@ -14852,6 +14886,8 @@
     // 2026-09-11 に実際に開いて、数字が本文（HTML か PDF）にあると確かめたものだけ。
     // 見送り：EDINET（検索アプリで本文に数字が無い）、NVIDIA IR（403）、UBS Global Wealth Report（403）、
     // Knight Frank・Henley（本文が JS で数字が読めない）、FRB Z.1（現在の版のページが 404／403）
+    // v20.8：富裕層は UBS・Knight Frank・Henley の代わりに、DFA（ここ。四半期）と WID.world（よく使う出典）にした。
+    // UBS・Knight Frank・Henley は一覧に一度も入れていないので、外す作業は無い（このメモだけ残す）
     { id: 'ws_corp_tsmc', label: 'TSMC 決算', short: 'TSMC', match: ['TSMC', '台湾積体'], retiredUrls: [],
       name: 'TSMC 四半期決算（Quarterly Results）', url: 'https://investor.tsmc.com/english/quarterly-results', role: 'primary', cadence: 'quarter',
       note: '最新の四半期の設備投資額（capital expenditure）と、その内訳・行き先（先端工程・海外工場・国名）。金額は US$ のまま。from は「TSMC」、to は工場の場所か用途。設備投資は3年後の需要をどう読んだかの賭けなので、read にはその読みを書く' },
@@ -14864,6 +14900,17 @@
     { id: 'ws_group_boj_sj', label: '日銀 資金循環', short: '資金循環', match: ['資金循環', 'Flow of Funds'], retiredUrls: [],
       name: '日本銀行 資金循環統計（四半期）', url: 'https://www.boj.or.jp/statistics/sj/index.htm', role: 'primary', cadence: 'quarter',
       note: '「参考図表」（sjexp.pdf）から、家計・企業・政府・海外の金融資産と負債の残高と、前年比で大きく動いた項目。家計の現預金・株式、海外の国債保有など。主体は「日本の家計」「海外投資家」（kind: group）、said は空' },
+    // v20.8：DFA。四半期ごと・1989年から・FRB 自身の一次資料。表のページは JS で数字が本文に無いので、同じ値を出している FRED の CSV を読ませる。
+    // 名前に「FRB」を入れない（H.4.1 の引き当ての鍵に FRB があり、checked を取り違える）
+    { id: 'ws_group_dfa', label: '米国の富の分布（DFA）', short: 'DFA', match: ['DFA', '分配された金融勘定', '富の分布', 'Distributional'], retiredUrls: [],
+      name: 'FRB 分配された金融勘定（米国の世帯の富の分布・四半期）', url: 'https://www.federalreserve.gov/releases/efa/efa-distributional-financial-accounts.htm', role: 'primary', cadence: 'quarter',
+      note: '数字は FRED の CSV（DFA と同じ値）で読む：上位0.1% https://fred.stlouisfed.org/graph/fredgraph.csv?id=WFRBSTP1300 ／下半分 https://fred.stlouisfed.org/graph/fredgraph.csv?id=WFRBSB50215 。最後の行（最新の四半期）の値を、札1枚の levels に2つ入れる（st_us_wealth_top01 と st_us_wealth_bottom50、value は CSV の数字のまま、at は CSV の日付）。主体は「米国の上位0.1%」「米国の下半分」（kind: group）、said は空。この源の札に限り flow は無くてよい（地層の値を運ぶ札）。url は CSV の URL' },
+  ];
+  // v20.8：よく使う出典に後から足すもの（周期なし＝必ず見るものではない）。最初の一覧は一度も保存されていないときにしか入らないので、
+  // 決まった id で、まだ無ければ一度だけ足す
+  const WORLD_EXTRA_SOURCES = [
+    { id: 'ws_wid', name: 'World Inequality Database（WID.world）', url: 'https://wid.world/', field: 'finance', role: 'primary',
+      note: '各国の富と所得の分布（上位1%・下半分の割合など）。国をまたいで比べるときに。米国は DFA を先に見る' },
   ];
 
   // ---- 形をそろえる --------------------------------------------------------
@@ -15140,7 +15187,7 @@
           part: worldStr(l.part, 30),   // v19.12：内訳の名前（「国債」「金」）。構成でない値は空
           source: worldStr(l.source, 120),
           url: typeof l.url === 'string' ? (shootSafeUrl(l.url.trim()) || '') : '',
-          via: (l.via === 'card' || l.via === 'probe' || l.via === 'api') ? l.via : 'hand',   // v20.6：API から入れた値
+          via: (l.via === 'card' || l.via === 'probe' || l.via === 'api' || l.via === 'csv') ? l.via : 'hand',   // v20.6：API から入れた値。v20.8：csv＝アプリに書いておいた過去の値（DFA）
           eventId: worldStr(l.eventId, 40),
         }))
         .sort((a, b) => (a.at > b.at ? -1 : 1)).slice(0, 1000),   // v20.6：400→1000（米国の政府債務総額は1993年からの月末の値で400点を超える。古い値を消さないため）
@@ -15447,7 +15494,8 @@
     if (actorCountryAdded) { wd.actors.updatedAt = nowIso(); wd.actorsDirty = true; persistWorldActors(); }
     worldAbsorbBracketActors();   // v20.2.1：括弧つきの重複主体を元の主体へまとめる
     if (!wd.strata.strata.length && !wd.strata.updatedAt) {
-      wd.strata.strata = WORLD_DEFAULT_STRATA.map((x, i) => normalizeWorldStratum({ ...x, levels: [], order: i, active: 1 })).filter(Boolean);
+      // v20.8：DFA の2つだけは、アプリに書いておいた実際の値（推測ではない）を最初から入れる
+      wd.strata.strata = WORLD_DEFAULT_STRATA.map((x, i) => normalizeWorldStratum({ ...x, levels: worldDfaSeedLevels(x.id), order: i, active: 1 })).filter(Boolean);
       wd.strataDirty = true;
       persistWorldStrata();
     }
@@ -15456,6 +15504,17 @@
       const def = WORLD_DEFAULT_STRATA.find((x) => x.id === 'st_us_debt_total');
       const add = def && normalizeWorldStratum({ ...def, levels: [], order: Math.max(0, ...wd.strata.strata.map((x) => x.order || 0)) + 1, active: 1, updatedAt: nowIso() });
       if (add) { wd.strata.strata.push(add); wd.strata.updatedAt = nowIso(); wd.strataDirty = true; persistWorldStrata(); }
+    }
+    // v20.8：富裕層の2つの地層（DFA）を、まだ無い端末に一度だけ足す。過去の147点も一緒に入れる（隠した地層・消した値には触らない）
+    const dfaNew = WORLD_DFA_IDS.filter((id) => !wd.strata.strata.some((x) => x.id === id));
+    if (wd.strata.strata.length && dfaNew.length) {
+      let order = Math.max(0, ...wd.strata.strata.map((x) => x.order || 0));
+      dfaNew.forEach((id) => {
+        const def = WORLD_DEFAULT_STRATA.find((x) => x.id === id);
+        const add = def && normalizeWorldStratum({ ...def, levels: worldDfaSeedLevels(id), order: ++order, active: 1, updatedAt: nowIso() });
+        if (add) wd.strata.strata.push(add);
+      });
+      wd.strata.updatedAt = nowIso(); wd.strataDirty = true; persistWorldStrata();
     }
     // 初期値は一度も保存されていないときだけ。編集済みなら入れ直さない。
     if (!wd.sources.sources.length && !wd.sources.updatedAt) {
@@ -15484,6 +15543,11 @@
         return;
       }
       const src = normalizeWorldSource({ ...x, field: 'finance', cadenceSetAt: nowIso(), updatedAt: nowIso() });
+      if (src) { wd.sources.sources.push(src); addedMoneySrc = true; }
+    });
+    WORLD_EXTRA_SOURCES.forEach((x) => {   // v20.8
+      if (wd.sources.sources.some((sc) => sc.id === x.id)) return;
+      const src = normalizeWorldSource({ ...x, updatedAt: nowIso() });
       if (src) { wd.sources.sources.push(src); addedMoneySrc = true; }
     });
     if (addedMoneySrc) { wd.sourcesDirty = true; persistWorldSources(); }
@@ -15995,7 +16059,7 @@
       if (!l || typeof l !== 'object') return;
       const s = worldStratumById(worldStr(l.stratumId, 40));
       if (!s) { out.levelsUnknown++; return; }
-      const at = isDateStr(l.at) ? l.at : ev.eventDate;
+      const at = isDateStr(l.at) ? worldLevelAt(s, l.at) : ev.eventDate;   // v20.8：DFA は四半期の末日へ
       const ok = worldAddLevel(s, l.value, at, '', { source: ev.source, url: ev.url, via: 'card', eventId: ev.id, part: l.part });
       if (ok) out.levelsFilled++;
       else if (worldStr(l.value, 40)) out.levelsDup++;
@@ -17579,7 +17643,7 @@
       if (!isDateStr(l.at)) { out.noDate++; return; }     // 札と違い eventDate で代用しない
       const part = worldStr(l.part, 30);   // v19.14
       const before = s.levels.find((x) => (x.part || '') === part) || null;   // 桁の飛びは同じ内訳どうしで見る
-      if (!worldAddLevel(s, value, l.at, '', { source: l.source, url, via: 'probe', part })) { out.dup++; return; }
+      if (!worldAddLevel(s, value, worldLevelAt(s, l.at), '', { source: l.source, url, via: 'probe', part })) { out.dup++; return; }   // v20.8：DFA は四半期の末日へ
       out.filled++;
       // 桁が飛んだら落とさずに知らせる。本当に変わることがあるので判断は人がする
       const a = Number(String(value).replace(/,/g, '')), b = before ? Number(String(before.value).replace(/,/g, '')) : NaN;
