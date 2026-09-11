@@ -2920,7 +2920,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.2.1';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.2.2';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -14415,7 +14415,8 @@
   const WORLD_PREDICT_CHOICES = [30, 90, 180];  // 予測期限の選択肢（日）
   const WORLD_PREDICT_DAYS    = 90;             // 既定
   const WORLD_STALE_DAYS      = 14;             // 未読が「古い」になるまで
-  const WORLD_KNOWN_MAX       = 400;            // プロンプトに差し込む既知概念の上限
+  const WORLD_KNOWN_MAX       = 120;            // プロンプトに差し込む既知概念の上限（v20.2.2：400→120。勝手に伸びる唯一の節なので天井を付ける）
+  const WORLD_KNOWN_NOTE_FROM = 100;            // v20.2.2：概念がこれを超えたら、取り込み結果で知らせる
   const WORLD_QUEUE_WARN      = 30;             // 未読が溜まりすぎの警告
   const WORLD_FACT_MAX        = 40;             // fact の字数
   const WORLD_DUP_SIM         = 0.70;           // 出来事の重複しきい値
@@ -16502,6 +16503,13 @@
   }
 
   // ---- プロンプト ----------------------------------------------------------
+  // v20.2.2：概念が一覧の上限に近づいたら、取り込み結果に1行出す
+  function worldConceptCountNote() {
+    const n = worldConcepts().length;
+    if (n <= WORLD_KNOWN_NOTE_FROM) return '';
+    if (n <= WORLD_KNOWN_MAX) return '概念が' + n + '件です（一覧に入るのは' + WORLD_KNOWN_MAX + '件まで）';
+    return '概念が' + n + '件です（一覧に入るのは最近の' + WORLD_KNOWN_MAX + '件まで、' + (n - WORLD_KNOWN_MAX) + '件が外れています）';
+  }
   function worldKnownNames(field) {
     return worldConcepts()
       .filter((c) => !field || !c.field || c.field === field)   // v19: 分野を渡さなければ全部
@@ -17117,7 +17125,7 @@
       '■ すでに知っている主体（名前はここから探す。一覧に無い主体を挙げてよい。先頭の名前だけを書き、［別名：…］は書かない）\n' +
       (worldKnownActorLines().length ? worldKnownActorLines().join(' / ') : '（まだありません）') + '\n\n' +
       '■ すでに知っている概念（説明しなくてよい）\n' +
-      (worldConcepts().length ? worldConcepts().map((c) => c.name).slice(0, WORLD_KNOWN_MAX).join(' / ') : '（まだありません）') + '\n\n' +
+      (worldConcepts().length ? worldKnownNames().join(' / ') : '（まだありません）') + '\n\n' +   // v20.2.2：最近使った順で上限まで
       '■ 関係しそうな札（related はこの id から選ぶ。ここに無い id を書かない）\n' +
       (cards.length ? cards.map((e) => e.id + '  ' + e.fact).join('\n') : '（関係しそうな札は端末にありません）');
   }
@@ -21203,7 +21211,9 @@
   const WORLD_DTS_DAILY_SHARE = 0.8;   // 出る日の割合がこれ以上で山が無ければ「毎日の定例」
   const WORLD_DTS_STALE_DAYS  = 3;     // 最新の分が米国の営業日でこれより古ければ「公表がまだ」
   const WORLD_FIGURES_TIMEOUT = 15000; // ms
-  const WORLD_PROMPT_WARN_LEN = 17000; // これを超えたら「長くなっています」（上限の実測は 17,916）
+  // これを超えたら「長くなっています」。v20.2.2：17,000→20,000。17,916 は一覧が全部埋まったときの予想の長さで、限界ではなかった。
+  // 概念120件・今日の数字1,200字のときの最大が約19,550字なので、その上に置く（思わぬ節が伸びたときだけ出る）
+  const WORLD_PROMPT_WARN_LEN = 20000;
   const WORLD_FISCAL_API      = 'https://api.fiscaldata.treasury.gov/services/api/fiscal_service/';
   const WORLD_DTS_URL_DW      = 'https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/deposits-and-withdrawals-of-operating-cash';
   const WORLD_DTS_URL_OCB     = 'https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/operating-cash-balance';
@@ -21518,6 +21528,8 @@
     if (res.levelsUnknown) msg += '　※ 一覧に無い地層の値 ' + res.levelsUnknown + '件を落としました。';
     if (res.droppedStrata) msg += '　※ 一覧に無い地層 ' + res.droppedStrata + '件を落としました。';
     if (res.unknownConcepts) msg += '　※ 知らない概念名 ' + res.unknownConcepts + '件は無視しました（premise として生まれれば、作り直しで拾われます）。';
+    const conceptNote = worldConceptCountNote();   // v20.2.2
+    if (conceptNote) msg += '　' + conceptNote + '。';
     if (res.old) msg += '　※ 90日より古い出来事が ' + res.old + '件あります。';
     if (unread > WORLD_QUEUE_WARN) msg += '　未読が ' + unread + '件です。読む速さより入れる速さが上回っています。';
     if (res.added && res.linked) msg += '　過去の札と ' + res.linked + '本つながりました。';
