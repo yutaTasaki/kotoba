@@ -1,2 +1,6 @@
 backup/
 _*.html
+# 指示書・回答書・実行結果の JSON は公開しない（リポジトリが公開のため）
+docs/sekai/shiji/
+docs/sekai/data/
+docs/toru/
