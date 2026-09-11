@@ -1084,6 +1084,9 @@
   .worldStratumLine .wsVal { color: var(--text-faint); }
   .worldStratumLine .wsStale { color: var(--danger); }
   .homeStratumLine { padding: 0 0 10px; margin-top: -6px; }
+  /* v19.4 段階5 */
+  .homePullRow { padding: 2px 0 10px; }
+  .homePullRow .homePullNone { font-size: 12px; color: var(--text-faint); }
   /* 出来事の行のタグ。概念タグより弱くして、押し合わないようにする */
   .worldRow .wTag.isStratum { color: var(--text-faint); border-color: transparent; background: var(--bg-card); font: inherit; font-size: 10px; cursor: pointer; }
   .strataRow { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; align-items: center; }
@@ -1346,6 +1349,8 @@
            開かなければ今日の3件は確定しない（読まない日があってよい）。 -->
       <button type="button" id="worldCollapsedRow" class="homeStepCollapsed" hidden></button>
       <button type="button" id="homeStratumLine" class="worldStratumLine homeStratumLine" hidden></button>
+      <!-- v19.4 段階5：朝の流れの一番最後。期限の来た必ず見るものがあればボタン、無ければ薄い字 -->
+      <div id="homePullRow" class="homePullRow" hidden></div>
       <div id="worldStage" class="morningStage" hidden>
         <div id="homeWorldList"></div>
         <p class="emptyMsg" id="homeWorldEmpty" hidden>新しい分がありません。</p>
@@ -2741,7 +2746,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v19.3';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v19.4';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -6691,6 +6696,7 @@
     'afterMoodCollapsedRow', 'afterMoodStage',
     'walkShareStage',
     'homeStratumLine',
+    'homePullRow',
   ];
 
   function renderHome() {
@@ -6790,6 +6796,8 @@
     renderHomeWorldStep();
     order.push(...homeStepRowIds('world', homeWorldCollapsedLabel(), 'worldStage', 'worldCollapsedRow'));
     if (WORLD_STRATUM_ON_COLLAPSED && worldTodayStratum()) order.push('homeStratumLine');
+    renderHomePullRow();   // v19.4 段階5
+    order.push('homePullRow');
 
     const stepsContainer = document.getElementById('homeStepsContainer');
     order.forEach((id) => {
@@ -14301,6 +14309,11 @@
   const WORLD_CONF_LOUD         = 7;    // これ以下は札の1行で目立たせる
   const WORLD_CONF_SINK         = 3;    // これ以下は既定の画面に出さない（背景に沈めた札へ。探すからは引ける）
   const WORLD_WANTS_MAX         = 60;   // この出典が欲しがっているもの
+  // v19.4 段階5：ソースの周期。周期を持つソース＝必ず見るもの。'' は周期なし（よく使う出典）
+  const WORLD_CADENCES_SRC      = ['', 'day', 'week', 'dekad', 'month', 'quarter'];
+  const WORLD_CADENCE_SRC_DAYS  = { day: 1, week: 7, dekad: 10, month: 30, quarter: 90 };
+  const WORLD_CADENCE_SRC_LABEL = { '': '周期なし', day: '毎日', week: '週1', dekad: '旬', month: '月1', quarter: '四半期' };
+  const WORLD_PULL_PENDING_KEY  = 'kotoba_worldPullPending';   // コピーしたプロンプトに入れた必ず見るもの（端末に控える）
   const WORLD_FLOW_KIND_MARK  = { money: '', goods: '［物］', people: '［人］' };
   const WORLD_FLOW_KIND_LABEL = { money: 'お金の動き', goods: '物の動き', people: '人の動き' };
   const WORLD_EVENT_ID_RE     = /^w_\d{8}_\d+$/;
@@ -14510,11 +14523,11 @@
   // ws_money_dts は FRB H.4.1、ws_money_boj_juq は日銀 営業毎旬報告。retiredUrls は差し替え前の URL
   const WORLD_MONEY_SOURCES = [
     { id: 'ws_money_dts', label: 'FRB H.4.1', short: 'H.4.1', match: ['H.4.1', 'H41', 'H.41', 'Federal Reserve', 'FRB'],
-      name: 'FRB H.4.1 準備預金に影響する要因（週1・木曜）', url: 'https://www.federalreserve.gov/releases/h41/current/', role: 'primary',
+      name: 'FRB H.4.1 準備預金に影響する要因（週1・木曜）', url: 'https://www.federalreserve.gov/releases/h41/current/', role: 'primary', cadence: 'week',
       retiredUrls: ['https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/'],
       note: '表1（Factors Affecting Reserve Balances）で、Securities held outright（保有する国債など）・Loans（貸出）・Central bank liquidity swaps（外国の中銀へのドル供給）・U.S. Treasury, General Account（米財務省の口座）・Reserve balances with Federal Reserve Banks（銀行の準備預金）のうち、前週比（Change from week ended）が大きく動いたもの。単位は百万ドル。from／to は「FRB」「米財務省」「銀行」など' },
     { id: 'ws_money_boj_juq', label: '日銀 営業毎旬報告', short: '日銀旬報', match: ['営業毎旬', '旬報', '日銀', '日本銀行'],
-      name: '日本銀行 営業毎旬報告（10日ごと）', url: 'https://www.boj.or.jp/statistics/boj/other/acmai/index.htm', role: 'primary',
+      name: '日本銀行 営業毎旬報告（10日ごと）', url: 'https://www.boj.or.jp/statistics/boj/other/acmai/index.htm', role: 'primary', cadence: 'dekad',
       retiredUrls: ['https://www.boj.or.jp/statistics/boj/fm/juq/index.htm'],
       note: '一覧の最新の回と、その1つ前の回を開く。資産の「国債」「貸付金」、負債の「当座預金」「政府預金」「売現先勘定」の残高（単位は千円）を比べ、大きく動いたものだけ札にする。この源に限り、2つの回の差を出してよい（detail に「2つの回の差」と書く）。from／to は「日本銀行」「政府」「金融機関」など' },
   ];
@@ -14799,6 +14812,9 @@
       // を毎回目に入れるための1行。分野では変わらないので role とは別項目。
       stance: worldStr(s.stance, WORLD_STANCE_MAX),
       note: worldStr(s.note, 200),
+      // v19.4 段階5：周期。持っているソースが「必ず見るもの」。cadenceSetAt は一度でも決めた印（既定で上書きしない）
+      cadence: WORLD_CADENCES_SRC.includes(s.cadence) ? s.cadence : '',
+      cadenceSetAt: typeof s.cadenceSetAt === 'string' ? s.cadenceSetAt : '',
       updatedAt: s.updatedAt || nowIso(),
     };
   }
@@ -14811,7 +14827,7 @@
     out.deletedIds = (Array.isArray(raw.deletedIds) ? raw.deletedIds : []).filter((t) => t && t.id).map((t) => ({ id: String(t.id), deletedAt: t.deletedAt || nowIso() }));
     return out;
   }
-  function emptyWorldIndex() { return { version: 1, updatedAt: '', epoch: 0, resetAt: '', months: {}, due: {}, concepts: { updatedAt: '', count: 0 }, terms: { updatedAt: '', count: 0 }, strata: { updatedAt: '', count: 0 }, actors: { updatedAt: '', count: 0 }, asks: { updatedAt: '', count: 0 }, sources: { updatedAt: '', count: 0 } }; }
+  function emptyWorldIndex() { return { version: 1, updatedAt: '', epoch: 0, resetAt: '', months: {}, due: {}, concepts: { updatedAt: '', count: 0 }, terms: { updatedAt: '', count: 0 }, strata: { updatedAt: '', count: 0 }, actors: { updatedAt: '', count: 0 }, asks: { updatedAt: '', count: 0 }, sources: { updatedAt: '', count: 0 }, pulls: {} }; }
   function normalizeWorldIndex(raw) {
     const out = emptyWorldIndex();
     if (!raw || typeof raw !== 'object') return out;
@@ -14824,6 +14840,9 @@
       out.months[m] = { updatedAt: typeof v.updatedAt === 'string' ? v.updatedAt : '', count: Number(v.count) || 0, unread: Number(v.unread) || 0 };
     });
     Object.entries(raw.due || {}).forEach(([d, ids]) => { if (isDateStr(d) && Array.isArray(ids)) out.due[d] = ids.map(String).slice(0, 50); });
+    // v19.4 段階5：ソースごとの最後に取り込んだ日。ソースの側に持たないのは、ソースは新しい側が丸ごと勝つので、
+    // 取り込みで日付が進むたびに、別の端末で直した立場の1行が負けて消えることがあるため
+    Object.entries(raw.pulls || {}).forEach(([id, d]) => { if (id && isDateStr(d)) out.pulls[id] = d; });
     ['concepts', 'terms', 'strata', 'actors', 'asks', 'sources'].forEach((k) => {
       const v = raw[k];
       if (v && typeof v === 'object') out[k] = { updatedAt: typeof v.updatedAt === 'string' ? v.updatedAt : '', count: Number(v.count) || 0 };
@@ -15073,12 +15092,19 @@
       const cur = wd.sources.sources.find((sc) => sc.id === x.id);
       // v19.2：差し替え前の URL のままなら中身を入れ替える。手で直した URL には触らない
       if (cur && x.retiredUrls.includes(cur.url)) {
-        Object.assign(cur, normalizeWorldSource({ ...cur, name: x.name, url: x.url, note: x.note, role: x.role, updatedAt: nowIso() }));
+        Object.assign(cur, normalizeWorldSource({ ...cur, name: x.name, url: x.url, note: x.note, role: x.role, cadence: x.cadence, cadenceSetAt: nowIso(), updatedAt: nowIso() }));
         addedMoneySrc = true;
         return;
       }
-      if (cur) return;
-      const src = normalizeWorldSource({ ...x, field: 'finance', updatedAt: nowIso() });
+      // v19.4：周期をまだ一度も決めていなければ既定の周期を入れる（自分で「周期なし」にしたものには触らない）
+      if (cur) {
+        if (!cur.cadence && !cur.cadenceSetAt && x.cadence) {
+          Object.assign(cur, { cadence: x.cadence, cadenceSetAt: nowIso(), updatedAt: nowIso() });
+          addedMoneySrc = true;
+        }
+        return;
+      }
+      const src = normalizeWorldSource({ ...x, field: 'finance', cadenceSetAt: nowIso(), updatedAt: nowIso() });
       if (src) { wd.sources.sources.push(src); addedMoneySrc = true; }
     });
     if (addedMoneySrc) { wd.sourcesDirty = true; persistWorldSources(); }
@@ -15135,6 +15161,11 @@
     // 月については updateWorldIndexMonth が作り直すので、多い側に倒して困らない。
     new Set([...Object.keys(a.due), ...Object.keys(b.due)]).forEach((d) => {
       out.due[d] = [...new Set([...(a.due[d] || []), ...(b.due[d] || [])])].slice(0, 50);
+    });
+    // v19.4：ソースごとに新しい日付を採る（どう合わさっても、最悪もう一度ボタンが出るだけ）
+    new Set([...Object.keys(a.pulls || {}), ...Object.keys(b.pulls || {})]).forEach((id) => {
+      const x = (a.pulls || {})[id] || '', y = (b.pulls || {})[id] || '';
+      out.pulls[id] = x > y ? x : y;
     });
     ['concepts', 'terms', 'strata', 'actors', 'asks', 'sources'].forEach((k) => { out[k] = (a[k].updatedAt >= b[k].updatedAt) ? a[k] : b[k]; });
     out.updatedAt = a.updatedAt > b.updatedAt ? a.updatedAt : b.updatedAt;
@@ -15350,7 +15381,7 @@
       await syncWorldActors(token, actorsChanged);
       await syncWorldAsks(token, asksChanged);
       await syncWorldSources(token, sourcesChanged);
-      const sig = (ix) => JSON.stringify([ix.epoch || 0, Object.keys(ix.months).sort().map((m) => [m, ix.months[m].updatedAt, ix.months[m].unread]), ix.concepts.updatedAt, ix.terms.updatedAt, ix.strata.updatedAt, ix.actors.updatedAt, ix.asks.updatedAt, ix.sources.updatedAt, Object.keys(ix.due).sort()]);
+      const sig = (ix) => JSON.stringify([ix.epoch || 0, Object.keys(ix.months).sort().map((m) => [m, ix.months[m].updatedAt, ix.months[m].unread]), ix.concepts.updatedAt, ix.terms.updatedAt, ix.strata.updatedAt, ix.actors.updatedAt, ix.asks.updatedAt, ix.sources.updatedAt, Object.keys(ix.due).sort(), Object.keys(ix.pulls || {}).sort().map((k) => [k, ix.pulls[k]])]);
       if (sig(wd.index) !== sig(remoteIndex)) {
         try { await ghPutJson(WORLD_INDEX_PATH, wd.index, ri.sha, 'world index'); }
         catch (e) {
@@ -16081,23 +16112,32 @@
   // v19 段階4：分野で分けない。note があれば「取るもの」として添える
   function worldAllSourceLines(role) {
     return worldSources()
-      .filter((s) => s.role === role && !worldDailySourceDef(s.id))
+      .filter((s) => s.role === role && !s.cadence)
       .map((s) => '- ' + s.name + ' ' + s.url + (s.note ? '\n  取るもの：' + s.note : ''));
   }
   // v19.1：毎回必ず見るもの。黙って消えないように、札にできなくても checked で報告させる
   function worldDailySourceDef(id) { return WORLD_MONEY_SOURCES.find((x) => x.id === id) || null; }
+  // v19.4 段階5：必ず見るもの＝周期を持つソース。既定の2件だけ短い名前と引き当ての鍵を持つ
   function worldDailySources() {
-    return WORLD_MONEY_SOURCES.map((x) => {
-      const s = worldSources().find((sc) => sc.id === x.id);
-      return s ? { ...s, label: x.label, short: x.short } : null;
-    }).filter(Boolean);
+    return worldSources().filter((s) => s.cadence).map((s) => {
+      const x = worldDailySourceDef(s.id);
+      return { ...s, label: x ? x.label : s.name, short: x ? x.short : s.name.slice(0, 12), match: x ? x.match : [] };
+    });
   }
+  // 期限が来ているか。一度も取り込んでいなければ来ている
+  function worldSourceDue(s, today) {
+    if (!s.cadence) return false;
+    const last = (wd.index && wd.index.pulls && wd.index.pulls[s.id]) || '';
+    if (!last) return true;
+    return addDays(last, WORLD_CADENCE_SRC_DAYS[s.cadence]) <= (today || todayStr());
+  }
+  function worldDueSources() { const t = todayStr(); return worldDailySources().filter((s) => worldSourceDue(s, t)); }
   // 返ってきた checked を読む。保存しない（取り込み結果の1行に出すだけ）
   function worldReadChecked(parsed) {
     if (!parsed || Array.isArray(parsed) || !Array.isArray(parsed.checked)) return null;
     return parsed.checked.filter((c) => c && typeof c === 'object').map((c) => {
       const name = worldStr(c.source, 80);
-      const def = WORLD_MONEY_SOURCES.find((x) => name === x.label || x.match.some((k) => name.includes(k)));
+      const def = worldDailySources().find((x) => name === x.label || name === x.name || x.match.some((k) => name.includes(k)));
       return {
         id: def ? def.id : '',
         short: def ? def.short : (name || '？'),
@@ -16108,8 +16148,8 @@
     });
   }
   // 「必ず見るもの：H.4.1 2件／日銀旬報 開けず（理由）」。報告が抜けた源は「報告なし」
-  function worldCheckedText(checked) {
-    const daily = worldDailySources();
+  function worldCheckedText(checked, ids) {
+    const daily = worldDailySources().filter((d) => !ids || ids.includes(d.id));
     if (!daily.length) return '';
     if (!checked) return '必ず見るもの：報告なし';
     const parts = checked.map((c) => c.short + ' ' + (c.opened ? c.picked + '件' : '開けず')
@@ -16129,8 +16169,9 @@
         + (e.flow.from || '？') + '→' + (e.flow.to || '？') + '　' + (e.flow.what || '')
         + (e.flow.amount ? '　' + e.flow.amount : '') + (e.flow.span ? '（' + e.flow.span + 'の累計）' : ''));
   }
-  function worldPromptText() {
-    const daily = worldDailySources();   // v19.1
+  function worldPromptText(opts) {
+    // v19.1 必ず見るもの。v19.4：今日の取り込みは期限の来たものだけ、いつもの「取り込む」は全部
+    const daily = (opts && opts.sourceIds) ? worldDailySources().filter((d) => opts.sourceIds.includes(d.id)) : worldDailySources();
     const prim = worldAllSourceLines('primary');
     const anal = worldAllSourceLines('analysis');
     const known = worldKnownNames();
@@ -16186,8 +16227,8 @@
       '- 下の「よく使う出典」は、ここによくある、という目安。縛りではない。一覧の外を探してよい。\n\n' +
       // v19.1：必ず見る2件は他と分ける。見たが該当が無かったのか、開いていないのかを毎回返させる
       (daily.length
-        ? '■ 毎回必ず見るもの（一次。毎回かならず開く。「取るもの」に従う。週1・10日ごとの公表なので、\n' +
-          '  最新の回が7日より前でもよい）\n' +
+        ? '■ 毎回必ず見るもの（一次。毎回かならず開く。「取るもの」に従う。\n' +
+          '  決まった周期で公表されるものなので、最新の回が7日より前でもよい）\n' +
           daily.map((d) => '- ' + d.label + '：' + d.name + ' ' + d.url + (d.note ? '\n  取るもの：' + d.note : '')).join('\n') + '\n' +
           '- この' + daily.length + '件は、札にできてもできなくても、JSON の末尾の "checked" に1件ずつ報告する。\n' +
           '  source：上の「：」の前の名前をそのまま書く（' + daily.map((d) => d.label).join('／') + '）。\n' +
@@ -18316,14 +18357,31 @@
     if (WORLD_STRATUM_ON_COLLAPSED) paintStratumLine(document.getElementById('homeStratumLine'), worldTodayStratum());
     const today = worldReadOn(todayStr());
     const box = document.getElementById('homeWorldList');
-    renderWorldList(box, today, '');
-    // 共通点は展開の中だけ。畳んだ行は増やさない
-    const common = worldCommonLineEl(today);
-    if (common) box.insertBefore(common, box.firstChild);
+    // v19.4 7.3：札の一覧ではなく「今日動いた主体」の行（世界の画面と同じ行。共通点の1行もこの中で出る）。
+    // 背景の札の開閉は朝の側を描き直す
+    renderWorldTodayActors(box, today, worldDayActorRows(today), worldBackgroundCards(today), renderHomeWorldStep);
     document.getElementById('homeWorldEmpty').hidden = !!today.length;
     document.getElementById('homeWorldEmpty').textContent = worldUnread().length
       ? '今日の分がまだ出ていません。もう一度この行を押してください。'
       : '新しい分がありません。';
+  }
+  // v19.4 段階5：今日の取り込み。期限の来た必ず見るものが無い日はボタンを出さず、薄い字だけ
+  function renderHomePullRow() {
+    const box = document.getElementById('homePullRow');
+    box.innerHTML = '';
+    const due = worldDueSources();
+    if (!due.length) {
+      const p = document.createElement('div');
+      p.className = 'homePullNone';
+      p.textContent = '今日は取り込むものがありません';
+      box.appendChild(p);
+      return;
+    }
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'secondaryBtn';
+    b.textContent = '今日の取り込み（' + due.length + '件）';
+    b.addEventListener('click', () => worldPullToday(due.map((d) => d.id)));
+    box.appendChild(b);
   }
   // v18 A-1: 単位を「件」から「動いた主体」に変える。統計だけの日は
   // 主体が0になるので、そこだけ背景の札の件数で言い直す
@@ -18365,14 +18423,15 @@
   }
   // v18 A-1: 今日の単位は「札」ではなく「主体」。readDate はそのまま残す
   // （朝の畳んだ行・記録の月まとめ・worldReadOn が依存している）。
-  function renderWorldTodayActors(box, list, rows, bg) {
+  // rerender：背景の札を開閉したときに描き直す画面（既定は世界の画面。朝からは朝の側）
+  function renderWorldTodayActors(box, list, rows, bg, rerender) {
     box.innerHTML = '';
     if (!list.length) return;
     const common = worldCommonLineEl(list);
     if (common) box.appendChild(common);
     if (!rows.length) {
       // 統計だけの日。空欄を並べるより、1行で完結させる（静かな日だと分かる方が読みやすい）
-      box.appendChild(worldSunkCardsEl(bg, '今日は動いた主体がありません（背景の札 ' + bg.length + '件）'));
+      box.appendChild(worldSunkCardsEl(bg, '今日は動いた主体がありません（背景の札 ' + bg.length + '件）', rerender));
       return;
     }
     rows.slice(0, WORLD_BOARD_FOLD).forEach((r) => box.appendChild(worldBoardRowEl(r, () => {
@@ -18382,15 +18441,16 @@
     // 畳むのではなく件数を絞る。先は「動いている主体」の一覧（並べ替えもそこ）
     box.appendChild(worldMoreLineEl(
       rows.length > WORLD_BOARD_FOLD ? 'ほか ' + (rows.length - WORLD_BOARD_FOLD) + '主体 ・ もっと見る' : 'もっと見る',
-      () => { worldState.view = 'actors'; renderWorld(); }));
+      // v19.4 7.3：朝から押したときに世界の画面へ移る
+      () => { worldState.view = 'actors'; showScreen('world'); renderWorld(); }));
   }
   // 押すと畳んだ札の一覧が開く1行
-  function worldSunkCardsEl(cards, label) {
+  function worldSunkCardsEl(cards, label, rerender) {
     const wrap = document.createElement('div');
     const head = document.createElement('div');
     head.className = 'sunkHead';
     head.textContent = (worldState.bgOpen ? '▾ ' : '▸ ') + label;
-    head.addEventListener('click', () => { worldState.bgOpen = !worldState.bgOpen; renderWorldMain(); });
+    head.addEventListener('click', () => { worldState.bgOpen = !worldState.bgOpen; (rerender || renderWorldMain)(); });
     wrap.appendChild(head);
     if (worldState.bgOpen) {
       const box = document.createElement('div');
@@ -19517,6 +19577,18 @@
         s.stance = v; s.updatedAt = nowIso(); worldSaveSources();
       });
       left.appendChild(stance);
+      // v19.4：何を取るか。必ず見るもの（周期つき）では、プロンプトにこの1行が出る
+      const noteIn = document.createElement('input');
+      noteIn.type = 'text';
+      noteIn.placeholder = '取るもの（周期を付けたとき、プロンプトに1行で出る）';
+      noteIn.value = s.note || '';
+      noteIn.style.marginTop = '4px';
+      noteIn.addEventListener('change', () => {
+        const v = worldStr(noteIn.value, 200);
+        if (v === s.note) return;
+        s.note = v; s.updatedAt = nowIso(); worldSaveSources();
+      });
+      left.appendChild(noteIn);
       row.appendChild(left);
 
       const btns = document.createElement('div');
@@ -19537,6 +19609,20 @@
         s.updatedAt = nowIso(); worldSaveSources(); paintRole();
       });
       paintRole();
+      // v19.4 段階5：周期。付けたソースが「必ず見るもの」になり、期限が来た日に朝の「今日の取り込み」に入る
+      const cadBtn = document.createElement('button');
+      cadBtn.type = 'button'; cadBtn.className = 'tagFilterBtn';
+      const paintCad = () => {
+        const last = (wd.index && wd.index.pulls && wd.index.pulls[s.id]) || '';
+        cadBtn.textContent = WORLD_CADENCE_SRC_LABEL[s.cadence || ''] + (s.cadence && last ? '・最後 ' + worldShortDate(last) : '');
+        cadBtn.classList.toggle('selected', !!s.cadence);
+      };
+      cadBtn.addEventListener('click', () => {
+        const i = WORLD_CADENCES_SRC.indexOf(s.cadence || '');
+        s.cadence = WORLD_CADENCES_SRC[(i + 1) % WORLD_CADENCES_SRC.length];
+        s.cadenceSetAt = nowIso(); s.updatedAt = nowIso(); worldSaveSources(); paintCad();
+      });
+      paintCad();
       const del = document.createElement('button');
       del.type = 'button'; del.className = 'tagFilterBtn'; del.textContent = '消す';
       del.addEventListener('click', () => {
@@ -19544,7 +19630,7 @@
         wd.sources.sources = worldSources().filter((x) => x.id !== s.id);
         worldSaveSources(); renderWorldSources();
       });
-      btns.appendChild(fieldBtn); btns.appendChild(roleBtn); btns.appendChild(del);
+      btns.appendChild(fieldBtn); btns.appendChild(roleBtn); btns.appendChild(cadBtn); btns.appendChild(del);
       row.appendChild(btns);
       box.appendChild(row);
     });
@@ -19854,10 +19940,46 @@
     stale.forEach((e) => worldDeleteEvent(e.id));
     renderWorldMain();
   });
+  // v19.4 段階5：コピーしたプロンプトに入れた必ず見るものを端末に控える。貼り戻して取り込めたら日付を進める
+  function worldRememberPull(ids) { try { localStorage.setItem(WORLD_PULL_PENDING_KEY, JSON.stringify({ ids, at: todayStr() })); } catch (e) {} }
+  function worldPendingPull() {
+    try { const v = JSON.parse(localStorage.getItem(WORLD_PULL_PENDING_KEY) || 'null'); return v && Array.isArray(v.ids) ? v : null; } catch (e) { return null; }
+  }
+  // 確認できた札が0件でも「見た」ことにする。控えが無ければ（同じ JSON を2度貼ったなど）何もしない
+  function worldMarkPulled() {
+    const p = worldPendingPull();
+    try { localStorage.removeItem(WORLD_PULL_PENDING_KEY); } catch (e) {}
+    if (!p || !p.ids.length) return [];
+    if (!wd.index) wd.index = emptyWorldIndex();
+    const t = todayStr();
+    p.ids.forEach((id) => { if ((wd.index.pulls[id] || '') < t) wd.index.pulls[id] = t; });
+    wd.index.updatedAt = nowIso();
+    persistWorldIndex();
+    scheduleSync();
+    return p.ids;
+  }
+  // 朝の「今日の取り込み」。期限の来たぶんだけのプロンプトをコピーして、取り込む画面（貼る欄）を開く
+  function worldPullToday(ids) {
+    const text = worldPromptText({ sourceIds: ids });
+    worldRememberPull(ids);
+    worldImportField = 'finance';
+    worldState.view = 'import';
+    showScreen('world');
+    renderWorld();
+    const el = document.getElementById('worldPromptStatus');
+    copyToClipboard(text).then((ok) => {
+      el.textContent = ok
+        ? '今日の取り込み（' + ids.length + '件）のプロンプトをコピーしました（' + text.length.toLocaleString() + '字）。Claude のチャットに貼り、返ってきた JSON を下に貼ってください。'
+        : 'コピーできませんでした。下の欄に出したので、選んでコピーしてください。';
+      if (!ok) document.getElementById('worldImportPaste').value = text;
+      document.getElementById('worldImportPaste').scrollIntoView({ block: 'center' });
+    });
+  }
   function worldCopyPrompt() {
     worldImportField = 'finance';   // 札の field はもう使わない（既定の値を入れ続ける）
     const el = document.getElementById('worldPromptStatus');
     const text = worldPromptText();
+    worldRememberPull(worldDailySources().map((d) => d.id));   // v19.4：いつもの入口は必ず見るもの全部
     copyToClipboard(text).then((ok) => {
       el.textContent = ok
         ? 'プロンプトをコピーしました（' + text.length.toLocaleString() + '字）。Claude のチャットに貼ってください。'
@@ -19872,6 +19994,7 @@
     status.textContent = '取り込み中…';
     const res = await worldImportJson(box.value);
     if (res.error) { status.textContent = res.error; worldState.lastResult = res.error; return; }
+    const pulledIds = worldMarkPulled();   // v19.4 段階5：取り込めたら、札が0件でも「見た」ことにする
     const r = res.rejected;
     const drops = [];
     if (r.url) drops.push('URL なし ' + r.url + '件');
@@ -19895,7 +20018,7 @@
       msg += '。';
     }
     // v19.1：毎回必ず見るもの。0件でも出す（開けなかったのか該当が無かったのかを毎回見るため）
-    const checkedText = worldCheckedText(res.checked);
+    const checkedText = worldCheckedText(res.checked, pulledIds.length ? pulledIds : null);
     if (checkedText) msg += '　' + checkedText + '。';
     // v19.3
     if (res.added) {
