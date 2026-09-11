@@ -1180,7 +1180,7 @@
   /* v20 地図 */
   .worldMapBox { width: 100%; }
   .worldMapBox svg { display: block; width: 100%; height: auto; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
-  .worldMapBox .wmC { fill: #1c1c1c; stroke: #2d2d2d; stroke-width: 0.5; }
+  .worldMapBox .wmC { fill: #1c1c1c; stroke: #2d2d2d; stroke-width: 0.5; vector-effect: non-scaling-stroke; }   /* v20.1 拡大しても境界の線は細いまま */
   .worldMapBox .wmC.on { fill: #22302a; }
   .worldMapBox .wmDot { fill: var(--accent); stroke: #111; stroke-width: 1; }
   .worldMapBox .wmL { fill: none; stroke: var(--accent); stroke-width: 1.6; opacity: 0.85; }
@@ -1190,6 +1190,12 @@
   .worldMapBox .wmHit { fill: none; stroke: transparent; stroke-width: 14; pointer-events: stroke; cursor: pointer; }
   .worldMapBox .wmSlot rect { fill: #1a1a1a; stroke: var(--border); }
   .worldMapBox .wmSlot text, .worldMapBox .wmMore { fill: var(--text-dim); font-size: 10px; }
+  /* v20.1 枠：上の行に枠の名前、下の行に中の相手の名前。押せる枠だけ指の形 */
+  .worldMapBox .wmSlot { cursor: pointer; }
+  .worldMapBox .wmSlot.empty { cursor: default; }
+  .worldMapBox .wmSlot .wmSlotLabel { fill: var(--text-faint); font-size: 9px; }
+  .worldMapBox .wmSlot .wmSlotNames { fill: var(--text); font-size: 9px; }
+  .worldMapBox .wmSlot.empty .wmSlotNames { fill: var(--text-faint); }
   .worldMapBox .wmLabel { fill: var(--text-dim); font-size: 9px; }
   #worldMapChooser { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
   /* v19.15 同じ動きを別の出典からも確かめた印。行の右端に小さく */
@@ -2906,7 +2912,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.0';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.1';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -14511,6 +14517,8 @@
   const WORLD_MAP_DAYS           = 90;   // 大きな地図に描く期間
   const WORLD_MAP_TAP_PX         = 22;   // 点を押したとみなす距離（画面の px）
   const WORLD_MAP_LINES_PER_PAIR = 5;    // 同じ国の組に描く線の上限。6本目からは「ほか◯本」
+  const WORLD_MAP_ZOOM_MAX       = 8;    // v20.1 指でつまむ拡大の上限（1倍＝寄せた地域の全体）
+  const WORLD_MAP_TAP_MOVE_PX    = 6;    // これ以上指が動いたら、押したとは見なさない（地図を動かしたつもりで札が開くのを防ぐ）
   const WORLD_MAP_SLOTS          = ['MKT', 'INT', 'REG'];
   const WORLD_MAP_SLOT_LABEL     = { MKT: '市場', INT: '国際機関', REG: '地域' };
   const WORLD_MAP_REGIONS = [
@@ -20000,6 +20008,56 @@
     if (parent) parent.appendChild(el);
     return el;
   }
+  // 枠（市場・国際機関・地域）に入っている相手の名前。何が入っているかを、札を開く前に分かるようにする
+  function worldSlotParties(model, code) {
+    const names = [], rows = [];
+    model.lines.forEach((r) => {
+      let hit = false;
+      if (r.places[0] === code) { names.push(r.flow.from); hit = true; }
+      if (r.places[1] === code) { names.push(r.flow.to); hit = true; }
+      if (hit) rows.push(r);
+    });
+    return { names: [...new Set(names.filter(Boolean))], rows };
+  }
+  // 枠の幅に収まるように名前を並べる。入りきらなければ「為替市場 ほか1」。名前が長いときは切る
+  function worldSlotNamesText(names0, maxChars) {
+    if (!names0.length) return '（なし）';
+    // 短い名前から並べる。切らずに見せられる名前を増やすため（何が入っているか分かることを優先）
+    const names = names0.slice().sort((x, y) => x.length - y.length);
+    const cut = (t, n) => (t.length > n ? t.slice(0, Math.max(1, n - 1)) + '…' : t);
+    const all = names.join('・');
+    if (all.length <= maxChars) return all;
+    for (let k = names.length - 1; k >= 1; k--) {
+      const rest = ' ほか' + (names.length - k);
+      const t = names.slice(0, k).join('・');
+      if (t.length + rest.length <= maxChars) return t + rest;
+    }
+    const rest = names.length > 1 ? ' ほか' + (names.length - 1) : '';
+    return cut(names[0], maxChars - rest.length) + rest;
+  }
+  // 名前を2行に詰める（短い順。1行目・2行目に入るだけ入れ、残りは2行目の後ろに「ほかN」。
+  // 入らなければ2行目の最後の名前を途中で切ってでも残す。名前がまるごと消えるより、何が入っているか分かる）
+  function worldSlotNamesLines(names0, maxChars) {
+    if (!names0.length) return ['（なし）', ''];
+    const names = names0.slice().sort((x, y) => x.length - y.length);
+    const cut = (t, n) => (t.length > n ? t.slice(0, Math.max(1, n - 1)) + '…' : t);
+    const lines = ['', ''];
+    let i = 0;
+    for (let li = 0; li < 2 && i < names.length; li++) {
+      while (i < names.length) {
+        if (!lines[li]) { lines[li] = cut(names[i], maxChars); i++; continue; }
+        const next = lines[li] + '・' + names[i];
+        if (next.length > maxChars) break;
+        lines[li] = next; i++;
+      }
+    }
+    const rest = names.length - i;
+    if (rest > 0) {
+      const suf = ' ほか' + rest;
+      lines[1] = (lines[1].length + suf.length > maxChars ? cut(lines[1], Math.max(2, maxChars - suf.length)) : lines[1]) + suf;
+    }
+    return lines;
+  }
   function worldDrawMap(lib, model, region) {
     const d3 = lib.d3;
     const box = document.getElementById('worldMapBox');
@@ -20019,7 +20077,7 @@
       proj.fitSize([W, H], { type: 'MultiPoint', coordinates: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]] });
     }
     const path = d3.geoPath(proj);
-    const slotTop = H + 10, slotH = 30, total = slotTop + slotH + 6;
+    const slotTop = H + 10, slotH = 52, total = slotTop + slotH + 6;   // v20.1：名前を2行で出すので高さ52
     box.innerHTML = '';
     const svg = worldSvg('svg', { viewBox: '0 0 ' + W + ' ' + total, width: W, height: total, role: 'img', 'aria-label': 'お金の流れの地図' }, box);
     const defs = worldSvg('defs', {}, svg);
@@ -20027,71 +20085,175 @@
     worldSvg('path', { d: 'M0,0 L10,5 L0,10 z', class: 'wmArrowHead' }, mk);
     const clip = worldSvg('clipPath', { id: 'wmClip' }, defs);
     worldSvg('rect', { x: 0, y: 0, width: W, height: H }, clip);
-    const land = worldSvg('g', { 'clip-path': 'url(#wmClip)' }, svg);
+    const mapArea = worldSvg('g', { 'clip-path': 'url(#wmClip)' }, svg);
+    const land = worldSvg('g', {}, mapArea);
+    const overlay = worldSvg('g', {}, mapArea);
     const involved = new Set();
     model.lines.forEach((r) => r.places.forEach((c) => { if (worldIsCountry(c, lib)) involved.add(c); }));
     model.domestic.forEach((_, c) => involved.add(c));
     lib.features.forEach((f) => worldSvg('path', { d: path(f) || '', class: 'wmC' + (involved.has(f.a3) ? ' on' : '') }, land));
-    // 場所の無い相手の置き場：地図の下の3つの枠（本部の場所には置かない）
+    // 場所の無い相手の置き場：地図の下の3つの枠（拡大しても動かない）。中に入っている相手の名前を出し、押すとその枠が絡む札の一覧
     const slotW = (W - 16) / 3, slotXY = {};
-    const slotCount = { MKT: 0, INT: 0, REG: 0 };
-    model.lines.forEach((r) => r.places.forEach((c) => { if (slotCount[c] !== undefined) slotCount[c]++; }));
+    const maxChars = Math.max(4, Math.floor((slotW - 8) / 9));   // 名前の字は9px
     WORLD_MAP_SLOTS.forEach((c, i) => {
       const x = 4 + i * (slotW + 4);
-      const g = worldSvg('g', { class: 'wmSlot' }, svg);
+      const party = worldSlotParties(model, c);
+      const g = worldSvg('g', { class: 'wmSlot' + (party.rows.length ? '' : ' empty') }, svg);
       worldSvg('rect', { x, y: slotTop, width: slotW, height: slotH, rx: 6, ry: 6 }, g);
-      const tx = worldSvg('text', { x: x + slotW / 2, y: slotTop + slotH / 2 + 4, 'text-anchor': 'middle' }, g);
-      tx.textContent = WORLD_MAP_SLOT_LABEL[c] + (slotCount[c] ? ' ' + slotCount[c] : '');
+      const t1 = worldSvg('text', { x: x + slotW / 2, y: slotTop + 16, 'text-anchor': 'middle', class: 'wmSlotLabel' }, g);
+      t1.textContent = WORLD_MAP_SLOT_LABEL[c] + (party.rows.length ? '（' + party.rows.length + '本）' : '');
+      const nl = worldSlotNamesLines(party.names, maxChars);
+      const t2 = worldSvg('text', { x: x + slotW / 2, y: slotTop + 30, 'text-anchor': 'middle', class: 'wmSlotNames' }, g);
+      t2.textContent = nl[0];
+      if (nl[1]) { const t3 = worldSvg('text', { x: x + slotW / 2, y: slotTop + 44, 'text-anchor': 'middle', class: 'wmSlotNames' }, g); t3.textContent = nl[1]; }
+      if (party.names.length) { const tt = worldSvg('title', {}, g); tt.textContent = party.names.join('・'); }
+      if (party.rows.length) {
+        g.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (view.moved) return;
+          worldOpenFlowRows(party.rows, WORLD_MAP_SLOT_LABEL[c] + '（' + party.names.join('・') + '）が絡む動き（直近' + WORLD_MAP_DAYS + '日）');
+        });
+      }
       slotXY[c] = [x + slotW / 2, slotTop];
     });
-    const xy = (c) => (slotXY[c] ? slotXY[c] : (() => { const ll = lib.anchors.get(c); return ll ? proj(ll) : null; })());
-    // 線：同じ組は足さずに、少しずつずらして並べる。5本まで。6本目からは「ほか◯本」
+    // 拡大の状態。k 倍・ずらし (tx, ty)。国の形だけを変形し、線と点は毎回その場所に描き直す
+    // （こうすると、拡大しても線の太さと点の大きさが変わらない）
+    const view = { k: 1, tx: 0, ty: 0, moved: false };
+    const ptOf = (c) => {
+      if (slotXY[c]) return slotXY[c];
+      const ll = lib.anchors.get(c);
+      if (!ll) return null;
+      const p = proj(ll);
+      return p ? [p[0] * view.k + view.tx, p[1] * view.k + view.ty] : null;
+    };
     const pairs = new Map();
     model.lines.forEach((r) => { const k = r.places.join('>'); if (!pairs.has(k)) pairs.set(k, []); pairs.get(k).push(r); });
-    const lineG = worldSvg('g', {}, svg);
-    pairs.forEach((rows, k) => {
-      const [a, b] = k.split('>');
-      const p1 = xy(a), p2 = xy(b);
-      if (!p1 || !p2) return;
-      const shown = rows.slice(0, WORLD_MAP_LINES_PER_PAIR);
-      const dx = p2[0] - p1[0], dy = p2[1] - p1[1], dist = Math.hypot(dx, dy) || 1;
-      const nx = -dy / dist, ny = dx / dist;
-      shown.forEach((r, i) => {
-        const off = dist * 0.18 + (i - (shown.length - 1) / 2) * 9;
-        const cx = (p1[0] + p2[0]) / 2 + nx * off, cy = (p1[1] + p2[1]) / 2 + ny * off;
-        const d = 'M' + p1[0].toFixed(1) + ',' + p1[1].toFixed(1) + ' Q' + cx.toFixed(1) + ',' + cy.toFixed(1) + ' ' + p2[0].toFixed(1) + ',' + p2[1].toFixed(1);
-        const kind = r.flow.kind && r.flow.kind !== 'money' ? ' dot' : r.flow.span ? ' dash' : '';
-        worldSvg('path', { d, class: 'wmL' + kind, 'marker-end': 'url(#wmArrow)' }, lineG);
-        const hit = worldSvg('path', { d, class: 'wmHit' }, lineG);
-        hit.addEventListener('click', (e) => {
-          e.stopPropagation();
-          worldOpenFlowRows([r], worldPlaceLabel(a, lib) + ' → ' + worldPlaceLabel(b, lib));
+    let dots = [];
+    const drawOverlay = () => {
+      land.setAttribute('transform', 'translate(' + view.tx.toFixed(2) + ',' + view.ty.toFixed(2) + ') scale(' + view.k.toFixed(4) + ')');
+      overlay.innerHTML = '';
+      // 枠へ向かう線は、地図の外（枠）へ出るので、切り取りの外側にも描けるように枠の側の線は svg 直下に置く
+      [...svg.querySelectorAll(':scope > .wmSlotLines')].forEach((el) => el.remove());
+      const slotLines = worldSvg('g', { class: 'wmSlotLines' }, svg);
+      pairs.forEach((rows, k) => {
+        const [a, b] = k.split('>');
+        const p1 = ptOf(a), p2 = ptOf(b);
+        if (!p1 || !p2) return;
+        const toSlot = !!(slotXY[a] || slotXY[b]);
+        const parent = toSlot ? slotLines : overlay;
+        const shown = rows.slice(0, WORLD_MAP_LINES_PER_PAIR);
+        const dx = p2[0] - p1[0], dy = p2[1] - p1[1], dist = Math.hypot(dx, dy) || 1;
+        const nx = -dy / dist, ny = dx / dist;
+        shown.forEach((r, i) => {
+          const off = dist * 0.18 + (i - (shown.length - 1) / 2) * 9;
+          const cx = (p1[0] + p2[0]) / 2 + nx * off, cy = (p1[1] + p2[1]) / 2 + ny * off;
+          const d = 'M' + p1[0].toFixed(1) + ',' + p1[1].toFixed(1) + ' Q' + cx.toFixed(1) + ',' + cy.toFixed(1) + ' ' + p2[0].toFixed(1) + ',' + p2[1].toFixed(1);
+          const kind = r.flow.kind && r.flow.kind !== 'money' ? ' dot' : r.flow.span ? ' dash' : '';
+          worldSvg('path', { d, class: 'wmL' + kind, 'marker-end': 'url(#wmArrow)' }, parent);
+          const hit = worldSvg('path', { d, class: 'wmHit' }, parent);
+          hit.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (view.moved) return;
+            worldOpenFlowRows([r], worldPlaceLabel(a, lib) + ' → ' + worldPlaceLabel(b, lib));
+          });
         });
+        if (rows.length > shown.length) {
+          const t = worldSvg('text', { x: ((p1[0] + p2[0]) / 2 + nx * dist * 0.18).toFixed(1), y: ((p1[1] + p2[1]) / 2 + ny * dist * 0.18).toFixed(1), class: 'wmMore', 'text-anchor': 'middle' }, parent);
+          t.textContent = 'ほか' + (rows.length - shown.length) + '本';
+        }
       });
-      if (rows.length > shown.length) {
-        const t = worldSvg('text', { x: ((p1[0] + p2[0]) / 2 + nx * dist * 0.18).toFixed(1), y: ((p1[1] + p2[1]) / 2 + ny * dist * 0.18).toFixed(1), class: 'wmMore', 'text-anchor': 'middle' }, lineG);
-        t.textContent = 'ほか' + (rows.length - shown.length) + '本';
+      // 国の点。押せるのは、動きが絡む国だけ
+      dots = [];
+      involved.forEach((c) => {
+        const p = ptOf(c);
+        if (!p || p[1] < -4 || p[1] > H + 4 || p[0] < -4 || p[0] > W + 4) return;
+        worldSvg('circle', { cx: p[0].toFixed(1), cy: p[1].toFixed(1), r: 3.5, class: 'wmDot' }, overlay);
+        const dom = model.domestic.get(c);
+        if (reg[2] || dom || view.k >= 2) {
+          const t = worldSvg('text', { x: (p[0] + 5).toFixed(1), y: (p[1] - 4).toFixed(1), class: 'wmLabel' }, overlay);
+          t.textContent = ((reg[2] || view.k >= 2) ? worldPlaceLabel(c, lib) : '') + (dom ? '（国内' + dom.length + '）' : '');
+        }
+        dots.push({ c, p });
+      });
+    };
+    drawOverlay();
+    // ---- 指でつまむ拡大・縮小と、なぞって動かす ----
+    // 拡大していないときの1本指はページのスクロールに任せる（地図の上に指を置いてもページが動くように）
+    const setTouch = () => { svg.style.touchAction = view.k > 1.001 ? 'none' : 'pan-y'; };
+    setTouch();
+    const toSvg = (cx, cy) => { const r = svg.getBoundingClientRect(); const sx = r.width / W; return [(cx - r.left) / sx, (cy - r.top) / sx, sx]; };
+    const clampView = () => {
+      view.k = Math.min(WORLD_MAP_ZOOM_MAX, Math.max(1, view.k));
+      view.tx = Math.min(0, Math.max(W - W * view.k, view.tx));
+      view.ty = Math.min(0, Math.max(H - H * view.k, view.ty));
+    };
+    const zoomAt = (px, py, factor) => {
+      const k2 = Math.min(WORLD_MAP_ZOOM_MAX, Math.max(1, view.k * factor));
+      view.tx = px - (px - view.tx) * (k2 / view.k);
+      view.ty = py - (py - view.ty) * (k2 / view.k);
+      view.k = k2;
+      clampView(); setTouch(); drawOverlay();
+    };
+    const ptrs = new Map();
+    let start = null;
+    svg.addEventListener('pointerdown', (e) => {
+      ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (ptrs.size === 1) { view.moved = false; start = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty }; }
+      if (ptrs.size === 2) {
+        const [a, b] = [...ptrs.values()];
+        start = { pinch: true, dist: Math.hypot(a.x - b.x, a.y - b.y) || 1, k: view.k, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, tx: view.tx, ty: view.ty };
+        view.moved = true;
+        // 二本指になったら、両方の指の動きを地図が引き受ける
+        ptrs.forEach((_, id) => { try { svg.setPointerCapture(id); } catch (err) {} });
+      }
+      // 一本指は、押しただけなら線や枠にそのまま届くよう、ここでは引き受けない（動き始めたら引き受ける）
+    });
+    svg.addEventListener('pointermove', (e) => {
+      if (!ptrs.has(e.pointerId) || !start) return;
+      ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const [, , sx] = toSvg(0, 0);
+      if (start.pinch && ptrs.size >= 2) {
+        const [a, b] = [...ptrs.values()];
+        const dist = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+        const [px, py] = toSvg(start.mx, start.my);
+        const k2 = Math.min(WORLD_MAP_ZOOM_MAX, Math.max(1, start.k * dist / start.dist));
+        const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        view.tx = px - (px - start.tx) * (k2 / start.k) + (mx - start.mx) / sx;
+        view.ty = py - (py - start.ty) * (k2 / start.k) + (my - start.my) / sx;
+        view.k = k2;
+        clampView(); setTouch(); drawOverlay();
+        return;
+      }
+      if (ptrs.size === 1 && !start.pinch) {
+        const dx = e.clientX - start.x, dy = e.clientY - start.y;
+        if (!view.moved && Math.hypot(dx, dy) > WORLD_MAP_TAP_MOVE_PX) {
+          view.moved = true;
+          if (view.k > 1.001) { try { svg.setPointerCapture(e.pointerId); } catch (err) {} }
+        }
+        if (view.k > 1.001 && view.moved) {
+          view.tx = start.tx + dx / sx; view.ty = start.ty + dy / sx;
+          clampView(); drawOverlay();
+        }
       }
     });
-    // 国の点。押せるのは、動きが絡む国だけ（押しても何も出ない点は置かない）
-    const dots = [];
-    const dotG = worldSvg('g', {}, svg);
-    involved.forEach((c) => {
-      const p = xy(c);
-      if (!p || p[1] < -4 || p[1] > H + 4 || p[0] < -4 || p[0] > W + 4) return;
-      worldSvg('circle', { cx: p[0].toFixed(1), cy: p[1].toFixed(1), r: 3.5, class: 'wmDot' }, dotG);
-      const dom = model.domestic.get(c);
-      if (reg[2] || dom) {
-        const t = worldSvg('text', { x: (p[0] + 5).toFixed(1), y: (p[1] - 4).toFixed(1), class: 'wmLabel' }, dotG);
-        t.textContent = (reg[2] ? worldPlaceLabel(c, lib) : '') + (dom ? '（国内' + dom.length + '）' : '');
-      }
-      dots.push({ c, p });
-    });
-    // 押した所から22px以内の国。2つ以上なら「この辺りの国」を出して選ばせる（欧州の点は1.5px しか離れていない）
+    const endPtr = (e) => {
+      ptrs.delete(e.pointerId);
+      if (ptrs.size === 0) start = null;
+      else if (ptrs.size === 1) { const [p] = [...ptrs.values()]; start = { x: p.x, y: p.y, tx: view.tx, ty: view.ty }; }
+    };
+    svg.addEventListener('pointerup', endPtr);
+    svg.addEventListener('pointercancel', endPtr);
+    // PC ではホイールで拡大・縮小
+    svg.addEventListener('wheel', (e) => {
+      const [px, py] = toSvg(e.clientX, e.clientY);
+      if (py > H) return;
+      e.preventDefault();
+      zoomAt(px, py, e.deltaY < 0 ? 1.25 : 0.8);
+    }, { passive: false });
+    // 押した所から22px以内の国。2つ以上なら「この辺りの国」を出して選ばせる（拡大しないで押したときに要る）
     svg.addEventListener('click', (e) => {
-      const rect = svg.getBoundingClientRect();
-      const sx = rect.width / W;
-      const px = (e.clientX - rect.left) / sx, py = (e.clientY - rect.top) / sx;
+      if (view.moved) { view.moved = false; return; }
+      const [px, py, sx] = toSvg(e.clientX, e.clientY);
       const near = dots.map((d) => ({ ...d, dd: Math.hypot(d.p[0] - px, d.p[1] - py) * sx }))
         .filter((d) => d.dd <= WORLD_MAP_TAP_PX).sort((x, y) => x.dd - y.dd);
       chooser.innerHTML = '';
@@ -20107,10 +20269,11 @@
       });
       chooser.hidden = false;
     });
+    worldState.mapView = view;   // 試験と、あとで状態を見るため
     let dom = 0; model.domestic.forEach((v) => { dom += v.length; });
     const toSlot = model.lines.filter((r) => r.places.some((c) => WORLD_MAP_SLOTS.includes(c))).length;
     st.textContent = '直近' + WORLD_MAP_DAYS + '日：国をまたぐ線 ' + (model.lines.length - toSlot) + '本・枠への線 ' + toSlot + '本・国内 ' + dom + '件'
-      + '。国の点を押すと、その国が絡む動きを出します。';
+      + '。二本指で拡大・縮小、拡大中は指でなぞって動かせます。国の点や下の枠を押すと、その動きを出します。';
     const unk = document.getElementById('worldMapUnknown');
     unk.innerHTML = '';
     if (model.unknown.length) {
