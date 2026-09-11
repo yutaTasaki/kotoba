@@ -2388,7 +2388,11 @@
     <div class="editorBody" id="worldImportView" hidden>
       <div class="field">
         <span class="fieldLabel">1 プロンプトをコピー</span>
-        <p class="fieldNote">金融・経済と地政学・政治を1本で見ます。チャットに貼り、返ってきた JSON をこの下に貼り戻します。何回貼っても足されるだけで、読んだ分は消えません。</p>
+        <!-- v20.8.1：押すと何が入るか・手順・朝の「今日の取り込み」との違いを書く -->
+        <p class="fieldNote">世界の札を作るためのプロンプトです。押すと数秒待ってからコピーされます。その間に、次の3つをプロンプトに入れます。</p>
+        <p class="fieldNote">・米財務省の今日の数字（口座残高・政府債務・ふだんと違う出入り）<br>・5社（NVIDIA・Micron・Microsoft・Amazon・Alphabet）の新しい決算の書類（出ているときだけ）<br>・必ず見るもの（周期を決めた出典）の全部</p>
+        <p class="fieldNote">手順：① 下の「プロンプトをコピー」を押す　② Claude のチャットで新しい会話を開き、そのまま貼って送る（web 検索が使える状態で）　③ 返ってきた答えのうち、<code>{"events":</code> から最後の <code>}</code> までを全部コピーする　④ この画面の「2 返ってきた JSON を貼る」の欄に貼り、「取り込む」を押す</p>
+        <p class="fieldNote">朝の「今日の取り込み」との違い：朝のボタンは、必ず見るもののうち期限が来たもの（週1・10日ごと・四半期など）だけを入れます。ふだんは朝のボタンを使ってください（押すとこの画面が開くので、③④は同じです）。朝に「今日は取り込むものがありません」と出た日や、朝を逃した日は、ここから取り込みます。こちらは必ず見るものを全部入れるので、プロンプトが長くなります。どちらで取り込んでも、同じ札は重複として落ち、読んだ分は消えません。</p>
         <div class="medRow">
           <button type="button" id="btnWorldPromptCopy" class="tagFilterBtn">プロンプトをコピー</button>
         </div>
@@ -2972,7 +2976,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.8';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.8.1';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -22169,7 +22173,9 @@
   const WORLD_FIGURES_TIMEOUT = 15000; // ms
   // これを超えたら「長くなっています」。v20.2.2：17,000→20,000。17,916 は一覧が全部埋まったときの予想の長さで、限界ではなかった。
   // 概念120件・今日の数字1,200字のときの最大が約19,550字なので、その上に置く（思わぬ節が伸びたときだけ出る）
-  const WORLD_PROMPT_WARN_LEN = 20000;
+  // v20.8.1：20,000→23,000。決算5社（+1,728字）と DFA・WID・地層2つ（+725字）で最大が約22,000字になった。
+  // 線は知らせるためのもので、守るべき限界ではない（会社数の上限は付けない。札が1日遅れるわりに400字しか減らないため）
+  const WORLD_PROMPT_WARN_LEN = 23000;
   const WORLD_FISCAL_API      = 'https://api.fiscaldata.treasury.gov/services/api/fiscal_service/';
   const WORLD_DTS_URL_DW      = 'https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/deposits-and-withdrawals-of-operating-cash';
   const WORLD_DTS_URL_OCB     = 'https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/operating-cash-balance';
