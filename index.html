@@ -2299,6 +2299,7 @@
           <button type="button" id="btnWorldPromptCopy" class="tagFilterBtn">プロンプトをコピー</button>
         </div>
         <p class="fieldNote" id="worldPromptStatus"></p>
+        <p class="fieldNote" id="worldFiguresStatus"></p>
       </div>
       <div class="field">
         <span class="fieldLabel">2 返ってきた JSON を貼る</span>
@@ -2861,7 +2862,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v19.12';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v19.13';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -16476,6 +16477,8 @@
           '  picked：そこから札にした件数。大きな動きが無ければ 0。\n' +
           '  note：開けなかった理由か、札にしなかった理由を1句。無ければ空。\n\n'
         : '') +
+      // v19.13：今日の数字は材料なので上に置く（最近のお金の動きは候補なので末尾のまま）
+      ((opts && opts.figures) ? opts.figures + '\n' : '') +
       '■ よく使う出典：一次（ここによくある。縛りではない）\n' +
       (prim.length ? prim.join('\n') : '（未設定）') + '\n\n' +
       '■ よく使う出典：解釈（why を書くときの補助）\n' +
@@ -18673,7 +18676,7 @@
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'secondaryBtn';
     b.textContent = '今日の取り込み（' + due.length + '件）';
-    b.addEventListener('click', () => worldPullToday(due.map((d) => d.id)));
+    b.addEventListener('click', () => worldPullToday(due.map((d) => d.id), b));
     box.appendChild(b);
   }
   // v18 A-1: 単位を「件」から「動いた主体」に変える。統計だけの日は
@@ -20372,6 +20375,251 @@
     stale.forEach((e) => worldDeleteEvent(e.id));
     renderWorldMain();
   });
+  // ---- v19.13 今日の数字（段階 A。API から取ってプロンプトに差し込むだけ。何も保存しない） ----
+  // 数字は上積みであって、取り込みの前提ではない。取れなくても、今までどおりのプロンプトをコピーする
+  const WORLD_DTS_HISTORY     = 60;    // 比べる営業日の数
+  const WORLD_DTS_RATIO       = 3;     // 中央値の何倍から「動き」か
+  const WORLD_DTS_MIN         = 300;   // 百万ドル。これ未満は出さない（3億ドル）
+  const WORLD_DTS_MOVES_MAX   = 5;     // 動きの最大件数
+  const WORLD_DTS_REGULAR_MAX = 2;     // 定例（参考）の件数
+  const WORLD_DTS_PEAK_BAND   = [0.5, 2];  // 山の中央値のこの範囲なら「決まった日の山」
+  const WORLD_DTS_DAILY_SHARE = 0.8;   // 出る日の割合がこれ以上で山が無ければ「毎日の定例」
+  const WORLD_DTS_STALE_DAYS  = 3;     // 最新の分が米国の営業日でこれより古ければ「公表がまだ」
+  const WORLD_FIGURES_TIMEOUT = 15000; // ms
+  const WORLD_PROMPT_WARN_LEN = 17000; // これを超えたら「長くなっています」（上限の実測は 17,916）
+  const WORLD_FISCAL_API      = 'https://api.fiscaldata.treasury.gov/services/api/fiscal_service/';
+  const WORLD_DTS_URL_DW      = 'https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/deposits-and-withdrawals-of-operating-cash';
+  const WORLD_DTS_URL_OCB     = 'https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/operating-cash-balance';
+  const WORLD_DEBT_URL        = 'https://fiscaldata.treasury.gov/datasets/debt-to-the-penny/';
+
+  function worldMedian(a) {
+    const x = a.slice().sort((p, q) => p - q);
+    const m = Math.floor(x.length / 2);
+    return x.length ? (x.length % 2 ? x[m] : (x[m - 1] + x[m]) / 2) : 0;
+  }
+  // 百万ドル → 「8,437億ドル」「35.8億ドル」。100で割るだけの桁の書き換え（換算ではない）
+  function worldFmtOku(millions) {
+    const x = Math.abs(millions) / 100;
+    return (x >= 100 ? Math.round(x).toLocaleString('en-US') : x.toFixed(1).replace(/\.0$/, '')) + '億ドル';
+  }
+  function worldFmtSigned(millions) { return (millions > 0 ? '+' : millions < 0 ? '−' : '±') + worldFmtOku(millions); }
+  function worldFmtRatio(r) { return r >= 10 ? String(Math.round(r)) : r.toFixed(1).replace(/\.0$/, ''); }
+  // 米国の営業日（土日だけ除く）で、date の翌日から today までに何日あるか
+  function worldUsBusinessDaysAfter(date, today) {
+    let n = 0;
+    for (let d = addDays(date, 1); d <= today; d = addDays(d, 1)) { const w = parseDateStr(d).getDay(); if (w !== 0 && w !== 6) n++; }
+    return n;
+  }
+  // 入出金の明細から、定例と「その日だけ」を分ける（sekai_api_shiyou_A.md の 2 章）。純粋な関数
+  function worldClassifyDts(rows, target) {
+    const dates = [...new Set(rows.map((x) => x.record_date))].sort();
+    const date = target || dates[dates.length - 1];
+    const hist = dates.filter((d) => d < date).slice(-WORLD_DTS_HISTORY);
+    const isTotal = (x) => x.transaction_catg == null || x.transaction_catg === 'null' || x.transaction_catg === '';
+    const amt = (x) => Number(x.transaction_today_amt) || 0;
+    const debtRow = (re) => rows.find((x) => x.record_date === date && re.test(x.transaction_catg || ''));
+    const items = new Map();
+    rows.forEach((x) => {
+      if (isTotal(x) || /Table IIIB/.test(x.transaction_catg)) return;   // 合計行と国債の借換えは外す
+      const k = x.transaction_type + '|' + x.transaction_catg;
+      if (!items.has(k)) items.set(k, { type: x.transaction_type, catg: x.transaction_catg, v: new Map() });
+      items.get(k).v.set(x.record_date, amt(x));
+    });
+    const moves = [], regular = [];
+    items.forEach((o) => {
+      const h = hist.map((d) => o.v.get(d) || 0);
+      const nz = h.filter((v) => v > 0);
+      const today = o.v.get(date) || 0;
+      const m = nz.length ? worldMedian(nz) : 0;
+      const peaks = hist.filter((d) => { const v = o.v.get(d) || 0; return m && v >= WORLD_DTS_MIN && v / m >= WORLD_DTS_RATIO; });
+      const pm = peaks.length ? worldMedian(peaks.map((d) => o.v.get(d))) : 0;
+      const peakRegular = peaks.length >= 2 && today >= pm * WORLD_DTS_PEAK_BAND[0] && today <= pm * WORLD_DTS_PEAK_BAND[1];
+      const dailyRegular = hist.length && nz.length / hist.length >= WORLD_DTS_DAILY_SHARE && !peaks.length;
+      const rec = { type: o.type, catg: o.catg, amt: today };
+      if (peakRegular) { if (today > 0) regular.push({ ...rec, peak: true }); return; }
+      if (dailyRegular && !(today >= WORLD_DTS_MIN && m && today / m >= WORLD_DTS_RATIO)) { if (today > 0) regular.push({ ...rec, peak: false }); return; }
+      if (today >= WORLD_DTS_MIN && ((m && today / m >= WORLD_DTS_RATIO) || !nz.length)) moves.push({ ...rec, ratio: m ? today / m : null, first: !nz.length });
+    });
+    const iss = debtRow(/Public Debt Cash Issues/), red = debtRow(/Public Debt Cash Redemp/);
+    return {
+      date, histDays: hist.length,
+      moves: moves.sort((a, b) => b.amt - a.amt).slice(0, WORLD_DTS_MOVES_MAX),
+      movesAll: moves.length,
+      regular: regular.sort((a, b) => b.amt - a.amt).slice(0, WORLD_DTS_REGULAR_MAX),
+      net: (iss && red) ? { iss: amt(iss), red: amt(red) } : null,
+    };
+  }
+  // TGA：終値の欄（close_today_bal）は毎日空で、値は Closing Balance の行の open_today_bal にある（2026-09 実測）
+  function worldReadTga(rows) {
+    const dates = [...new Set(rows.map((x) => x.record_date))].sort();
+    const date = dates[dates.length - 1];
+    const on = rows.filter((x) => x.record_date === date);
+    const val = (re, prefer) => {
+      const r = on.find((x) => re.test(x.account_type || ''));
+      if (!r) return null;
+      const v = prefer === 'close' && r.close_today_bal != null && r.close_today_bal !== 'null' ? r.close_today_bal : r.open_today_bal;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+    const close = val(/Closing Balance/, 'close'), open = val(/Opening Balance/, 'open');
+    if (close === null) return null;
+    return { date, close, change: open === null ? null : close - open, dep: val(/Total TGA Deposits/, 'open'), wd: val(/Total TGA Withdrawals/, 'open') };
+  }
+  function worldReadDebt(rows) {
+    if (!rows.length) return null;
+    const a = Number(rows[0].tot_pub_debt_out_amt), b = rows[1] ? Number(rows[1].tot_pub_debt_out_amt) : NaN;
+    if (!Number.isFinite(a)) return null;
+    return { date: rows[0].record_date, total: a, change: Number.isFinite(b) ? a - b : null };
+  }
+  // 失敗を理由つきの文にする。落ちているのか、公表がまだなのか、形が変わったのかで対応が変わる
+  async function worldFetchJson(url, signal) {
+    let res;
+    try { res = await fetch(url, signal ? { signal } : undefined); }
+    catch (e) { throw new Error(e && e.name === 'AbortError' ? (WORLD_FIGURES_TIMEOUT / 1000) + '秒で打ち切りました' : '通信できませんでした'); }
+    if (!res.ok) throw new Error('相手が ' + res.status + ' を返しました');
+    let j;
+    try { j = await res.json(); } catch (e) { throw new Error('返ってきた形が変わっています（JSON が読めない）'); }
+    if (!j || !Array.isArray(j.data)) throw new Error('返ってきた形が変わっています（data が無い）');
+    return j;
+  }
+  async function worldFetchFigures() {
+    const t0 = Date.now();
+    const today = todayStr();
+    const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+    const timer = setTimeout(() => { if (ctl) ctl.abort(); }, WORLD_FIGURES_TIMEOUT);
+    const api = (path, params) => WORLD_FISCAL_API + path + '?' + params;
+    const dw = (page) => api('v1/accounting/dts/deposits_withdrawals_operating_cash',
+      'filter=record_date:gte:' + addDays(today, -95) + '&fields=record_date,transaction_type,transaction_catg,transaction_today_amt'
+      + '&page%5Bsize%5D=10000&page%5Bnumber%5D=' + page + '&sort=-record_date');
+    const get = (u) => worldFetchJson(u, ctl && ctl.signal);
+    // 60営業日は約12,800行で、1ページの上限は10,000行。2ページ目も同時に取る
+    const [dw1, dw2, ocb, debt] = await Promise.allSettled([
+      get(dw(1)), get(dw(2)),
+      get(api('v1/accounting/dts/operating_cash_balance', 'filter=record_date:gte:' + addDays(today, -14) + '&sort=-record_date&page%5Bsize%5D=100')),
+      get(api('v2/accounting/od/debt_to_penny', 'sort=-record_date&page%5Bsize%5D=2')),
+    ]);
+    clearTimeout(timer);
+    const fig = { date: '', tga: null, debt: null, dts: null, reasons: [], stale: '', ms: 0 };
+    if (dw1.status === 'fulfilled') {
+      const rows = dw1.value.data.concat(dw2.status === 'fulfilled' ? dw2.value.data : []);
+      const r0 = rows[0];
+      if (!r0 || !('record_date' in r0) || !('transaction_catg' in r0) || !('transaction_today_amt' in r0)) fig.reasons.push('入出金：返ってきた形が変わっています（' + (r0 ? 'transaction_today_amt などが無い' : '行が無い') + '）');
+      else fig.dts = worldClassifyDts(rows);
+      if (dw2.status !== 'fulfilled') fig.reasons.push('入出金の2ページ目：' + dw2.reason.message + '（比べる履歴が短くなっています）');
+    } else fig.reasons.push('入出金：' + dw1.reason.message);
+    if (ocb.status === 'fulfilled') {
+      fig.tga = worldReadTga(ocb.value.data);
+      if (!fig.tga) fig.reasons.push('口座残高：返ってきた形が変わっています（Closing Balance の行が無い）');
+    } else fig.reasons.push('口座残高：' + ocb.reason.message);
+    if (debt.status === 'fulfilled') {
+      fig.debt = worldReadDebt(debt.value.data);
+      if (!fig.debt) fig.reasons.push('政府債務：返ってきた形が変わっています（tot_pub_debt_out_amt が無い）');
+    } else fig.reasons.push('政府債務：' + debt.reason.message);
+    fig.date = (fig.dts && fig.dts.date) || (fig.tga && fig.tga.date) || '';
+    if (fig.date && worldUsBusinessDaysAfter(fig.date, today) > WORLD_DTS_STALE_DAYS) fig.stale = '公表がまだです（最新は ' + worldShortDate(fig.date) + ' 分）';
+    fig.ms = Date.now() - t0;
+    return fig;
+  }
+  // プロンプトに差し込む節（sekai_api_shiyou_A.md の 3 章）
+  function worldFiguresSection(fig) {
+    const any = fig && (fig.tga || fig.debt || fig.dts);
+    if (!any) {
+      return '■ 今日の数字（API）\n今日の数字は取れませんでした（' + ((fig && fig.reasons.join('／')) || '理由不明') + '）。数字は検索で確かめる。\n';
+    }
+    const d = worldShortDate(fig.date);
+    const L = ['■ 今日の数字（API で取ったもの。事実。米国の ' + d + ' 分。日本の朝に取れるのは米国の1〜2営業日前の分）'];
+    if (fig.stale) L.push('- ' + fig.stale);
+    if (fig.tga) {
+      const t = fig.tga;
+      L.push('- 米財務省の口座残高（TGA）：' + worldFmtOku(t.close)
+        + (t.change === null ? '' : '（前日比 ' + worldFmtSigned(t.change)
+          + (t.dep !== null && t.wd !== null ? '。入金 ' + worldFmtOku(t.dep) + '・出金 ' + worldFmtOku(t.wd) : '') + '）')
+        + (t.date !== fig.date ? '（' + worldShortDate(t.date) + ' 分）' : ''));
+      L.push('  確認先 ' + WORLD_DTS_URL_OCB);
+    }
+    if (fig.debt) {
+      const b = fig.debt;
+      L.push('- 米国の政府債務総額：' + (b.total / 1e12).toFixed(2) + '兆ドル'
+        + (b.change === null ? '' : '（前日比 ' + worldFmtSigned(b.change / 1e6) + '）')
+        + (b.date !== fig.date ? '（' + worldShortDate(b.date) + ' 分）' : ''));
+      L.push('  確認先 ' + WORLD_DEBT_URL);
+    }
+    if (fig.dts) {
+      const c = fig.dts;
+      if (c.net) L.push('- 国債（市場で売ったもの）：発行 ' + worldFmtOku(c.net.iss) + ' − 償還 ' + worldFmtOku(c.net.red) + ' ＝ 純額 ' + worldFmtSigned(c.net.iss - c.net.red));
+      const cond = '（' + WORLD_DTS_RATIO + '倍以上・' + worldFmtOku(WORLD_DTS_MIN) + '以上）';
+      if (c.moves.length) {
+        L.push('- ' + d + ' の出入りで、ふだん（過去' + c.histDays + '営業日の中央値）から外れたもの' + cond + '：');
+        c.moves.forEach((m) => L.push('  ' + (m.type === 'Deposits' ? '入' : '出') + ' ' + m.catg + ' ' + worldFmtOku(m.amt)
+          + (m.first ? '（過去' + c.histDays + '営業日で初めて）' : '（ふだんの' + worldFmtRatio(m.ratio) + '倍）')));
+        if (c.movesAll > c.moves.length) L.push('  ほか ' + (c.movesAll - c.moves.length) + '件（小さい順に省いた）');
+      } else {
+        L.push('- ' + d + ' の出入りで、ふだん（過去' + c.histDays + '営業日の中央値）から外れたものはありません' + cond + '。');
+      }
+      L.push('  確認先 ' + WORLD_DTS_URL_DW);
+      if (c.regular.length) L.push('- 定例（参考）：' + c.regular.map((r) => r.catg + ' ' + worldFmtOku(r.amt) + (r.peak ? '（決まった日の山）' : '')).join('、'));
+    }
+    if (fig.reasons.length) L.push('- 取れなかったもの：' + fig.reasons.join('／'));
+    L.push('使い方：');
+    L.push('- 上の数字は事実として使ってよい。札の url は上の確認先。差と倍率は計算し直さない。');
+    L.push('- なぜ動いたかは検索で確かめる。確かめられなければ why と read に推定として書き、confidence を下げる。');
+    L.push('- 外れたものを札にするときは、from／to を書く（例：米財務省 → 教育省の支払い先）。');
+    return L.join('\n') + '\n';
+  }
+  // 取り込む画面の1行。理由は必ず書く
+  function worldFiguresStatus(fig) {
+    const any = fig && (fig.tga || fig.debt || fig.dts);
+    if (!any) return '今日の数字は取れませんでした（' + ((fig && fig.reasons.join('／')) || '理由不明') + '）。数字なしのプロンプトをコピーします。';
+    return '今日の数字：' + worldShortDate(fig.date) + ' 分を取りました（' + (fig.ms / 1000).toFixed(1) + '秒）'
+      + (fig.stale ? '。' + fig.stale : '') + (fig.reasons.length ? '。取れなかったもの：' + fig.reasons.join('／') : '');
+  }
+  // 待ちを挟むコピー。押した瞬間にコピーを始め、中身は後で決める
+  // （iPhone の Safari は、通信の待ちの後の writeText を「押した操作」と見なさず失敗させる）
+  function worldCopyLater(textPromise) {
+    try {
+      if (typeof ClipboardItem === 'function' && navigator.clipboard && navigator.clipboard.write) {
+        const item = new ClipboardItem({ 'text/plain': textPromise.then((t) => new Blob([t], { type: 'text/plain' })) });
+        return navigator.clipboard.write([item]).then(() => true, () => textPromise.then((t) => copyToClipboard(t)));
+      }
+    } catch (e) {}
+    return textPromise.then((t) => copyToClipboard(t));
+  }
+  let worldFiguresBusy = false;
+  // 世界の2つの入口（朝の「今日の取り込み」と「プロンプトをコピー」）が通る1本。数字が取れなくても必ずコピーする
+  function worldCopyPromptWithFigures(opts, okLead, btn) {
+    if (worldFiguresBusy) return;
+    worldFiguresBusy = true;
+    const el = document.getElementById('worldPromptStatus');
+    const fl = document.getElementById('worldFiguresStatus');
+    const copyBtn = document.getElementById('btnWorldPromptCopy');
+    const btns = [copyBtn, btn].filter(Boolean);
+    const labels = btns.map((b) => b.textContent);
+    btns.forEach((b) => { b.disabled = true; b.textContent = '数字を取っています…'; });
+    el.textContent = '米財務省の数字を取っています…（数秒）';
+    fl.textContent = '';
+    const textP = worldFetchFigures()
+      .catch((e) => ({ date: '', tga: null, debt: null, dts: null, reasons: [(e && e.message) || '理由不明'], stale: '', ms: 0 }))
+      .then((fig) => {
+        fl.textContent = worldFiguresStatus(fig);
+        let text;
+        try { text = worldPromptText({ ...opts, figures: worldFiguresSection(fig) }); }
+        catch (e) { text = worldPromptText(opts); fl.textContent += '（節を作れなかったので、数字なしにしました）'; }
+        return text;
+      });
+    worldCopyLater(textP).then(async (ok) => {
+      const text = await textP;
+      el.textContent = ok
+        ? okLead + '（' + text.length.toLocaleString() + '字）。Claude のチャットに貼り、返ってきた JSON を下に貼ってください。'
+        : 'コピーできませんでした。下の欄に出したので、選んでコピーしてください。';
+      if (!ok) document.getElementById('worldImportPaste').value = text;
+      if (text.length > WORLD_PROMPT_WARN_LEN) fl.textContent += '　※ プロンプトが長くなっています（' + text.length.toLocaleString() + '字）。';
+      document.getElementById('worldImportPaste').scrollIntoView({ block: 'center' });
+    }).finally(() => {
+      worldFiguresBusy = false;
+      btns.forEach((b, i) => { b.disabled = false; b.textContent = labels[i]; });
+    });
+  }
+  // ---- v19.13 ここまで ----
   // v19.4 段階5：コピーしたプロンプトに入れた必ず見るものを端末に控える。貼り戻して取り込めたら日付を進める
   function worldRememberPull(ids) { try { localStorage.setItem(WORLD_PULL_PENDING_KEY, JSON.stringify({ ids, at: todayStr() })); } catch (e) {} }
   function worldPendingPull() {
@@ -20391,33 +20639,19 @@
     return p.ids;
   }
   // 朝の「今日の取り込み」。期限の来たぶんだけのプロンプトをコピーして、取り込む画面（貼る欄）を開く
-  function worldPullToday(ids) {
-    const text = worldPromptText({ sourceIds: ids });
+  function worldPullToday(ids, btn) {
     worldRememberPull(ids);
     worldImportField = 'finance';
     worldState.view = 'import';
     showScreen('world');
     renderWorld();
-    const el = document.getElementById('worldPromptStatus');
-    copyToClipboard(text).then((ok) => {
-      el.textContent = ok
-        ? '今日の取り込み（' + ids.length + '件）のプロンプトをコピーしました（' + text.length.toLocaleString() + '字）。Claude のチャットに貼り、返ってきた JSON を下に貼ってください。'
-        : 'コピーできませんでした。下の欄に出したので、選んでコピーしてください。';
-      if (!ok) document.getElementById('worldImportPaste').value = text;
-      document.getElementById('worldImportPaste').scrollIntoView({ block: 'center' });
-    });
+    // v19.13：米財務省の数字を取って差し込む（取れなくてもコピーする）
+    worldCopyPromptWithFigures({ sourceIds: ids }, '今日の取り込み（' + ids.length + '件）のプロンプトをコピーしました', btn);
   }
   function worldCopyPrompt() {
     worldImportField = 'finance';   // 札の field はもう使わない（既定の値を入れ続ける）
-    const el = document.getElementById('worldPromptStatus');
-    const text = worldPromptText();
     worldRememberPull(worldDailySources().map((d) => d.id));   // v19.4：いつもの入口は必ず見るもの全部
-    copyToClipboard(text).then((ok) => {
-      el.textContent = ok
-        ? 'プロンプトをコピーしました（' + text.length.toLocaleString() + '字）。Claude のチャットに貼ってください。'
-        : 'コピーできませんでした。下の欄に出したので、選んでコピーしてください。';
-      if (!ok) document.getElementById('worldImportPaste').value = text;
-    });
+    worldCopyPromptWithFigures({}, 'プロンプトをコピーしました');   // v19.13：朝の入口と同じ1本を通す
   }
   document.getElementById('btnWorldPromptCopy').addEventListener('click', worldCopyPrompt);
   document.getElementById('btnWorldImport').addEventListener('click', async () => {
