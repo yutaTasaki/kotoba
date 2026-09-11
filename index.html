@@ -1204,6 +1204,8 @@
   .worldMapBox .wmLegendLine { stroke: var(--accent); opacity: 0.85; }
   .worldMapBox .wmLegendText { fill: var(--text-dim); font-size: 8px; }
   .wmUsd { color: var(--text-faint); font-size: 11px; margin-left: 4px; }
+  /* v20.3.1 札を開いたとき、動かした側のすぐ下に出すドル換算の1行 */
+  .worldUsdLine { color: var(--text-dim); font-size: 12px; margin: 2px 0 8px; }
   #worldMapChooser { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
   /* v19.15 同じ動きを別の出典からも確かめた印。行の右端に小さく */
   .worldMoneyRow .wmSrc { margin-left: auto; font-size: 10px; color: var(--text-faint); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; white-space: nowrap; }
@@ -2927,7 +2929,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.3';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.3.1';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -18233,6 +18235,15 @@
         row.addEventListener('click', (e) => { e.stopPropagation(); if (open.children.length) open.hidden = !open.hidden; });
       });
       box.appendChild(sec);
+    }
+    // v20.3.1：ドル換算は、押さなくても見える所に出す（数字・出典の欄は既定で閉じているため）。
+    // 「30億ユーロ ≒ 約34億ドル（推定・ECB 6/25）」。ドル建て・括弧のドル・物・人は何も出さない
+    const usdLine = worldUsdText(ev);
+    if (usdLine) {
+      const u = document.createElement('div');
+      u.className = 'worldUsdLine';
+      u.textContent = ev.flow.amount + ' ≒ ' + usdLine;
+      box.appendChild(u);
     }
 
     const pre = document.createElement('div');
