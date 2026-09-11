@@ -176,11 +176,6 @@
     border-top: 1px solid var(--border);
     padding-top: 14px;
   }
-  .cardTags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
   .tagPill {
     font-size: 12px;
     color: var(--text-faint);
@@ -460,7 +455,6 @@
   #consultHistoryField .consultCard .cardText { font-size: 14px; line-height: 1.75; }
   #consultHistoryField .cardMyWords, #consultHistoryField .consultWhy, #consultHistoryField .cardSource { font-size: 11px; }
   #consultHistoryField .consultClosing { font-size: 12px; }
-  .consultAskedLine { font-size: 12px; color: var(--text-dim); margin-top: 4px; line-height: 1.6; }
   .consultTurn { display: flex; flex-direction: column; gap: 10px; }
   .consultInputEcho {
     align-self: flex-end;
@@ -626,8 +620,6 @@
   .shootStageSlot { display: flex; flex-direction: column; gap: 10px; }
   .shootStageSlotHead { font-size: 11px; color: #5d6a72; letter-spacing: 0.18em; border-top: 1px solid #1a2227; padding-top: 8px; }
   .shootStageSlot.s-break .shootStageSlotHead { color: #a4614f; border-top-color: #3a241e; }
-  .shootHookLine { font-size: 25px; line-height: 1.7; color: #eef3f6; white-space: pre-wrap; }
-  .shootAnswerLine { font-size: 17px; line-height: 1.75; color: #9fb0ba; white-space: pre-wrap; margin-top: 10px; }
   .shootRestate { font-size: 19px; color: #c8d2d8; line-height: 1.7; padding: 4px 0 8px; }
   .shootCard.s-break { border-left-color: #e0836b; background: #16100e; }
   .shootWordMy { font-size: 15px; color: #a98fd0; line-height: 1.8; white-space: pre-wrap; }
@@ -646,7 +638,6 @@
   .shootCard.k-word { border-left-color: #a98fd0; }
   .shootCard.k-record { border-left-color: #5aa89a; }
   .shootCard.said { opacity: 0.3; }
-  .shootCardNo { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #7f8d96; font-variant-numeric: tabular-nums; flex-wrap: wrap; }
   /* v9.1: the stage is a prompt sheet, not a script - one line per card */
   .shootLine { display: flex; align-items: baseline; gap: 10px; }
   .shootNo { font-size: 13px; color: #6d7a83; font-variant-numeric: tabular-nums; min-width: 1.2em; }
@@ -668,7 +659,6 @@
   .labelRow.k-word .labelBar { background: #a98fd0; }
   .labelRow.k-record .labelBar { background: #5aa89a; }
   .labelRow input { flex: 1; }
-  .shootBelief { font-size: 11px; color: #d3b16a; }
   .shootFact { font-size: 21px; line-height: 1.8; color: #e7edf1; white-space: pre-wrap; word-break: break-word; }
   .shootSource { font-size: 13px; color: #93a2ab; word-break: break-word; }
   .shootUrlBtn { align-self: flex-start; border: 1px solid #35414a; border-radius: 999px; padding: 9px 18px; color: #c8d2d8; font-size: 13px; }
@@ -735,8 +725,6 @@
   .trDayCardSet { display: flex; gap: 10px; align-items: baseline; padding-left: 12px; }
   .trDayCardSet .trDayCardIdx { color: var(--text-faint); font-size: 11px; width: 14px; }
   .trDayCardSet .trDayCardNote { color: var(--text-dim); font-size: 12px; }
-  .trDayCardEx .trDayCardSets { color: var(--text-dim); }
-  .trDayCardMax { color: #e0785a; }
   .trSetNoteRow { margin: -2px 0 8px 0; padding-left: 0; }
   .trSetNoteRow input { width: 100%; font-size: 12px; padding: 5px 10px; color: var(--text-dim); }
   .calToolRow { display: flex; justify-content: flex-end; margin: 6px 0 4px; }
@@ -1039,10 +1027,6 @@
   .worldDeep a { color: var(--accent); word-break: break-all; }
   .worldRowBtns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
   .worldRowBtns .tagFilterBtn { padding: 5px 10px; font-size: 12px; }
-  .worldPredBox { margin-top: 12px; }
-  .worldPredBox textarea { margin-bottom: 6px; }
-  .worldPredDue { font-size: 11px; color: var(--text-faint); }
-  .worldHistory { margin-top: 8px; font-size: 11px; color: var(--text-faint); line-height: 1.7; }
 
   .worldStale {
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
@@ -1118,8 +1102,6 @@
   .homePullRow .homePullNone { font-size: 12px; color: var(--text-faint); }
   /* 出来事の行のタグ。概念タグより弱くして、押し合わないようにする */
   .worldRow .wTag.isStratum { color: var(--text-faint); border-color: transparent; background: var(--bg-card); font: inherit; font-size: 10px; cursor: pointer; }
-  .strataRow { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; align-items: center; }
-  .strataRow .rowLabel { font-size: 11px; color: var(--text-faint); }
   .stratumPill {
     font-size: 12px; padding: 3px 9px; border-radius: 999px;
     border: 1px solid var(--border); background: none; color: var(--text-dim); cursor: pointer;
@@ -1238,19 +1220,7 @@
   .worldMoneyReach .wmrKey { color: var(--text-dim); white-space: nowrap; min-width: 6.5em; }
   .worldMoneyReach .wmrVal { color: var(--text-faint); }
   /* --- v17 C 答え合わせ ---------------------------------------------------- */
-  .worldJudgeRow { padding: 10px 0; border-top: 1px solid var(--border); font-size: 13px; line-height: 1.7; }
-  .worldJudgeRow .wjFork { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
-  .worldJudgeRow .wjOutcome { font-size: 12px; color: var(--text-dim); white-space: nowrap; }
-  .worldJudgeRow .wjSide { font-size: 12px; padding-left: 12px; color: var(--text-dim); }
-  .worldJudgeRow .wjHit  { color: var(--text); }
-  .worldJudgeRow .wjMiss { color: var(--danger); }
-  .worldJudgeRow .wjWhy { font-size: 11px; color: var(--text-faint); padding-left: 12px; }
-  .worldJudgeRow .wjEvidence { font-size: 12px; color: var(--text-faint); margin-top: 4px; }
-  .worldJudgeRow .wjOpen { font-size: 11px; }
   /* 生成の見立ては推定。判定の結果は事実。見た目で分ける */
-  .worldLean { font-size: 12px; line-height: 1.7; margin: 4px 0 6px; }
-  .worldLean .wlDir { color: var(--text); }
-  .worldLean .wlWhy { color: var(--text-faint); font-size: 11px; padding-left: 12px; }
   .worldMetaLine { font-size: 12px; color: var(--text-faint); line-height: 1.7; margin-top: 6px; }
   .worldMetaLine .wmKey { color: var(--text-dim); }
   /* --- v11.5 再会・共通点・検索 ------------------------------------------ */
@@ -1388,7 +1358,7 @@
     </header>
     <p class="fieldNote warn" id="usageThresholdBanner" hidden></p>
     <div class="dayCount" id="dayCountLabel"></div>
-    <div id="homeEmpty" class="emptyMsg" hidden>まだノートがありません。「言葉」画面の「＋」から最初の1枚を書いてみましょう。</div>
+    <div id="homeEmpty" class="emptyMsg" hidden>まだ言葉がありません。「言葉」画面の「＋」から最初の1枚を書いてみましょう。</div>
     <div id="walkUnavailableMsg" class="emptyMsg" hidden>散歩データを読み込めていません。設定 → 同期を確認してください。</div>
 
     <canvas id="walkPreviewCanvas" width="1080" height="1080" hidden></canvas>
@@ -1495,7 +1465,7 @@
       関連なし
     </label>
     <div id="listItems" class="listItems"></div>
-    <div id="listEmpty" class="emptyMsg" hidden>該当するノートがありません。</div>
+    <div id="listEmpty" class="emptyMsg" hidden>該当する言葉がありません。</div>
   </section>
 
   <section id="screen-consult" class="screen" hidden>
@@ -1533,7 +1503,7 @@
         <div id="detailMyWordsHistory" class="detailHistory" hidden></div>
       </div>
       <div class="detailField" id="detailContextField">
-        <span class="fieldLabel">周辺のメモ<span class="fieldNote inlineNote">（この言葉にだけ付く。引く・網・相談には出ない）</span></span>
+        <span class="fieldLabel">周辺のメモ<span class="fieldNote inlineNote">（この言葉にだけ付きます。引く・網・相談には出ません）</span></span>
         <div id="detailContextList"></div>
         <div class="tagInputRow">
           <textarea id="detailContextInput" rows="2" placeholder="前後の内容、読んだときの状況など" autocomplete="off"></textarea>
@@ -1677,7 +1647,7 @@
             <button id="btnSyncNow" class="secondaryBtn">今すぐ同期</button>
           </div>
           <details class="setMore">
-            <summary>くわしく：保存方式・書き出し／読み込み・古いコピー</summary>
+            <summary>くわしく：保存方式・書き出し／読み込み・古いコピー・読み込み直す</summary>
             <div class="setBody">
               <div class="field">
                 <div class="statRow"><span>データ量</span><span id="statDataSize"></span></div>
@@ -1732,7 +1702,7 @@
           </div>
           <div class="field">
             <span class="fieldLabel">月の上限（USD）</span>
-            <p class="fieldNote">今月の概算がこの 50／80／100% に達すると朝タブに知らせ、100% を超えると自動関連づけと朝の言葉を止めます（相談は確認のうえ続行できます）。</p>
+            <p class="fieldNote">今月の概算がこの 50／80／100% に達すると朝タブに知らせ、100% を超えると自動関連づけと朝の言葉を止めます（相談・問い・撮るの相談は確認のうえ続行できます）。</p>
             <input id="usageBudgetInput" type="text" inputmode="decimal" placeholder="2.00" autocomplete="off">
           </div>
           <label class="checkboxRow">
@@ -1968,7 +1938,7 @@
           </div>
           <div class="field statsField">
             <span class="fieldLabel">数</span>
-            <div class="statRow"><span>ノート総数</span><span id="statNoteCount"></span></div>
+            <div class="statRow"><span>言葉の数</span><span id="statNoteCount"></span></div>
             <div class="statRow"><span>タグ数</span><span id="statTagCount"></span></div>
             <div class="statRow"><span>自動リンク数</span><span id="statAutoLinkCount"></span></div>
             <div class="statRow"><span>手動リンク数</span><span id="statManualLinkCount"></span></div>
@@ -2020,6 +1990,7 @@
     <header class="topbar">
       <button class="backBtn" id="backFromRecords">← 戻る</button>
       <div class="topbar-title">記録</div>
+      <div style="width:40px;"></div>
     </header>
 
     <!-- v10: moved out of the topbar. A 4th button did not fit at 390px, and
@@ -2077,8 +2048,8 @@
 
     <div id="dayEditorView" class="editorBody" hidden>
       <h3 id="dayEditorTitle"></h3>
-      <div class="field"><span class="fieldLabel">起床時の気分</span><div class="moodRow" id="editWakeMoodRow"></div></div>
-      <div class="field"><span class="fieldLabel">散歩後の気分</span><div class="moodRow" id="editAfterMoodRow"></div></div>
+      <div class="field"><span class="fieldLabel">今朝の体調</span><div class="moodRow" id="editWakeMoodRow"></div></div>
+      <div class="field"><span class="fieldLabel">散歩後の体調</span><div class="moodRow" id="editAfterMoodRow"></div></div>
       <input type="number" id="editStepsInput" min="0" placeholder="歩数（歩）">
       <input type="number" id="editDistanceInput" min="0" placeholder="距離（m）">
       <button id="btnSaveDayEdit" class="secondaryBtn">保存</button>
@@ -2199,7 +2170,7 @@
       <button class="backBtn" id="backFromShoot">← 戻る</button>
       <div class="topbar-title">撮る</div>
       <div class="topbarBtnGroup">
-        <button id="btnShootSync" class="iconBtn">取り込む</button>
+        <button id="btnShootSync" class="iconBtn">同期</button>
         <button id="btnShootNew" class="iconBtn">＋</button>
       </div>
     </header>
@@ -2226,7 +2197,7 @@
       </div>
       <div class="field" id="shootConsultField">
         <span class="fieldLabel">4 相談する</span>
-        <p class="fieldNote">問いと仮の答えを相談に投げて、返ってきた札を「言葉」の枠に入れます。</p>
+        <p class="fieldNote">問いと仮の答えを相談に投げて、返ってきた言葉を「言葉」のカードとして入れます。</p>
         <button type="button" id="btnShootConsultOpen" class="tagFilterBtn">相談をひらく</button>
         <p class="fieldNote shootGateHint" id="shootConsultHint" hidden></p>
         <div id="shootConsultPanel" hidden>
@@ -2310,6 +2281,7 @@
         <textarea id="shootFlowNote" rows="6" placeholder="チャットが返した説明をここに貼る（そのまま保存されます。直せます）" autocomplete="off"></textarea>
         <p class="fieldNote shootGateHint" id="shootNoteHint" hidden></p>
         <p class="fieldNote" id="shootNoteCopyStatus"></p>
+        <textarea id="shootNoteCopyPaste" rows="3" readonly hidden></textarea>
         <p class="fieldNote" id="shootNoteStatus"></p>
       </div>
       <div class="field">
@@ -2497,42 +2469,7 @@
           <p class="fieldNote" id="worldProbeStatus"></p>
         </div>
         <div id="worldStratumListBody"></div>
-        <p class="fieldNote">確認先や名前をまとめて直すには、設定 → 世界 →「まとめて貼る」から。</p>
-      </div>
-    </div>
-
-    <!-- v17 C 答え合わせ：期限が来た分かれ目を一次ソースで判定する。
-         聞くのは「何が起きたか」だけで、当たり外れは端末が引く。 -->
-    <div class="editorBody" id="worldJudgeView" hidden>
-      <div class="worldSectionHead">
-        <h3 style="margin:0;">答え合わせ</h3>
-        <span id="worldJudgeRest"></span>
-      </div>
-      <div class="field">
-        <p class="fieldNote">期限が来た分かれ目を、一次ソースで調べて判定します。誰が何を予測したかはプロンプトに載せません（予測に合わせて事実を選ばせないため）。出典URLの無い結果は保留になります。</p>
-        <button type="button" id="btnWorldJudgePrompt" class="tagFilterBtn">プロンプトをコピー</button>
-        <textarea id="worldJudgePaste" rows="3" placeholder='{"results":[...]} をここに貼る' autocomplete="off"></textarea>
-        <button type="button" id="btnWorldJudgeImport" class="secondaryBtn">結果を取り込む</button>
-        <p class="fieldNote" id="worldJudgeStatus"></p>
-      </div>
-      <div class="field">
-        <div class="worldSectionHead">
-          <span class="fieldLabel" style="margin:0;">的中率</span>
-          <span id="worldJudgeRate"></span>
-        </div>
-      </div>
-      <div class="field">
-        <span class="fieldLabel">答え合わせ待ち<span class="fieldNote inlineNote" id="worldJudgeWaitCount"></span></span>
-        <div id="worldJudgeWaiting"></div>
-        <p class="emptyMsg" id="worldJudgeWaitEmpty" hidden>まだ予測がありません。</p>
-      </div>
-      <div class="field">
-        <span class="fieldLabel">判定したもの</span>
-        <div id="worldJudgeList"></div>
-        <p class="emptyMsg" id="worldJudgeEmpty" hidden>まだ判定したものがありません。</p>
-      </div>
-      <div class="field">
-        <button type="button" id="btnWorldJudgeBack" class="secondaryBtn">戻る</button>
+        <p class="fieldNote">確認先や名前をまとめて直すには、設定 → 世界 → くわしく →「まとめて貼る」から。</p>
       </div>
     </div>
 
@@ -2849,7 +2786,7 @@
         <div class="questionTension" id="questionNoneReason" hidden></div>
         <div class="drawChoiceHintDim">右上の「もう一つ」で、別の組み合わせを試せます</div>
       </div>
-      <div id="drawEmpty" class="emptyMsg" hidden>まだノートがありません。</div>
+      <div id="drawEmpty" class="emptyMsg" hidden>まだ言葉がありません。</div>
     </div>
     <div id="drawLinks" class="drawLinks"></div>
     <div id="questionFooter" class="questionFooter" hidden>
@@ -2976,7 +2913,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.8.1';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.9';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -3073,7 +3010,7 @@
       out.used = j.used === true;
     }
     // v8.5 撮る: one deck per video. Cards are material (事実 / 出典 / 壊すもの),
-    // never a script; nothing here is generated in stage 1.
+    // never a script.
     if (kind === 'deck') {
       out.title = typeof j.title === 'string' ? j.title : '';
       out.hook = typeof j.hook === 'string' ? j.hook : '';   // v8.6: 入り（0秒で言う1行）
@@ -3699,7 +3636,6 @@
     data.deletedIds.push({ id, deletedAt: iso });
   }
 
-  function findTrashNote(id) { return (data.trash || []).find((n) => n.id === id) || null; }
 
   // Back to data.notes with a fresh updatedAt (so it outranks the tombstone
   // on every device), tombstone withdrawn, and its old links re-tied to
@@ -4006,18 +3942,6 @@
     syncDebounceTimer = setTimeout(syncNow, 800);
   }
 
-  function emptyRemoteData() {
-    return {
-      version: 2, updatedAt: nowIso(),
-      notes: [], deletedIds: [],
-      journal: [], deletedJournalIds: [],
-      drafts: [], deletedDraftIds: [],
-      dismissedDuplicatePairs: [],
-      usage: {},
-      trash: [],
-    };
-  }
-
   // Push data (already merged with the latest remote fetch). On a 409 (someone
   // else wrote in between), refetch + remerge + retry exactly once, then give
   // up and let the caller's catch report the error.
@@ -4027,7 +3951,7 @@
     } catch (e) {
       if (e.status === 409) {
         const remote2 = await ghGetFile(token);
-        data = mergeData(data, remote2.data || emptyRemoteData());
+        data = mergeData(data, remote2.data || defaultData());
         persistLocal(data);
         backupData(data);
         refreshCurrentScreen();
@@ -4057,7 +3981,7 @@
     try {
       const localHadNoNotes = data.notes.length === 0;
       const remote = await ghGetFile(token); // throws on failure -> no push is attempted below
-      data = mergeData(data, remote.data || emptyRemoteData());
+      data = mergeData(data, remote.data || defaultData());
       notesEnsureMonthly();
       adoptJournalMonths();
       persistLocal(data);
@@ -4646,7 +4570,7 @@
     lines.forEach((line, i) => ctx.fillText(line, W / 2, blockTop + lineHeight * i + lineHeight / 2));
 
     let y = 820;
-    const sourceText = note.source === '自分' ? '（自分の言葉）' : (note.source || '');
+    const sourceText = (note.source || '').startsWith('自分') ? '（自分の言葉）' : (note.source || '');
     if (sourceText) {
       ctx.font = `30px ${NOTE_POST_FONT}`;
       ctx.fillStyle = '#a39c8e';
@@ -4665,7 +4589,7 @@
     ctx.fillText('一万日', W - MARGIN, H - 60);
   }
 
-  // --- journal (v3): entry-level CRUD, lives inside kotoba-data's data.json -
+  // --- journal (v3): entry-level CRUD (legacy: data.json; monthly: journal/YYYY-MM.json) -
   function findJournalEntry(id) { return data.journal.find((j) => j.id === id) || null; }
 
   function generateJournalId() {
@@ -4986,7 +4910,7 @@
       persistLocal(data);
       journalMigrationStatus('data.json を更新中…');
       await hardPushCurrentData();
-      journalMigrationStatus('移行が完了しました（' + list.length + ' か月）');
+      journalMigrationStatus('移行が完了しました（' + list.length + ' か月分）');
       openSettings();
     } catch (e) {
       journalMigrationStatus('移行できませんでした：' + (e.message || e) + '。data.json は変更していないので、そのまま使えます。');
@@ -5051,7 +4975,7 @@
   const KEEP_TUNING = { boost: 0.5 };
   // 眠っている言葉 (v8.2): the words not put in front of the user for the
   // longest time get a guaranteed turn - not a full rotation of every word
-  // (30,000 words at one draw a day would take centuries), but the most
+  // (30,000 words at one sleeping draw every 6th draw would take ~490 years), but the most
   // forgotten ones always come first.
   const SLEEP_TUNING = {
     every: 6,          // every Nth 引く (either mode) comes from the sleeping pool
@@ -5107,7 +5031,6 @@
     new Set([...picks.keys(), ...hits.keys()]).forEach((id) => { if (findNote(id)) out.set(id, (picks.get(id) || 0) + HIT_TUNING.hitVsPick * Math.log2(1 + (hits.get(id) || 0))); });
     return out;
   }
-  function noteWeight(noteId) { return noteWeightsInWindow().get(noteId) || 0; }
   // "今月よく届いた言葉": morning + consult deliveries (not 引く) in the last
   // 30 days, ranked by the weight above. Feeds 引く (今月), 問い (core) and
   // the far-opposition ranking.
@@ -5219,14 +5142,6 @@
     return prefix + String(seq).padStart(3, '0');
   }
 
-  function saveDraft(draft) {
-    draft.updatedAt = nowIso();
-    const idx = data.drafts.findIndex((d) => d.id === draft.id);
-    if (idx === -1) data.drafts.push(draft); else data.drafts[idx] = draft;
-    saveData(data);
-    return draft;
-  }
-
   function deleteDraft(id) {
     data.drafts = data.drafts.filter((d) => d.id !== id);
     if (!Array.isArray(data.deletedDraftIds)) data.deletedDraftIds = [];
@@ -5307,7 +5222,7 @@
     if (!e) return 'もう一度お試しください。';
     if (e.noKey) return '設定で Claude API キーを入れてください。';
     if (e.offline) return 'オフラインです。電波のある場所でもう一度お試しください。';
-    if (e.timeout) return '時間がかかりすぎました（' + (e.timeoutSec || 60) + '秒で打ち切り）。もう一度お試しください。';
+    if (e.timeout) return '時間がかかりすぎました（' + (e.timeoutSec || AI_TIMEOUT_MS / 1000) + '秒で打ち切り）。もう一度お試しください。';
     if (e.truncated) return '応答が長すぎて途中で切れました。短く分けてもう一度お試しください。';
     if (e.status === 401 || e.status === 403) return 'API キーが使えません（' + e.status + '）。設定でキーを入れ直してください。';
     if (e.status === 429) return '混みあっています（429）。少し待ってからもう一度お試しください。';
@@ -5682,26 +5597,9 @@
   // "関連を探しています…" indicator on whatever screen is showing them.
   const autoLinkInFlight = new Set();
 
-  // Cheap pre-filter for large note collections: tag overlap counts far more
-  // than substring word overlap, since shared tags are a much stronger
-  // relevance signal than incidental shared vocabulary.
-  function compressCandidates(note, candidates, threshold) {
-    if (candidates.length <= threshold) return candidates;
-    const noteTags = new Set(note.tags);
-    const noteWords = new Set(((note.text || '') + (note.myWords || '')).toLowerCase().match(/[\p{L}\p{N}]+/gu) || []);
-    function score(n) {
-      let s = 0;
-      n.tags.forEach((t) => { if (noteTags.has(t)) s += 3; });
-      const nWords = ((n.text || '') + (n.myWords || '')).toLowerCase();
-      noteWords.forEach((w) => { if (w.length >= 2 && nWords.includes(w)) s += 1; });
-      return s;
-    }
-    return [...candidates].sort((a, b) => score(b) - score(a)).slice(0, threshold);
-  }
-
-  // v3.2: text/myWords trimmed further (was 120/80) purely to shrink the
-  // list that goes into the cached system block - every byte in there is
-  // what gets re-billed (at 1.25x) on the first call after any note change.
+  // v3.2: text trimmed to 80 purely to shrink the list that goes into the
+  // cached system block - every byte in there is what gets re-billed (at
+  // 1.25x) on the first call after any note change. myWords: see below.
   const COMPACT_MYWORDS_CHARS = 120;   // v8.2.1: was 50 - the reader's own line often matters more than the text
   function buildCompactNote(n) {
     return {
@@ -5716,12 +5614,8 @@
 
   // The full note list in stable (insertion) order, unfiltered by any
   // per-call exclusion - identical across calls whenever the note set itself
-  // hasn't changed, which is exactly what makes it safe to cache. Only above
-  // the compression threshold does this fall back to compressCandidates'
-  // relevance ranking (seeded with an empty note, since there's no single
-  // per-call target to rank against once this is shared across calls) -
-  // that path necessarily varies less predictably and won't cache as well,
-  // but it only matters once a device has more notes than the threshold.
+  // hasn't changed, which is exactly what makes it safe to cache. Only used
+  // below the threshold; above it see notesInlineMode.
   function stableCompactNotesList() { return data.notes.map(buildCompactNote); }
   // v7.0: above the threshold the whole list no longer goes to the model.
   // Each call picks the notes closest to its seed (the consult input or the
@@ -5851,12 +5745,11 @@
       }));
   }
 
-  // Calls the Messages API directly from the browser (per the v2 spec) with
-  // the required anthropic-dangerous-direct-browser-access header. Retries
-  // once on a 429 after a short wait, and separately once on a JSON parse
-  // failure (a fresh response is often well-formed even when one wasn't) -
-  // only after both the loose-array recovery and that single re-call fail
-  // does this actually throw.
+  // Calls the Messages API directly from the browser (per the v2 spec).
+  // The 429 retry, timeout and headers live in aiFetch; this retries once on
+  // a JSON parse failure (a fresh response is often well-formed even when
+  // one wasn't) - only after both the loose-array recovery and that single
+  // re-call fail does this actually throw.
   async function callClaudeApi(note, excludeIds, usageKind, is429Retry, isParseRetry) {
     const model = getClaudeAutoLinkModel();
     const system = buildAutoLinkSystemBlocks();
@@ -5962,7 +5855,7 @@
     if (!getClaudeApiKey()) { alert('先に設定で Claude API キーを入れてください'); return; }
     const pending = data.notes.filter((n) => !n.autoLinkedAt).sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
     if (!pending.length) { alert('未処理のノートはありません（全ノートが処理済みです）'); return; }
-    if (!opts.skipConfirm && !confirm(`未処理のノート ${pending.length} 件に自動関連づけを実行します（API呼び出し概算 ${pending.length} 回）。よろしいですか？`)) return;
+    if (!opts.skipConfirm && !confirm(`未処理のノート ${pending.length} 件に自動関連づけを実行します（API 呼び出しは約 ${pending.length} 回）。よろしいですか？`)) return;
 
     batchState.running = true;
     batchState.stop = false;
@@ -6015,9 +5908,9 @@
 
   // --- 問いを引く: 材料の選び方 + API (v3.3) -------------------------------
   // The whole point is that a question can only come from THIS person's
-  // material, so the browser picks the material first (one of three fixed
-  // angles) and the API is called exactly once, with those few notes sent
-  // uncompressed. No cached note-list block here on purpose: the payload is
+  // material, so the browser picks the material first (one of four fixed
+  // angles) and the API is called in two passes (scene, then the spoken
+  // question), with those few notes sent uncompressed. No cached note-list block here on purpose: the payload is
   // a handful of notes, and it changes every call anyway.
   const QUESTION_MODE_LABEL = { opposite: '対立から', core: '今月の核から', self: '自分の言葉から', far: '遠い対立から' };
   const LAST_QUESTION_MODE_KEY = 'kotoba_lastQuestionMode';
@@ -6127,11 +6020,11 @@
   }
 
   function selfSourcedNotes() {
-    return data.notes.filter((n) => (n.source || '').startsWith('自分'));
+    return data.notes.filter((n) => (n.kind || inferNoteKind(n.source)) === 'self');
   }
 
   // "最も関連の強いリンク先": links carry no strength of their own, so this
-  // scores them the way the app already ranks relevance (compressCandidates):
+  // scores them the way the app ranks relevance elsewhere:
   // shared tags count most, shared vocabulary a little, and a link the user
   // tied by hand outranks an automatic one. Array order breaks ties - auto
   // links were returned 関連の強い順 when they were made.
@@ -6452,11 +6345,9 @@
   }
 
   // --- Consult screen (v2.1) -------------------------------------------------
-  // Deliberately kept out of `data` and localStorage entirely - the whole
-  // conversation lives in this one array and is gone on reload, exactly per
-  // spec ("会話は保存しない"). Turns survive a brief detour into a card's
-  // detail view (and back) since that's the same page session, but a fresh
-  // "相談" tap from the bottom nav always starts clean.
+  // Screen state for 相談. Each answered round is saved as a journal entry
+  // (kind 'consult') and today's entries are reloaded on open (resetConsult);
+  // only in-flight turns and the fold state live in this array.
   const CONSULT_HISTORY_TURNS = 2;
   let consultTurns = [];
   let consultInputOpen = true;      // v9.7: the middle layer folds once there is an answer
@@ -6515,7 +6406,7 @@
         del.className = 'linkRemoveBtn';
         del.textContent = '消す';
         del.addEventListener('click', () => {
-          if (!confirm(dotDate(todayStr()) + 'の相談を消しますか？')) return;
+          if (!confirm(dotDate((findJournalEntry(turn.journalId) || {}).date || todayStr()) + 'の相談を消しますか？')) return;
           deleteJournalEntry(turn.journalId);
           consultTurns = consultTurns.filter((t) => t !== turn);
           renderConsultTurns();
@@ -7101,7 +6992,7 @@
     loading.textContent = '言葉を探しています…';
     container.appendChild(loading);
     try {
-      const effectiveInput = input && input.trim() ? input.trim() : `今朝の体調は5段階でレベル${moodLevel}。それに合う言葉を選ぶ。`;
+      const effectiveInput = input ? input : `今朝の体調は5段階でレベル${moodLevel}。それに合う言葉を選ぶ。`;
       const result = await callChatApi(effectiveInput, [], 2, 'morning');
       const iso = nowIso();
       const entry = { id: generateJournalId(), date: today, kind: 'morning', mood: moodLevel, text: input, picks: result.picks, closing: result.closing, createdAt: iso, updatedAt: iso };
@@ -7162,10 +7053,6 @@
       : dataUrlToFile(canvas.toDataURL('image/png'), filename);
     const statusEl = document.getElementById('walkShareStatus');
     const setStatus = (msg, isError) => { statusEl.textContent = msg || ''; statusEl.classList.toggle('error', !!isError); };
-    async function copyTextBestEffort() {
-      try { await navigator.clipboard.writeText(shareText); return true; } catch (e) { return false; }
-    }
-
     const canShareWithText = !!(navigator.canShare && navigator.canShare({ files: [file], text: shareText }));
     if (canShareWithText) {
       try {
@@ -7181,7 +7068,7 @@
 
     const canShareFilesOnly = !!(navigator.canShare && navigator.canShare({ files: [file] }));
     if (canShareFilesOnly) {
-      const copied = await copyTextBestEffort();
+      const copied = await copyToClipboard(shareText);
       try {
         await navigator.share({ files: [file] });
         setStatus(copied ? 'テキストをコピーしました。共有画面に貼り付けてください。' : '');
@@ -7193,7 +7080,7 @@
       return;
     }
 
-    const copied = await copyTextBestEffort();
+    const copied = await copyToClipboard(shareText);
     setStatus(copied ? 'この端末は画像の共有に対応していないため、ダウンロードし、テキストをコピーしました。' : 'この端末は画像の共有に対応していないため、ダウンロードしました。');
     downloadFile(file);
   });
@@ -7921,7 +7808,7 @@
       const title = document.getElementById('bulkTitleInput').value.trim();
       source = title ? `自分（動画: ${title}）` : '自分（動画）';
     }
-    if (!getClaudeApiKey()) { statusEl.textContent = aiErrorText('分けられませんでした', { noKey: true }); return; }
+    if (!getClaudeApiKey()) { statusEl.textContent = aiErrorText('分解できませんでした', { noKey: true }); return; }
     const btn = document.getElementById('btnBulkDecompose');
     btn.disabled = true;
     statusEl.textContent = '分解しています…';
@@ -7963,7 +7850,7 @@
       openDraftReview();
     } catch (e) {
       btn.disabled = false;
-      statusEl.textContent = aiErrorText('分けられませんでした', e);
+      statusEl.textContent = aiErrorText('分解できませんでした', e);
       if (!(e && e.noKey)) recordFeatureError('一括入力', e);
     }
   });
@@ -8104,7 +7991,7 @@
   // --- Draft review (v3.2) --------------------------------------------------
   // draftQueue is a snapshot of data.drafts' ids taken when the review screen
   // opens; "あとで" only reorders this local copy (per spec: "順番の最後に
-  //回る"), not data.drafts itself, so leaving and reopening this screen
+  // 回る"), not data.drafts itself, so leaving and reopening this screen
   // starts fresh from data.drafts' own order again.
   let draftQueue = [];
   let draftQueueIndex = 0;
@@ -8758,7 +8645,7 @@
     const note = findNote(nav.detailId);
     if (!note || !note.video) return;
     const ok = await copyToClipboard(buildVideoDescription(note.video.batchId));
-    document.getElementById('detailCopyStatus').textContent = ok ? 'コピーしました' : 'コピーできませんでした（下書き画面の「内容を見る」から選んでコピーできます）';
+    document.getElementById('detailCopyStatus').textContent = ok ? 'コピーしました' : 'コピーできませんでした';
   });
 
   document.getElementById('backFromDetail').addEventListener('click', backFromDetail);
@@ -8825,8 +8712,7 @@
     const w = Number.isFinite(wRaw) ? wRaw : null;
     const bodyweight = x.w === null || x.w === undefined || x.w === '';
     // nothing at all in the row: not a set
-    if (r === null && w === null && !bodyweight) return null;
-    if (r === null && w === null && bodyweight) return null;
+    if (r === null && w === null) return null;
     const out = { w, r };
     if (typeof x.note === 'string' && x.note.trim()) out.note = x.note.trim().slice(0, 80);
     // drop set: the weight is lowered without rest and the set goes on. Stored
@@ -8951,7 +8837,7 @@
     return { version: 1, updatedAt: nowIso(), days, deletedDayIds: [...tombs.entries()].map(([id, deletedAt]) => ({ id, deletedAt })), exercises, muscleMap };
   }
 
-  // sync (same shape as the notes sync, third file in the same repo)
+  // sync (same shape as the notes sync; its own file, training.json, in the same repo)
   async function ghGetTrainingFile(token) {
     const got = await ghGetContents(GITHUB_REPO, TRAINING_PATH, token);
     if (got.text === null) return { data: null, sha: null };
@@ -9109,8 +8995,6 @@
   }
 
   // --- the record screen ---------------------------------------------------
-  // trState is the in-progress edit for one date; 保存 writes it as that
-  // day's entry (upsert) and refreshes the exercise chips' usage order.
   // trState is the in-progress edit for one date and stays the source of
   // truth while the screen is open; every change is persisted (debounced)
   // without reloading the state from storage, so a half-typed set row is
@@ -9141,7 +9025,7 @@
     renderTraining();
   }
   function trSetToState(st) {
-    return { w: st.w === null ? '' : String(st.w), r: String(st.r), bw: st.w === null, note: st.note || '', drops: (st.drops || []).map((d) => ({ w: String(d.w), r: String(d.r) })) };
+    return { w: st.w === null ? '' : String(st.w), r: st.r === null ? '' : String(st.r), bw: st.w === null, note: st.note || '', drops: (st.drops || []).map((d) => ({ w: String(d.w), r: String(d.r) })) };
   }
   function trBlankSet() { return { w: '', r: '', bw: false, note: '', drops: [] }; }
   function trNewExercise(part, name) {
@@ -9543,7 +9427,7 @@
   document.getElementById('btnTrDelete').addEventListener('click', () => {
     const day = findTrainingDay(trState.date);
     if (!day) return;
-    if (!confirm(dotDate(day.date) + ' の筋トレの記録を消しますか？')) return;
+    if (!confirm(dotDate(day.date) + 'の筋トレの記録を消しますか？')) return;
     if (trSaveTimer) { clearTimeout(trSaveTimer); trSaveTimer = null; }
     trainingData.days = trainingData.days.filter((d) => d.id !== day.id);
     trainingData.deletedDayIds = (trainingData.deletedDayIds || []).filter((t) => t.id !== day.id);
@@ -9631,7 +9515,7 @@
     return cx - x - track;
   }
   function trBuildLines(day) {
-    // one part -> { part, rows: [{name, sets:[{w,r}] | cardio:text, rm, isNewMax, allMax}] }
+    // one part -> { part, rows: [{name, sets:[{w,r,drops,rm}], cardio: cardioCells|null, rm, isNewMax, allMax, bestIdx}] }
     return day.parts.map((p) => ({
       part: p.part,
       rows: p.exercises.map((e) => {
@@ -9936,7 +9820,7 @@
       e.sets.forEach((st, i) => {
         const line = document.createElement('div'); line.className = 'trDayCardSet';
         const idx = document.createElement('span'); idx.className = 'trDayCardIdx'; idx.textContent = String(i + 1); line.appendChild(idx);
-        const t = document.createElement('span'); t.textContent = (st.w === null ? '自重' : fmtKg(st.w) + 'kg') + ' × ' + st.r + (st.drops || []).map((d) => ' ↓' + fmtKg(d.w) + '×' + d.r).join(''); line.appendChild(t);
+        const t = document.createElement('span'); t.textContent = (st.w === null ? '自重' : fmtKg(st.w) + 'kg') + (st.r ? ' × ' + st.r : '') + (st.drops || []).map((d) => ' ↓' + fmtKg(d.w) + '×' + d.r).join(''); line.appendChild(t);
         if (st.note) { const n = document.createElement('span'); n.className = 'trDayCardNote'; n.textContent = st.note; line.appendChild(n); }
         row.appendChild(line);
       });
@@ -10007,7 +9891,6 @@
   async function generateMuscleMaps(names) {
     const json = await aiFetch({ model: getClaudeChatModel(), max_tokens: 8192, system: buildMuscleSystemBlocks(), messages: [{ role: 'user', content: '種目名（name）と本人の部位（part）:\n' + JSON.stringify(names.map((n) => ({ name: n, part: partOfExercise(n) }))) + '\n\n出力のキーは name をそのまま使うこと。' }] });
     recordApiUsage('muscle', json.usage);
-    saveData(data);
     const text = (json.content || []).map((b) => b.text || '').join('');
     const parsed = parseMuscleReply(text);
     if (!parsed) { if (isTruncated(json)) throw truncatedResponseError(); const e = new Error('応答を JSON として読めませんでした'); e.parse = true; throw e; }
@@ -10479,6 +10362,7 @@
     data.journal.forEach((j) => { if (!min || j.date < min) min = j.date; });
     walkData.walkedDates.forEach((d) => { if (!min || d < min) min = d; });
     medData.sessions.forEach((x) => { if (!min || x.date < min) min = x.date; });
+    trainingData.days.forEach((d) => { if (!min || d.date < min) min = d.date; });
     return min ? min.slice(0, 7) : todayStr().slice(0, 7);
   }
 
@@ -10910,7 +10794,7 @@
     del.className = 'recordEntryDelete';
     del.textContent = '消す';
     del.addEventListener('click', async () => {
-      if (!confirm(`${dotDate(dateStr)} の散歩の記録を取り消します。よろしいですか？`)) return;
+      if (!confirm(`${dotDate(dateStr)}の散歩の記録を消しますか？`)) return;
       await deleteWalkDayRecord(dateStr);
       refreshAfterDayRecordChange();
     });
@@ -10918,7 +10802,7 @@
     item.appendChild(top);
 
     const lines = [];
-    if (stats.afterMood != null) lines.push('散歩後の気分 ' + MOOD_EMOJI[stats.afterMood]);
+    if (stats.afterMood != null) lines.push('散歩後の体調 ' + MOOD_EMOJI[stats.afterMood]);
     if (stats.steps != null) lines.push(stats.steps + ' 歩');
     if (stats.distanceM != null) lines.push((stats.distanceM / 1000).toFixed(1) + ' km');
     const info = document.createElement('div');
@@ -11168,7 +11052,7 @@
   });
   document.getElementById('btnDeleteDayRecord').addEventListener('click', async () => {
     if (!editingDate) return;
-    if (!confirm(`${dotDate(editingDate)} の記録を取り消します。よろしいですか？`)) return;
+    if (!confirm(`${dotDate(editingDate)}の散歩の記録を消しますか？`)) return;
     await deleteWalkDayRecord(editingDate);
     closeDayEditor();
   });
@@ -11300,14 +11184,10 @@
     renderUnusedQuestions();
   }
 
-  function openDraw(centerNoteId) {
+  function openDraw() {
     document.getElementById('screen-draw').hidden = false;
     syncBarEl.style.visibility = 'hidden';
     resetDrawStage();
-    if (centerNoteId && findNote(centerNoteId)) {
-      document.getElementById('drawChoice').hidden = true;
-      showDrawnNote(findNote(centerNoteId), { pop: true, record: false });
-    }
   }
 
   function closeDraw() {
@@ -11599,7 +11479,7 @@
     const materials = pickQuestionMaterials();
     if (!materials) {
       document.getElementById('drawChoice').hidden = false;
-      setDrawChoiceHint('問いを立てるための材料がまだ足りません。「言葉を引く」から言葉を集めてください。');
+      setDrawChoiceHint('問いを立てるための材料がまだ足りません。言葉が増えて、つながりや朝・相談の記録がたまってから試してください。');
       return;
     }
     questionState.busy = true;
@@ -12444,7 +12324,7 @@
     const quota = 5 * 1048576;
     const pct = Math.round(localBytes / quota * 100);
     return {
-      line: `言葉 ${fmtBytes(notesB)}（${data.notes.length}枚）／記録 ${fmtBytes(journalB)}（${data.journal.length}件` + (journalMonthly() ? '・読み込み中の月のみ' : '') + `）／筋トレ ${fmtBytes(trainingB)}／散歩 ${fmtBytes(walkB)}`,
+      line: `言葉 ${fmtBytes(notesB)}（${data.notes.length}枚）／記録 ${fmtBytes(journalB)}（${data.journal.length}件` + (journalMonthly() ? '・読み込み中の月のみ' : '') + `）／筋トレ ${fmtBytes(trainingB)}／散歩 ${fmtBytes(walkB)}／瞑想 ${fmtBytes(sz(medData))}`,
       note: (kv.mode === 'idb' ? 'データは IndexedDB に保存（localStorage の 5 MB 制限の外）。' : '⚠ IndexedDB が使えないため localStorage に保存しています。') + `localStorage 使用 約 ${fmtBytes(localBytes)}（${pct}%）` + (localSaveError ? '　⚠ ' + localSaveError : ''),
       pct,
     };
@@ -12504,7 +12384,6 @@
     set('setSubWords', data.notes.length + '件');
     set('setSubWalk', computeWalkDerived().n + '日');
     set('setSubWorld', 'ソース ' + worldSources().length + '件 ・ 版 ' + APP_BUILD);
-    set('setSubStats', '');
   }
   function openSettings() {
     showScreen('settings');
@@ -12576,7 +12455,7 @@
     document.getElementById('statMeditationMode').textContent = `年ファイル（${Object.keys(md.yearJson).length} 年分、${medData.sessions.length} 回、未同期 ${md.dirty.size}）`;
     const lastSync = localStorage.getItem(LAST_SYNC_KEY);
     const lastWalkSync = localStorage.getItem(WALK_LAST_SYNC_KEY);
-    const latestSync = [lastSync, lastWalkSync].filter(Boolean).sort().pop();
+    const latestSync = [lastSync, lastWalkSync, localStorage.getItem(TRAINING_LAST_SYNC_KEY), localStorage.getItem(MEDITATION_LAST_SYNC_KEY)].filter(Boolean).sort().pop();
     document.getElementById('statLastSync').textContent = latestSync ? formatDateTime(latestSync) : '-';
     { const r = dataSizeReport(); document.getElementById('statDataSize').textContent = r.line; document.getElementById('statDataSizeNote').textContent = r.note; }
     document.getElementById('statJournalMode').textContent = journalMonthly() ? `月ファイル（${jm.index ? Object.keys(jm.index.months).length : 0} か月、読み込み中 ${jm.loaded.size} か月）` : 'data.json（旧方式）';
@@ -12591,6 +12470,7 @@
     const errParts = [];
     if (noteErr) errParts.push(`${noteErr.message}（${formatDateTime(noteErr.at)}）`);
     if (walkErr) errParts.push(`${walkErr.message}（${formatDateTime(walkErr.at)}）`);
+    [TRAINING_LAST_SYNC_ERROR_KEY, MEDITATION_LAST_SYNC_ERROR_KEY].forEach((k) => { const e = getSyncError(k); if (e) errParts.push(`${e.message}（${formatDateTime(e.at)}）`); });
     document.getElementById('statLastSyncError').textContent = errParts.length ? errParts.join(' / ') : '-';
 
     document.getElementById('walkStartDateInput').value = walkData.startDate;
@@ -12808,6 +12688,8 @@
       localStorage.removeItem(GH_TOKEN_KEY);
       setSyncStatus('off');
       setWalkSyncStatus('off');
+      setTrainingSyncStatus('off');
+      setMeditationSyncStatus('off');
       alert('保存しました');
     }
   });
@@ -13458,7 +13340,6 @@
   const SHOOT_SAVE_MS = 400;
   const SHOOT_CARD_LABEL = { research: '研究', fun: 'わくわく', word: '言葉', record: '記録' };
   const SHOOT_BELIEF_LABEL = { yes: '信じている', half: '半信半疑', fun: 'エンタメだと思う' };
-  const SHOOT_USED_PICK_DAYS = 30;
   const shootState = { deckId: null, filledFor: null, saveTimer: null, pickerOpen: false, said: new Set(), consultOpen: false, consultBusy: false, consultFilledFor: null, consult: null, hookCandidates: [], labelMode: false, noteReadFor: null };
   let shootWakeLock = null;
 
@@ -13538,7 +13419,7 @@
     return t ? '最終同期 ' + formatDateTime(t) : 'まだ同期していません';
   }
   function renderShootList() {
-    document.getElementById('shootSyncNote').textContent = shootSyncLine() + '　（他の端末で作ったデッキは「取り込む」で出ます）';
+    document.getElementById('shootSyncNote').textContent = shootSyncLine() + '　（他の端末で作ったデッキは「同期」で出ます）';
     const wrap = document.getElementById('shootDeckList');
     wrap.innerHTML = '';
     const list = deckEntries();
@@ -14045,7 +13926,7 @@
     // clipboard blocked (some browsers outside a secure context): show it to copy by hand
     el.textContent = 'コピーできませんでした。下の欄の内容を選んでコピーしてください。';
     const box = document.getElementById(statusId.replace('Status', 'Paste'));
-    if (box) box.value = text;
+    if (box) { box.value = text; box.hidden = false; }
   }
   function shootParseJson(raw) {
     const cleaned = String(raw || '').trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
@@ -14372,7 +14253,7 @@
   document.getElementById('backFromShoot').addEventListener('click', () => { if (shootState.deckId) closeDeckEditor(); else openRecords(); });
   document.getElementById('btnShootSync').addEventListener('click', () => {
     shootFlush();
-    document.getElementById('shootSyncNote').textContent = '取り込んでいます…';
+    document.getElementById('shootSyncNote').textContent = '同期しています…';
     syncAllNow().then(() => { if (nav.screen === 'shoot') renderShoot(); }).catch(() => { if (nav.screen === 'shoot') renderShoot(); });
   });
   document.getElementById('btnShootNew').addEventListener('click', () => {
@@ -14491,7 +14372,6 @@
   // 別ファイルに置く。1ファイル＋種別だと、どこか1か所の絞り忘れで概念一覧が
   // 固有名詞で埋まる。
   const WORLD_TERM_MIN_LEN      = 4;    // 用語の「片方が片方を含む」を使う最短の長さ（概念は3）
-  const WORLD_KNOWN_TERMS_MAX   = 600;  // プロンプトに差し込む既知用語の上限
   const WORLD_TERM_LINE_MIN     = 20;   // 注の長さの目安（プロンプトに書く数字）
   const WORLD_TERM_LINE_MAX     = 35;   // v10.5.1: 40 だと全部が上限に張り付き、節が二段になる
   const WORLD_TERM_BODY_MIN_LEN = 3;    // 本文中で当てにいく日本語の最短の長さ
@@ -14508,16 +14388,9 @@
   // v17 C：生成にも予測させ、答え合わせを一次ソースでやる。
   // 判定は「どちらが当たったか」ではなく「何が起きたか」を聞き、当たり外れは端末が引く。
   const WORLD_FORK_PER_BATCH  = 3;    // 1回の取り込みで分かれ目を書く札の数
-  const WORLD_JUDGE_PER_BATCH = 12;   // 1回の答え合わせに載せる数
-  const WORLD_HOLD_DAYS       = 14;   // 保留を次に見るまでの日数
-  const WORLD_HOLD_MAX        = 2;    // 何回保留になったら打ち切るか
   const WORLD_BECAUSE_MAX     = 60;   // 生成の見立ての理由の字数
   const WORLD_EVIDENCE_MAX    = 80;   // 判定の根拠の字数
   const WORLD_OUTCOMES        = ['up', 'down', 'flat'];
-  // 札の画面で、生成の見立て（方向）まで隠すか。理由（because）は押すまで畳む
-  // のが既定で、方向は出す——方向1つなら引きずられる度合いが小さく、隠すと
-  // 「AI はこう思っている」が答え合わせの画面でしか見られなくなるため。
-  const WORLD_LEAN_HIDDEN     = false;
   const WORLD_SORTS = ['count', 'kana', 'new'];
   const WORLD_CONCEPT_SORTS = ['count', 'kana', 'new', 'parent'];   // v11: 親でまとめる
   const WORLD_SORT_LABEL = { count: '回数順', kana: '五十音順', new: '新しい順', parent: '親でまとめる' };
@@ -14527,8 +14400,6 @@
   // 概念・用語と違って id で引ける＝表記ゆれが起きない。
   const WORLD_STRATA_PER_EVENT     = 2;     // 1件が乗れる地層の数
   const WORLD_STRATUM_ON_COLLAPSED = true;  // 朝の畳んだ行の下にも地層を1行出すか
-  const WORLD_TERM_SINK_DAYS       = 90;    // これだけ札に出ない用語は一覧の下に沈む
-  const WORLD_CONCEPT_PARENT_DEPTH = 2;     // 上位概念の深さ（親と子だけ）
   const WORLD_REASON_MAX           = 60;    // なぜこの札を選んだか
   const WORLD_STANCE_MAX           = 60;    // 発信者の立場
   const WORLD_STRATUM_DIRS      = ['up', 'down', 'flat'];
@@ -14630,13 +14501,11 @@
   const WORLD_FLOW_UNIT_LABEL  = { JPY: '円', USD: 'ドル', EUR: 'ユーロ', CNY: '元', '%': '割合', '': '単位が読めないもの' };
   // v13 主体の盤面：既定の画面。「今日どんな出来事があったか」ではなく
   // 「いま誰が何を動かそうとしているか」を最初に見る。
-  const WORLD_MONEY_BRIEF   = 3;   // v18 A-2: 既定の画面に出すお金の本数
   const WORLD_SEARCH_SHOW   = 6;   // v18 A-2: 探すの結果を出す件数（先は一覧へ）
   // v19.5 段階2：用語集をやめたので、探すの型から「用語」を外す（注そのものは札の本文に残る）
   const WORLD_SEARCH_KINDS  = [['card', '札'], ['concept', '概念'], ['actor', 'アクター'], ['money', 'お金']];
   const WORLD_BOARD_FOLD = 5;    // 盤面の既定の件数
   const WORLD_BOARD_MAX  = 20;   // 「もっと見る」で出す上限
-  const WORLD_BOARD_LEGEND_KEY = 'kotoba_worldBoardLegend';   // 凡例を畳んだか
   const WORLD_BOARD_ASKS = 2;    // 盤面に出す最近の問いの数
 
   // v14 問いモード：「知りたいことが先、主体はそこから出てくる」入口。
@@ -14690,7 +14559,7 @@
   const WORLD_SOURCES_PATH  = 'world/sources.json';
   const worldMonthPath = (m) => 'world/' + m + '.json';
 
-  // 一度も保存されていないときだけ入れる初期値。levels は空のまま登録する
+  // 一度も保存されていないときだけ入れる初期値。levels は空のまま登録する（v20.8：DFA の2つだけは WORLD_DFA_SEED の実際の値を入れる）
   // （推測の数字を入れると、この機能の信頼が最初から壊れる）。
   // where.url は実測で確認済み。
   const WORLD_DEFAULT_STRATA = [
@@ -15177,7 +15046,7 @@
       short: worldStr(s.short, 8) || worldStr(s.name, 8),
       line: worldStr(s.line, 120),
       unit: worldStr(s.unit, 12),
-      // v16 B: どれくらいで「古い」か。地層ごとに違う（金利は日次、人口は年次）
+      // v16 B: どれくらいで「古い」か。地層ごとに違う（金利は月次、人口は年次）
       cadence: WORLD_CADENCES.includes(s.cadence) ? s.cadence : 'quarter',
       dir: WORLD_STRATUM_DIRS.includes(s.dir) ? s.dir : 'flat',
       dirSince: worldStr(s.dirSince, 12),
@@ -15479,7 +15348,6 @@
       applyWorldMonthToMemory(m, doc || emptyWorldMonthDoc(m));
     });
     liveWorldMonths().forEach((m) => { if (!wd.loaded.has(m)) applyWorldMonthToMemory(m, emptyWorldMonthDoc(m)); });
-    // 地層の初期値。levels は空のまま（推測の数字を入れると信頼が壊れる）
     // アクターの種。同名のソースがあれば、その stance を初期値に借りる
     if (!wd.actors.actors.length && !wd.actors.updatedAt) {
       wd.actors.actors = WORLD_DEFAULT_ACTORS.map((x) => {
@@ -16028,7 +15896,7 @@
   // v15: meta を付けると生成から来た値になる（{ source, url, via, eventId }）。
   // via:'card'（札）・'probe'（v16 B。地層を調べたもの）は上書きしない。levels は
   // 履歴で、足すだけのもの。同じ日付が既にあれば落とす（false を返す）。
-  // 上書きしてよいのは手入力だけ——打ち間違いを直せないと困るため。
+  // 上書きしてよいのは手入力（打ち間違いを直せないと困るため）と、同じ日の API の値だけ。
   function worldAddLevel(s, value, at, note, meta) {
     const v = worldStr(value, 40);
     if (!v || !isDateStr(at)) return false;
@@ -16407,17 +16275,7 @@
     return worldConcepts().filter((c) => c.id !== child.id && !c.parent);
   }
 
-  // ---- 用語が沈む (v11) ----------------------------------------------------
-  // seenAt は使わない。注を開くのは「その語を知らなかったとき」なので、
-  // seenAt で沈めると IMF のように身についた語から先に沈む（意図と逆）。
-  // 最後にその語が札に出た日で沈める。
-  function worldTermSunk(t) {
-    const last = (t.lastUsedAt || '').slice(0, 10);
-    if (!isDateStr(last)) return false;
-    const d = worldDaysSince(last);
-    return d !== null && d > WORLD_TERM_SINK_DAYS;
-  }
-
+  // ---- 概念と用語を起こす (v11) --------------------------------------------
   // 取り込んだ1件から概念と用語を起こす／既存につなぐ。
   // 出来事側の綴りは正式名へ寄せて保存する（あとで統合・名前変更をしたとき
   // 既存の出来事が自動で追従し、同じものが違う綴りで並ぶこともなくなる）。
@@ -16619,43 +16477,6 @@
     if (!p.writtenDate) p.writtenDate = todayStr();
     p.dueDate = addDays(p.writtenDate, p.days);
   }
-  function worldSetPrediction(ev, text) {
-    const p = ev.prediction;
-    const t = worldStr(text, 600);
-    if (t === p.text) return false;
-    const iso = nowIso();
-    // 1分以内の書き直しは history に行を作らない（撮るの answers と同じ）。
-    // 行には、そのとき何を押していたかも添える。
-    if (p.text && p.setAt && (Date.now() - new Date(p.setAt).getTime()) >= 60000) p.history.push({ text: p.text, at: p.setAt, pick: p.pick });
-    p.text = t;
-    p.setAt = iso;
-    worldPredictionDue(ev);
-    worldTouch(ev);
-    return true;
-  }
-  // 押し直しは history に行を作らない（押すたびに行が増えると読めない）
-  function worldSetPredictionPick(ev, pick) {
-    const p = ev.prediction;
-    const v = WORLD_PICKS.includes(pick) ? pick : '';
-    if (p.pick === v) return;
-    p.pick = v;
-    if (!p.setAt) p.setAt = nowIso();
-    worldPredictionDue(ev);
-    worldTouch(ev);
-  }
-  function worldSetPredictionDays(ev, days) {
-    const p = ev.prediction;
-    if (!WORLD_PREDICT_CHOICES.includes(days) || p.days === days) return;
-    p.days = days;
-    if (worldPredictionAny(ev) && p.writtenDate) p.dueDate = addDays(p.writtenDate, days);
-    worldTouch(ev);
-  }
-  function worldDueEvents(onOrBefore) {
-    const out = [];
-    if (!wd.index) return out;
-    Object.entries(wd.index.due).forEach(([d, ids]) => { if (d <= onOrBefore) ids.forEach((id) => out.push({ id, due: d })); });
-    return out.sort((a, b) => (a.due < b.due ? -1 : 1));
-  }
 
   // ---- プロンプト ----------------------------------------------------------
   // v20.2.2：概念が一覧の上限に近づいたら、取り込み結果に1行出す
@@ -16665,22 +16486,10 @@
     if (n <= WORLD_KNOWN_MAX) return '概念が' + n + '件です（一覧に入るのは' + WORLD_KNOWN_MAX + '件まで）';
     return '概念が' + n + '件です（一覧に入るのは最近の' + WORLD_KNOWN_MAX + '件まで、' + (n - WORLD_KNOWN_MAX) + '件が外れています）';
   }
-  function worldKnownNames(field) {
+  function worldKnownNames() {
     return worldConcepts()
-      .filter((c) => !field || !c.field || c.field === field)   // v19: 分野を渡さなければ全部
       .slice().sort((a, b) => (a.lastUsedAt > b.lastUsedAt ? -1 : 1))
       .slice(0, WORLD_KNOWN_MAX)
-      .map((c) => c.name);
-  }
-  // 用語は概念より速く増えるので、別の上限で切る（名前が短いぶん多く入る）。
-  // 沈んだ用語（90日どの札にも出ていない）は外す。プロンプトが縮む方向に働き、
-  // こちらも忘れている可能性が高いので、もう一度注が付くのは正しい。
-  // 同じ名前が概念側にあるものも外す（概念が本体。既知一覧に二重に出さない）。
-  function worldKnownTermNames() {
-    return worldTerms()
-      .filter((t) => !worldTermSunk(t) && !worldFindIn(WORLD_STORES.concept, t.name))
-      .slice().sort((a, b) => (a.lastUsedAt > b.lastUsedAt ? -1 : 1))
-      .slice(0, WORLD_KNOWN_TERMS_MAX)
       .map((c) => c.name);
   }
   // 地層は id で選ばせる。閉じたリストなので表記ゆれが起きない。
@@ -17348,7 +17157,7 @@
   }
 
   // ---- まとめて貼る (v17.1) --------------------------------------------------
-  // ソースの立場22件と地層の確認先13件を手で入れるのは現実的でないので、
+  // ソースの立場と地層の確認先を手で1件ずつ入れるのは現実的でないので、
   // 「コピー → 貼る → 取り込む」の形で一度に入れる。
   // 行き先は先頭の列で決まる。地層の id は st_ で始まる閉じたリストなので、
   // ソース名と衝突しない。判別が曖昧になる概念・用語・アクターは入れない
@@ -17425,7 +17234,7 @@
     if (res.stanceKept) msg += '　既に入っていた ' + res.stanceKept + '件はそのままです（上書きするにはチェックを入れてください）。';
     if (res.strata) msg += '　地層 ' + res.strata + '件の確認先を直しました'
       + (res.strataNamed ? '（うち名前と説明も ' + res.strataNamed + '件）' : '') + '。';
-    if (!res.stance && !res.strata) msg = (res.stanceKept ? '入ったものはありません。' : '入ったものがありません。') + msg;
+    if (!res.stance && !res.strata) msg = '入ったものはありません。' + msg;
     if (res.notFound.length) msg += '　※ 見つからなかった ' + res.notFound.length + '件：' + res.notFound.slice(0, 6).join(' ・ ')
       + (res.notFound.length > 6 ? ' ほか' : '') + '。名前が一覧と違うか、新しいソースです（このボタンでは作りません）。';
     if (res.badId.length) msg += '　※ 一覧に無い地層の id ' + res.badId.length + '件：' + res.badId.slice(0, 6).join(' ・ ') + '。';
@@ -17434,147 +17243,16 @@
     return msg;
   }
 
-  // ---- 答え合わせ (v17 C) ----------------------------------------------------
-  // 聞くのは「その分かれ目は実際どうなったか」だけ。当たり外れは端末が引く。
-  // 生成に採点させると採点が甘くなる方向に力がかかり、pick や lean を見せると
-  // それに引きずられる。だから両方ともプロンプトに載せない。
+  // ---- 予測の印 (v17 C) ------------------------------------------------------
+  // 札の prediction（自分の3択・一言、生成の見立て lean）を読むだけの関数。
+  // 答え合わせの画面は v20.9 で外した（v19.5 から入口が無かった）。データは残す
   function worldPredictionMine(ev) { return !!(ev.prediction.pick || ev.prediction.text); }
   function worldPredictionLean(ev) { return !!ev.prediction.lean; }
   function worldPredictionAny(ev)  { return worldPredictionMine(ev) || worldPredictionLean(ev); }
-  function worldNextCheckOf(ev) { return ev.prediction.nextCheck || ev.prediction.dueDate; }
-  // 期限（保留のときは次に見る日）の古い順。端末に読み込んでいる札だけ。
-  function worldJudgeTargets() {
-    const today = todayStr();
-    return worldLiveEvents()
-      .filter((e) => e.fork && worldPredictionAny(e) && !e.prediction.judgedAt)
-      .filter((e) => { const d = worldNextCheckOf(e); return d && d <= today; })
-      .sort((a, b) => (worldNextCheckOf(a) < worldNextCheckOf(b) ? -1 : 1));
-  }
-  // level と event で up の意味が違う。生成側に毎回判断させると事故るので、
-  // 端末で文言に展開してから渡す。3択のボタンの文言（上／下）はここでは使えない
-  // ——「up とは：上」では、その分かれ目にとって何が上なのかが伝わらない。
-  function worldOutcomeWords(ev) {
-    return ev.fork.type === 'level'
-      ? 'up とは：示された水準に届く（分かれ目の文のとおりになる）　／　down とは：届かない'
-      : 'up とは：起きる（分かれ目の文のとおりになる）　／　down とは：起きない';
-  }
-  function worldJudgePromptText() {
-    const cards = worldJudgeTargets().slice(0, WORLD_JUDGE_PER_BATCH);
-    return SHOOT_PROMPT_HEAD +
-      'あなたは、少し前に立てた「分かれ目」が実際どうなったかを調べる係です。\n' +
-      '予測しません。採点しません。何が起きたかだけを調べて返します。\n\n' +
-      '■ 必ず守ること\n' +
-      '- web 検索を必ず使う。検索せずに書かない。\n' +
-      '- 一次ソース（中銀・政府・国際機関・統計）で確認できた事実だけを書く。\n' +
-      '- 分かったことと、分からなかったことを正直に分ける。\n' +
-      '  決着していない・調べても出てこない分かれ目は "unknown" にする。\n' +
-      '  埋めるくらいなら "unknown" のほうがよい。\n' +
-      '- url が無いものは書かない。出典が出せない結果は "unknown" にする。\n' +
-      '- 前に誰が何を予測したかは書いていない。予測に合わせて事実を選ばない。\n' +
-      '- JSON のみ。ほかの文章を返さない。\n\n' +
-      '■ それぞれに書くこと\n' +
-      '- eventId：下の一覧にある id だけ。\n' +
-      '- outcome：その分かれ目が実際どうなったか。\n' +
-      '  "up"      … その分かれ目に書いた「up とは」に当たることが起きた\n' +
-      '  "down"    … 起きなかった\n' +
-      '  "flat"    … 決着したが、どちらとも言えない形で終わった\n' +
-      '  "unknown" … まだ決着していない、または調べても分からなかった\n' +
-      '- evidence：そう言える事実を1文・' + WORLD_EVIDENCE_MAX + '字以内。数字か日付を含める。\n' +
-      '  「〜と報じられた」ではなく「〜が〜した」と書く。\n' +
-      '- url：その事実が載っているページ。outcome が "unknown" のときは空でよい。\n\n' +
-      '■ 出力形式\n' +
-      '{"results":[\n' +
-      '  {"eventId":"w_20260610_1","outcome":"up",\n' +
-      '   "evidence":"米エネルギー情報局の週報で10月2日に留出油在庫が9860万バレルとなり1億バレルを割った",\n' +
-      '   "url":"https://..."},\n' +
-      '  {"eventId":"w_20260612_2","outcome":"unknown",\n' +
-      '   "evidence":"IMF理事会の議題に上がっておらず、承認の記録が無い","url":""}\n' +
-      ']}\n\n' +
-      '────────────────────────────────────────\n' +
-      '■ 調べる分かれ目（' + cards.length + '件）\n' +
-      (cards.length ? cards.map((e) =>
-        '[' + e.id + ']  ' + e.eventDate + '\n' +
-        '  分かれ目：' + e.fork.text + '\n' +
-        '  ' + worldOutcomeWords(e) + '\n' +
-        '  もとの出来事：' + e.fact + '\n' +
-        '  出典：' + (e.source || '') + '  ' + (e.url || '') + '\n' +
-        '  期限：' + (e.prediction.dueDate || '')
-        + (e.prediction.holdCount ? '（' + e.prediction.holdCount + '回保留）' : '')).join('\n\n')
-        : '（期限が来た分かれ目がありません）');
-  }
-
-  // 判定するのは outcome だけ。当たり外れは lean・pick と突き合わせて端末が引く。
-  // url・evidence が無いもの、unknown は保留にして 14 日後にもう一度出す。
-  // 2回保留になったら打ち切る——永久に戻り続けると答え合わせが詰まるので。
-  function worldImportJudgeJson(raw) {
-    const parsed = shootParseJson(raw);
-    const items = parsed ? (Array.isArray(parsed) ? parsed : Array.isArray(parsed.results) ? parsed.results : null) : null;
-    if (!items) return { error: 'JSON として読めませんでした。{"results":[...]} の形で貼ってください。' };
-    const out = { judged: 0, held: 0, closed: 0, unknown: 0, noUrl: 0, noEvidence: 0, missing: 0,
-      leanHit: 0, leanMiss: 0, mineHit: 0, mineMiss: 0 };
-    const touched = new Set();
-    const iso = nowIso();
-    items.forEach((r) => {
-      if (!r || typeof r !== 'object') return;
-      const ev = worldLiveEvents().find((e) => e.id === String(r.eventId));
-      if (!ev || !ev.fork) { out.missing++; return; }
-      const p = ev.prediction;
-      if (p.judgedAt) return;                                   // 済みは触らない（足すだけ）
-      const outcome = WORLD_OUTCOMES.includes(r.outcome) ? r.outcome : '';
-      const url = typeof r.url === 'string' ? (shootSafeUrl(r.url.trim()) || '') : '';
-      const evidence = worldStr(r.evidence, WORLD_EVIDENCE_MAX);
-      let hold = '';
-      if (!outcome) { hold = 'unknown'; out.unknown++; }
-      else if (!url) { hold = 'noUrl'; out.noUrl++; }           // 判定を捏造させない
-      else if (!evidence) { hold = 'noEvidence'; out.noEvidence++; }
-      if (hold) {
-        p.holdCount = (p.holdCount || 0) + 1;
-        if (p.holdCount >= WORLD_HOLD_MAX) {
-          p.result = p.pick ? 'hold' : '';
-          p.leanResult = p.lean ? 'hold' : '';
-          p.judgedAt = iso; p.nextCheck = '';
-          p.evidence = evidence;                                 // 分からなかった理由は残す
-          out.closed++;
-        } else {
-          p.nextCheck = addDays(todayStr(), WORLD_HOLD_DAYS);
-          p.evidence = evidence;
-          out.held++;
-        }
-      } else {
-        p.outcome = outcome; p.evidence = evidence; p.evidenceUrl = url;
-        p.judgedAt = iso; p.nextCheck = '';
-        p.leanResult = p.lean ? (p.lean === outcome ? 'hit' : 'miss') : '';
-        // pick が無ければ result は空のまま。押さなかったものを外れにしない
-        p.result = p.pick ? (p.pick === outcome ? 'hit' : 'miss') : '';
-        if (p.leanResult === 'hit') out.leanHit++; else if (p.leanResult === 'miss') out.leanMiss++;
-        if (p.result === 'hit') out.mineHit++; else if (p.result === 'miss') out.mineMiss++;
-        out.judged++;
-      }
-      ev.updatedAt = iso;
-      touched.add(monthOfDate(ev.eventDate));
-    });
-    touched.forEach((m) => worldMonthChanged(m));
-    return out;
-  }
-  // 判定済みの札から的中率を出す。自分の分は「自分が答えたもの」だけで数える。
-  function worldJudgeStats() {
-    const st = { leanHit: 0, leanMiss: 0, leanHold: 0, mineHit: 0, mineMiss: 0, mineHold: 0 };
-    worldLiveEvents().forEach((e) => {
-      const p = e.prediction;
-      if (!p.judgedAt) return;
-      if (p.leanResult === 'hit') st.leanHit++; else if (p.leanResult === 'miss') st.leanMiss++; else if (p.leanResult === 'hold') st.leanHold++;
-      if (p.result === 'hit') st.mineHit++; else if (p.result === 'miss') st.mineMiss++; else if (p.result === 'hold') st.mineHold++;
-    });
-    return st;
-  }
-  function worldRateText(hit, miss) {
-    const n = hit + miss;
-    return n ? hit + '/' + n + '（' + Math.round((hit / n) * 100) + '%）' : '—';
-  }
 
   // ---- 地層の現在値を調べる (v16 B) ------------------------------------------
   // 週のニュースの札には、長期金利・人口・実質実効為替レートのような量は出て
-  // こない。13件のうち札から埋まるのはせいぜい5件なので、専用のプロンプトで
+  // こない。札から埋まるのは一部だけなので、専用のプロンプトで
   // 残りを埋める。値・基準日・出典URL の3点が揃わなければ返せない形にする。
   function worldProbePromptText() {
     const list = worldStrata();
@@ -17695,7 +17373,7 @@
       '        分かる形で書かれているときだけ。無ければ空。\n' +
       '  - read：あなたが読んだ思惑。推定であることを前提に書く。\n' +
       '        said と同じ内容なら空。書くなら述べたことと違うことを。書けなければ空。\n' +
-      '  - kind：state／cb／intl／industry／person。すでに知っているアクターには書かなくてよい。\n' +
+      '  - kind：state／cb／intl／industry／person／group。すでに知っているアクターには書かなくてよい。\n' +
       '  - 札に「※ 主語は付いています」と書いてあるものは、actors を [] にしてください。\n' +
       '- flow：detail に金額が書かれているときだけ。amount は書かれた文字列のまま。無ければ null。\n' +
       '  span：その金額が期間の累計・合計だと detail に書かれていれば、その期間（「2022年以降」）。\n' +
@@ -17733,7 +17411,7 @@
       '■ すでに知っているアクター（name はここから探す。無ければ新しく書いてよい。先頭の名前だけを書き、［別名：…］は書かない）\n' +
       (knownActors.length ? knownActors.join(' / ') : '（まだありません）');
   }
-  // 足すだけ。ev.actors が空の札にだけ。id が端末に無い札は無視。
+  // 足すだけ。主語は actors が空の札にだけ、flow の空欄と地層の値はどの札にも。id が端末に無い札は無視。
   function worldImportRetroJson(raw) {
     const parsed = shootParseJson(raw);
     const hasActors = parsed && typeof parsed === 'object' && parsed.actors && typeof parsed.actors === 'object';
@@ -18093,21 +17771,7 @@
       .sort((a, b) => (a.eventDate > b.eventDate ? -1 : 1));
     return list[0] || null;
   }
-  // v17 C: 生成の見立て（lean）が自動で入るので、「自分が書いた」と「何か予測が
-  // 付いている」を分ける。答え合わせと due 索引は Any、コピー文は Mine。
-  function worldPredictionWritten(ev) { return worldPredictionMine(ev); }
   const WORLD_RESULT_LABEL = { hit: '当たり', miss: '外れ', hold: '保留' };
-  // v17 C: 答え合わせの画面には3択のボタンが無いので、ボタンの文言（上／下）を
-  // 借りると「1億バレルを割るか → 上」になって何が起きたのか読めない。
-  // プロンプトに書いた「up とは」と同じ言い方に揃える。
-  const WORLD_OUTCOME_LABEL = {
-    level: { up: '届いた', down: '届かなかった', flat: 'どちらとも' },
-    event: { up: '起きた', down: '起きなかった', flat: 'どちらとも' },
-  };
-  const WORLD_SIDE_LABEL = {
-    level: { up: '届く', down: '届かない', flat: 'どちらとも' },
-    event: { up: '起きる', down: '起きない', flat: 'どちらとも' },
-  };
   function worldPredictionSummary(ev) {
     const p = ev.prediction;
     if (!worldPredictionAny(ev)) return '';
@@ -18568,15 +18232,6 @@
     deepBtn.addEventListener('click', (e) => { e.stopPropagation(); deep.hidden = !deep.hidden; deepBtn.classList.toggle('selected', !deep.hidden); });
     btns.appendChild(deepBtn);
 
-    const predBox = document.createElement('div');
-    predBox.className = 'worldPredBox';
-    predBox.hidden = !worldPredictionAny(ev);
-    const predBtn = document.createElement('button');
-    predBtn.type = 'button'; predBtn.className = 'tagFilterBtn';
-    predBtn.textContent = worldPredictionMine(ev) ? '予測を直す' : '予測';
-    predBtn.addEventListener('click', (e) => { e.stopPropagation(); predBox.hidden = !predBox.hidden; });
-    // v19.5 段階2：予測のボタンは出さない（prediction のデータは残す）
-
     // 定型の依頼文。押す気が起きるように、質問文を考える工数をゼロにする。
     const askRow = document.createElement('div');
     askRow.className = 'worldAskRow';
@@ -18614,110 +18269,13 @@
     box.appendChild(copyNote);
     box.appendChild(deep);
 
-    // --- 予測 ---
-    const dueEl = document.createElement('div');
-    dueEl.className = 'worldPredDue';
-    const paintDue = () => {
-      const p = ev.prediction;
-      dueEl.textContent = p.dueDate ? '期限 ' + dotDate(p.dueDate) : '押すか書くと期限が入ります';
-    };
-
-    // fork があれば3択が主。白紙の自由記述は書かれないので、押すだけで済む形。
+    // 分かれ目の1行。v19.5 段階2 から予測の枠（3択・一言・期限）は出さない（prediction のデータは残す）
     if (ev.fork) {
       const forkEl = document.createElement('div');
       forkEl.className = 'worldForkText';
       forkEl.textContent = '分かれ目：' + ev.fork.text;
-      // v19.5 段階2：予測の枠の外に出して常に出す（枠ごと画面から外したので、中に置くと見えなくなる）
       box.appendChild(forkEl);
-      // v17 C: 生成の見立ては3択の上。方向1つなら引きずられる度合いが小さく、
-      // 隠すと「AI はこう思っている」が答え合わせの画面でしか見られなくなる。理由は
-      // 自分が押すまで畳む——先に読むと、自分の考えではなく理由の追認になる。
-      if (ev.prediction.lean && !WORLD_LEAN_HIDDEN) {
-        const lw = document.createElement('div');
-        lw.className = 'worldLean';
-        const dir = document.createElement('div');
-        dir.className = 'wlDir';
-        const bg = document.createElement('span'); bg.className = 'guessBadge'; bg.textContent = '推定';
-        dir.appendChild(bg);
-        const lab0 = WORLD_PICK_LABEL[ev.fork.type] || WORLD_PICK_LABEL.event;
-        dir.appendChild(document.createTextNode('生成の見立て：' + lab0[ev.prediction.lean]));
-        const why = document.createElement('div');
-        why.className = 'wlWhy';
-        why.textContent = ev.prediction.because;
-        why.hidden = !ev.prediction.because || !ev.prediction.pick;
-        if (ev.prediction.because && !ev.prediction.pick) {
-          const t = document.createElement('button');
-          t.type = 'button'; t.className = 'linkLikeBtn';
-          t.textContent = 'なぜ ▸';
-          t.addEventListener('click', (e) => { e.stopPropagation(); why.hidden = !why.hidden; });
-          dir.appendChild(t);
-        }
-        lw.appendChild(dir); lw.appendChild(why);
-        predBox.appendChild(lw);
-      }
-      const pickRow = document.createElement('div');
-      pickRow.className = 'tagFilterRow';
-      const paintPicks = () => {
-        pickRow.querySelectorAll('button').forEach((b) => b.classList.toggle('selected', b.dataset.pick === ev.prediction.pick));
-      };
-      WORLD_PICKS.forEach((v) => {
-        const b = document.createElement('button');
-        b.type = 'button'; b.className = 'tagFilterBtn'; b.dataset.pick = v;
-        b.textContent = (WORLD_PICK_LABEL[ev.fork.type] || WORLD_PICK_LABEL.event)[v];
-        b.addEventListener('click', (e) => {
-          e.stopPropagation();
-          worldSetPredictionPick(ev, ev.prediction.pick === v ? '' : v);
-          paintPicks(); paintDue(); repaint();
-        });
-        pickRow.appendChild(b);
-      });
-      predBox.appendChild(pickRow);
-      paintPicks();
     }
-
-    const lab = document.createElement('span');
-    lab.className = 'fieldLabel';
-    lab.textContent = ev.fork ? 'ひとこと（任意）' : Math.round(ev.prediction.days / 30) + 'ヶ月後どうなっていると思うか（書かなくてよい）';
-    predBox.appendChild(lab);
-    const ta = document.createElement('textarea');
-    ta.rows = 2;
-    ta.value = ev.prediction.text;
-    ta.placeholder = ev.fork ? 'なぜそう思うか。書かなくてよい' : 'ひとこと。あとで答え合わせします';
-    ta.addEventListener('click', (e) => e.stopPropagation());
-    let saveTimer = null;
-    ta.addEventListener('input', () => {
-      if (saveTimer) clearTimeout(saveTimer);
-      saveTimer = setTimeout(() => { saveTimer = null; worldSetPrediction(ev, ta.value); paintDue(); repaint(); }, 600);
-    });
-    ta.addEventListener('blur', () => { if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; } worldSetPrediction(ev, ta.value); paintDue(); repaint(); });
-    predBox.appendChild(ta);
-
-    const daysRow = document.createElement('div');
-    daysRow.className = 'tagFilterRow';
-    const paintDays = () => {
-      daysRow.querySelectorAll('button').forEach((b) => b.classList.toggle('selected', Number(b.dataset.days) === ev.prediction.days));
-    };
-    WORLD_PREDICT_CHOICES.forEach((n) => {
-      const b = document.createElement('button');
-      b.type = 'button'; b.className = 'tagFilterBtn'; b.dataset.days = n;
-      b.textContent = n === 30 ? '1ヶ月' : n === 90 ? '3ヶ月' : n === 180 ? '6ヶ月' : n + '日';
-      b.addEventListener('click', (e) => { e.stopPropagation(); worldSetPredictionDays(ev, n); paintDays(); paintDue(); });
-      daysRow.appendChild(b);
-    });
-    predBox.appendChild(daysRow);
-    predBox.appendChild(dueEl);
-    paintDays(); paintDue();
-
-    if (ev.prediction.history.length) {
-      const hist = document.createElement('div');
-      hist.className = 'worldHistory';
-      hist.textContent = '前に書いたこと：' + ev.prediction.history.map((h) => {
-        const label = h.pick && ev.fork ? (WORLD_PICK_LABEL[ev.fork.type] || WORLD_PICK_LABEL.event)[h.pick] + ' ' : '';
-        return (h.at ? dotDate(h.at.slice(0, 10)) + ' ' : '') + label + h.text;
-      }).join(' ／ ');
-      predBox.appendChild(hist);
-    }
-    // v19.5 段階2：予測の枠（3択・一言・期限）は画面に付けない
   }
 
   // 出来事の url のドメインから、登録してあるソースの「立場」を引く
@@ -18887,7 +18445,6 @@
     }).filter(Boolean)
       .sort((x, y) => (x.date > y.date ? -1 : x.date < y.date ? 1 : y.count - x.count));
   }
-  function worldBoardLegendOpen() { try { return localStorage.getItem(WORLD_BOARD_LEGEND_KEY) !== '0'; } catch (e) { return true; } }
   // v18 A-1: 盤面と「今日動いた主体」で同じ行を使う（片方だけ直って離れるのを防ぐ）
   function worldBoardRowEl(r, onClick) {
     const row = document.createElement('button');
@@ -19011,7 +18568,7 @@
   }
 
   // 今日の3件の共通点。概念は premise が1件1つで薄く空振りするので、
-  // 13件しかない地層で判定する。無い日は何も言わない（毎日出る飾りにしない）。
+  // 数の少ない地層で判定する。無い日は何も言わない（毎日出る飾りにしない）。
   function worldCommonStratumOf(list) {
     const tally = new Map();
     list.forEach((e) => worldStrataOf(e).forEach((s) => tally.set(s.id, (tally.get(s.id) || 0) + 1)));
@@ -19081,7 +18638,7 @@
     renderWorldTodayActors(box, today, worldDayActorRows(today), worldBackgroundCards(today), renderHomeWorldStep);
     document.getElementById('homeWorldEmpty').hidden = !!today.length;
     document.getElementById('homeWorldEmpty').textContent = worldUnread().length
-      ? '今日の分がまだ出ていません。もう一度この行を押してください。'
+      ? '今日の分はまだ出していません。もう一度この行を押してください。'
       : '新しい分がありません。';
   }
   // v19.4 段階5：今日の取り込み。期限の来た必ず見るものが無い日はボタンを出さず、薄い字だけ
@@ -19126,14 +18683,12 @@
     document.getElementById('worldConceptView').hidden = worldState.view !== 'concept';
     document.getElementById('worldStratumView').hidden = worldState.view !== 'stratum';
     document.getElementById('worldAskView').hidden = worldState.view !== 'ask';
-    document.getElementById('worldJudgeView').hidden = worldState.view !== 'judge';
     document.getElementById('worldCardsView').hidden = worldState.view !== 'cards';
     document.getElementById('worldActorsView').hidden = worldState.view !== 'actors';
     document.getElementById('worldTidyView').hidden = worldState.view !== 'tidy';
     document.getElementById('worldMapView').hidden = worldState.view !== 'map';   // v20
     document.getElementById('worldNetView').hidden = worldState.view !== 'net';   // v20.4
     if (worldState.view === 'ask') renderWorldAsk();
-    else if (worldState.view === 'judge') renderWorldJudge();
     else if (worldState.view === 'main') renderWorldMain();
     else if (worldState.view === 'concept') renderWorldConcept();
     else if (worldState.view === 'stratum') renderWorldStratum();
@@ -19251,7 +18806,7 @@
     body.innerHTML = '';
     // 背景の札は、動いた主体がある日だけ独立した1行にする（主体が0の日は
     // 「今日は動いた主体がありません（背景の札 N件）」に含まれている）
-    if (actorRows.length && bg.length) body.appendChild(worldSunkCardsEl(bg, '背景に沈めた札 ' + bg.length + '件'));
+    if (actorRows.length && bg.length) body.appendChild(worldSunkCardsEl(bg, '背景の札 ' + bg.length + '件'));
     renderWorldAskBrief(body);
     // v19.5 段階2：「答え合わせ N件」の行を外す（答え合わせの画面へはここからしか入らない）
     renderWorldSearch(body);
@@ -19376,14 +18931,13 @@
     return copy.sort((a, b) => worldConceptCount(b) - worldConceptCount(a) || a.name.localeCompare(b.name, 'ja'));
   }
   // ---- 整理 (v18 A-2) --------------------------------------------------------
-  // 概念・用語・アクターの一覧と、統合・名前直し・非表示・親でまとめる。
+  // 概念・アクターの一覧と、統合・名前直し・非表示・親でまとめる。
   // 月に一度あるかどうかの操作なので、設定の中に置く（既定の画面に出さない）。
   function renderWorldTidy() {
     const body = document.getElementById('worldTidyBody');
     body.innerHTML = '';
     // v19.5 段階2：整理の型から「用語」を外す。「しばらく出ていない用語」も用語の型でしか出ないので一緒に消える
     if (worldState.entryKind === 'term') worldState.entryKind = 'concept';
-    const isTerm = worldState.entryKind === 'term';
     const isActor = worldState.entryKind === 'actor';
 
     const kindRow = document.createElement('div');
@@ -19391,7 +18945,7 @@
     [['concept', '概念'], ['actor', 'アクター']].forEach(([k, label]) => {
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'tagFilterBtn' + (worldState.entryKind === k ? ' selected' : '');
-      b.textContent = label + ' ' + (k === 'term' ? worldTerms().length : k === 'actor' ? worldActors().length : worldConcepts().length);
+      b.textContent = label + ' ' + (k === 'actor' ? worldActors().length : worldConcepts().length);
       b.addEventListener('click', () => { worldState.entryKind = k; renderWorldTidy(); });
       kindRow.appendChild(b);
     });
@@ -19399,7 +18953,7 @@
 
     const sortRow = document.createElement('div');
     sortRow.className = 'tagFilterRow';
-    ((isTerm || isActor) ? WORLD_SORTS : WORLD_CONCEPT_SORTS).forEach((s) => {
+    (isActor ? WORLD_SORTS : WORLD_CONCEPT_SORTS).forEach((s) => {
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'tagFilterBtn' + (worldState.entrySort === s ? ' selected' : '');
       b.textContent = WORLD_SORT_LABEL[s];
@@ -19412,29 +18966,26 @@
       const row = document.createElement('div');
       row.className = 'worldConceptRow' + (child ? ' isChild' : '');
       const n = document.createElement('span');
-      n.textContent = c.name + (isTerm && c.kind ? '（' + WORLD_TERM_KIND_LABEL[c.kind] + '）' : '') + (isActor && c.kind ? '（' + WORLD_ACTOR_KIND_LABEL[c.kind] + '）' : '');
+      n.textContent = c.name + (isActor && c.kind ? '（' + WORLD_ACTOR_KIND_LABEL[c.kind] + '）' : '');
       const cnt = document.createElement('span'); cnt.className = 'wcCount'; cnt.textContent = worldConceptCount(c) + '件';
       row.appendChild(n); row.appendChild(cnt);
       row.addEventListener('click', () => openWorldEntry(c.id, 'tidy'));
       return row;
     };
 
-    const kindLabel = isTerm ? '用語' : isActor ? 'アクター' : '概念';
+    const kindLabel = isActor ? 'アクター' : '概念';
     body.appendChild(worldSearchBoxEl(worldState.entryKind, kindLabel + 'を探す（名前・別名' + (isActor ? '' : '・注') + '）', renderWorldTidy));
     const q = worldState.search[worldState.entryKind];
 
     // つながりが1本も無いのに札が溜まっているときだけ、作り直しを促す
-    if (!isTerm && !isActor && !q && worldLiveEvents().length >= WORLD_COOC_HINT_EVENTS && worldCoocLinkCount() === 0) {
+    if (!isActor && !q && worldLiveEvents().length >= WORLD_COOC_HINT_EVENTS && worldCoocLinkCount() === 0) {
       const hint = document.createElement('p');
       hint.className = 'fieldNote warn';
       hint.textContent = 'つながりがまだ作られていません。設定 → 世界 →「概念のつながりを作り直す」で、これまでの札から繋ぎ直せます。';
       body.appendChild(hint);
     }
 
-    const all = (isTerm ? worldTerms() : isActor ? worldActors() : worldConcepts()).filter((c) => worldMatches(q, [c.name, (c.aka || []).join(' '), c.line, c.stance]));
-    // 用語は、90日どの札にも出ていないものを下段に沈める。消さない。
-    const live = isTerm ? all.filter((t) => !worldTermSunk(t)) : all;
-    const sunk = isTerm ? all.filter(worldTermSunk) : [];
+    const all = (isActor ? worldActors() : worldConcepts()).filter((c) => worldMatches(q, [c.name, (c.aka || []).join(' '), c.line, c.stance]));
 
     if (!all.length) {
       const p = document.createElement('p'); p.className = 'emptyMsg';
@@ -19442,9 +18993,9 @@
       body.appendChild(p); return;
     }
 
-    if (!isTerm && worldState.entrySort === 'parent') {
+    if (worldState.entrySort === 'parent') {
       // 親でまとめる。2段までなので、見出し＋子だけ
-      const parents = worldSortEntries(live.filter((c) => !c.parent), 'count');
+      const parents = worldSortEntries(all.filter((c) => !c.parent), 'count');
       parents.forEach((p) => {
         const kids = worldSortEntries(worldConceptChildren(p.id), 'count');
         if (kids.length) {
@@ -19457,124 +19008,9 @@
         kids.forEach((k) => body.appendChild(entryRow(k, true)));
       });
     } else {
-      worldSortEntries(live, worldState.entrySort).forEach((c) => body.appendChild(entryRow(c, false)));
+      worldSortEntries(all, worldState.entrySort).forEach((c) => body.appendChild(entryRow(c, false)));
     }
 
-    if (sunk.length) {
-      const head = document.createElement('div');
-      head.className = 'sunkHead';
-      head.textContent = (worldState.sunkOpen ? '▾ ' : '▸ ') + 'しばらく出ていない用語（' + sunk.length + '）';
-      head.addEventListener('click', () => { worldState.sunkOpen = !worldState.sunkOpen; renderWorldTidy(); });
-      body.appendChild(head);
-      if (worldState.sunkOpen) {
-        const note = document.createElement('p');
-        note.className = 'fieldNote';
-        note.textContent = WORLD_TERM_SINK_DAYS + '日どの札にも出ていない用語です。消えていません。生成の既知一覧からは外れているので、また出てきたら注が付き直します。';
-        body.appendChild(note);
-        worldSortEntries(sunk, worldState.entrySort).forEach((c) => body.appendChild(entryRow(c, false)));
-      }
-    }
-  }
-  // ---- 答え合わせの画面 (v17 C) ----------------------------------------------
-  function renderWorldJudge() {
-    const targets = worldJudgeTargets();
-    const rest = Math.max(0, targets.length - WORLD_JUDGE_PER_BATCH);
-    const next = worldLiveEvents()
-      .filter((e) => e.fork && worldPredictionAny(e) && !e.prediction.judgedAt)
-      .map(worldNextCheckOf).filter((d) => d && d > todayStr()).sort()[0] || '';
-    document.getElementById('worldJudgeRest').textContent =
-      (rest ? 'あと ' + rest + '件' : '') + (next ? (rest ? '　' : '') + '次は ' + worldShortDate(next) : '');
-    document.getElementById('btnWorldJudgePrompt').textContent =
-      'プロンプトをコピー（' + Math.min(targets.length, WORLD_JUDGE_PER_BATCH) + '件）';
-    document.getElementById('btnWorldJudgePrompt').disabled = !targets.length;
-
-    const st = worldJudgeStats();
-    document.getElementById('worldJudgeRate').textContent =
-      '生成 ' + worldRateText(st.leanHit, st.leanMiss) + '　自分 ' + worldRateText(st.mineHit, st.mineMiss);
-
-    // v18 A-2: 予測タブを消したので、待ちの一覧はここに入る
-    const withPred = worldLiveEvents().filter(worldPredictionAny);
-    const waiting = withPred.filter((e) => !e.prediction.judgedAt)
-      .sort((a, b) => (a.prediction.dueDate < b.prediction.dueDate ? -1 : 1));
-    document.getElementById('worldJudgeWaitCount').textContent = waiting.length ? '（' + waiting.length + '件）' : '';
-    document.getElementById('worldJudgeWaitEmpty').hidden = !!waiting.length;
-    renderWorldList(document.getElementById('worldJudgeWaiting'), waiting, '');
-
-    const box = document.getElementById('worldJudgeList');
-    box.innerHTML = '';
-    const done = worldLiveEvents().filter((e) => e.prediction.judgedAt || e.prediction.holdCount)
-      .sort((a, b) => (a.eventDate > b.eventDate ? -1 : 1));
-    document.getElementById('worldJudgeEmpty').hidden = !!done.length;
-    done.forEach((e) => box.appendChild(worldJudgeRowEl(e)));
-  }
-  function worldJudgeRowEl(ev) {
-    const p = ev.prediction;
-    const lab = WORLD_SIDE_LABEL[ev.fork.type] || WORLD_SIDE_LABEL.event;
-    const outLab = WORLD_OUTCOME_LABEL[ev.fork.type] || WORLD_OUTCOME_LABEL.event;
-    const row = document.createElement('div');
-    row.className = 'worldJudgeRow';
-    const head = document.createElement('div');
-    head.className = 'wjFork';
-    const t = document.createElement('span'); t.textContent = ev.fork.text;
-    const o = document.createElement('span');
-    o.className = 'wjOutcome';
-    o.textContent = p.outcome ? outLab[p.outcome]
-      : (p.judgedAt ? '打ち切り（' + p.holdCount + '回保留）' : '保留（' + p.holdCount + '回目）');
-    head.appendChild(t); head.appendChild(o);
-    row.appendChild(head);
-
-    // 生成の側。見立ては推定なので琥珀の印を付ける（判定の結果は事実）
-    if (p.lean) {
-      const l = document.createElement('div');
-      l.className = 'wjSide';
-      const b = document.createElement('span'); b.className = 'guessBadge'; b.textContent = '推定';
-      l.appendChild(b);
-      l.appendChild(document.createTextNode('生成 ' + lab[p.lean]));
-      if (p.leanResult) {
-        const r = document.createElement('span');
-        r.className = p.leanResult === 'hit' ? 'wjHit' : p.leanResult === 'miss' ? 'wjMiss' : '';
-        r.textContent = '　' + WORLD_RESULT_LABEL[p.leanResult];
-        l.appendChild(r);
-      }
-      row.appendChild(l);
-      if (p.because) { const w = document.createElement('div'); w.className = 'wjWhy'; w.textContent = p.because; row.appendChild(w); }
-    }
-    // 自分の側。押していなければ出さない（押さなかったものを外れにしない）
-    if (p.pick) {
-      const m = document.createElement('div');
-      m.className = 'wjSide';
-      m.appendChild(document.createTextNode('自分 ' + lab[p.pick]));
-      if (p.result) {
-        const r = document.createElement('span');
-        r.className = p.result === 'hit' ? 'wjHit' : p.result === 'miss' ? 'wjMiss' : '';
-        r.textContent = '　' + WORLD_RESULT_LABEL[p.result];
-        m.appendChild(r);
-      }
-      row.appendChild(m);
-    }
-    if (p.evidence) {
-      const e2 = document.createElement('div');
-      e2.className = 'wjEvidence';
-      e2.textContent = (p.outcome ? '根拠：' : '') + p.evidence;
-      row.appendChild(e2);
-    }
-    if (p.evidenceUrl) {
-      const a = document.createElement('button');
-      a.type = 'button'; a.className = 'linkLikeBtn wjOpen'; a.textContent = '開く';
-      a.addEventListener('click', () => window.open(p.evidenceUrl, '_blank', 'noopener'));
-      row.appendChild(a);
-    }
-    if (!p.judgedAt && p.nextCheck) {
-      const n = document.createElement('div');
-      n.className = 'wjWhy';
-      n.textContent = worldShortDate(p.nextCheck) + ' にもう一度出ます';
-      row.appendChild(n);
-    }
-    const go = document.createElement('button');
-    go.type = 'button'; go.className = 'linkLikeBtn wjOpen'; go.textContent = '札を開く';
-    go.addEventListener('click', () => openWorldEvent(ev.id));
-    row.appendChild(go);
-    return row;
   }
 
   // ---- 問いの画面 (v14) ------------------------------------------------------
@@ -19779,7 +19215,7 @@
       const more = document.createElement('button');
       more.type = 'button'; more.className = 'linkLikeBtn';
       more.textContent = allLv ? '新しい' + LV_FOLD + '点だけにする'
-        : '新しい' + LV_FOLD + '点を出しています。古い値 ' + (s.levels.length - LV_FOLD) + '件を見る（' + dotDate(s.levels[s.levels.length - 1].at) + ' から）';
+        : '新しい' + LV_FOLD + '点を出しています。古い ' + (s.levels.length - LV_FOLD) + '点を見る（' + dotDate(s.levels[s.levels.length - 1].at) + ' から）';
       more.addEventListener('click', () => { worldState.stratumAllLevels = allLv ? '' : s.id; renderWorldStratum(); });
       levels.appendChild(more);
     }
@@ -19865,7 +19301,7 @@
   // 押されない、を地層の一覧で一度確かめている）。
   // 一覧を足すのではなく既定を組み替える——在庫リストを増やさないため。
 
-  // お金は既定に WORLD_MONEY_BRIEF 本だけ。全部は「お金の一覧」の先
+  // お金の動きがある札（新しい順）。お金の一覧・探す・既定の画面で使う
   function worldFlowEvents(q) {
     return worldLiveEvents()
       .filter((e) => worldIsMoneyFlow(e) && (e.flow.amount || e.flow.from || e.flow.to))
@@ -20030,37 +19466,13 @@
     go.type = 'button'; go.className = 'linkLikeBtn';
     go.textContent = 'お金の一覧（' + worldMergeFlows(worldFlowEvents('')).length + '）';   // v19.15：同じ動きを2回数えない
     go.addEventListener('click', () => { worldState.search.money = ''; openWorldCards({ title: 'お金の一覧', money: true }); });
-    // v20：大きな地図への入口（M5 まで）
+    // v20：大きな地図への入口（小さな地図を押しても開く）
     const mapBtn = document.createElement('button');
     mapBtn.type = 'button'; mapBtn.className = 'linkLikeBtn'; mapBtn.textContent = '地図';
     mapBtn.addEventListener('click', () => { worldState.view = 'map'; renderWorld(); });
     head.appendChild(l); head.appendChild(mapBtn); head.appendChild(go);
     body.appendChild(head);
     singles.slice(0, WORLD_SINGLES_SHOWN).forEach((e) => body.appendChild(worldMoneyBriefRowEl(e)));
-  }
-  function renderWorldMoneyBrief(body) {
-    const all = worldFlowEvents('').filter((e) => !worldIsLowConf(e));   // v19.3
-    if (!all.length) return;
-    const head = document.createElement('div');
-    head.className = 'worldSectionHead';
-    const l = document.createElement('span'); l.textContent = 'お金の流れ';
-    const go = document.createElement('button');
-    go.type = 'button'; go.className = 'linkLikeBtn';
-    go.textContent = 'お金の一覧（' + all.length + '）';
-    go.addEventListener('click', () => { worldState.search.money = ''; openWorldCards({ title: 'お金の一覧', money: true }); });
-    head.appendChild(l); head.appendChild(go);
-    body.appendChild(head);
-    all.slice(0, WORLD_MONEY_BRIEF).forEach((e) => body.appendChild(worldMoneyBriefRowEl(e)));
-  }
-  // 答え合わせは期限が来た日だけ1行。予測の一覧はその先（在庫を既定に置かない）
-  function renderWorldJudgeBrief(body) {
-    const targets = worldJudgeTargets();
-    if (!targets.length) return;
-    const b = document.createElement('button');
-    b.type = 'button'; b.className = 'worldAskEntry';
-    b.textContent = '答え合わせ ' + targets.length + '件　▸';
-    b.addEventListener('click', () => { worldState.view = 'judge'; renderWorld(); });
-    body.appendChild(b);
   }
   // 探す。語を入れるまで何も出さない。型の切替も、打った結果の中で
   // 絞りたくなったときにだけ出す（既定に押せるボタンを増やさない）。
@@ -20540,7 +19952,7 @@
         text = converted + '件を換算しました' + (src ? '（' + src + '）' : '');
         if (cannot.length) text += '／' + cannot.length + '件は換算できません（' + [...new Set(cannot)].slice(0, 5).join('・') + '）';
       }
-      if (failed) text = (text ? text + '。' : '') + 'レートを取れませんでした（' + failed + '）。次に地図を開いたときにもう一度試します';
+      if (failed) text = (text ? text + '。' : '') + 'レートを取れませんでした（' + failed + '）。次に地図を開いたときにもう一度試します。';
       return { converted, cannot: cannot.length, text };
     } finally { worldUsdBusy = false; }
   }
@@ -20637,22 +20049,6 @@
       if (hit) rows.push(r);
     });
     return { names: [...new Set(names.filter(Boolean))], rows };
-  }
-  // 枠の幅に収まるように名前を並べる。入りきらなければ「為替市場 ほか1」。名前が長いときは切る
-  function worldSlotNamesText(names0, maxChars) {
-    if (!names0.length) return '（なし）';
-    // 短い名前から並べる。切らずに見せられる名前を増やすため（何が入っているか分かることを優先）
-    const names = names0.slice().sort((x, y) => x.length - y.length);
-    const cut = (t, n) => (t.length > n ? t.slice(0, Math.max(1, n - 1)) + '…' : t);
-    const all = names.join('・');
-    if (all.length <= maxChars) return all;
-    for (let k = names.length - 1; k >= 1; k--) {
-      const rest = ' ほか' + (names.length - k);
-      const t = names.slice(0, k).join('・');
-      if (t.length + rest.length <= maxChars) return t + rest;
-    }
-    const rest = names.length > 1 ? ' ほか' + (names.length - 1) : '';
-    return cut(names[0], maxChars - rest.length) + rest;
   }
   // 名前を2行に詰める（短い順。1行目・2行目に入るだけ入れ、残りは2行目の後ろに「ほかN」。
   // 入らなければ2行目の最後の名前を途中で切ってでも残す。名前がまるごと消えるより、何が入っているか分かる）
@@ -20761,13 +20157,12 @@
       overlay.innerHTML = '';
       // 枠へ向かう線は、地図の範囲を越えて枠の上端まで伸びるので、別の四角（slotLineArea）に描く
       slotLineArea.innerHTML = '';
-      const slotLines = slotLineArea;
       pairs.forEach((rows, k) => {
         const [a, b] = k.split('>');
         const p1 = ptOf(a), p2 = ptOf(b);
         if (!p1 || !p2) return;
         const toSlot = !!(slotXY[a] || slotXY[b]);
-        const parent = toSlot ? slotLines : overlay;
+        const parent = toSlot ? slotLineArea : overlay;
         const shown = rows.slice(0, WORLD_MAP_LINES_PER_PAIR);
         const dx = p2[0] - p1[0], dy = p2[1] - p1[1], dist = Math.hypot(dx, dy) || 1;
         const nx = -dy / dist, ny = dx / dist;
@@ -20918,7 +20313,7 @@
       if (!nearDots.length && !nearLines.length) { chooser.hidden = true; return; }
       if (nearDots.length + nearLines.length === 1) {
         chooser.hidden = true;
-        if (nearDots.length) worldMapOpenCountry(nearDots[0].c, model, lib);
+        if (nearDots.length) worldOpenCountryNet(nearDots[0].c);
         else worldOpenFlowRows([nearLines[0].r], lineTitle(nearLines[0]));
         return;
       }
@@ -20930,7 +20325,7 @@
       nearDots.forEach((d) => {
         const b = document.createElement('button');
         b.type = 'button'; b.className = 'tagFilterBtn'; b.textContent = worldPlaceLabel(d.c, lib);
-        b.addEventListener('click', () => worldMapOpenCountry(d.c, model, lib));
+        b.addEventListener('click', () => worldOpenCountryNet(d.c));
         chooser.appendChild(b);
       });
       const max = worldState.mapPickMax || WORLD_MAP_PICK_LINES;   // 試験のときだけ小さくできる
@@ -20969,7 +20364,6 @@
     }
   }
   // v20.4 M4：国の点を押したら、その国の網へ（前の「その国が絡む札の一覧」は網の下の1行に残す）
-  function worldMapOpenCountry(c) { worldOpenCountryNet(c); }
   function worldOpenCountryNet(c) {
     worldState.netCountry = c;
     worldState.netView = null;
@@ -20995,7 +20389,7 @@
       if (token !== worldMiniToken) return;
       box.innerHTML = '';
       const p = document.createElement('p'); p.className = 'fieldNote';
-      p.textContent = '地図を読み込めませんでした（' + ((e && e.message) || '理由不明') + '）。お金の流れは下の一覧で見られます';
+      p.textContent = '地図を読み込めませんでした（' + ((e && e.message) || '理由不明') + '）。お金の流れは下の一覧で見られます。';
       box.appendChild(p);
     });
   }
@@ -21746,8 +21140,8 @@
       row.appendChild(t);
       const marks = [];
       if (ev.hit) marks.push('★');
-      if (ev.prediction.writtenDate === dateStr) marks.push('予測を書いた');
-      if (ev.prediction.judgedAt && ev.prediction.judgedAt.slice(0, 10) === dateStr) marks.push({ hit: '当たり', miss: '外れ', hold: '保留' }[ev.prediction.result] || '');
+      if (ev.prediction.setAt && localDateOfIso(ev.prediction.setAt) === dateStr) marks.push('予測を書いた');
+      if (ev.prediction.judgedAt && localDateOfIso(ev.prediction.judgedAt) === dateStr) marks.push({ hit: '当たり', miss: '外れ', hold: '保留' }[ev.prediction.result] || '');
       if (marks.length) {
         const b = document.createElement('div'); b.className = 'liBottomRow'; b.textContent = marks.filter(Boolean).join(' ・ ');
         row.appendChild(b);
@@ -23016,35 +22410,6 @@
     renderWorldSources();
     st.textContent = msg;
   });
-  // v17 C: 答え合わせ
-  document.getElementById('btnWorldJudgeBack').addEventListener('click', () => { worldState.view = 'main'; renderWorld(); });
-  document.getElementById('btnWorldJudgePrompt').addEventListener('click', () => {
-    copyToClipboard(worldJudgePromptText()).then((ok) => {
-      document.getElementById('worldJudgeStatus').textContent = ok
-        ? 'コピーしました。Claude のチャットに貼ってください。' : 'コピーできませんでした。';
-    });
-  });
-  document.getElementById('btnWorldJudgeImport').addEventListener('click', () => {
-    const box = document.getElementById('worldJudgePaste');
-    const st = document.getElementById('worldJudgeStatus');
-    const res = worldImportJudgeJson(box.value);
-    if (res.error) { st.textContent = res.error; return; }
-    let msg = res.judged + '件を判定しました';
-    if (res.judged) msg += '（生成 当たり' + res.leanHit + '・外れ' + res.leanMiss
-      + '／自分 当たり' + res.mineHit + '・外れ' + res.mineMiss + '）';
-    msg += '。';
-    const holds = [];
-    if (res.unknown) holds.push('決着していない ' + res.unknown + '件');
-    if (res.noUrl) holds.push('出典URLが無い ' + res.noUrl + '件');
-    if (res.noEvidence) holds.push('根拠が無い ' + res.noEvidence + '件');
-    if (res.held) msg += '　※ ' + res.held + '件は保留にしました（' + holds.join('、') + '）。'
-      + WORLD_HOLD_DAYS + '日後にもう一度出ます。';
-    if (res.closed) msg += '　※ ' + res.closed + '件は' + WORLD_HOLD_MAX + '回目の保留なので打ち切りました。';
-    if (res.missing) msg += '　端末に無い札 ' + res.missing + '件は無視しました。';
-    if (res.judged || res.held || res.closed) box.value = '';
-    renderWorldJudge();
-    st.textContent = msg;
-  });
   // v16 B: 地層の現在値を調べる
   document.getElementById('btnWorldProbePrompt').addEventListener('click', () => {
     copyToClipboard(worldProbePromptText()).then((ok) => {
@@ -23103,7 +22468,7 @@
   const INPUT_DRAFT_MAX_AGE_MS = 48 * 3600 * 1000;
   const INPUT_DRAFT_NAV_MAX_AGE_MS = 30 * 60 * 1000;   // older than this: refill the fields when you go there, but never jump there on boot
   const INPUT_DRAFT_SKIP_SCREENS = new Set(['settings']);
-  const INPUT_DRAFT_SKIP = new Set(['trDate', 'trWeight', 'listSearch', 'walkShareTextInput', 'medMemoInput', 'medAlarmCustom', 'shootQuestionText', 'shootHookInput', 'shootAnswerInput', 'shootTitleInput', 'shootConsultInput', 'shootCardsPaste', 'shootBreakPaste', 'shootFlowPaste', 'shootHookPaste', 'shootAnswerAgain', 'shootFlowNote']); // medMemoInput autosaves itself   // own persistence / not worth restoring
+  const INPUT_DRAFT_SKIP = new Set(['trDate', 'trWeight', 'listSearch', 'walkShareTextInput', 'medMemoInput', 'medAlarmCustom', 'shootQuestionText', 'shootHookInput', 'shootAnswerInput', 'shootTitleInput', 'shootConsultInput', 'shootCardsPaste', 'shootBreakPaste', 'shootFlowPaste', 'shootHookPaste', 'shootAnswerAgain', 'shootFlowNote']); // own persistence / not worth restoring (medMemoInput autosaves itself)
   let inputDraftTimer = null, inputDraftRestoring = false;
   function readInputDraft() { try { const raw = localStorage.getItem(INPUT_DRAFT_KEY); const d = raw ? JSON.parse(raw) : null; return (d && d.fields && d.ctx) ? d : null; } catch (e) { return null; } }
   function inputDraftContext() {
