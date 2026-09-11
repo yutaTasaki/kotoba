@@ -2300,6 +2300,8 @@
         <textarea id="worldImportPaste" rows="4" placeholder='{"events":[...]} をここに貼る' autocomplete="off"></textarea>
         <button type="button" id="btnWorldImport" class="secondaryBtn">取り込む</button>
         <p class="fieldNote" id="worldImportStatus"></p>
+        <!-- v19.11：よく使う出典の外。押すと「必ず見るもの」に昇格する。すでにあるものは出ない -->
+        <div id="worldOutsideList"></div>
         <button type="button" id="btnWorldImportShow" class="tagFilterBtn" hidden>入れた札を見る</button>
       </div>
       <!-- v19 段階4：データを捨てるので対象が無い。画面から外す（処理は残す） -->
@@ -2853,7 +2855,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v19.10';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v19.11';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -14847,6 +14849,8 @@
       // v19.3：確度 1〜10。7以下は理由を1行
       confidence: worldConfidence(e.confidence),
       confidenceWhy: worldStr(e.confidenceWhy, 80),
+      // v19.11：この出典が新しい数字を出す周期の推定。出典をソースに昇格するときの初期値
+      srcCadence: (WORLD_CADENCE_SRC_DAYS[e.srcCadence] ? e.srcCadence : ''),
       url: typeof e.url === 'string' ? (shootSafeUrl(e.url.trim()) || '') : '',
       concepts: (Array.isArray(e.concepts) ? e.concepts : []).map((x) => worldStr(x, 80)).filter(Boolean).slice(0, 8),
       related: (Array.isArray(e.related) ? e.related : []).map((x) => worldStr(x, 80)).filter(Boolean).slice(0, 5),
@@ -16597,6 +16601,10 @@
       '- wants：この出典を出した組織が何を欲しがっているかを1行（' + WORLD_WANTS_MAX + '字以内）。\n' +
       '  一次資料でも中立ではない。例：「国債の金利を低く保ちたい」「制裁が効いていると示したい」。\n' +
       '  報道が出典のときは、報道が伝えている発表元について書く。分からなければ空。\n' +
+      // v19.11：出典をソースに昇格するときの周期の初期値
+      '- srcCadence：この出典（url のページを出している組織）が、新しい数字をどのくらいの周期で出すか。\n' +
+      '  day（毎日出る報道・日次統計）／week（週次の統計・週報）／month（月次統計・月報）／quarter（決算・四半期統計・年次報告）。\n' +
+      '  迷ったら quarter。\n' +
       '- confidence：この札の確かさを 1〜' + WORLD_CONF_MAX + ' の整数で。\n' +
       '  10＝一次資料の本文で、数字・日付・主体まで確かめた。7＝一次資料だが一部を確かめきれていない。\n' +
       '  4＝報道だけ。1＝噂・未確認。\n' +
@@ -16621,6 +16629,7 @@
       '  "url":"https://...",\n' +
       '  "eventDate":"YYYY-MM-DD",\n' +
       '  "wants":"...",\n' +
+      '  "srcCadence":"quarter",\n' +
       '  "confidence":8,\n' +
       '  "confidenceWhy":""\n' +
       '}]' + (daily.length
@@ -17381,6 +17390,7 @@
     const touchedMonths = new Set();
     let old = 0, forks = 0, leans = 0, droppedForks = 0, onStrata = 0, droppedStrata = 0, unknownConcepts = 0, withActors = 0, withRead = 0, withFlow = 0;
     let outside = 0, lowConf = 0, sunkConf = 0, noConf = 0, tracked = 0;   // v19.3
+    const outsideMap = new Map();   // v19.11
     const createdActors = [];
     const lv = { levelsFilled: 0, levelsDup: 0, levelsUnknown: 0 };   // v15
     // v19 段階3：#N は「生成が返したそのままの並び」で数える。落とした札の番号は空のまま
@@ -17403,6 +17413,7 @@
         field: WORLD_FIELDS.includes(it.field) ? it.field : (worldImportField || 'finance'),
         fact, why: it.why, premise: it.premise, detail: it.detail, source: it.source, url,
         wants: it.wants, confidence: it.confidence, confidenceWhy: it.confidenceWhy,   // v19.3
+        srcCadence: it.srcCadence,   // v19.11
         terms: it.terms, fork: it.fork, reason: it.reason,
         actors: it.actors, flow: it.flow,   // v12: ここで渡さないと normalize に届かない
         viaAsk: viaAsk || it.viaAsk || '',   // v14: どの問いから掘り当てたか
@@ -17452,7 +17463,17 @@
       if (ev.actors.some((a) => a.read)) withRead++;
       if (ev.flow) withFlow++;
       // v19.3
-      if (!worldSourceForUrl(ev.url)) outside++;
+      if (!worldSourceForUrl(ev.url)) {
+        outside++;
+        // v19.11：昇格の候補。ドメインでまとめ、名前は最初の札の source（末尾の日付は落とす）
+        const host = worldHostOf(ev.url);
+        if (host) {
+          if (!outsideMap.has(host)) outsideMap.set(host, { host, name: worldSourceNameFrom(ev.source, host), url: ev.url, count: 0, cadences: {} });
+          const o = outsideMap.get(host);
+          o.count++;
+          if (ev.srcCadence) o.cadences[ev.srcCadence] = (o.cadences[ev.srcCadence] || 0) + 1;
+        }
+      }
       if (ev.confidence && ev.confidence <= WORLD_CONF_WHY_BELOW) lowConf++;
       if (worldIsLowConf(ev)) sunkConf++;
       if (!ev.confidence) noConf++;
@@ -17509,6 +17530,11 @@
       addedIds: added.map((e) => e.id),
       withActors, withRead, withFlow, checked,
       outside, lowConf, sunkConf, noConf, tracked,   // v19.3
+      // v19.11：周期は札の推定のうち一番多いもの。無ければ quarter
+      outsideSources: [...outsideMap.values()].map((o) => ({
+        host: o.host, name: o.name, url: o.url, count: o.count,
+        cadence: Object.keys(o.cadences).sort((a, b) => o.cadences[b] - o.cadences[a])[0] || 'quarter',
+      })),
       ...worldFlowKindCounts(added), ...afterStats,   // v19 段階3
       ...lv,   // v15: levelsFilled / levelsDup / levelsUnknown
       candidates: worldMergeCandidatesIn(WORLD_STORES.concept, createdConcepts)
@@ -17518,7 +17544,7 @@
   }
 
   // ---- 画面 ----------------------------------------------------------------
-  const worldState = { view: 'main', entryFrom: 'list', askText: '', askId: '', askWord: '', askWordOpen: false, askNewOnly: false, askResult: '', askOpenId: '', entryKind: 'concept', entrySort: 'count', actorSort: 'new', searchKind: 'card', searchAll: false, tidy: false, cards: null, cardsOpenId: null, conceptId: null, stratumId: null, strataAll: false, sunkOpen: false, bgOpen: false, openId: null, candidates: [], lastResult: '', search: { main: '', concept: '', term: '', actor: '', money: '' }, searchFocus: '', lastBatch: null };
+  const worldState = { view: 'main', entryFrom: 'list', askText: '', askId: '', askWord: '', askWordOpen: false, askNewOnly: false, askResult: '', askOpenId: '', entryKind: 'concept', entrySort: 'count', actorSort: 'new', searchKind: 'card', searchAll: false, tidy: false, cards: null, cardsOpenId: null, conceptId: null, stratumId: null, strataAll: false, sunkOpen: false, bgOpen: false, openId: null, candidates: [], lastResult: '', search: { main: '', concept: '', term: '', actor: '', money: '' }, searchFocus: '', lastBatch: null, outside: [] };
 
   // 地層の1行。押すとその地層を開く。太くしない。
   function paintStratumLine(el, s) {
@@ -18198,6 +18224,11 @@
     const h = worldHostOf(u);
     if (!h) return null;
     return worldSources().find((x) => { const sh = worldHostOf(x.url); return sh && (h === sh || h.endsWith('.' + sh) || sh.endsWith('.' + h)); }) || null;
+  }
+  // 「財務省「外貨準備等の状況」2026年9月7日」→「財務省「外貨準備等の状況」」。無ければドメイン
+  function worldSourceNameFrom(source, host) {
+    const t = worldStr(source, 120).replace(/[\s、,（(]*(令和|平成)?\d{1,4}年.*$/, '').replace(/[\s、,（(]*\d{4}[-/.]\d{1,2}.*$/, '').trim();
+    return t || host;
   }
   function worldStanceFor(ev) {
     const s = worldSourceForUrl(ev.url);
@@ -19752,7 +19783,40 @@
     document.getElementById('worldConceptRenamePanel').hidden = true;
   }
 
+  // v19.11：使った出典を1タップでソースに。使うほどソースが育つ（手で足す作業を消す）
+  function renderWorldOutside() {
+    const box = document.getElementById('worldOutsideList');
+    box.innerHTML = '';
+    const list = (worldState.outside || []).filter((o) => !worldSourceForUrl(o.url));   // すでにあるものは出さない
+    if (!list.length) return;
+    const lab = document.createElement('div');
+    lab.className = 'rowLabel';
+    lab.textContent = 'よく使う出典の外で使った出典';
+    box.appendChild(lab);
+    list.forEach((o) => {
+      const row = document.createElement('div');
+      row.className = 'worldSourceRow';
+      const left = document.createElement('div');
+      const nm = document.createElement('div'); nm.className = 'wsName'; nm.textContent = o.name + '　' + o.count + '件';
+      const u = document.createElement('div'); u.className = 'wsUrl'; u.textContent = o.host;
+      left.appendChild(nm); left.appendChild(u);
+      row.appendChild(left);
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'tagFilterBtn';
+      b.textContent = '必ず見るものに足す（' + WORLD_CADENCE_SRC_LABEL[o.cadence] + '）';
+      b.addEventListener('click', () => {
+        const src = worldAddSource(o.name, o.url);
+        if (!src) return;
+        src.cadence = o.cadence; src.cadenceSetAt = nowIso(); src.updatedAt = nowIso();
+        worldSaveSources();
+        renderWorldOutside();
+      });
+      row.appendChild(b);
+      box.appendChild(row);
+    });
+  }
   function renderWorldImport() {
+    renderWorldOutside();   // v19.11
     document.getElementById('worldImportStatus').textContent = worldState.lastResult;
     document.getElementById('worldRetroCount').textContent = '対象 ' + worldRetroTargets().length + '件（端末にある札のうち新しい順）';
     document.getElementById('btnWorldImportShow').hidden = !worldState.lastBatch;
@@ -20326,6 +20390,7 @@
     if (res.added && res.linked) msg += '　過去の札と ' + res.linked + '本つながりました。';
     if (res.added) box.value = '';
     worldState.candidates = res.candidates;
+    worldState.outside = res.outsideSources || [];   // v19.11
     worldState.lastResult = msg;
     worldState.lastBatch = res.added ? { id: res.batchId, partnerIds: res.partnerIds, linked: res.linked } : null;
     status.textContent = msg;
