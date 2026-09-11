@@ -2920,7 +2920,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.2';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.2.1';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -14545,6 +14545,9 @@
   const WORLD_PLACE_SUFFIX  = ['人民銀行', '準備銀行', '中央銀行', '政府', '政権', '財務省', '議会', '国防省'];
   // 一般名：もう片方と同じ国にいると言い切れる相手。国内に寄せる。「買い手」「購入者」は入れない（市場の枠）
   const WORLD_PLACE_GENERIC = { exact: ['金融機関', '銀行', '株主', '企業', '家計', '投資家'], contains: ['保有者', '支払い先', '受給者'] };
+  // v20.2.1：頭の国名。この言葉の前が国名なら、その国（「米国の製油所」→ 米国、「ウクライナ向け防衛調達」→ ウクライナ）。
+  // その端の場所を決めるだけで、向きは from／to の位置のまま（「米国向け輸出」が from にあれば、出す側が米国になるだけ）
+  const WORLD_PLACE_LEAD_JOINS = ['の', '向け', '産', '系', '国内'];
   // 種の主体21件の国（仕様書 1.2）。起動時、国をまだ一度も決めていないものだけに入れる
   const WORLD_DEFAULT_ACTOR_COUNTRY = {
     ac_mof_jp: 'JPN', ac_boj: 'JPN', ac_gov_jp: 'JPN', ac_fed: 'USA', ac_treasury_us: 'USA', ac_admin_us: 'USA', ac_congress_us: 'USA',
@@ -15369,6 +15372,7 @@
       if (cc && !a.country && !a.countrySetAt) { a.country = cc; a.countrySetAt = nowIso(); a.updatedAt = nowIso(); actorCountryAdded = true; }
     });
     if (actorCountryAdded) { wd.actors.updatedAt = nowIso(); wd.actorsDirty = true; persistWorldActors(); }
+    worldAbsorbBracketActors();   // v20.2.1：括弧つきの重複主体を元の主体へまとめる
     if (!wd.strata.strata.length && !wd.strata.updatedAt) {
       wd.strata.strata = WORLD_DEFAULT_STRATA.map((x, i) => normalizeWorldStratum({ ...x, levels: [], order: i, active: 1 })).filter(Boolean);
       wd.strataDirty = true;
@@ -15628,6 +15632,7 @@
     try { if (got.text) rdoc = normalizeWorldActorsDoc(JSON.parse(got.text)); } catch (e) {}
     const before = worldActorsSignature(rdoc);
     wd.actors = mergeWorldActorDocs(wd.actors, rdoc);
+    worldAbsorbBracketActors();   // v20.2.1：別の端末から戻ってきた重複も、ここでまとめ直す
     await persistWorldActors();
     if (worldActorsSignature(wd.actors) !== before) {
       await ghPutJson(WORLD_ACTORS_PATH, wd.actors, got.sha, `world actors: ${wd.actors.actors.length}`);
@@ -16343,7 +16348,9 @@
     const meta = ev._actorMeta || {};
     const resolve = (name, make) => {
       if (!name) return null;
-      let a = worldFindIn(AS, name);
+      // v20.2.1：「欧州委員会（EU／欧州連合）」のように後ろに括弧が付いていたら、外して既存の主体を探す
+      const bare = worldStripTailBracket(name);
+      let a = worldFindIn(AS, name) || (bare !== name ? worldFindIn(AS, bare) : null);
       if (!a && make) {
         const src = worldSources().find((sc) => worldNormName(sc.name) === worldNormName(name));
         a = worldAddIn(AS, { name, aka: [], kind: meta[worldNormName(name)] || '', stance: src ? src.stance : '', country: (ev._actorCountry || {})[worldNormName(name)] || '' }, ev.id);
@@ -16829,7 +16836,10 @@
       '  - 書けなければ null（出来事そのものは返してよい）。\n' +
       '  kind：お金なら "money"。原油・穀物・兵器・半導体など物が動いたなら "goods"。\n' +
       '        移民・避難・人材など人が動いたなら "people"。\n' +
-      '  from／to は主体名（アクター名か、「為替市場」のような場所）。what は何をしたか。\n' +
+      // v20.2.1：説明の言葉だけの相手（「防衛装備の供給元」）は地図に乗らない。相手は国名で始めさせる
+      '  from／to は主体名（actors の name）か、国名で始まる相手（「米国の製油所」「ウクライナの防衛調達」）。\n' +
+      '  市場なら「為替市場」「石油市場」のように書く。国の定まらない相手（「世界の海運会社」）に国名を付け足さない。\n' +
+      '  what は何をしたか。\n' +
       '  amount は出典の書き方のまま（「15兆円」「1.4億ドル」）。goods・people では空でよい。\n' +
       '  span：その金額が期間の累計・合計なら、その期間（「2022年以降」「2026年度」）。\n' +
       '        1回の動きなら空。累計と1回を混ぜると、一覧で累計だけが大きく見える。\n' +
@@ -16841,7 +16851,7 @@
       '  share：total のうち amount が何%か（整数）。単位が違って出せなければ null。\n' +
       '  例：出典に「1年でPURLと米国の対外有償軍事販売に100億ドル超を配分し、うち35億ドルはEUのウクライナ支援融資による」\n' +
       '      とあれば、全体は100億ドル超、行き先まで分かったのは35億ドル。flow はこう書く：\n' +
-      '      {"from":"欧州委員会","to":"ウクライナ向け米国製装備","what":"支援融資から拠出",\n' +
+      '      {"from":"欧州委員会","to":"ウクライナの防衛調達","what":"支援融資から拠出",\n' +
       '       "amount":"35億ドル","total":"100億ドル超","share":35,"span":"過去1年"}\n' +
       '      悪い例：同じ出典で "amount":"100億ドル超","total":"" （全体を amount に書き、一部しか追えていないことが消える）\n' +
       '  strata：この金が動かした「地層」の id を0〜' + WORLD_FLOW_STRATA_MAX + '個。末尾の一覧にあるものだけ。\n' +
@@ -16934,7 +16944,7 @@
         ? '■ すでに知っている概念（まだ少ない。当てはまるものがあれば使い、足りなければ premise で新しく作ってよい）\n'
         : '■ すでに知っている概念（concepts はここから探す。premise で説明し直さなくてよい。名前だけ。最大' + WORLD_KNOWN_MAX + '件）\n') +
       (known.length ? known.join(' / ') : '（まだありません）') + '\n\n' +
-      '■ すでに知っているアクター（actors の name はここから探す。無ければ新しく書いてよい。名前（別名）。最大' + WORLD_KNOWN_ACTORS_MAX + '件）\n' +
+      '■ すでに知っているアクター（actors の name はここから探す。無ければ新しく書いてよい。name には先頭の名前だけを書き、［別名：…］は書かない。最大' + WORLD_KNOWN_ACTORS_MAX + '件）\n' +
       (knownActors.length ? knownActors.join(' / ') : '（まだありません）') + '\n\n' +
       '■ 最近のお金の動き（after はこの id から選ぶ。ここに無い id を書かない。ここにある動きを別の札として書き直さない。［物］［人］は物と人の動き）\n' +
       (flowLines.length ? flowLines.join('\n') : '（まだありません）');
@@ -16944,7 +16954,34 @@
     return worldActors()
       .slice().sort((a, b) => (a.lastUsedAt > b.lastUsedAt ? -1 : 1))
       .slice(0, WORLD_KNOWN_ACTORS_MAX)
-      .map((a) => a.name + (a.aka.length ? '（' + a.aka.slice(0, 2).join('／') + '）' : ''));
+      .map((a) => a.name + (a.aka.length ? '［別名：' + a.aka.slice(0, 2).join('、') + '］' : ''));   // v20.2.1：「名前（別名）」だと丸ごと名前に写された
+  }
+  // v20.2.1：名前の後ろの括弧（（…）・(…)・［…］・[…]）を外す。外した残りが空なら元のまま
+  function worldStripTailBracket(name) {
+    const t = String(name || '').trim();
+    const m = /^(.+?)\s*[（(［\[][^（）()［］\[\]]*[）)］\]]$/.exec(t);
+    return m ? m[1].trim() : t;
+  }
+  // v20.2.1：名前の後ろに括弧の付いた主体（「欧州委員会（EU／欧州連合）」）を、括弧を外した名前の既存の主体へまとめる。
+  // 起動時と、同期で主体の表を合わせた後に走らせる（主体の表は消した印を持たないので、別の端末の分が戻ってくるため）。
+  // まとめ方は手の統合と同じ worldMergeIn（消える側の名前は別名に残り、札のつながりは足し合わせる）
+  function worldAbsorbBracketActors() {
+    const AS = WORLD_STORES.actor;
+    let n = 0;
+    AS.list().slice().forEach((d) => {
+      if (d.hidden) return;
+      const base = worldStripTailBracket(d.name);
+      if (base === d.name) return;
+      const k = worldNormName(base);
+      const keep = AS.list().find((c) => c.id !== d.id && !c.hidden && (worldNormName(c.name) === k || (c.aka || []).some((x) => worldNormName(x) === k)));
+      if (!keep) return;
+      const country = d.country;
+      if (worldMergeIn(AS, keep.id, d.id)) {
+        if (!keep.country && country) keep.country = country;   // 国は残る側を優先。空のときだけ引き継ぐ（手で決めた印は付けない）
+        n++;
+      }
+    });
+    return n;
   }
   // ---- 問いモード (v14) ------------------------------------------------------
   function worldAsks() { return wd.asks.asks.filter((a) => !a.hidden); }
@@ -17077,7 +17114,7 @@
       '恐れ・縛りが書けないとき： "fear":"", "bound":""\n' +
       'お金が動いていないとき： "flow": null\n\n' +
       '────────────────────────────────────────\n' +
-      '■ すでに知っている主体（名前はここから探す。一覧に無い主体を挙げてよい）\n' +
+      '■ すでに知っている主体（名前はここから探す。一覧に無い主体を挙げてよい。先頭の名前だけを書き、［別名：…］は書かない）\n' +
       (worldKnownActorLines().length ? worldKnownActorLines().join(' / ') : '（まだありません）') + '\n\n' +
       '■ すでに知っている概念（説明しなくてよい）\n' +
       (worldConcepts().length ? worldConcepts().map((c) => c.name).slice(0, WORLD_KNOWN_MAX).join(' / ') : '（まだありません）') + '\n\n' +
@@ -17526,7 +17563,7 @@
       '────────────────────────────────────────\n' +
       '■ 地層の一覧（strata・levels はこの id から選ぶ。ここに無いものを作らない）\n' +
       (strataLines.length ? strataLines.join('\n') : '（まだありません）') + '\n\n' +
-      '■ すでに知っているアクター（name はここから探す。無ければ新しく書いてよい）\n' +
+      '■ すでに知っているアクター（name はここから探す。無ければ新しく書いてよい。先頭の名前だけを書き、［別名：…］は書かない）\n' +
       (knownActors.length ? knownActors.join(' / ') : '（まだありません）');
   }
   // 足すだけ。ev.actors が空の札にだけ。id が端末に無い札は無視。
@@ -19985,6 +20022,18 @@
     const S = lib.table.slots;
     for (const c of WORLD_MAP_SLOTS) if ((S[c].exact || []).some((x) => worldNormName(x) === k)) return c;
     for (const c of WORLD_MAP_SLOTS) if ((S[c].contains || []).some((x) => n.includes(x))) return c;
+    // v20.2.1：頭の国名は、枠の言葉より後に当てる（「ロシアの同盟国」「中東の産油国」は地域の枠のまま）
+    return worldLeadCountry(n, lib);
+  }
+  // 「〜の」「〜向け」「〜産」「〜系」「〜国内」の前が、別名の表の国と丸ごと一致したときだけ、その国。
+  // 長い方から試す（「米国産原油の輸入」は「米国産原油」が国でないので、次に「米国」を試す）。枠の記号には当てない
+  function worldLeadCountry(n, lib) {
+    for (let k = n.length - 1; k >= 1; k--) {
+      const rest = n.slice(k);
+      if (!WORLD_PLACE_LEAD_JOINS.some((j) => rest.startsWith(j))) continue;
+      const c = lib.byName.get(worldNormName(n.slice(0, k))) || '';
+      if (c && worldIsCountry(c, lib)) return c;
+    }
     return '';
   }
   function worldIsCountry(code, lib) { return !!code && !WORLD_MAP_SLOTS.includes(code) && code !== 'SAME' && lib.nameOf.has(code); }
