@@ -1249,6 +1249,7 @@
     background: none; border: 0; padding: 2px 0; margin: 0; font: inherit;
     font-size: 11px; color: var(--text-faint); cursor: pointer;
   }
+  .waqSimple { font-size: 15px; line-height: 1.8; margin: 2px 0 8px; }   /* v19.7 一言でいうと。見立てより大きく */
   .waqView { font-size: 13px; line-height: 1.7; margin: 2px 0 4px; }
   .waqFork { font-size: 12px; color: var(--text-dim); line-height: 1.6; margin-bottom: 6px; }
   .waqLab { font-size: 10px; color: var(--guess); margin: 8px 0 2px; }
@@ -2753,7 +2754,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v19.6';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v19.7';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -14358,6 +14359,8 @@
   const WORLD_ASK_ACTORS_MAX = 7;    // 1回の問いで挙げる主体の上限
   const WORLD_ASK_CARDS_MAX  = 20;   // プロンプトに差し込む既存の札
   const WORLD_ASK_VIEW_MAX   = 60;   // 見立ての字数
+  const WORLD_ASK_SIMPLE_MIN = 60;   // v19.7 一言でいうと（専門用語を使わない）
+  const WORLD_ASK_SIMPLE_MAX = 100;
   const WORLD_ASK_WANT_MAX   = 60;
   const WORLD_ASK_SIM        = 0.60; // 「近い問い」のしきい値
   // 種。一度も保存されていないときだけ入れる。「市場参加者」は入れない
@@ -14889,6 +14892,7 @@
     return {
       at: isDateStr(r.at) ? r.at : todayStr(),
       view: worldStr(r.view, WORLD_ASK_VIEW_MAX),
+      simple: worldStr(r.simple, WORLD_ASK_SIMPLE_MAX * 2),   // v19.7 一言でいうと。長すぎても切らずに残す（見立てより先に読む）
       actors: (Array.isArray(r.actors) ? r.actors : []).map(normalizeWorldAskActor).filter(Boolean).slice(0, WORLD_ASK_ACTORS_MAX),
       eventIds: (Array.isArray(r.eventIds) ? r.eventIds : []).map(String).slice(0, 60),
       added: (Array.isArray(r.added) ? r.added : []).map(String).slice(0, 60),
@@ -16210,6 +16214,9 @@
       '- 確認しきれなかった出来事も、捨てずに返す。confidence を下げ、confidenceWhy に理由を書く\n' +
       '  （一次資料に当たれず報道のみ、URL が開けなかった、数字が本文になく図から読んだ、など）。\n' +
       '- 件数を埋めるために出来事を作らない。' + WORLD_PROMPT_COUNT + '件は目安。\n' +
+      // v19.7：実データ2回で total が1件も付かなかった。flow の項の奥にあった規則をここにも置く
+      '- 出典に全体の金額があり、行き先が分かったのがその一部だけなら、flow の total に全体の金額を必ず書く。\n' +
+      '  「うち」「そのうち」「内訳」「〜を含む」と書かれている金額は、ほぼこの形。空にして済ませない。\n' +
       '- 出来事以外の文章を返さない。JSON のみ。\n\n' +
       '■ 分野\n' +
       '金融・経済と、地政学・政治を1本で見る。分けない。お金と力の動きは本質的につながっている。\n' +
@@ -16404,9 +16411,11 @@
       '         分からない分は推測で埋めない。to にも what にも書かず、分からないまま残す。\n' +
       '         全部追えたとき・全体の金額が出典に無いときは空。\n' +
       '  share：total のうち amount が何%か（整数）。単位が違って出せなければ null。\n' +
-      '  例：「同盟国が1年で100億ドル超を配分」のうち、出どころと行き先が分かったのが欧州委員会の35億ドルだけなら\n' +
-      '      {"from":"欧州委員会","to":"ウクライナ向け米国製装備","what":"支援ローンから拠出",\n' +
+      '  例：出典に「1年でPURLと米国の対外有償軍事販売に100億ドル超を配分し、うち35億ドルはEUのウクライナ支援融資による」\n' +
+      '      とあれば、全体は100億ドル超、行き先まで分かったのは35億ドル。flow はこう書く：\n' +
+      '      {"from":"欧州委員会","to":"ウクライナ向け米国製装備","what":"支援融資から拠出",\n' +
       '       "amount":"35億ドル","total":"100億ドル超","share":35,"span":"過去1年"}\n' +
+      '      悪い例：同じ出典で "amount":"100億ドル超","total":"" （全体を amount に書き、一部しか追えていないことが消える）\n' +
       '  strata：この金が動かした「地層」の id を0〜' + WORLD_FLOW_STRATA_MAX + '個。末尾の一覧にあるものだけ。\n' +
       '          例：介入 → 外貨準備が動く。\n' +
       '  after：この動きの原因や前段に当たる動きがあれば、その id。\n' +
@@ -16587,8 +16596,16 @@
       '■ すでにある札（related）\n' +
       '末尾の「関係しそうな札」のうち、この問いに関係するものの id。\n' +
       '一覧に無い id を書かない。関係が無ければ空の配列。\n\n' +
+      // v19.7：返ってくる内容は良いが専門用語が多く一度で頭に入らない、への答え。切り替えにはしない（上に1段足すだけ）
+      '■ 一言でいうと（simple）\n' +
+      'この問いへの答えを、中学生に説明するつもりで1〜2文・' + WORLD_ASK_SIMPLE_MIN + '〜' + WORLD_ASK_SIMPLE_MAX + '字。これも推定。\n' +
+      '- 専門用語を使わない。制度の名前・条約の名前・略語を使わない。使うなら、その場で言い換える。\n' +
+      '- 誰が、何と引き換えに、何を得ているか（守っているか）が分かる形にする。\n' +
+      '- 良い例：「アメリカはイスラエルを守る代わりに、戦争が終わったあとの中東の仕切りを自分が決める権利を握っている。」\n' +
+      '- 悪い例：「地政学的な同盟関係の維持が安全保障上の抑止力として機能している。」\n' +
+      '- 材料が足りなければ「材料が足りない」と書く。\n\n' +
       '■ 見立て（view）\n' +
-      'この問いへの現時点の見立てを1文・' + WORLD_ASK_VIEW_MAX + '字以内。これも推定。\n' +
+      'この問いへの現時点の見立てを1文・' + WORLD_ASK_VIEW_MAX + '字以内。これも推定。一言でいうと、より正確に。\n' +
       '- 「〜と考えられる」で終わらせない。何がどうなっているかを言い切る。\n' +
       '- 良い例：「円安を止めているのは介入ではなく、金利差が縮むのを待っている状態」\n' +
       '- 悪い例：「複数の要因が絡み合っていると考えられる」\n' +
@@ -16607,14 +16624,15 @@
       '- 解釈のソースだけを根拠に行動を立ててはいけない。\n' +
       '- 解釈のソースは思惑を読むときに使ってよいが、それでも思惑は推定のまま。\n\n' +
       '■ 出力形式\n' +
-      '{"view":"...",\n' +
+      '{"simple":"...",\n' +
+      ' "view":"...",\n' +
       ' "fork":{"text":"...","type":"level"},\n' +
       ' "actors":[{"name":"財務省","want":"...","fear":"...","bound":""}],\n' +
       ' "actions":[{"actor":"財務省","fact":"...","did":"...","said":"...","read":"...",\n' +
       '             "eventDate":"YYYY-MM-DD","source":"...","url":"https://...",\n' +
       '             "flow":{"from":"...","to":"...","what":"...","amount":"..."}}],\n' +
       ' "related":["w_20260902_1"]}\n\n' +
-      '材料が足りないとき： {"view":"材料が足りない","fork":null,"actors":[],"actions":[],"related":[]}\n' +
+      '材料が足りないとき： {"simple":"材料が足りない","view":"材料が足りない","fork":null,"actors":[],"actions":[],"related":[]}\n' +
       '恐れ・縛りが書けないとき： "fear":"", "bound":""\n' +
       'お金が動いていないとき： "flow": null\n\n' +
       '────────────────────────────────────────\n' +
@@ -16664,7 +16682,7 @@
     }).filter(Boolean).slice(0, WORLD_ASK_ACTORS_MAX);
 
     const run = normalizeWorldAskRun({
-      at: todayStr(), view: parsed.view, actors,
+      at: todayStr(), view: parsed.view, simple: parsed.simple, actors,
       eventIds, added: res ? res.addedIds || [] : [], fork: parsed.fork,
     });
     if (ask) {
@@ -18930,6 +18948,18 @@
     inner.hidden = !open;
     d.addEventListener('click', () => { inner.hidden = !inner.hidden; d.textContent = dotDate(r.at) + (inner.hidden ? '　▸' : ''); });
 
+    // v19.7 一言でいうと。見立ての上に1段足すだけ（切り替えにしない。簡単な方しか読まれなくなる）
+    if (r.simple) {
+      const lab = document.createElement('div');
+      lab.className = 'waqLab';
+      lab.textContent = '一言でいうと';
+      inner.appendChild(lab);
+      const sv = document.createElement('div');
+      sv.className = 'waqSimple';
+      const k = document.createElement('span'); k.className = 'guessBadge'; k.textContent = '推定';
+      sv.appendChild(k); sv.appendChild(document.createTextNode(r.simple));
+      inner.appendChild(sv);
+    }
     if (r.view) {
       const v = document.createElement('div');
       v.className = 'waqView';
