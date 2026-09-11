@@ -1207,6 +1207,10 @@
   /* v20.3.1 札を開いたとき、動かした側のすぐ下に出すドル換算の1行 */
   .worldUsdLine { color: var(--text-dim); font-size: 12px; margin: 2px 0 8px; }
   #worldMapChooser { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  /* v20.5 M5 小さな地図：押すと大きな地図。指でなぞればページが動く */
+  .worldMiniMap { margin: 0 0 10px; cursor: pointer; min-height: 20px; }
+  .worldMiniMap > svg { touch-action: pan-y; }
+  .worldMapBox .wmMiniText { fill: var(--text-dim); font-size: 10px; }
   /* v20.4 M4 国の網 */
   .worldNetBox { position: relative; width: 100%; overflow: hidden; touch-action: pan-y; border: 1px solid var(--border); border-radius: 10px; background: #141414; user-select: none; -webkit-user-select: none; }
   .worldNetBox.zoomed { touch-action: none; }
@@ -2337,6 +2341,9 @@
         <button type="button" id="btnWorldDropStale" class="tagFilterBtn">まとめて捨てる</button>
       </div>
 
+      <!-- v20.5 M5：直近7日の小さな地図。押すと大きな地図（90日） -->
+      <div id="worldMiniMap" class="worldMapBox worldMiniMap" role="button" aria-label="直近7日のお金の流れ。押すと大きな地図"></div>
+
       <button type="button" id="worldStratumToday" class="worldStratumLine" hidden></button>
 
       <!-- v19.6 段階6：お金の鎖と単発。既定の画面の地層の1行のすぐ下 -->
@@ -2965,7 +2972,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.4';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.5';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -19120,6 +19127,7 @@
     body.appendChild(box);
   }
   function renderWorldMain() {
+    renderWorldMiniMap();   // v20.5 M5
     const stale = worldStaleUnread();
     const bar = document.getElementById('worldStaleBar');
     bar.hidden = !stale.length;
@@ -20866,6 +20874,64 @@
     showScreen('world');
     renderWorld();
   }
+  // ---- v20.5 M5：世界の画面の一番上の小さな地図（直近7日の線だけ。押すと大きな地図） ----
+  const WORLD_MINI_DAYS = 7;
+  const WORLD_MINI_H    = 178;
+  let worldMiniToken = 0;
+  function renderWorldMiniMap() {
+    const box = document.getElementById('worldMiniMap');
+    if (!box) return;
+    const token = ++worldMiniToken;
+    box.onclick = () => { worldState.view = 'map'; renderWorld(); };   // 地図が描けていなくても、押せば大きな地図へ
+    worldLoadMapLib().then(async (lib) => {
+      const t = todayStr(), from = addDays(t, -WORLD_MINI_DAYS);
+      await ensureWorldMonths([...new Set([monthOfDate(from), monthOfDate(t)])]);
+      if (token !== worldMiniToken || worldState.view !== 'main') return;
+      worldDrawMiniMap(box, lib, worldMapModel(lib, from));
+    }).catch((e) => {
+      if (token !== worldMiniToken) return;
+      box.innerHTML = '';
+      const p = document.createElement('p'); p.className = 'fieldNote';
+      p.textContent = '地図を読み込めませんでした（' + ((e && e.message) || '理由不明') + '）。お金の流れは下の一覧で見られます';
+      box.appendChild(p);
+    });
+  }
+  function worldDrawMiniMap(box, lib, model) {
+    const d3 = lib.d3;
+    const W = Math.max(200, Math.round(box.clientWidth || 360)), H = WORLD_MINI_H, textH = 16;
+    const proj = d3.geoEqualEarth();
+    proj.fitSize([W, H - textH], { type: 'FeatureCollection', features: lib.features });
+    const path = d3.geoPath(proj);
+    box.innerHTML = '';
+    const svg = worldSvg('svg', { viewBox: '0 0 ' + W + ' ' + H, width: W, height: H, role: 'img', 'aria-label': '直近' + WORLD_MINI_DAYS + '日のお金の流れ' }, box);
+    const defs = worldSvg('defs', {}, svg);
+    const mk = worldSvg('marker', { id: 'wmMiniArrow', viewBox: '0 0 10 10', refX: '9', refY: '5', markerUnits: 'userSpaceOnUse', markerWidth: '7', markerHeight: '7', orient: 'auto-start-reverse' }, defs);
+    worldSvg('path', { d: 'M0,0 L10,5 L0,10 z', class: 'wmArrowHead' }, mk);
+    // 国をまたぐ線だけ（小さな地図には下の枠を置かないので、枠への線は描かない）
+    const cross = model.lines.filter((r) => r.places.every((c) => worldIsCountry(c, lib)));
+    const involved = new Set(); cross.forEach((r) => r.places.forEach((c) => involved.add(c)));
+    lib.features.forEach((f) => worldSvg('path', { d: path(f) || '', class: 'wmC' + (involved.has(f.a3) ? ' on' : '') }, svg));
+    const pt = (c) => { const ll = lib.anchors.get(c); return ll ? proj(ll) : null; };
+    const pairs = new Map();
+    cross.forEach((r) => { const k = r.places.join('>'); if (!pairs.has(k)) pairs.set(k, []); pairs.get(k).push(r); });
+    pairs.forEach((rows, k) => {
+      const [a, b] = k.split('>'); const p1 = pt(a), p2 = pt(b);
+      if (!p1 || !p2) return;
+      const dx = p2[0] - p1[0], dy = p2[1] - p1[1], dist = Math.hypot(dx, dy) || 1, nx = -dy / dist, ny = dx / dist;
+      rows.slice(0, WORLD_MAP_LINES_PER_PAIR).forEach((r, i, shown) => {
+        const off = dist * 0.18 + (i - (shown.length - 1) / 2) * 6;
+        const cx = (p1[0] + p2[0]) / 2 + nx * off, cy = (p1[1] + p2[1]) / 2 + ny * off;
+        const e = r.rep || r;
+        const u = (!r.flow.kind || r.flow.kind === 'money') ? worldUsdOf(e) : null;
+        const at = { d: 'M' + p1[0].toFixed(1) + ',' + p1[1].toFixed(1) + ' Q' + cx.toFixed(1) + ',' + cy.toFixed(1) + ' ' + p2[0].toFixed(1) + ',' + p2[1].toFixed(1), class: 'wmL' + (!u ? ' dot' : (r.flow.span || u.per) ? ' dash' : ''), 'marker-end': 'url(#wmMiniArrow)' };
+        if (u) at.style = 'stroke-width:' + worldUsdWidth(u.value) + 'px';
+        worldSvg('path', at, svg);
+      });
+      [p1, p2].forEach((p) => worldSvg('circle', { cx: p[0].toFixed(1), cy: p[1].toFixed(1), r: 2.5, class: 'wmDot' }, svg));
+    });
+    const t = worldSvg('text', { x: 4, y: H - 4, class: 'wmMiniText' }, svg);
+    t.textContent = (cross.length ? '直近' + WORLD_MINI_DAYS + '日：国をまたぐ線 ' + cross.length + '本' : '直近' + WORLD_MINI_DAYS + '日は国をまたぐ動きがありません') + '　押すと大きな地図（' + WORLD_MAP_DAYS + '日）';
+  }
   // ---- v20.4 M4：国の網 ------------------------------------------------------
   const WORLD_NET_MAX_NODES = 12;   // 円に並べる点の数。超えたら、動きの少ない方を「ほかN」にまとめる
   const WORLD_NET_NAME_MAX  = 8;    // 点の名前・外の札の名前はこの字数で切る
@@ -20874,9 +20940,11 @@
     if (WORLD_MAP_SLOTS.includes(code)) return WORLD_MAP_SLOT_LABEL[code];
     if (!lib.shortNames) lib.shortNames = new Map();
     if (lib.shortNames.has(code)) return lib.shortNames.get(code);
+    // 正式な名前が4字以内なら、そのまま（別名の表には「カタル」のような古い書き方もあるため）。長いときだけ一番短い日本語の呼び名
+    const formal = worldPlaceLabel(code, lib);
     let best = '';
-    lib.byName.forEach((c, name) => { if (c !== code || /[a-z0-9]/i.test(name) || name.length < 2) return; if (!best || name.length < best.length) best = name; });
-    const out = best || worldPlaceLabel(code, lib);
+    if (formal.length > 4) lib.byName.forEach((c, name) => { if (c !== code || /[a-z0-9]/i.test(name) || name.length < 2) return; if (!best || name.length < best.length) best = name; });
+    const out = best || formal;
     lib.shortNames.set(code, out);
     return out;
   }
@@ -20894,6 +20962,10 @@
       return key;
     };
     const inner = [], outs = new Map(), allRows = [];
+    // v20.5：その国自身を指す名前（「米国」「アメリカ合衆国」「日本」。別名の表と丸ごと一致）は点にしない。
+    // その名前が出る動きは網に出さず（外の札にも出さない）、「この国の札を一覧で見る」には残す
+    const isSelf = (name) => lib.byName.get(worldNormName(name)) === c;
+    let selfRows = 0;
     const addOut = (dir, type, code, r, nodeKey) => {
       const k = dir + '|' + type + '|' + code;
       if (!outs.has(k)) {
@@ -20904,13 +20976,18 @@
       const o = outs.get(k);
       o.rows.push(r); o.nodeKeys.push(nodeKey);
     };
-    (model.domestic.get(c) || []).forEach((r) => { allRows.push(r); inner.push({ r, from: nodeOf(r.flow.from, r), to: nodeOf(r.flow.to, r) }); });
+    (model.domestic.get(c) || []).forEach((r) => {
+      allRows.push(r);
+      if (isSelf(r.flow.from) || isSelf(r.flow.to)) { selfRows++; return; }
+      inner.push({ r, from: nodeOf(r.flow.from, r), to: nodeOf(r.flow.to, r) });
+    });
     model.lines.concat(model.unknown).forEach((r) => {
       const [a, b] = r.places || [];
       if (a !== c && b !== c) return;
       allRows.push(r);
       const out = a === c;
       const other = out ? b : a;
+      if (isSelf(out ? r.flow.from : r.flow.to)) { selfRows++; return; }   // v20.5
       const nk = nodeOf(out ? r.flow.from : r.flow.to, r);
       const type = !other ? 'unknown' : WORLD_MAP_SLOTS.includes(other) ? 'slot' : 'country';
       addOut(out ? 'out' : 'in', type, other || '', r, nk);
@@ -20929,7 +21006,7 @@
     }
     list.sort((x, y) => x.name.localeCompare(y.name, 'ja'));   // 名前順で固定（毎回同じ場所に出る）
     if (more) list.push(more);
-    return { c, nodes: list, inner, outs: [...outs.values()], allRows };
+    return { c, nodes: list, inner, outs: [...outs.values()], allRows, selfRows };
   }
   // 点・外の札の置き場所。点は円に等間隔（1つなら中央）。外の札は円の上下の帯に置く
   // （円の左右は枠までの隙間が狭く、札を置くと点の名前に重なるため）。つながる点が上半分なら上の帯、下半分なら下の帯。
@@ -20937,15 +21014,25 @@
   function worldNetLayout(net, W) {
     const n = net.nodes.length, R = W * 0.33, ROW = 26, GAP = 6;
     const ang = new Map();
-    net.nodes.forEach((nd, i) => ang.set(nd.key, n === 1 ? -Math.PI / 2 : -Math.PI / 2 + (2 * Math.PI * i) / n));
+    // 点が2つなら左右（名前順に左から）。上下に並べると、上の帯から下の点への矢印が上の点の名前を横切るため
+    net.nodes.forEach((nd, i) => ang.set(nd.key, n === 1 ? -Math.PI / 2 : n === 2 ? Math.PI * (1 - i) : -Math.PI / 2 + (2 * Math.PI * i) / n));
     const items = net.outs.map((o) => {
       let sx = 0, sy = 0;
       o.nodeKeys.forEach((k) => { const t = ang.get(k); if (t != null) { sx += Math.cos(t); sy += Math.sin(t); } });
       const label = (o.dir === 'out' ? '→ ' : '← ') + worldNetCut(o.place) + '（' + o.rows.length + '）';
       const w = [...label].reduce((a, ch) => a + (/[\x20-\x7e]/.test(ch) ? 6 : 10.5), 0) + 18;
       const top = n === 1 ? o.dir === 'in' : sy < -1e-6 || (Math.abs(sy) <= 1e-6 && o.dir === 'in');
-      return { o, label, w, top, x: W / 2 + R * (sx || sy ? sx / Math.hypot(sx, sy) : 0) };
+      const h = Math.hypot(sx, sy);
+      return { o, label, w, top, sy: h ? sy / h : 0, x: W / 2 + R * (h ? sx / h : 0) };
     });
+    // v20.5：上下の帯の枚数を均す（差が2枚以上なら、1枚差まで）。移すのは、円の中ほど（左右の端）の点につながる札から。
+    // その札は帯の左右の端に並ぶので、矢印は円の外側を通り、点の名前を横切りにくい
+    for (let guard = 0; guard < items.length; guard++) {
+      const up = items.filter((it) => it.top), dn = items.filter((it) => !it.top);
+      if (Math.abs(up.length - dn.length) < 2) break;
+      const from = up.length > dn.length ? up : dn;
+      from.sort((a, b) => Math.abs(a.sy) - Math.abs(b.sy))[0].top = up.length < dn.length;
+    }
     // 帯ごとに左右の順で段に詰める
     const rowsOf = (list) => {
       list.sort((a, b) => a.x - b.x);
@@ -20977,6 +21064,14 @@
     botRows.forEach((row, i) => placeRow(row, topBand + W + 6 + ROW / 2 + i * ROW));
     return { pos, opos, W, H };
   }
+  // 網の矢印の形。端を点・札の手前で止め、i 本目は少しずつずらす（2次曲線の始点・制御点・終点）
+  function worldNetArrowPath(p1, p2, trim1, trim2, i) {
+    const dx = p2.x - p1.x, dy = p2.y - p1.y, dist = Math.hypot(dx, dy) || 1;
+    const ux = dx / dist, uy = dy / dist;
+    const a = { x: p1.x + ux * trim1, y: p1.y + uy * trim1 }, b = { x: p2.x - ux * trim2, y: p2.y - uy * trim2 };
+    const off = dist * 0.12 + i * 10;
+    return { a, m: { x: (a.x + b.x) / 2 - uy * off, y: (a.y + b.y) / 2 + ux * off }, b };
+  }
   function worldNetRowStyle(r) {
     const e = r.rep || r;
     const u = (!r.flow.kind || r.flow.kind === 'money') ? worldUsdOf(e) : null;
@@ -21000,12 +21095,19 @@
       const net = worldCountryNet(c, worldMapModel(lib, from), lib);
       worldState.netLast = { c, net, label: worldPlaceLabel(c, lib) };
       document.getElementById('worldNetTitle').textContent = worldPlaceLabel(c, lib) + 'の網（直近' + WORLD_MAP_DAYS + '日）';
+      if (!net.nodes.length && !net.outs.length) {
+        box.innerHTML = ''; box.style.height = '';
+        st.textContent = 'この国の網に出せる動きがありません（「' + worldPlaceShort(c, lib) + '」そのものが出る動きだけです）。下の「この国の札を一覧で見る」から見られます。';
+        listBtn.hidden = !net.allRows.length;
+        return;
+      }
       worldDrawNet(net, lib);
       // 描くと画面が縦に伸び、縦のスクロールバーが出て枠の幅が変わることがある。変わっていたら1度だけ描き直す
       const drawnW = Math.max(200, Math.round(document.getElementById('worldNetBox').clientWidth || 360));
       if (Math.abs(drawnW - Number(document.getElementById('worldNetBox').dataset.w || drawnW)) > 1) worldDrawNet(net, lib);
       const inner = net.inner.filter((x) => x.from !== x.to).length;
-      st.textContent = '点 ' + net.nodes.length + '・国内の矢印 ' + inner + '本・外の札 ' + net.outs.length + '枚。点・矢印・外の札を押すと開きます。二本指で拡大・縮小できます。';
+      st.textContent = '点 ' + net.nodes.length + '・国内の矢印 ' + inner + '本・外の札 ' + net.outs.length + '枚。点・矢印・外の札を押すと開きます。二本指で拡大・縮小できます。'
+        + (net.selfRows ? '　「' + worldPlaceShort(c, lib) + '」そのものが出る動き ' + net.selfRows + '件は、網には出さず「この国の札を一覧で見る」に入れています。' : '');   // v20.5
       listBtn.hidden = !net.allRows.length;
     }).catch((e) => {
       if (token !== worldNetToken) return;
@@ -21036,14 +21138,10 @@
     // 矢印：端を点・札の手前で止め、同じ組は少しずつずらす
     const pairCount = new Map();
     const drawArrow = (p1, p2, r, trim1, trim2) => {
-      const dx = p2.x - p1.x, dy = p2.y - p1.y, dist = Math.hypot(dx, dy) || 1;
-      const ux = dx / dist, uy = dy / dist;
-      const a = { x: p1.x + ux * trim1, y: p1.y + uy * trim1 }, b = { x: p2.x - ux * trim2, y: p2.y - uy * trim2 };
       const k = [Math.round(p1.x), Math.round(p1.y), Math.round(p2.x), Math.round(p2.y)].join(',');
       const i = pairCount.get(k) || 0; pairCount.set(k, i + 1);
-      const off = dist * 0.12 + i * 10;
-      const mx = (a.x + b.x) / 2 - uy * off, my = (a.y + b.y) / 2 + ux * off;
-      const d = 'M' + a.x.toFixed(1) + ',' + a.y.toFixed(1) + ' Q' + mx.toFixed(1) + ',' + my.toFixed(1) + ' ' + b.x.toFixed(1) + ',' + b.y.toFixed(1);
+      const { a, m, b } = worldNetArrowPath(p1, p2, trim1, trim2, i);
+      const d = 'M' + a.x.toFixed(1) + ',' + a.y.toFixed(1) + ' Q' + m.x.toFixed(1) + ',' + m.y.toFixed(1) + ' ' + b.x.toFixed(1) + ',' + b.y.toFixed(1);
       const stl = worldNetRowStyle(r);
       const at = { d, class: stl.cls, 'marker-end': 'url(#wnArrowMk)' };
       if (stl.width) at.style = 'stroke-width:' + stl.width + 'px';
