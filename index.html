@@ -2972,7 +2972,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.6';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.7';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -16665,13 +16665,15 @@
     });
   }
   // 「必ず見るもの：H.4.1 2件／日銀旬報 開けず（理由）」。報告が抜けた源は「報告なし」
-  function worldCheckedText(checked, ids) {
+  function worldCheckedText(checked, ids, secIds) {
     const daily = worldDailySources().filter((d) => !ids || ids.includes(d.id));
-    if (!daily.length) return '';
+    const sec = WORLD_SEC_CORPS.filter((c) => (secIds || []).includes(c.id));   // v20.7 段階C：差し込んだ決算
+    if (!daily.length && !sec.length) return '';
     if (!checked) return '必ず見るもの：報告なし';
     const parts = checked.map((c) => c.short + ' ' + (c.opened ? c.picked + '件' : '開けず')
       + (c.note && (!c.opened || !c.picked) ? '（' + c.note + '）' : ''));
     daily.forEach((d) => { if (!checked.some((c) => c.id === d.id)) parts.push(d.short + ' 報告なし'); });
+    sec.forEach((c) => { if (!checked.some((x) => worldSecOf(x.short) === c)) parts.push(worldSecLabel(c) + ' 報告なし'); });
     return '必ず見るもの：' + parts.join('／');
   }
   // after の候補。直近 WORLD_RECENT_FLOWS_DAYS 日のうち、お金を先に、新しい順
@@ -16702,6 +16704,7 @@
     const seed = (opts && opts.seed) ? WORLD_SEED_REGIONS.find((x) => x[0] === opts.seed) || null : null;   // v20.2
     // v19.1 必ず見るもの。v19.4：今日の取り込みは期限の来たものだけ、いつもの「取り込む」は全部
     const daily = seed ? [] : (opts && opts.sourceIds) ? worldDailySources().filter((d) => opts.sourceIds.includes(d.id)) : worldDailySources();   // v20.2：初期投入では必ず見るものを外す
+    const filings = seed ? [] : ((opts && opts.filings) || []);   // v20.7 段階C：新しい書類のある会社
     const prim = worldAllSourceLines('primary');
     const anal = worldAllSourceLines('analysis');
     const known = worldKnownNames();
@@ -16772,6 +16775,7 @@
         : '') +
       // v19.13：今日の数字は材料なので上に置く（最近のお金の動きは候補なので末尾のまま）
       ((opts && opts.figures) ? opts.figures + '\n' : '') +
+      (filings.length ? worldFilingsSection(filings) + '\n' : '') +   // v20.7 段階C
       (seed ? '' :   // v20.2：初期投入では「よく使う出典」を外す（字数のため）
         '■ よく使う出典：一次（ここによくある。縛りではない）\n' +
         (prim.length ? prim.join('\n') : '（未設定）') + '\n\n' +
@@ -17016,8 +17020,8 @@
       '  "srcCadence":"quarter",\n' +
       '  "confidence":8,\n' +
       '  "confidenceWhy":""\n' +
-      '}]' + (daily.length
-        ? ',\n"checked":[\n' + daily.map((d) => '  {"source":"' + d.label + '","opened":true,"picked":0,"note":""}').join(',\n') + '\n]'
+      '}]' + (daily.length || filings.length
+        ? ',\n"checked":[\n' + daily.map((d) => d.label).concat(filings.map(worldSecLabel)).map((l) => '  {"source":"' + l + '","opened":true,"picked":0,"note":""}').join(',\n') + '\n]'
         : '') + '}\n\n' +
       (boot ? '' : 'kind が "relation" のときの premise：\n' +
         '  {"kind":"relation","a":"既知の概念1","b":"既知の概念2","line":"..."}\n') +
@@ -17027,7 +17031,7 @@
       '前の動きの続きでないとき： "after": null\n' +
       '全部追えたとき・全体の金額が無いとき： "total": "", "share": null\n' +
       'confidence が' + (WORLD_CONF_WHY_BELOW + 1) + '以上のとき： "confidenceWhy": ""\n' +
-      (daily.length ? '毎回必ず見るものから札にしなかったとき： "checked" は省かず "picked": 0\n' : '') +
+      (daily.length || filings.length ? '毎回必ず見るもの' + (filings.length ? '・決算' : '') + 'から札にしなかったとき： "checked" は省かず "picked": 0\n' : '') +
       '地層の値が出典に書かれていないとき： "levels": []\n' +
       '述べた理由が出典に無いとき： "said": ""\n' +
       '読んだ思惑が述べた理由と同じとき： "read": ""\n\n' +
@@ -22187,14 +22191,15 @@
     return { date: rows[0].record_date, total: a, change: Number.isFinite(b) ? a - b : null };
   }
   // 失敗を理由つきの文にする。落ちているのか、公表がまだなのか、形が変わったのかで対応が変わる
-  async function worldFetchJson(url, signal) {
+  async function worldFetchJson(url, signal, key) {
     let res;
     try { res = await fetch(url, signal ? { signal } : undefined); }
     catch (e) { throw new Error(e && e.name === 'AbortError' ? (WORLD_FIGURES_TIMEOUT / 1000) + '秒で打ち切りました' : '通信できませんでした'); }
     if (!res.ok) throw new Error('相手が ' + res.status + ' を返しました');
     let j;
     try { j = await res.json(); } catch (e) { throw new Error('返ってきた形が変わっています（JSON が読めない）'); }
-    if (!j || !Array.isArray(j.data)) throw new Error('返ってきた形が変わっています（data が無い）');
+    const k = key || 'data';   // v20.7：SEC の書類一覧は filings を見る
+    if (!j || !(k === 'data' ? Array.isArray(j.data) : (j[k] && typeof j[k] === 'object'))) throw new Error('返ってきた形が変わっています（' + k + ' が無い）');
     return j;
   }
   // ---- v20.6 段階B：数字を貯める（sekai_api_shiyou_B.md）----
@@ -22425,6 +22430,102 @@
       catch (e) { if (e.status !== 409) throw e; worldFigLastCheck = 0; }   // 相手が同時に書いた。次の同期で合わせ直す
     }
   }
+  // ---- v20.7 段階C：5社の決算（sekai_api_shiyou_C.md の 1 章）----
+  // 数字の API（companyfacts など）はブラウザから読めない。読めるのは書類の一覧（submissions、CORS あり）だけなので、
+  // アプリは新しい 10-Q／10-K を見つけて書類の URL を差し込み、数字はチャットが本文から読む。
+  // 取り込めたら、会社ごとに書類の提出日を index.pulls（sec_…）に控える。同じ書類を2度出さない
+  const WORLD_SEC_API   = 'https://data.sec.gov/submissions/CIK';
+  const WORLD_SEC_FORMS = ['10-Q', '10-K'];   // 訂正（10-Q/A）は見ない
+  const WORLD_SEC_CORPS = [
+    { id: 'sec_nvda',  cik: '0001045810', name: 'NVIDIA',    side: '作る側' },
+    { id: 'sec_mu',    cik: '0000723125', name: 'Micron',    side: '作る側' },
+    { id: 'sec_msft',  cik: '0000789019', name: 'Microsoft', side: '買う側' },
+    { id: 'sec_amzn',  cik: '0001018724', name: 'Amazon',    side: '買う側' },
+    { id: 'sec_googl', cik: '0001652044', name: 'Alphabet',  side: '買う側' },
+  ];
+  function worldSecLabel(c) { return '決算 ' + c.name; }
+  // checked の source（「決算 NVIDIA」）から会社を引く。「TSMC 決算」「トヨタ 決算」は5社に当たらない
+  function worldSecOf(name) {
+    const t = String(name || '');
+    return /決算/.test(t) ? (WORLD_SEC_CORPS.find((c) => t.includes(c.name)) || null) : null;
+  }
+  // 書類一覧（submissions の JSON）から、提出日がいちばん新しい 10-Q／10-K を1つ。純粋な関数
+  function worldSecLatest(j, corp) {
+    const r = j && j.filings && j.filings.recent;
+    if (!r || !Array.isArray(r.form)) return null;
+    let best = null;
+    r.form.forEach((f, i) => {
+      if (!WORLD_SEC_FORMS.includes(f)) return;
+      const filed = (r.filingDate || [])[i];
+      if (!isDateStr(filed) || (best && best.filed >= filed)) return;
+      const acc = String((r.accessionNumber || [])[i] || ''), doc = String((r.primaryDocument || [])[i] || '');
+      if (!acc || !doc) return;
+      const period = (r.reportDate || [])[i];
+      best = { id: corp.id, name: corp.name, side: corp.side, form: f, period: isDateStr(period) ? period : '', filed,
+        url: 'https://www.sec.gov/Archives/edgar/data/' + Number(corp.cik) + '/' + acc.replace(/-/g, '') + '/' + doc };
+    });
+    return best;
+  }
+  // 5社の書類一覧を同時に取り、控えより新しい書類だけを返す
+  async function worldFetchFilings() {
+    const t0 = Date.now();
+    const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+    const timer = setTimeout(() => { if (ctl) ctl.abort(); }, WORLD_FIGURES_TIMEOUT);
+    const got = await Promise.allSettled(WORLD_SEC_CORPS.map((c) => worldFetchJson(WORLD_SEC_API + c.cik + '.json', ctl && ctl.signal, 'filings')));
+    clearTimeout(timer);
+    const pulls = (wd.index && wd.index.pulls) || {};
+    const out = { list: [], reasons: [], checked: 0, ms: 0 };
+    got.forEach((g, i) => {
+      const c = WORLD_SEC_CORPS[i];
+      if (g.status !== 'fulfilled') { out.reasons.push({ name: c.name, msg: g.reason.message }); return; }
+      const f = worldSecLatest(g.value, c);
+      if (!f) { out.reasons.push({ name: c.name, msg: '返ってきた形が変わっています（10-Q／10-K が無い）' }); return; }
+      out.checked++;
+      if (f.filed > (pulls[c.id] || '')) out.list.push(f);
+    });
+    out.ms = Date.now() - t0;
+    return out;
+  }
+  // プロンプトの節「■ 決算」。新しい書類が無ければ空（節ごと出さない）
+  function worldFilingsSection(list) {
+    if (!list || !list.length) return '';
+    const L = ['■ 決算（SEC に出た新しい書類。' + WORLD_SEC_CORPS.length + '社のうち ' + list.length + '社。書類を開いて読む）'];
+    L.push('買う側（Microsoft・Amazon・Alphabet）が設備に払った金が、作る側（NVIDIA・Micron）の売上になる。この鎖を見るための節。');
+    list.forEach((f) => {
+      L.push('- ' + f.name + '（' + f.side + '）：' + f.form + '・' + (f.period ? f.period + ' までの期・' : '') + worldShortDate(f.filed) + ' 提出');
+      L.push('  ' + f.url);
+    });
+    L.push('読み方：');
+    L.push('- 読むのは、キャッシュフロー計算書の設備投資・自社株買い・配当と、損益計算書の研究開発費。作る側は、区分ごとの売上（データセンター・メモリなど）も。');
+    L.push('- 額は書類に書かれたとおり。10-Q のキャッシュフローは期の初めからの累計なので、引き算して3か月分にしない。flow の span に累計の期間を書く（例：「会計年度の初めから7月26日まで」）。');
+    L.push('- 札は1社1枚：設備投資（from＝会社、to＝書類の言葉で行き先）。作る側は、区分の売上の札をもう1枚（from＝書類が名指しする買い手。名指しが無ければ「データセンターの買い手（書類では匿名）」、to＝会社）。');
+    L.push('- 研究開発・自社株買い・配当は、設備投資の札の detail に書類の書き方のまま並べる。足さない。書類に無い項目は「記載なし」と書き、別の項目で埋めない。');
+    L.push('- 作る側の売上の札の after に、買う側の設備投資の札（同じ JSON の "#番号" か、最近のお金の動きの id）を書いてよい。書類に買い手の名前が無いときは、つながりを read に推定と書き、confidence を7以下にする。');
+    L.push('- url は上の書類の URL。source は「会社名 10-Q（提出日）」。eventDate は提出日。');
+    L.push('- 1社ずつ "checked" に報告する。source は「決算 会社名」（' + list.map(worldSecLabel).join('／') + '）。');
+    return L.join('\n') + '\n';
+  }
+  // 取り込む画面の1行
+  function worldFilingsStatus(r) {
+    if (!r) return '';
+    const head = r.list.length
+      ? '決算：新しい書類 ' + r.list.length + '社（' + r.list.map((f) => f.name + ' ' + f.form + ' ' + worldShortDate(f.filed)).join('・') + '）をプロンプトに入れました'
+      : r.checked ? '決算：新しい書類はありません（' + r.checked + '社を見ました）' : '';
+    if (!r.reasons.length) return head;
+    const msgs = [...new Set(r.reasons.map((x) => x.msg))];
+    if (!r.checked && msgs.length === 1) return '決算：' + (r.reasons.length > 1 ? r.reasons.length + '社とも' : '') + '取れませんでした（' + msgs[0] + '）';
+    return (head ? head + '。' : '') + '決算の取れなかったもの：' + r.reasons.map((x) => x.name + '（' + x.msg + '）').join('／');
+  }
+  // コピーしたプロンプトに入れた書類を控える（必ず見るものの控えに sec として足す）。取り込めたら worldMarkPulled が提出日を進める
+  function worldRememberFilings(list) {
+    try {
+      const p = worldPendingPull() || { ids: [], at: todayStr() };
+      p.sec = {};
+      (list || []).forEach((f) => { p.sec[f.id] = f.filed; });
+      localStorage.setItem(WORLD_PULL_PENDING_KEY, JSON.stringify(p));
+    } catch (e) {}
+  }
+  // ---- v20.7 ここまで ----
   // プロンプトに差し込む節（sekai_api_shiyou_A.md の 3 章）
   function worldFiguresSection(fig) {
     const any = fig && (fig.tga || fig.debt || fig.dts);
@@ -22502,15 +22603,21 @@
     const btns = [copyBtn, btn].filter(Boolean);
     const labels = btns.map((b) => b.textContent);
     btns.forEach((b) => { b.disabled = true; b.textContent = '数字を取っています…'; });
-    el.textContent = '米財務省の数字を取っています…（数秒）';
+    el.textContent = '米財務省の数字と、5社の決算の書類を見ています…（数秒）';
     fl.textContent = '';
-    const textP = worldFetchFigures()
-      .catch((e) => ({ date: '', tga: null, debt: null, dts: null, reasons: [(e && e.message) || '理由不明'], stale: '', ms: 0 }))
-      .then((fig) => {
-        fl.textContent = worldFiguresStatus(fig);
-        let text;
-        try { text = worldPromptText({ ...opts, figures: worldFiguresSection(fig) }); }
-        catch (e) { text = worldPromptText(opts); fl.textContent += '（節を作れなかったので、数字なしにしました）'; }
+    // v20.7 段階C：5社の書類一覧も同時に見る。どちらが取れなくてもコピーする
+    const figP = worldFetchFigures()
+      .catch((e) => ({ date: '', tga: null, debt: null, dts: null, reasons: [(e && e.message) || '理由不明'], stale: '', ms: 0 }));
+    const filP = worldFetchFilings()
+      .catch((e) => ({ list: [], reasons: [{ name: '決算', msg: (e && e.message) || '理由不明' }], checked: 0, ms: 0 }));
+    const textP = Promise.all([figP, filP])
+      .then(([fig, fil]) => {
+        const fst = worldFilingsStatus(fil);
+        fl.textContent = worldFiguresStatus(fig) + (fst ? '　' + fst : '');
+        let text, used = fil.list;
+        try { text = worldPromptText({ ...opts, figures: worldFiguresSection(fig), filings: fil.list }); }
+        catch (e) { text = worldPromptText(opts); used = []; fl.textContent += '（節を作れなかったので、数字と決算なしにしました）'; }
+        worldRememberFilings(used);
         return text;
       });
     worldCopyLater(textP).then(async (ok) => {
@@ -22533,17 +22640,29 @@
     try { const v = JSON.parse(localStorage.getItem(WORLD_PULL_PENDING_KEY) || 'null'); return v && Array.isArray(v.ids) ? v : null; } catch (e) { return null; }
   }
   // 確認できた札が0件でも「見た」ことにする。控えが無ければ（同じ JSON を2度貼ったなど）何もしない
-  function worldMarkPulled() {
+  function worldMarkPulled(checked) {
     const p = worldPendingPull();
     try { localStorage.removeItem(WORLD_PULL_PENDING_KEY); } catch (e) {}
-    if (!p || !p.ids.length) return [];
+    const out = { ids: [], sec: [] };
+    if (!p) return out;
+    const sec = (p.sec && typeof p.sec === 'object') ? p.sec : {};   // v20.7 段階C：差し込んだ会社と書類の提出日
+    out.ids = p.ids;
+    out.sec = Object.keys(sec).filter((id) => WORLD_SEC_CORPS.some((c) => c.id === id) && isDateStr(sec[id]));
+    if (!out.ids.length && !out.sec.length) return out;
     if (!wd.index) wd.index = emptyWorldIndex();
     const t = todayStr();
     p.ids.forEach((id) => { if ((wd.index.pulls[id] || '') < t) wd.index.pulls[id] = t; });
+    // 決算は今日の日付でなく書類の提出日を控える（日本の朝と米国の提出日がずれても、次の書類を取りこぼさない）。
+    // 「開けなかった」と返った会社は控えない（次のコピーでもう一度出す）
+    out.sec.forEach((id) => {
+      const rep = (checked || []).find((x) => { const c = worldSecOf(x.short); return c && c.id === id; });
+      if (rep && !rep.opened) return;
+      if ((wd.index.pulls[id] || '') < sec[id]) wd.index.pulls[id] = sec[id];
+    });
     wd.index.updatedAt = nowIso();
     persistWorldIndex();
     scheduleSync();
-    return p.ids;
+    return out;
   }
   // 朝の「今日の取り込み」。期限の来たぶんだけのプロンプトをコピーして、取り込む画面（貼る欄）を開く
   function worldPullToday(ids, btn) {
@@ -22568,7 +22687,8 @@
     const res = await worldImportJson(box.value);
     if (res.error) { status.textContent = res.error; worldState.lastResult = res.error; return; }
     // v20.2：初期投入の JSON では、朝の「今日の取り込み」の日付を進めない（必ず見るものを見ていないため）
-    const pulledIds = res.seed ? [] : worldMarkPulled();   // v19.4 段階5：取り込めたら、札が0件でも「見た」ことにする
+    const pulled = res.seed ? { ids: [], sec: [] } : worldMarkPulled(res.checked);   // v19.4 段階5：取り込めたら、札が0件でも「見た」ことにする（v20.7：決算は提出日を控える）
+    const pulledIds = pulled.ids;
     const seedInfo = res.seed ? worldMarkSeed(res.seed) : null;
     const r = res.rejected;
     const drops = [];
@@ -22593,7 +22713,7 @@
       msg += '。';
     }
     // v19.1：毎回必ず見るもの。0件でも出す（開けなかったのか該当が無かったのかを毎回見るため）
-    const checkedText = res.seed ? '' : worldCheckedText(res.checked, pulledIds.length ? pulledIds : null);   // v20.2：初期投入では出さない
+    const checkedText = res.seed ? '' : worldCheckedText(res.checked, pulledIds.length ? pulledIds : null, pulled.sec);   // v20.2：初期投入では出さない
     if (checkedText) msg += '　' + checkedText + '。';
     // v19.3
     if (res.added) {
