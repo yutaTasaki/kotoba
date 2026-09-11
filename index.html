@@ -995,6 +995,9 @@
   }
   .worldRow .wTag.isNew { color: var(--accent); border-color: var(--accent-dim); }
   .worldRow .wMark { font-size: 10px; color: var(--accent); white-space: nowrap; }
+  /* v19.3 確度。高いものは目立たせない。低いものだけ点線の枠（推定の琥珀とは別の印） */
+  .worldRow .wConf { font-size: 10px; color: var(--text-faint); white-space: nowrap; margin-left: 4px; }
+  .worldRow .wConf.isLow { color: var(--text); border: 1px dotted var(--text-dim); border-radius: 3px; padding: 0 3px; font-weight: 700; }
   .worldDetail { padding: 2px 0 14px; border-top: 1px dashed var(--border); }
   .worldDetail .wWhy { font-size: 14px; line-height: 1.75; margin: 10px 0 0; }
   .worldPremise {
@@ -2738,7 +2741,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v19.2';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v19.3';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -14293,6 +14296,11 @@
   const WORLD_RECENT_FLOWS_MAX  = 30;   // プロンプトに差し込む最近のお金の動き（after の候補）
   const WORLD_RECENT_FLOWS_DAYS = 30;   // その対象期間
   const WORLD_CONCEPT_BOOTSTRAP = 10;   // 既知の概念がこれ未満なら、新しく作ってよい
+  const WORLD_CONF_MAX          = 10;   // v19.3 確度は 1〜10
+  const WORLD_CONF_WHY_BELOW    = 7;    // これ以下は confidenceWhy に理由を書かせる
+  const WORLD_CONF_LOUD         = 7;    // これ以下は札の1行で目立たせる
+  const WORLD_CONF_SINK         = 3;    // これ以下は既定の画面に出さない（背景に沈めた札へ。探すからは引ける）
+  const WORLD_WANTS_MAX         = 60;   // この出典が欲しがっているもの
   const WORLD_FLOW_KIND_MARK  = { money: '', goods: '［物］', people: '［人］' };
   const WORLD_FLOW_KIND_LABEL = { money: 'お金の動き', goods: '物の動き', people: '人の動き' };
   const WORLD_EVENT_ID_RE     = /^w_\d{8}_\d+$/;
@@ -14586,9 +14594,27 @@
       // after はどの動きの続きか。札の id の形のときだけ残す（#N は取り込みで置き換える）
       kind: WORLD_FLOW_KINDS.includes(f.kind) ? f.kind : 'money',
       after: WORLD_EVENT_ID_RE.test(String(f.after || '')) ? String(f.after) : '',
+      // v19.3 追えた割合。total は出典に書かれた全体額、amount は行き先が分かった分、share はその割合（%）。
+      // 全部追えたとき・全体額が無いときは total が空で share は null
+      total: worldStr(f.total, 20),
+      share: worldFlowShare(f, amount),
     };
   }
+  // 同じ単位で読めれば端末で割る（生成の割り算より確か）。読めなければ生成が書いた数を使う
+  function worldFlowShare(f, amount) {
+    const total = worldStr(f && f.total, 20);
+    if (!total) return null;
+    const a = worldParseAmount(amount), t = worldParseAmount(total);
+    if (Number.isFinite(a.value) && Number.isFinite(t.value) && t.value > 0 && a.unit === t.unit) {
+      return Math.max(0, Math.min(100, Math.round(a.value / t.value * 100)));
+    }
+    const n = Number(f.share);
+    return (f.share !== null && f.share !== '' && Number.isFinite(n) && n >= 0 && n <= 100) ? Math.round(n) : null;
+  }
   function worldIsMoneyFlow(e) { return !!(e && e.flow && e.flow.kind === 'money'); }
+  // v19.3 確度。0 は付いていない（v19.2 までの札）。付いていない札は沈めない
+  function worldConfidence(v) { const n = Math.round(Number(v)); return n >= 1 && n <= WORLD_CONF_MAX ? n : 0; }
+  function worldIsLowConf(e) { return !!(e && e.confidence && e.confidence <= WORLD_CONF_SINK); }
   function normalizeWorldFork(f) {
     if (!f || typeof f !== 'object') return null;
     const text = worldStr(f.text, 200);
@@ -14644,6 +14670,11 @@
       fork: normalizeWorldFork(e.fork),
       detail: worldStr(e.detail, 600),
       source: worldStr(e.source, 120),
+      // v19.3：この出典は何を欲しがっているか。ソース側にあった立場の1行を札に移した（一覧の外の出典でも残る）
+      wants: worldStr(e.wants, WORLD_WANTS_MAX),
+      // v19.3：確度 1〜10。7以下は理由を1行
+      confidence: worldConfidence(e.confidence),
+      confidenceWhy: worldStr(e.confidenceWhy, 80),
       url: typeof e.url === 'string' ? (shootSafeUrl(e.url.trim()) || '') : '',
       concepts: (Array.isArray(e.concepts) ? e.concepts : []).map((x) => worldStr(x, 80)).filter(Boolean).slice(0, 8),
       related: (Array.isArray(e.related) ? e.related : []).map((x) => worldStr(x, 80)).filter(Boolean).slice(0, 5),
@@ -15938,7 +15969,8 @@
   // actors が空の札＝背景の札。「背景に沈めた札 N件」の1行に畳む。
   // levels（地層の値）を持つかどうかは、この分け方と独立——介入の公表は
   // actors もあり levels もあるので、両方に出る。
-  function worldIsActionCard(e) { return !!(e.actors && e.actors.length); }
+  // v19.3：確度3以下も背景に沈める（既定の画面に出さない。探すからは引ける）
+  function worldIsActionCard(e) { return !!(e.actors && e.actors.length) && !worldIsLowConf(e); }
   function worldActionCards(list) { return list.filter(worldIsActionCard); }
   function worldBackgroundCards(list) { return list.filter((e) => !worldIsActionCard(e)); }
   // 札を主体でまとめる。同じ主体が複数の札を動かした日は1行にまとまる。
@@ -16116,15 +16148,15 @@
       'あなたは、ある人の世界の見方を少しずつ更新するための材料係です。\n' +
       '解説記事は書きません。ニュースの要約もしません。\n' +
       '「これから効き続ける動き」だけを、決められた形で返します。\n\n' +
+      // v19.3：確認しきれなかったものを黙って捨てない。確度を付けて返させる
       '■ 必ず守ること\n' +
       '- web 検索を必ず使う。検索せずに書かない。\n' +
-      '- 下に挙げたソースのドメインで確認できた出来事だけを返す。\n' +
       '- 日付・数字は、出典ページに書かれているものだけを書く。\n' +
       '  推定値・概算を書くときは detail に「推定」と明記する。\n' +
-      '- URL は実在するページのものだけ。開けるか確かめる。\n' +
-      '  確かめられなければ、その出来事を返さない。\n' +
-      '- 件数が足りなくてよい。埋めるくらいなら少ない方がよい。\n' +
-      '  ' + WORLD_PROMPT_COUNT + '件求めて4件しか確認できなければ4件を返す。\n' +
+      '- url は必ず書く。後から確かめるための記録なので、出典ページの URL を書く。\n' +
+      '- 確認しきれなかった出来事も、捨てずに返す。confidence を下げ、confidenceWhy に理由を書く\n' +
+      '  （一次資料に当たれず報道のみ、URL が開けなかった、数字が本文になく図から読んだ、など）。\n' +
+      '- 件数を埋めるために出来事を作らない。' + WORLD_PROMPT_COUNT + '件は目安。\n' +
       '- 出来事以外の文章を返さない。JSON のみ。\n\n' +
       '■ 分野\n' +
       '金融・経済と、地政学・政治を1本で見る。分けない。お金と力の動きは本質的につながっている。\n' +
@@ -16143,6 +16175,15 @@
       '直近7日間に動いたもの。ただし「その日のニュース」ではなく、\n' +
       'これから数ヶ月〜数年にわたって効き続ける動きを選ぶ。\n' +
       '発表そのものより、発表が示している力学を選ぶ。\n\n' +
+      // v19.3：探す先の縛り（固定ソースのドメインだけ）をやめ、探し方を書く
+      '■ 探し方\n' +
+      '- 探すのは3つ：お金が動いた記録（支払い・融資・買い入れ・介入・拠出）、\n' +
+      '  残高の変化（準備・備蓄・債務・保有資産）、主体の行動（決定・合意・制裁・提案・撤回）。\n' +
+      '- 一次資料を優先する。一次資料とは、政府・中央銀行・国際機関・企業・研究機関が自分で出したもの\n' +
+      '  （発表文・統計・決算・議事録・報告書）。報道や解説は一次資料ではない。\n' +
+      '- 一次資料が見つからず、報道・解説しか無いときも返してよい。そのときは source に媒体名を書き、\n' +
+      '  confidence を下げ、confidenceWhy に「一次資料に当たれず報道のみ」と書く。\n' +
+      '- 下の「よく使う出典」は、ここによくある、という目安。縛りではない。一覧の外を探してよい。\n\n' +
       // v19.1：必ず見る2件は他と分ける。見たが該当が無かったのか、開いていないのかを毎回返させる
       (daily.length
         ? '■ 毎回必ず見るもの（一次。毎回かならず開く。「取るもの」に従う。週1・10日ごとの公表なので、\n' +
@@ -16154,16 +16195,13 @@
           '  picked：そこから札にした件数。大きな動きが無ければ 0。\n' +
           '  note：開けなかった理由か、札にしなかった理由を1句。無ければ空。\n\n'
         : '') +
-      '■ そのほかのソース：一次（fact・eventDate・detail の数字はここでしか確認できない。「取るもの」があるソースはそれに従う）\n' +
+      '■ よく使う出典：一次（ここによくある。縛りではない）\n' +
       (prim.length ? prim.join('\n') : '（未設定）') + '\n\n' +
-      '■ そのほかのソース：解釈（why を書くための補助）\n' +
+      '■ よく使う出典：解釈（why を書くときの補助）\n' +
       (anal.length ? anal.join('\n') : '（未設定）') + '\n\n' +
-      '■ ソースの使い分け（厳守）\n' +
-      '- fact・eventDate・detail の数字は、一次のソースで確認できたものだけを書く。\n' +
-      '- 解釈のソースだけを根拠に出来事を立ててはいけない。\n' +
-      '  シンクタンクの論考は「出来事」ではない。\n' +
-      '- 解釈のソースは why を書くときにだけ使う。\n' +
-      '  その場合も url と source には、一次のソース（出来事そのものの出所）を書く。\n\n' +
+      '■ 解釈の使い方\n' +
+      '- シンクタンクの論考は「出来事」ではない。解釈の出典だけを根拠に出来事を立てない。\n' +
+      '- 解釈の出典は why を書くときにだけ使う。そのときも url と source には、出来事そのものの出所を書く。\n\n' +
       // v19: 用語集をやめる。注が要らない書き方にする
       '■ 書き方\n' +
       '- fact・why・did は、注が要らないくらい平たい言葉で書く。\n' +
@@ -16307,6 +16345,15 @@
       '  amount は出典の書き方のまま（「15兆円」「1.4億ドル」）。goods・people では空でよい。\n' +
       '  span：その金額が期間の累計・合計なら、その期間（「2022年以降」「2026年度」）。\n' +
       '        1回の動きなら空。累計と1回を混ぜると、一覧で累計だけが大きく見える。\n' +
+      // v19.3 追えた割合。追えなかった分が静かに消えないように
+      '  total：出典に全体の金額が書かれていて、行き先（誰から誰へ）が分かったのがその一部だけのとき、\n' +
+      '         全体の金額（出典の書き方のまま）。そのとき amount は行き先が分かった分だけにする。\n' +
+      '         分からない分は推測で埋めない。to にも what にも書かず、分からないまま残す。\n' +
+      '         全部追えたとき・全体の金額が出典に無いときは空。\n' +
+      '  share：total のうち amount が何%か（整数）。単位が違って出せなければ null。\n' +
+      '  例：「同盟国が1年で100億ドル超を配分」のうち、出どころと行き先が分かったのが欧州委員会の35億ドルだけなら\n' +
+      '      {"from":"欧州委員会","to":"ウクライナ向け米国製装備","what":"支援ローンから拠出",\n' +
+      '       "amount":"35億ドル","total":"100億ドル超","share":35,"span":"過去1年"}\n' +
       '  strata：この金が動かした「地層」の id を0〜' + WORLD_FLOW_STRATA_MAX + '個。末尾の一覧にあるものだけ。\n' +
       '          例：介入 → 外貨準備が動く。\n' +
       '  after：この動きの原因や前段に当たる動きがあれば、その id。\n' +
@@ -16330,7 +16377,15 @@
       '- detail：数字・当事者・背景。1〜3文。\n' +
       '- source：媒体名と発表日。\n' +
       '- url：出典ページ。\n' +
-      '- eventDate：出典ページに書かれた発表日または発生日（YYYY-MM-DD）。未来の日付にしない。\n\n' +
+      '- eventDate：出典ページに書かれた発表日または発生日（YYYY-MM-DD）。未来の日付にしない。\n' +
+      // v19.3：立場の1行を札に。一覧の外の出典でも失われないように
+      '- wants：この出典を出した組織が何を欲しがっているかを1行（' + WORLD_WANTS_MAX + '字以内）。\n' +
+      '  一次資料でも中立ではない。例：「国債の金利を低く保ちたい」「制裁が効いていると示したい」。\n' +
+      '  報道が出典のときは、報道が伝えている発表元について書く。分からなければ空。\n' +
+      '- confidence：この札の確かさを 1〜' + WORLD_CONF_MAX + ' の整数で。\n' +
+      '  10＝一次資料の本文で、数字・日付・主体まで確かめた。7＝一次資料だが一部を確かめきれていない。\n' +
+      '  4＝報道だけ。1＝噂・未確認。\n' +
+      '- confidenceWhy：confidence が' + WORLD_CONF_WHY_BELOW + '以下なら、理由を1行。' + (WORLD_CONF_WHY_BELOW + 1) + '以上なら空。\n\n' +
       '■ 並べ方\n' +
       '重要だと思う順に並べる。上から読まれる。\n\n' +
       '■ 出力形式\n' +
@@ -16343,13 +16398,16 @@
       '  "terms":[{"name":"IMF","line":"...","kind":"org","aka":["国際通貨基金"]}],\n' +
       '  "strata":["st_jp_rate_long"],\n' +
       '  "actors":[{"name":"財務省","did":"...","said":"...","read":"...","kind":"state"}],\n' +
-      '  "flow":{"from":"...","to":"...","what":"...","amount":"...","kind":"money","after":null,"span":"","strata":[]},\n' +
+      '  "flow":{"from":"...","to":"...","what":"...","amount":"...","kind":"money","after":null,"span":"","total":"","share":null,"strata":[]},\n' +
       '  "levels":[{"stratumId":"st_jp_fx_reserve","value":"...","at":"YYYY-MM-DD"}],\n' +
       '  "fork":{"text":"...","type":"level"},\n' +
       '  "detail":"...",\n' +
       '  "source":"...",\n' +
       '  "url":"https://...",\n' +
-      '  "eventDate":"YYYY-MM-DD"\n' +
+      '  "eventDate":"YYYY-MM-DD",\n' +
+      '  "wants":"...",\n' +
+      '  "confidence":8,\n' +
+      '  "confidenceWhy":""\n' +
       '}]' + (daily.length
         ? ',\n"checked":[\n' + daily.map((d) => '  {"source":"' + d.label + '","opened":true,"picked":0,"note":""}').join(',\n') + '\n]'
         : '') + '}\n\n' +
@@ -16359,6 +16417,8 @@
       '分かれ目が思いつかないとき： "fork": null\n' +
       '動いたものが無い・書けないとき： "flow": null\n' +
       '前の動きの続きでないとき： "after": null\n' +
+      '全部追えたとき・全体の金額が無いとき： "total": "", "share": null\n' +
+      'confidence が' + (WORLD_CONF_WHY_BELOW + 1) + '以上のとき： "confidenceWhy": ""\n' +
       (daily.length ? '毎回必ず見るものから札にしなかったとき： "checked" は省かず "picked": 0\n' : '') +
       '地層の値が出典に書かれていないとき： "levels": []\n' +
       '述べた理由が出典に無いとき： "said": ""\n' +
@@ -17096,6 +17156,7 @@
     const createdTerms = [];
     const touchedMonths = new Set();
     let old = 0, forks = 0, leans = 0, droppedForks = 0, onStrata = 0, droppedStrata = 0, unknownConcepts = 0, withActors = 0, withRead = 0, withFlow = 0;
+    let outside = 0, lowConf = 0, sunkConf = 0, noConf = 0, tracked = 0;   // v19.3
     const createdActors = [];
     const lv = { levelsFilled: 0, levelsDup: 0, levelsUnknown: 0 };   // v15
     // v19 段階3：#N は「生成が返したそのままの並び」で数える。落とした札の番号は空のまま
@@ -17117,6 +17178,7 @@
         readDate: '',
         field: WORLD_FIELDS.includes(it.field) ? it.field : (worldImportField || 'finance'),
         fact, why: it.why, premise: it.premise, detail: it.detail, source: it.source, url,
+        wants: it.wants, confidence: it.confidence, confidenceWhy: it.confidenceWhy,   // v19.3
         terms: it.terms, fork: it.fork, reason: it.reason,
         actors: it.actors, flow: it.flow,   // v12: ここで渡さないと normalize に届かない
         viaAsk: viaAsk || it.viaAsk || '',   // v14: どの問いから掘り当てたか
@@ -17165,6 +17227,12 @@
       if (ev.actors.length) withActors++;
       if (ev.actors.some((a) => a.read)) withRead++;
       if (ev.flow) withFlow++;
+      // v19.3
+      if (!worldSourceForUrl(ev.url)) outside++;
+      if (ev.confidence && ev.confidence <= WORLD_CONF_WHY_BELOW) lowConf++;
+      if (worldIsLowConf(ev)) sunkConf++;
+      if (!ev.confidence) noConf++;
+      if (ev.flow && ev.flow.total) tracked++;
       made.actor.forEach((id) => createdActors.push(id));
       const askedStrata = Array.isArray(it.strata) ? it.strata.length : 0;
       droppedStrata += Math.max(0, askedStrata - ev.strata.length);
@@ -17216,6 +17284,7 @@
       createdConcepts, createdTerms, createdActors, batchId, linked, partnerIds: [...partnerIds],
       addedIds: added.map((e) => e.id),
       withActors, withRead, withFlow, checked,
+      outside, lowConf, sunkConf, noConf, tracked,   // v19.3
       ...worldFlowKindCounts(added), ...afterStats,   // v19 段階3
       ...lv,   // v15: levelsFilled / levelsDup / levelsUnknown
       candidates: worldMergeCandidatesIn(WORLD_STORES.concept, createdConcepts)
@@ -17465,6 +17534,14 @@
         t.textContent = tagText + (n >= 2 ? ' ' + n : '');
         right.appendChild(t);
       }
+      // v19.3 確度。右端に小さく。低いものは点線の枠で目立たせる（琥珀の推定バッジとは別の印）
+      if (ev.confidence) {
+        const c = document.createElement('span');
+        c.className = 'wConf' + (ev.confidence <= WORLD_CONF_LOUD ? ' isLow' : '');
+        c.textContent = '確' + ev.confidence;
+        if (ev.confidenceWhy) c.title = ev.confidenceWhy;
+        right.appendChild(c);
+      }
     };
     paintRight();
     row.appendChild(right);
@@ -17684,14 +17761,24 @@
       deep.appendChild(p);
     }
     if (ev.source) { const p = document.createElement('div'); p.textContent = ev.source; deep.appendChild(p); }
+    // v19.3 確度。低いときは理由も
+    if (ev.confidence) {
+      const p = document.createElement('div');
+      p.className = 'worldMetaLine';
+      const k = document.createElement('span'); k.className = 'wmKey'; k.textContent = '確度：';
+      p.appendChild(k);
+      p.appendChild(document.createTextNode(ev.confidence + '/' + WORLD_CONF_MAX + (ev.confidenceWhy ? '（' + ev.confidenceWhy + '）' : '')));
+      deep.appendChild(p);
+    }
     // 発信者の立場。一次ソースだから中立ではない、を毎回目に入れる。
     // v12: その出典が札のアクターに含まれているときは出さない（動かした側に同じことがある）
     {
-      const st = worldActorsIncludeSource(ev) ? '' : worldStanceFor(ev);
+      // v19.3：札に書かれた wants が先。無い札（v19.2 まで）は登録ソースの立場
+      const st = ev.wants || (worldActorsIncludeSource(ev) ? '' : worldStanceFor(ev));
       if (st) {
         const p = document.createElement('div');
         p.className = 'worldMetaLine';
-        const k = document.createElement('span'); k.className = 'wmKey'; k.textContent = 'この発信者が欲しいもの：';
+        const k = document.createElement('span'); k.className = 'wmKey'; k.textContent = 'この出典が欲しいもの：';
         p.appendChild(k); p.appendChild(document.createTextNode(st));
         deep.appendChild(p);
       }
@@ -17881,16 +17968,27 @@
 
   // 出来事の url のドメインから、登録してあるソースの「立場」を引く
   function worldHostOf(u) { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return ''; } }
+  // v19.3：url が「よく使う出典」のどれに当たるか（取り込みで「一覧の外」を数えるのにも使う）
+  function worldSourceForUrl(u) {
+    const h = worldHostOf(u);
+    if (!h) return null;
+    return worldSources().find((x) => { const sh = worldHostOf(x.url); return sh && (h === sh || h.endsWith('.' + sh) || sh.endsWith('.' + h)); }) || null;
+  }
   function worldStanceFor(ev) {
-    const h = worldHostOf(ev.url);
-    if (!h) return '';
-    const s = worldSources().find((x) => { const sh = worldHostOf(x.url); return sh && (h === sh || h.endsWith('.' + sh) || sh.endsWith('.' + h)); });
+    const s = worldSourceForUrl(ev.url);
     return (s && s.stance) || '';
   }
   function worldFlowLine(f) {
     return [f.from || '？', '→', f.to || '？', f.what ? '　' + f.what : '', f.amount ? ' ' + f.amount : '',
       // v15: 1回の拠出か累計かで意味がまるで違う。額の隣に必ず出す
-      f.span ? '（' + f.span + 'の累計）' : ''].join(' ').replace(/\s+/g, ' ').trim();
+      f.span ? '（' + f.span + 'の累計）' : '',
+      // v19.3 追えた割合。残りを次に調べる手がかりにする
+      worldFlowTrackedText(f)].join(' ').replace(/\s+/g, ' ').trim();
+  }
+  // 「100億ドル超のうち35億ドル（35%）の行き先が分かった」
+  function worldFlowTrackedText(f) {
+    if (!f || !f.total) return '';
+    return '／' + f.total + 'のうち' + (f.amount || '一部') + (f.share != null ? '（' + f.share + '%）' : '') + 'の行き先が分かった';
   }
   // 札の出典（url のドメイン）が、その札のアクターのどれかか
   function worldActorsIncludeSource(ev) {
@@ -17935,7 +18033,7 @@
       const entries = worldTermEntriesOf(ev).filter((t) => t.line);
       if (entries.length) termBlock = '\n【私が既に知っていること】\n' + entries.map((t) => '- ' + t.name + '：' + t.line).join('\n') + '\n';
       // 立場も「反対の見方は」にだけ渡す。反論は前提を突くので効く
-      const st = worldStanceFor(ev);
+      const st = ev.wants || worldStanceFor(ev);
       if (st) termBlock += '\n【この出典が欲しいもの】' + st + '\n';
     }
     const strataBlock = worldStrataOf(ev).length
@@ -17952,6 +18050,7 @@
       + termBlock
       + (ev.detail ? '\n【詳細】' + ev.detail + '\n' : '')
       + (ev.source ? '【出典】' + ev.source + '\n' : '')
+      + (ev.confidence ? '【確度】' + ev.confidence + '/' + WORLD_CONF_MAX + (ev.confidenceWhy ? '（' + ev.confidenceWhy + '）' : '') + '\n' : '')
       + (ev.url ? ev.url + '\n' : '')
       + worldPredictionCopyLine(ev)
       + tail;
@@ -18959,6 +19058,11 @@
       sp.className = 'wmSpan'; sp.textContent = '（' + e.flow.span + 'の累計）';
       row.appendChild(sp);
     }
+    if (e.flow.total) {   // v19.3
+      const sp = document.createElement('span');
+      sp.className = 'wmSpan'; sp.textContent = '（' + e.flow.total + 'のうち' + (e.flow.share != null ? e.flow.share + '%' : '一部') + '）';
+      row.appendChild(sp);
+    }
     row.addEventListener('click', () => openWorldEvent(e.id));
     return row;
   }
@@ -18970,7 +19074,7 @@
     return b;
   }
   function renderWorldMoneyBrief(body) {
-    const all = worldFlowEvents('');
+    const all = worldFlowEvents('').filter((e) => !worldIsLowConf(e));   // v19.3
     if (!all.length) return;
     const head = document.createElement('div');
     head.className = 'worldSectionHead';
@@ -19793,6 +19897,13 @@
     // v19.1：毎回必ず見るもの。0件でも出す（開けなかったのか該当が無かったのかを毎回見るため）
     const checkedText = worldCheckedText(res.checked);
     if (checkedText) msg += '　' + checkedText + '。';
+    // v19.3
+    if (res.added) {
+      msg += '　よく使う出典の外を ' + res.outside + '件使いました。';
+      msg += '　確度' + WORLD_CONF_WHY_BELOW + '以下 ' + res.lowConf + '件（うち' + WORLD_CONF_SINK + '以下で背景に沈めた ' + res.sunkConf + '件）';
+      if (res.noConf) msg += '／確度なし ' + res.noConf + '件';
+      msg += '、追えた割合つき ' + res.tracked + '件。';
+    }
     if (res.createdActors && res.createdActors.length) msg += '　新しいアクター ' + res.createdActors.length + '件。';
     if (res.levelsFilled) msg += '　地層の値 ' + res.levelsFilled + '件を入れました。';
     if (res.levelsDup) msg += '　※ 同じ日付で重なった地層の値 ' + res.levelsDup + '件は落としました（履歴なので上書きしません）。';
