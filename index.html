@@ -1016,6 +1016,11 @@
   }
   .worldRow .wTag.isNew { color: var(--accent); border-color: var(--accent-dim); }
   .worldRow .wMark { font-size: 10px; color: var(--accent); white-space: nowrap; }
+  /* v19.12 内訳の差 */
+  .levelMix { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; font-size: 12px; }
+  .levelMixRow { display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; }
+  .levelMixRow span:not(:first-child) { text-align: right; white-space: nowrap; }
+  .levelMixHead { color: var(--text-faint); font-size: 11px; }
   /* v19.6 段階6 お金の鎖 */
   .worldChainHead { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; font-weight: 700; margin: 8px 0 2px; }
   .worldChainBody { padding-left: 12px; border-left: 2px solid var(--border); margin-bottom: 6px; }
@@ -2341,6 +2346,7 @@
           </div>
           <p class="fieldNote" id="worldStratumWhere"></p>
           <div id="worldLevelPanel" hidden>
+            <input type="text" id="worldLevelPart" placeholder="内訳（任意。「国債」「金」など）" autocomplete="off">
             <input type="text" id="worldLevelValue" placeholder="値（例 1.85）" autocomplete="off">
             <input type="date" id="worldLevelAt">
             <input type="text" id="worldLevelNote" placeholder="ひとこと（任意）" autocomplete="off">
@@ -2855,7 +2861,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v19.11';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v19.12';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -14579,6 +14585,23 @@
       where: { source: 'World Gold Council 金準備', url: 'https://www.gold.org/goldhub/data/gold-reserves-by-country' } },
   ];
 
+  // v19.12：資産の構成の器。移動（どこからどこへ）は flow、構成（何を何%持っているか）は残高側＝levels。
+  // 名前に「内訳」とある地層は、1つの日付に内訳の数だけ値を持つ（part）。決まった id で無ければ足す
+  const WORLD_MIX_STRATA = [
+    { id: 'st_boj_assets_mix', cadence: 'month', name: '日銀の資産の内訳', short: '日銀内訳', unit: '兆円', dir: 'flat', dirSince: '',
+      line: '国債・貸付金・ETF・外国為替などの構成。営業毎旬報告の資産の部',
+      where: { source: '日本銀行 営業毎旬報告', url: 'https://www.boj.or.jp/statistics/boj/other/acmai/index.htm' } },
+    { id: 'st_fed_assets_mix', cadence: 'month', name: 'FRB の保有資産の内訳', short: 'FRB内訳', unit: '億ドル', dir: 'flat', dirSince: '',
+      line: '国債・住宅ローン担保証券・貸出・中銀スワップなどの構成。H.4.1 の表1',
+      where: { source: 'FRB H.4.1', url: 'https://www.federalreserve.gov/releases/h41/current/' } },
+    { id: 'st_jp_fx_mix', cadence: 'month', name: '日本の外貨準備の内訳', short: '外準内訳', unit: '億ドル', dir: 'flat', dirSince: '',
+      line: '証券・預金・金・IMF 関連の構成。外貨準備等の状況',
+      where: { source: '財務省 外貨準備等の状況', url: 'https://www.mof.go.jp/policy/international_policy/reference/official_reserve_assets/' } },
+    { id: 'st_cn_fx_mix', cadence: 'month', name: '中国の外貨準備の内訳', short: '中外準内訳', unit: '億ドル', dir: 'flat', dirSince: '',
+      line: '外貨準備と金の構成。国家外貨管理局の月次',
+      where: { source: '中国 国家外貨管理局（SAFE）', url: 'https://www.safe.gov.cn/en/' } },
+  ];
+
   // 「Claude に聞く」の定型。面倒の正体は質問文を考えることなので、素材の
   // 組み立ては共通にして、ここには依頼文だけを置く。
   // v10.5.1: 長い解説は隙間時間に読めないし、読んでも積み上がらない。
@@ -14942,6 +14965,7 @@
         // （生成に書かせると、そこだけ未検証の URL が入る）。
         .map((l) => ({
           value: worldStr(l.value, 40), at: l.at, note: worldStr(l.note, 200),
+          part: worldStr(l.part, 30),   // v19.12：内訳の名前（「国債」「金」）。構成でない値は空
           source: worldStr(l.source, 120),
           url: typeof l.url === 'string' ? (shootSafeUrl(l.url.trim()) || '') : '',
           via: (l.via === 'card' || l.via === 'probe') ? l.via : 'hand',
@@ -15272,6 +15296,14 @@
       if (src) { wd.sources.sources.push(src); addedMoneySrc = true; }
     });
     if (addedMoneySrc) { wd.sourcesDirty = true; persistWorldSources(); }
+    // v19.12：内訳の地層。決まった id で無ければ足す（既存の地層と値には触らない）
+    let addedMix = false;
+    WORLD_MIX_STRATA.forEach((x) => {
+      if (wd.strata.strata.some((st) => st.id === x.id)) return;
+      const st = normalizeWorldStratum({ ...x, levels: [], order: wd.strata.strata.length, active: 1 });
+      if (st) { wd.strata.strata.push(st); addedMix = true; }
+    });
+    if (addedMix) { wd.strata.updatedAt = nowIso(); wd.strataDirty = true; persistWorldStrata(); }
   }
   function loadWorldMonth(m) {
     if (wd.loaded.has(m) && !wd.loading.has(m)) return Promise.resolve();
@@ -15619,7 +15651,45 @@
   }
   // v15: 札から入った値は出典の書き方のままなので単位を含んでいる（「1兆2075億ドル」）。
   // そこに地層の単位を足すと「1兆2075億ドル 億ドル」になる。手入力のときだけ足す。
-  function worldLevelText(s, l) { return l.value + (s.unit && l.via !== 'card' ? ' ' + s.unit : ''); }
+  function worldLevelText(s, l) { return (l.part ? l.part + ' ' : '') + l.value + (s.unit && l.via !== 'card' ? ' ' + s.unit : ''); }
+  // v19.12：内訳の差。最新の日付と、その1つ前の日付の内訳を並べ、同じ単位で読めれば差を出す
+  // （旬報でやった「2つの回の差」と同じ考え方。換算も合計もしない）
+  function worldFmtDiff(d, unit) {
+    const sign = d > 0 ? '+' : d < 0 ? '−' : '±';
+    const a = Math.abs(d);
+    const num = a >= 1e12 ? (a / 1e12).toFixed(2).replace(/\.?0+$/, '') + '兆'
+      : a >= 1e8 ? (a / 1e8).toFixed(1).replace(/\.0$/, '') + '億'
+      : a >= 1e4 ? (a / 1e4).toFixed(1).replace(/\.0$/, '') + '万' : String(a);
+    return sign + num + ({ JPY: '円', USD: 'ドル', EUR: 'ユーロ', CNY: '元', '%': '%' }[unit] || '');
+  }
+  function worldStratumMixDiff(s) {
+    const parts = s.levels.filter((l) => l.part);
+    if (!parts.length) return null;
+    const dates = [...new Set(parts.map((l) => l.at))].sort().reverse();
+    const cur = dates[0], prev = dates[1] || '';
+    const at = (d, p) => parts.find((l) => l.at === d && l.part === p);
+    const names = [...new Set(parts.filter((l) => l.at === cur || l.at === prev).map((l) => l.part))];
+    const box = document.createElement('div');
+    box.className = 'levelMix';
+    const head = document.createElement('div');
+    head.className = 'levelMixRow levelMixHead';
+    ['内訳', dotDate(cur), prev ? dotDate(prev) : '', prev ? '差' : ''].forEach((t) => { const c = document.createElement('span'); c.textContent = t; head.appendChild(c); });
+    box.appendChild(head);
+    names.forEach((p) => {
+      const a = at(cur, p), b = prev ? at(prev, p) : null;
+      const row = document.createElement('div');
+      row.className = 'levelMixRow';
+      let diff = '';
+      if (a && b) {
+        const pa = worldParseAmount(a.value), pb = worldParseAmount(b.value);
+        const qa = pa.value === null ? worldParseAmount(a.value + s.unit) : pa, qb = pb.value === null ? worldParseAmount(b.value + s.unit) : pb;
+        diff = (qa.value !== null && qb.value !== null && qa.unit === qb.unit) ? worldFmtDiff(qa.value - qb.value, qa.unit) : '—';
+      }
+      [p, a ? a.value : '—', prev ? (b ? b.value : '—') : '', diff].forEach((t) => { const c = document.createElement('span'); c.textContent = t; row.appendChild(c); });
+      box.appendChild(row);
+    });
+    return box;
+  }
   function worldStratumLine(s) {
     const lv = worldStratumLevel(s);
     if (!lv) return '値は未記入';
@@ -15634,10 +15704,13 @@
     const v = worldStr(value, 40);
     if (!v || !isDateStr(at)) return false;
     const via = (meta && (meta.via === 'card' || meta.via === 'probe')) ? meta.via : 'hand';
-    if (via !== 'hand' && s.levels.some((l) => l.at === at)) return false;
-    if (via === 'hand') s.levels = s.levels.filter((l) => l.at !== at);
+    // v19.12：重なりの判定は「日付＋内訳」。同じ日に国債と金の2つが入る
+    const part = worldStr(meta && meta.part, 30);
+    const same = (l) => l.at === at && (l.part || '') === part;
+    if (via !== 'hand' && s.levels.some(same)) return false;
+    if (via === 'hand') s.levels = s.levels.filter((l) => !same(l));
     s.levels.push({
-      value: v, at, note: worldStr(note, 200),
+      value: v, at, part, note: worldStr(note, 200),
       source: worldStr(meta && meta.source, 120),
       url: (meta && typeof meta.url === 'string') ? (shootSafeUrl(meta.url.trim()) || '') : '',
       via,
@@ -15656,7 +15729,7 @@
       const s = worldStratumById(worldStr(l.stratumId, 40));
       if (!s) { out.levelsUnknown++; return; }
       const at = isDateStr(l.at) ? l.at : ev.eventDate;
-      const ok = worldAddLevel(s, l.value, at, '', { source: ev.source, url: ev.url, via: 'card', eventId: ev.id });
+      const ok = worldAddLevel(s, l.value, at, '', { source: ev.source, url: ev.url, via: 'card', eventId: ev.id, part: l.part });
       if (ok) out.levelsFilled++;
       else if (worldStr(l.value, 40)) out.levelsDup++;
     });
@@ -16591,7 +16664,12 @@
       '  - at は出典に書かれた基準日（YYYY-MM-DD）。書かれていなければ省略してよい。\n' +
       '  - stratumId は末尾の一覧にある id だけ。一覧に無い量は書かない。\n' +
       '  - 出典（source・url）は札のものを使うので、ここには書かない。\n' +
-      '  例：[{"stratumId":"st_jp_fx_reserve","value":"1兆2075億ドル","at":"2026-09-07"}]\n' +
+      // v19.12：構成は残高側に置く
+      '  - part：名前に「内訳」とある地層では、内訳の名前（「国債」「金」「証券」）。\n' +
+      '    同じ日付に内訳の数だけ書いてよい。内訳でない地層では省く。合計や割合を自分で出さない。\n' +
+      '  例：[{"stratumId":"st_jp_fx_reserve","value":"1兆2075億ドル","at":"2026-09-07"},\n' +
+      '      {"stratumId":"st_jp_fx_mix","part":"証券","value":"9,110億ドル","at":"2026-08-31"},\n' +
+      '      {"stratumId":"st_jp_fx_mix","part":"金","value":"1,020億ドル","at":"2026-08-31"}]\n' +
       '\n' +
       '- detail：数字・当事者・背景。1〜3文。\n' +
       '- source：媒体名と発表日。\n' +
@@ -19252,6 +19330,8 @@
     const levels = document.getElementById('worldStratumLevels');
     levels.innerHTML = '';
     document.getElementById('worldStratumLevelsEmpty').hidden = !!s.levels.length;
+    const mix = worldStratumMixDiff(s);   // v19.12
+    if (mix) levels.appendChild(mix);
     s.levels.forEach((l) => {
       const row = document.createElement('div');
       row.className = 'levelRow';
@@ -20669,7 +20749,9 @@
     const v = document.getElementById('worldLevelValue').value.trim();
     const at = document.getElementById('worldLevelAt').value;
     const note = document.getElementById('worldLevelNote').value.trim();
-    if (!worldAddLevel(s, v, at, note)) { document.getElementById('worldLevelStatus').textContent = '値と日付を入れてください。'; return; }
+    const part = document.getElementById('worldLevelPart').value.trim();
+    if (!worldAddLevel(s, v, at, note, { part })) { document.getElementById('worldLevelStatus').textContent = '値と日付を入れてください。'; return; }
+    document.getElementById('worldLevelPart').value = '';
     renderWorldStratum();
   });
   document.getElementById('btnWorldConceptHide').addEventListener('click', () => {
