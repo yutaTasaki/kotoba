@@ -1207,6 +1207,10 @@
   /* v20.3.1 札を開いたとき、動かした側のすぐ下に出すドル換算の1行 */
   .worldUsdLine { color: var(--text-dim); font-size: 12px; margin: 2px 0 8px; }
   #worldMapChooser { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  /* v20.3.2 この辺りの線・国：見出しは1行、線は1本ずつ横いっぱいのボタン（押し分けやすさを優先） */
+  #worldMapChooser .wmPickHead { flex: 1 1 100%; margin: 4px 0 0; }
+  #worldMapChooser .wmPickLine { flex: 1 1 100%; min-width: 0; text-align: left; background: none; border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 9px 10px; font-size: 13px; line-height: 1.4; cursor: pointer; overflow-wrap: anywhere; }
+  #worldMapChooser .wmPickMore { flex: 1 1 100%; text-align: left; }
   /* v19.15 同じ動きを別の出典からも確かめた印。行の右端に小さく */
   .worldMoneyRow .wmSrc { margin-left: auto; font-size: 10px; color: var(--text-faint); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; white-space: nowrap; }
   .worldMoneyReach { font-size: 12px; line-height: 1.7; padding: 8px 0; }
@@ -2336,8 +2340,8 @@
     <div class="editorBody" id="worldMapView" hidden>
       <div class="tagFilterRow" id="worldMapRegions"></div>
       <div id="worldMapBox" class="worldMapBox"></div>
-      <p class="fieldNote" id="worldMapUsdNote" hidden></p>
       <div id="worldMapChooser" hidden></div>
+      <p class="fieldNote" id="worldMapUsdNote" hidden></p>
       <p class="fieldNote" id="worldMapStatus"></p>
       <div id="worldMapUnknown"></div>
     </div>
@@ -2929,7 +2933,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.3.1';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.3.2';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -14534,6 +14538,7 @@
   // v20 地図（M1）。仕様書 docs/sekai/spec/sekai_chizu_shiyou.md
   const WORLD_MAP_DAYS           = 90;   // 大きな地図に描く期間
   const WORLD_MAP_TAP_PX         = 22;   // 点を押したとみなす距離（画面の px）
+  const WORLD_MAP_PICK_LINES     = 8;    // v20.3.2 「この辺りの線」に並べる本数。超えたら「ほかN本を一覧で見る」
   const WORLD_MAP_LINES_PER_PAIR = 5;    // 同じ国の組に描く線の上限。6本目からは「ほか◯本」
   const WORLD_MAP_ZOOM_MAX       = 8;    // v20.1 指でつまむ拡大の上限（1倍＝寄せた地域の全体）
   const WORLD_MAP_TAP_MOVE_PX    = 6;    // これ以上指が動いたら、押したとは見なさない（地図を動かしたつもりで札が開くのを防ぐ）
@@ -20440,6 +20445,36 @@
       st.textContent = '地図を読み込めませんでした（' + ((e && e.message) || '理由不明') + '）。お金の流れは世界の画面の一覧で見られます。';
     });
   }
+  // v20.3.2：押した所から近い線。線は描いたときの2次曲線（始点・制御点・終点）を細かく刻み、一番近い点との距離（画面の px）を測る。
+  // 見えている四角（地図の四角・枠への線の四角）の外の部分は数えない（拡大して外に出た部分を押したことにしない）
+  function worldMapNearLines(px, py, sx, lines, maxPx) {
+    const out = [];
+    lines.forEach((L) => {
+      const len = Math.hypot(L.c[0] - L.p1[0], L.c[1] - L.p1[1]) + Math.hypot(L.p2[0] - L.c[0], L.p2[1] - L.c[1]);
+      const n = Math.min(4000, Math.max(64, Math.ceil(len / 3)));
+      let best = Infinity;
+      for (let i = 0; i <= n; i++) {
+        const t = i / n, u = 1 - t;
+        const x = u * u * L.p1[0] + 2 * u * t * L.c[0] + t * t * L.p2[0];
+        const y = u * u * L.p1[1] + 2 * u * t * L.c[1] + t * t * L.p2[1];
+        if (x < 0 || x > L.w || y < 0 || y > L.h) continue;
+        const dd = Math.hypot(x - px, y - py) * sx;
+        if (dd < best) best = dd;
+      }
+      if (best <= maxPx) out.push(Object.assign({}, L, { dd: best }));
+    });
+    return out.sort((x, y) => x.dd - y.dd);
+  }
+  // 一覧の1行：「欧州委員会 → ウクライナ政府　30億ユーロ（約34億ドル）6/25」。物・人は印、束ねた札は枚数
+  function worldMapPickLabel(r) {
+    const e = r.rep || r, f = r.flow;
+    const kindMark = f.kind && f.kind !== 'money' ? WORLD_FLOW_KIND_MARK[f.kind] : '';
+    const u = kindMark ? null : worldUsdOf(e);
+    const usdTxt = u && u.cur !== 'USD' && !u.paren ? '（' + (u.per || '') + '約' + worldUsdShort(u.value) + 'ドル）' : '';
+    const n = (r.cards || [r]).length;
+    return (f.from || '？') + ' → ' + (f.to || '？') + '　' + kindMark + (f.amount || (kindMark ? (f.what || '') : '額なし')) + usdTxt
+      + '　' + worldShortDate(e.eventDate) + (n > 1 ? '（札' + n + '枚）' : '');
+  }
   function worldSvg(tag, attrs, parent) {
     const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
     Object.entries(attrs || {}).forEach(([k, v]) => el.setAttribute(k, v));
@@ -20573,7 +20608,9 @@
     const usdOfRow = (r) => { const e = r.rep || r; return (!r.flow.kind || r.flow.kind === 'money') ? worldUsdOf(e) : null; };
     pairs.forEach((rows) => rows.sort((x, y) => ((usdOfRow(y) || {}).value || 0) - ((usdOfRow(x) || {}).value || 0)));
     let dots = [];
+    let lineHits = [];   // v20.3.2：描いた線の形（押した所の判定に使う）
     const drawOverlay = () => {
+      lineHits = [];
       land.setAttribute('transform', 'translate(' + view.tx.toFixed(2) + ',' + view.ty.toFixed(2) + ') scale(' + view.k.toFixed(4) + ')');
       overlay.innerHTML = '';
       // 枠へ向かう線は、地図の範囲を越えて枠の上端まで伸びるので、別の四角（slotLineArea）に描く
@@ -20598,12 +20635,9 @@
           const la = { d, class: 'wmL' + kind, 'marker-end': 'url(#wmArrow)' };
           if (u) la.style = 'stroke-width:' + worldUsdWidth(u.value) + 'px';
           worldSvg('path', la, parent);
-          const hit = worldSvg('path', { d, class: 'wmHit' }, parent);
-          hit.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (view.moved) return;
-            worldOpenFlowRows([r], worldPlaceLabel(a, lib) + ' → ' + worldPlaceLabel(b, lib));
-          });
+          // v20.3.2：押したときの判定は地図全体でまとめて行う（重なった線の一番上しか押せなかったため）。帯は指の形のためだけに残す
+          worldSvg('path', { d, class: 'wmHit' }, parent);
+          lineHits.push({ r, a, b, p1, c: [cx, cy], p2, w: W, h: toSlot ? slotTop : H });
         });
         if (rows.length > shown.length) {
           const t = worldSvg('text', { x: ((p1[0] + p2[0]) / 2 + nx * dist * 0.18).toFixed(1), y: ((p1[1] + p2[1]) / 2 + ny * dist * 0.18).toFixed(1), class: 'wmMore', 'text-anchor': 'middle' }, parent);
@@ -20714,30 +20748,70 @@
       e.preventDefault();
       zoomAt(px, py, e.deltaY < 0 ? 1.25 : 0.8);
     }, { passive: false });
-    // 押した所から22px以内の国。2つ以上なら「この辺りの国」を出して選ばせる（拡大しないで押したときに要る）
+    // v20.3.2：押した所の国（国の形の中なら、その国。海の上なら近い国の点）。一覧の見出しの「（ドイツの近く）」に使う
+    const placeAt = (px, py, sx) => {
+      const ll = proj.invert([(px - view.tx) / view.k, (py - view.ty) / view.k]);
+      if (ll && Number.isFinite(ll[0]) && Number.isFinite(ll[1])) {
+        const f = lib.features.find((ft) => d3.geoContains(ft, ll));
+        if (f && f.a3 && worldIsCountry(f.a3, lib)) return f.a3;
+      }
+      const near = dots.map((d) => ({ c: d.c, dd: Math.hypot(d.p[0] - px, d.p[1] - py) * sx })).filter((d) => d.dd <= WORLD_MAP_TAP_PX * 2).sort((x, y) => x.dd - y.dd);
+      return near.length ? near[0].c : '';
+    };
+    // v20.3.2：押した所から22px以内の国の点と線（枠への線を含む）をまとめて拾う。
+    // 1つならすぐ開く。2つ以上なら地図のすぐ下に「この辺りの線・国」を出して選ばせる（国が先、線は近い順）
     svg.addEventListener('click', (e) => {
       if (view.moved) { view.moved = false; return; }
       const [px, py, sx] = toSvg(e.clientX, e.clientY);
-      const near = dots.map((d) => ({ ...d, dd: Math.hypot(d.p[0] - px, d.p[1] - py) * sx }))
-        .filter((d) => d.dd <= WORLD_MAP_TAP_PX).sort((x, y) => x.dd - y.dd);
       chooser.innerHTML = '';
-      if (!near.length) { chooser.hidden = true; return; }
-      if (near.length === 1) { chooser.hidden = true; worldMapOpenCountry(near[0].c, model, lib); return; }
-      const lab = document.createElement('span'); lab.className = 'fieldNote'; lab.textContent = 'この辺りの国：';
-      chooser.appendChild(lab);
-      near.forEach((d) => {
+      if (py >= slotTop) { chooser.hidden = true; return; }   // 下の枠は枠が自分で開く
+      const nearDots = py <= H ? dots.map((d) => ({ ...d, dd: Math.hypot(d.p[0] - px, d.p[1] - py) * sx }))
+        .filter((d) => d.dd <= WORLD_MAP_TAP_PX).sort((x, y) => x.dd - y.dd) : [];
+      const nearLines = worldMapNearLines(px, py, sx, lineHits, WORLD_MAP_TAP_PX);
+      const lineTitle = (L) => worldPlaceLabel(L.a, lib) + ' → ' + worldPlaceLabel(L.b, lib);
+      if (!nearDots.length && !nearLines.length) { chooser.hidden = true; return; }
+      if (nearDots.length + nearLines.length === 1) {
+        chooser.hidden = true;
+        if (nearDots.length) worldMapOpenCountry(nearDots[0].c, model, lib);
+        else worldOpenFlowRows([nearLines[0].r], lineTitle(nearLines[0]));
+        return;
+      }
+      const here = placeAt(px, py, sx);
+      const hereText = here ? '（' + worldPlaceLabel(here, lib) + 'の近く）' : '';
+      const head = document.createElement('span'); head.className = 'fieldNote wmPickHead';
+      head.textContent = (nearLines.length ? (nearDots.length ? 'この辺りの線・国' : 'この辺りの線') : 'この辺りの国') + hereText + '：';
+      chooser.appendChild(head);
+      nearDots.forEach((d) => {
         const b = document.createElement('button');
         b.type = 'button'; b.className = 'tagFilterBtn'; b.textContent = worldPlaceLabel(d.c, lib);
         b.addEventListener('click', () => worldMapOpenCountry(d.c, model, lib));
         chooser.appendChild(b);
       });
+      const max = worldState.mapPickMax || WORLD_MAP_PICK_LINES;   // 試験のときだけ小さくできる
+      nearLines.slice(0, max).forEach((L) => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'wmPickLine';
+        b.textContent = worldMapPickLabel(L.r);
+        b.addEventListener('click', () => worldOpenFlowRows([L.r], lineTitle(L)));
+        chooser.appendChild(b);
+      });
+      if (nearLines.length > max) {
+        const m = document.createElement('button');
+        m.type = 'button'; m.className = 'linkLikeBtn wmPickMore';
+        m.textContent = 'ほか' + (nearLines.length - max) + '本を一覧で見る';
+        // 近くの線の札をまとめて開く（一覧に並べた分も含めて全部）
+        m.addEventListener('click', () => worldOpenFlowRows(nearLines.map((L) => L.r), 'この辺りの線' + hereText));
+        chooser.appendChild(m);
+      }
       chooser.hidden = false;
+      try { chooser.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (err) {}
     });
+    worldState.mapHits = () => ({ dots, lines: lineHits, H, slotTop });   // 試験と、あとで状態を見るため
     worldState.mapView = view;   // 試験と、あとで状態を見るため
     let dom = 0; model.domestic.forEach((v) => { dom += v.length; });
     const toSlot = model.lines.filter((r) => r.places.some((c) => WORLD_MAP_SLOTS.includes(c))).length;
     st.textContent = '直近' + WORLD_MAP_DAYS + '日：国をまたぐ線 ' + (model.lines.length - toSlot) + '本・枠への線 ' + toSlot + '本・国内 ' + dom + '件'
-      + '。二本指で拡大・縮小、拡大中は指でなぞって動かせます。国の点や下の枠を押すと、その動きを出します。';
+      + '。二本指で拡大・縮小、拡大中は指でなぞって動かせます。線や国の点、下の枠を押すと、その動きを出します。近くに2つ以上あるときは、地図の下の一覧から選べます。';
     const unk = document.getElementById('worldMapUnknown');
     unk.innerHTML = '';
     if (model.unknown.length) {
