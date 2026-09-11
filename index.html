@@ -2738,7 +2738,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v19.1';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v19.2';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -14293,7 +14293,6 @@
   const WORLD_RECENT_FLOWS_MAX  = 30;   // プロンプトに差し込む最近のお金の動き（after の候補）
   const WORLD_RECENT_FLOWS_DAYS = 30;   // その対象期間
   const WORLD_CONCEPT_BOOTSTRAP = 10;   // 既知の概念がこれ未満なら、新しく作ってよい
-  const WORLD_DTS_MAX_PER_DAY   = 2;    // 米財務省 DTS から取る札の上限（プロンプトに書く数字）
   const WORLD_FLOW_KIND_MARK  = { money: '', goods: '［物］', people: '［人］' };
   const WORLD_FLOW_KIND_LABEL = { money: 'お金の動き', goods: '物の動き', people: '人の動き' };
   const WORLD_EVENT_ID_RE     = /^w_\d{8}_\d+$/;
@@ -14494,14 +14493,22 @@
     { name: 'アジア経済研究所（IDE-JETRO）', url: 'https://www.ide.go.jp/', field: 'geo', role: 'analysis' },
   ];
 
-  // v19 段階4：日次のお金の源。note は「何を取るか」の1行としてプロンプトに出る
-  // v19.1：label はプロンプトの「毎日必ず見るもの」と checked の source の名前、short は取り込み結果の1行、
+  // v19 段階4：必ず見るお金の源。note は「何を取るか」の1行としてプロンプトに出る
+  // v19.1：label はプロンプトの「毎回必ず見るもの」と checked の source の名前、short は取り込み結果の1行、
   // match は checked の source が label と少し違って返ってきたときの引き当て
+  // v19.2：中身を差し替えた。DTS は日次 PDF の置き場所が引けず、日銀の当座預金増減要因は Excel だけで
+  // 読めなかった（2回目の実行で両方 opened:false）。どちらも HTML の本文に数字がある源にした。
+  // ソース一覧は墓標を持たず、消しても相手の端末から戻るので、id はそのままにして中身を差し替える。
+  // ws_money_dts は FRB H.4.1、ws_money_boj_juq は日銀 営業毎旬報告。retiredUrls は差し替え前の URL
   const WORLD_MONEY_SOURCES = [
-    { id: 'ws_money_dts', label: '米財務省 DTS', short: 'DTS', match: ['DTS', 'Treasury'], name: '米財務省 Daily Treasury Statement', url: 'https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/', role: 'primary',
-      note: 'その日の支払い・受け取りのうち、金額の大きい順に最大' + WORLD_DTS_MAX_PER_DAY + '件。毎日ある定例のもの（社会保障の給付、国債の償還、税の還付）は除く。from は「米財務省」' },
-    { id: 'ws_money_boj_juq', label: '日銀 当座預金増減要因', short: '日銀', match: ['日銀', '日本銀行', '当座預金'], name: '日本銀行 当座預金増減要因と金融調節（毎営業日）', url: 'https://www.boj.or.jp/statistics/boj/fm/juq/index.htm', role: 'primary',
-      note: '「財政等要因」（政府と民間のあいだ）と「日銀のオペ」（日銀から金融機関）の金額。大きく動いた日だけ札にする' },
+    { id: 'ws_money_dts', label: 'FRB H.4.1', short: 'H.4.1', match: ['H.4.1', 'H41', 'H.41', 'Federal Reserve', 'FRB'],
+      name: 'FRB H.4.1 準備預金に影響する要因（週1・木曜）', url: 'https://www.federalreserve.gov/releases/h41/current/', role: 'primary',
+      retiredUrls: ['https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/'],
+      note: '表1（Factors Affecting Reserve Balances）で、Securities held outright（保有する国債など）・Loans（貸出）・Central bank liquidity swaps（外国の中銀へのドル供給）・U.S. Treasury, General Account（米財務省の口座）・Reserve balances with Federal Reserve Banks（銀行の準備預金）のうち、前週比（Change from week ended）が大きく動いたもの。単位は百万ドル。from／to は「FRB」「米財務省」「銀行」など' },
+    { id: 'ws_money_boj_juq', label: '日銀 営業毎旬報告', short: '日銀旬報', match: ['営業毎旬', '旬報', '日銀', '日本銀行'],
+      name: '日本銀行 営業毎旬報告（10日ごと）', url: 'https://www.boj.or.jp/statistics/boj/other/acmai/index.htm', role: 'primary',
+      retiredUrls: ['https://www.boj.or.jp/statistics/boj/fm/juq/index.htm'],
+      note: '一覧の最新の回と、その1つ前の回を開く。資産の「国債」「貸付金」、負債の「当座預金」「政府預金」「売現先勘定」の残高（単位は千円）を比べ、大きく動いたものだけ札にする。この源に限り、2つの回の差を出してよい（detail に「2つの回の差」と書く）。from／to は「日本銀行」「政府」「金融機関」など' },
   ];
 
   // ---- 形をそろえる --------------------------------------------------------
@@ -15029,10 +15036,17 @@
       wd.sourcesDirty = true;
       persistWorldSources();
     }
-    // v19 段階4：日次のお金の源。決まった id で、まだ無ければ足す（何度起動しても1回だけ）
+    // v19 段階4：必ず見るお金の源。決まった id で、まだ無ければ足す（何度起動しても1回だけ）
     let addedMoneySrc = false;
     WORLD_MONEY_SOURCES.forEach((x) => {
-      if (wd.sources.sources.some((sc) => sc.id === x.id)) return;
+      const cur = wd.sources.sources.find((sc) => sc.id === x.id);
+      // v19.2：差し替え前の URL のままなら中身を入れ替える。手で直した URL には触らない
+      if (cur && x.retiredUrls.includes(cur.url)) {
+        Object.assign(cur, normalizeWorldSource({ ...cur, name: x.name, url: x.url, note: x.note, role: x.role, updatedAt: nowIso() }));
+        addedMoneySrc = true;
+        return;
+      }
+      if (cur) return;
       const src = normalizeWorldSource({ ...x, field: 'finance', updatedAt: nowIso() });
       if (src) { wd.sources.sources.push(src); addedMoneySrc = true; }
     });
@@ -16038,7 +16052,7 @@
       .filter((s) => s.role === role && !worldDailySourceDef(s.id))
       .map((s) => '- ' + s.name + ' ' + s.url + (s.note ? '\n  取るもの：' + s.note : ''));
   }
-  // v19.1：毎日必ず見るもの。黙って消えないように、札にできなくても checked で報告させる
+  // v19.1：毎回必ず見るもの。黙って消えないように、札にできなくても checked で報告させる
   function worldDailySourceDef(id) { return WORLD_MONEY_SOURCES.find((x) => x.id === id) || null; }
   function worldDailySources() {
     return WORLD_MONEY_SOURCES.map((x) => {
@@ -16061,15 +16075,15 @@
       };
     });
   }
-  // 「毎日見るもの：DTS 2件／日銀 開けず（PDFの中身が読めなかった）」。報告が抜けた源は「報告なし」
+  // 「必ず見るもの：H.4.1 2件／日銀旬報 開けず（理由）」。報告が抜けた源は「報告なし」
   function worldCheckedText(checked) {
     const daily = worldDailySources();
     if (!daily.length) return '';
-    if (!checked) return '毎日見るもの：報告なし';
+    if (!checked) return '必ず見るもの：報告なし';
     const parts = checked.map((c) => c.short + ' ' + (c.opened ? c.picked + '件' : '開けず')
       + (c.note && (!c.opened || !c.picked) ? '（' + c.note + '）' : ''));
     daily.forEach((d) => { if (!checked.some((c) => c.id === d.id)) parts.push(d.short + ' 報告なし'); });
-    return '毎日見るもの：' + parts.join('／');
+    return '必ず見るもの：' + parts.join('／');
   }
   // after の候補。直近 WORLD_RECENT_FLOWS_DAYS 日のうち、お金を先に、新しい順
   function worldRecentFlowLines() {
@@ -16118,22 +16132,26 @@
       'どちらが正しいかを書かない。誰が何に縛られているかを書く。\n' +
       WORLD_PROMPT_COUNT + '件を目安に返す（確認できたものだけ）。\n\n' +
       // v19: お金が動いた事実から、何を暗に実現したいかを逆に読むため
-      '■ 選び方\n' +
-      '- お金が動いた出来事を優先する。\n' +
-      '- 同じくらい重要なら、金額が出典に書かれている方を選ぶ。\n' +
-      '- 統計の発表そのものは、誰から誰へお金が動いたかが書かれていなければ後回しにする。\n\n' +
+      // v19.2：「優先する」では効かなかった（主体もお金も分かれ目も空の札が選ばれた）。下限にする
+      '■ 選び方（下限。件数より先に守る）\n' +
+      '- 返す札のうち、flow を書けるものを半分以上にする。\n' +
+      '- 半分に届かないときは、お金が動いた出来事を探し直してから返す。件数を減らしてでも、この割合を守る。\n' +
+      '- 主体が1人も書けない札（actors が空）は返さない。\n' +
+      '  統計や見通しだけの札は、お金の動きか主体の行動のどちらかが書けるときだけ返す。\n' +
+      '- 同じくらい重要なら、金額が出典に書かれている方を選ぶ。\n\n' +
       '■ 期間\n' +
       '直近7日間に動いたもの。ただし「その日のニュース」ではなく、\n' +
       'これから数ヶ月〜数年にわたって効き続ける動きを選ぶ。\n' +
       '発表そのものより、発表が示している力学を選ぶ。\n\n' +
-      // v19.1：日次の2件は他と分ける。見たが該当が無かったのか、開いていないのかを毎回返させる
+      // v19.1：必ず見る2件は他と分ける。見たが該当が無かったのか、開いていないのかを毎回返させる
       (daily.length
-        ? '■ 毎日必ず見るもの（一次。毎回かならず開く。「取るもの」に従う）\n' +
+        ? '■ 毎回必ず見るもの（一次。毎回かならず開く。「取るもの」に従う。週1・10日ごとの公表なので、\n' +
+          '  最新の回が7日より前でもよい）\n' +
           daily.map((d) => '- ' + d.label + '：' + d.name + ' ' + d.url + (d.note ? '\n  取るもの：' + d.note : '')).join('\n') + '\n' +
           '- この' + daily.length + '件は、札にできてもできなくても、JSON の末尾の "checked" に1件ずつ報告する。\n' +
           '  source：上の「：」の前の名前をそのまま書く（' + daily.map((d) => d.label).join('／') + '）。\n' +
-          '  opened：ページを開いて、数字まで読めたら true。開けない・PDF の中身が読めないなら false。\n' +
-          '  picked：そこから札にした件数。該当が無ければ 0。\n' +
+          '  opened：最新の回を開いて、数字まで読めたら true。開けない・中身が読めないなら false。\n' +
+          '  picked：そこから札にした件数。大きな動きが無ければ 0。\n' +
           '  note：開けなかった理由か、札にしなかった理由を1句。無ければ空。\n\n'
         : '') +
       '■ そのほかのソース：一次（fact・eventDate・detail の数字はここでしか確認できない。「取るもの」があるソースはそれに従う）\n' +
@@ -16170,7 +16188,7 @@
       '    「産油国が…」と書かれると、その札で産油国は何もしていないのに主語になる。\n' +
       '  - 統計・論文・報告書の公表そのものを行動としない。公表した機関は、それだけでは\n' +
       '    アクターにならない。行動とは、決定・合意・介入・融資・買い入れ・制裁・提案・撤回など、\n' +
-      '    何かを動かす意思の表れ。統計の札で動かした主体が特定できなければ、actors は空でよい。\n' +
+      '    何かを動かす意思の表れ。統計の札で動かした主体が特定できなければ、その札は返さない（選び方を見る）。\n' +
       '  - 3つに分けて書く。混ぜない。\n' +
       '    did：出典に書かれた行動。数字・金額はここにだけ。20〜' + WORLD_ACTOR_DID_MAX + '字。\n' +
       '    said：出典が自ら述べた理由。言い換えず、引用に近く。出典に無ければ空。\n' +
@@ -16341,7 +16359,7 @@
       '分かれ目が思いつかないとき： "fork": null\n' +
       '動いたものが無い・書けないとき： "flow": null\n' +
       '前の動きの続きでないとき： "after": null\n' +
-      (daily.length ? '毎日必ず見るものから札にしなかったとき： "checked" は省かず "picked": 0\n' : '') +
+      (daily.length ? '毎回必ず見るものから札にしなかったとき： "checked" は省かず "picked": 0\n' : '') +
       '地層の値が出典に書かれていないとき： "levels": []\n' +
       '述べた理由が出典に無いとき： "said": ""\n' +
       '読んだ思惑が述べた理由と同じとき： "read": ""\n\n' +
@@ -19772,7 +19790,7 @@
       if (res.afterGone) msg += '／落ちた札を指していて外した続き ' + res.afterGone + '件';
       msg += '。';
     }
-    // v19.1：毎日必ず見るもの。0件でも出す（開けなかったのか該当が無かったのかを毎回見るため）
+    // v19.1：毎回必ず見るもの。0件でも出す（開けなかったのか該当が無かったのかを毎回見るため）
     const checkedText = worldCheckedText(res.checked);
     if (checkedText) msg += '　' + checkedText + '。';
     if (res.createdActors && res.createdActors.length) msg += '　新しいアクター ' + res.createdActors.length + '件。';
