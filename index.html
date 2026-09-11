@@ -2972,7 +2972,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.5';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.5.1';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -20963,7 +20963,9 @@
     };
     const inner = [], outs = new Map(), allRows = [];
     // v20.5：その国自身を指す名前（「米国」「アメリカ合衆国」「日本」。別名の表と丸ごと一致）は点にしない。
-    // その名前が出る動きは網に出さず（外の札にも出さない）、「この国の札を一覧で見る」には残す
+    // v20.5.1：点にしないことと動きを落とすことを分ける。網から落とすのは両側ともその国自身の動きだけ（米国 → 米国）。
+    // 片側が国名そのものでも、相手が外（別の国・枠・場所不明）なら外の札に数え、国内の主体なら相手の点を出す。
+    // 国名そのものは点ではないので、その動きの矢印は引かない（札・点を押せば、その動きも一覧に出る）
     const isSelf = (name) => lib.byName.get(worldNormName(name)) === c;
     let selfRows = 0;
     const addOut = (dir, type, code, r, nodeKey) => {
@@ -20978,7 +20980,9 @@
     };
     (model.domestic.get(c) || []).forEach((r) => {
       allRows.push(r);
-      if (isSelf(r.flow.from) || isSelf(r.flow.to)) { selfRows++; return; }
+      const sf = isSelf(r.flow.from), st = isSelf(r.flow.to);
+      if (sf && st) { selfRows++; return; }   // 両側ともその国自身：網に出さない（一覧には残る）
+      if (sf || st) { nodeOf(sf ? r.flow.to : r.flow.from, r); return; }   // 片側だけ：相手の点は出し、矢印は引かない
       inner.push({ r, from: nodeOf(r.flow.from, r), to: nodeOf(r.flow.to, r) });
     });
     model.lines.concat(model.unknown).forEach((r) => {
@@ -20987,8 +20991,8 @@
       allRows.push(r);
       const out = a === c;
       const other = out ? b : a;
-      if (isSelf(out ? r.flow.from : r.flow.to)) { selfRows++; return; }   // v20.5
-      const nk = nodeOf(out ? r.flow.from : r.flow.to, r);
+      // v20.5.1：この国の側が国名そのものなら点は作らず、外の札にだけ数える（矢印は引かない）
+      const nk = isSelf(out ? r.flow.from : r.flow.to) ? null : nodeOf(out ? r.flow.from : r.flow.to, r);
       const type = !other ? 'unknown' : WORLD_MAP_SLOTS.includes(other) ? 'slot' : 'country';
       addOut(out ? 'out' : 'in', type, other || '', r, nk);
     });
@@ -20999,7 +21003,7 @@
       const keepKeys = new Set(keep.map((n) => n.key));
       const rest = list.filter((n) => !keepKeys.has(n.key));
       more = { key: 'more', name: 'ほか' + rest.length, actor: null, more: true, names: rest.map((n) => n.name), rows: [...new Set(rest.flatMap((n) => n.rows))] };
-      const remap = (k) => (keepKeys.has(k) ? k : 'more');
+      const remap = (k) => (k == null ? k : keepKeys.has(k) ? k : 'more');
       inner.forEach((x) => { x.from = remap(x.from); x.to = remap(x.to); });
       outs.forEach((o) => { o.nodeKeys = o.nodeKeys.map(remap); });
       list = keep;
@@ -21097,7 +21101,7 @@
       document.getElementById('worldNetTitle').textContent = worldPlaceLabel(c, lib) + 'の網（直近' + WORLD_MAP_DAYS + '日）';
       if (!net.nodes.length && !net.outs.length) {
         box.innerHTML = ''; box.style.height = '';
-        st.textContent = 'この国の網に出せる動きがありません（「' + worldPlaceShort(c, lib) + '」そのものが出る動きだけです）。下の「この国の札を一覧で見る」から見られます。';
+        st.textContent = 'この国の網に出せる動きがありません（「' + worldPlaceShort(c, lib) + '」から「' + worldPlaceShort(c, lib) + '」への動きだけです）。下の「この国の札を一覧で見る」から見られます。';
         listBtn.hidden = !net.allRows.length;
         return;
       }
@@ -21107,7 +21111,7 @@
       if (Math.abs(drawnW - Number(document.getElementById('worldNetBox').dataset.w || drawnW)) > 1) worldDrawNet(net, lib);
       const inner = net.inner.filter((x) => x.from !== x.to).length;
       st.textContent = '点 ' + net.nodes.length + '・国内の矢印 ' + inner + '本・外の札 ' + net.outs.length + '枚。点・矢印・外の札を押すと開きます。二本指で拡大・縮小できます。'
-        + (net.selfRows ? '　「' + worldPlaceShort(c, lib) + '」そのものが出る動き ' + net.selfRows + '件は、網には出さず「この国の札を一覧で見る」に入れています。' : '');   // v20.5
+        + (net.selfRows ? '　「' + worldPlaceShort(c, lib) + '」から「' + worldPlaceShort(c, lib) + '」への動き ' + net.selfRows + '件は、網には出さず「この国の札を一覧で見る」に入れています。' : '');   // v20.5.1
       listBtn.hidden = !net.allRows.length;
     }).catch((e) => {
       if (token !== worldNetToken) return;
