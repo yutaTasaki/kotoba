@@ -1018,7 +1018,7 @@
   .worldRow .wMark { font-size: 10px; color: var(--accent); white-space: nowrap; }
   /* v19.12 内訳の差 */
   .levelMix { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; font-size: 12px; }
-  .levelMixRow { display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; }
+  .levelMixRow { display: grid; grid-template-columns: minmax(4em, 1fr) auto auto auto; gap: 10px; }   /* v19.14：内訳の名前が潰れない */
   .levelMixRow span:not(:first-child) { text-align: right; white-space: nowrap; }
   .levelMixHead { color: var(--text-faint); font-size: 11px; }
   /* v19.6 段階6 お金の鎖 */
@@ -1130,15 +1130,24 @@
     cursor: pointer; user-select: none; -webkit-user-select: none;
   }
   .stratumListRow:first-child { border-top: none; }
-  .stratumListRow .slName { font-size: 14px; }
+  .stratumListRow { grid-template-columns: minmax(7em, 1fr) auto; }   /* v19.14：名前の側が潰れない */
+  .stratumListRow .slName { font-size: 14px; min-width: 7em; }
   .stratumListRow .slLine { grid-column: 1 / -1; font-size: 11px; color: var(--text-faint); line-height: 1.5; }
-  .stratumListRow .slVal { font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+  .stratumListRow .slVal { font-size: 12px; color: var(--text-dim); text-align: right; overflow-wrap: anywhere; min-width: 0; }
+  /* v19.14 内訳は1項目1行 */
+  .wPartList { display: grid; grid-template-columns: auto 1fr; gap: 1px 14px; font-size: 12px; color: var(--text-dim); line-height: 1.6; }
+  .wPartList .wpName { white-space: nowrap; }
+  .wPartList .wpVal { overflow-wrap: anywhere; min-width: 0; }
+  .stratumListRow .slParts { grid-column: 1 / -1; padding-left: 12px; }
+  .worldStratumLine .wsParts { padding: 2px 0 0 12px; font-size: 11px; color: var(--text-faint); }
+  #worldStratumNow .nowParts { padding-top: 4px; font-size: 14px; color: var(--text); }
   .stratumListRow .slVal.empty { color: var(--danger); }
   .levelRow {
     display: flex; justify-content: space-between; gap: 8px;
     padding: 6px 0; border-top: 1px solid var(--border); font-size: 13px;
   }
-  .levelRow .lvAt { color: var(--text-faint); font-size: 11px; }
+  .levelRow .lvAt { color: var(--text-faint); font-size: 11px; flex: 0 0 auto; white-space: nowrap; }
+  .levelRow > span:first-child { min-width: 0; overflow-wrap: anywhere; }   /* v19.14 */
   /* v15: 札から入った値の出典。どこの数字かが行から離れないように直下に置く */
   .lvSrc { font-size: 11px; color: var(--text-faint); line-height: 1.5; padding: 2px 0 4px; }
   .lvSrc.lvSrcLink { text-decoration: underline; text-decoration-style: dotted; cursor: pointer; }
@@ -2862,7 +2871,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v19.13';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v19.14';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -15652,7 +15661,60 @@
   }
   // v15: 札から入った値は出典の書き方のままなので単位を含んでいる（「1兆2075億ドル」）。
   // そこに地層の単位を足すと「1兆2075億ドル 億ドル」になる。手入力のときだけ足す。
-  function worldLevelText(s, l) { return (l.part ? l.part + ' ' : '') + l.value + (s.unit && l.via !== 'card' ? ' ' + s.unit : ''); }
+  // 生成に渡す文（地層を調べるプロンプトの「前回の値」）は、元の値のまま
+  function worldLevelTextRaw(s, l) { return (l.part ? l.part + ' ' : '') + l.value + (s.unit && l.via !== 'card' ? ' ' + s.unit : ''); }
+  // v19.14：画面の文字。兆円・億円・億ドル・兆ドルは小数1桁まで（桁の書き換え。元の値は levels にそのまま残す）
+  const WORLD_BIG_UNITS = ['兆円', '億円', '億ドル', '兆ドル'];
+  function worldRoundShown(value, unit) {
+    const v = String(value == null ? '' : value).trim();
+    const m = /^([+\-−]?)([0-9][0-9,]*(?:\.[0-9]+)?)\s*(兆円|億円|億ドル|兆ドル)?$/.exec(v);
+    if (!m || !WORLD_BIG_UNITS.includes(m[3] || unit)) return v;
+    const n = Number(m[2].replace(/,/g, ''));
+    if (!Number.isFinite(n)) return v;
+    const t = m[2].includes('.') ? n.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : n.toLocaleString('en-US');
+    return m[1] + t + (m[3] || '');
+  }
+  // 詰め込まれた内訳（「国債:519.9,貸付金:71.8」）を、表示のときだけ分ける。v19.13 までの地層を調べる取り込みは
+  // part を知らず、内訳の地層に1つの値でまとめて入っていた。取り込みは値を40字で切るので、40字ちょうどの値は最後の1つが切れている
+  function worldLevelParts(l) {
+    if (!l || l.part) return null;
+    const v = String(l.value || '');
+    const bits = v.split(/[,，、]\s*(?=[^,，、:：]+[:：])/);
+    if (bits.length < 2) return null;
+    const parts = bits.map((b) => { const m = /^\s*([^:：]+?)\s*[:：]\s*(.+?)\s*$/.exec(b); return m ? { name: m[1], value: m[2] } : null; });
+    if (parts.some((p) => !p)) return null;
+    if (v.length >= 40) parts[parts.length - 1].cut = true;
+    return parts;
+  }
+  // 最新の日付の内訳（part で入ったもの、または詰め込まれた値を分けたもの）。内訳でなければ null
+  function worldLatestParts(s) {
+    const lv = worldStratumLevel(s);
+    if (!lv) return null;
+    if (lv.part) return s.levels.filter((l) => l.at === lv.at && l.part).map((l) => ({ name: l.part, value: l.value }));
+    return worldLevelParts(lv);
+  }
+  function worldUnitShown(s, l) { return s.unit && (!l || l.via !== 'card') ? s.unit : ''; }
+  function worldPartValueText(s, p, l) {
+    const v = worldRoundShown(p.value, s.unit);
+    return v + (/[^0-9.,+\-−]$/.test(v) ? '' : worldUnitShown(s, l)) + (p.cut ? '…（40字で切れている可能性）' : '');
+  }
+  // 内訳を1項目1行で並べる（スマホの幅でも崩れないように、横に詰め込まない）
+  function worldPartsEl(s, parts, l, cls) {
+    const box = document.createElement('div');
+    box.className = 'wPartList' + (cls ? ' ' + cls : '');
+    parts.forEach((p) => {
+      const n = document.createElement('span'); n.className = 'wpName'; n.textContent = p.name;
+      const v = document.createElement('span'); v.className = 'wpVal'; v.textContent = worldPartValueText(s, p, l);
+      box.appendChild(n); box.appendChild(v);
+    });
+    return box;
+  }
+  function worldLevelText(s, l) {
+    const parts = worldLevelParts(l);
+    if (parts) return parts.map((p) => p.name + ' ' + worldPartValueText(s, p, l)).join('、');
+    const v = worldRoundShown(l.value, s.unit);
+    return (l.part ? l.part + ' ' : '') + v + (/[^0-9.,+\-−]$/.test(v) ? '' : worldUnitShown(s, l));
+  }
   // v19.12：内訳の差。最新の日付と、その1つ前の日付の内訳を並べ、同じ単位で読めれば差を出す
   // （旬報でやった「2つの回の差」と同じ考え方。換算も合計もしない）
   function worldFmtDiff(d, unit) {
@@ -15664,7 +15726,12 @@
     return sign + num + ({ JPY: '円', USD: 'ドル', EUR: 'ユーロ', CNY: '元', '%': '%' }[unit] || '');
   }
   function worldStratumMixDiff(s) {
-    const parts = s.levels.filter((l) => l.part);
+    // v19.14：part で入った値に加え、詰め込まれた値も表示のときだけ分けて並べる（元の値は変えない）
+    const parts = [];
+    s.levels.forEach((l) => {
+      if (l.part) parts.push(l);
+      else (worldLevelParts(l) || []).forEach((p) => parts.push({ at: l.at, part: p.name, value: p.value, cut: p.cut }));
+    });
     if (!parts.length) return null;
     const dates = [...new Set(parts.map((l) => l.at))].sort().reverse();
     const cur = dates[0], prev = dates[1] || '';
@@ -15686,7 +15753,8 @@
         const qa = pa.value === null ? worldParseAmount(a.value + s.unit) : pa, qb = pb.value === null ? worldParseAmount(b.value + s.unit) : pb;
         diff = (qa.value !== null && qb.value !== null && qa.unit === qb.unit) ? worldFmtDiff(qa.value - qb.value, qa.unit) : '—';
       }
-      [p, a ? a.value : '—', prev ? (b ? b.value : '—') : '', diff].forEach((t) => { const c = document.createElement('span'); c.textContent = t; row.appendChild(c); });
+      if ((a && a.cut) || (b && b.cut)) diff = '—';   // 切れた値とは比べない
+      [p, a ? worldRoundShown(a.value, s.unit) + (a.cut ? '…' : '') : '—', prev ? (b ? worldRoundShown(b.value, s.unit) + (b.cut ? '…' : '') : '—') : '', diff].forEach((t) => { const c = document.createElement('span'); c.textContent = t; row.appendChild(c); });
       box.appendChild(row);
     });
     return box;
@@ -15695,6 +15763,8 @@
     const lv = worldStratumLevel(s);
     if (!lv) return '値は未記入';
     const d = worldDaysSince(lv.at);
+    // v19.14：内訳は下に1項目1行で出すので、ここは日付だけ
+    if (worldLatestParts(s)) return '内訳（' + dotDate(lv.at) + (d === null ? '' : ' ・ ' + d + '日前') + '）';
     return worldLevelText(s, lv) + '（' + dotDate(lv.at) + (d === null ? '' : ' ・ ' + d + '日前') + '）';
   }
   // v15: meta を付けると生成から来た値になる（{ source, url, via, eventId }）。
@@ -17182,7 +17252,7 @@
       return s.id + '　' + s.name + '　単位 ' + (s.unit || '（指定なし）') + '\n'
         + '  ' + s.line + '\n'
         + '  確認先：' + (s.where.source || '（未設定）') + '  ' + (s.where.url || '') + '\n'
-        + '  （前回の値：' + (lv ? worldLevelText(s, lv) + '  ' + lv.at + (d === null ? '' : ' ・ ' + d + '日前') : 'まだ入っていません') + '）';
+        + '  （前回の値：' + (lv ? worldLevelTextRaw(s, lv) + '  ' + lv.at + (d === null ? '' : ' ・ ' + d + '日前') : 'まだ入っていません') + '）';
     });
     return SHOOT_PROMPT_HEAD +
       'あなたは、決まった' + list.length + '個の「量」の現在値を調べて返す係です。\n' +
@@ -17209,7 +17279,11 @@
       '  「2026年8月末時点」なら 2026-08-31。「2026年第2四半期」なら 2026-06-30。\n' +
       '  基準日が書かれていなければ、その量を返さない（公表日で代用しない）。\n' +
       '- source：媒体名と統計名。（例：財務省 外貨準備等の状況 2026年8月末）\n' +
-      '- url：その値が載っているページ。トップページではなく、数字のあるページ。\n\n' +
+      '- url：その値が載っているページ。トップページではなく、数字のあるページ。\n' +
+      // v19.14：内訳を1つの value に詰め込ませない（取り込みは40字で切るので、末尾が失われていた）
+      '- part：名前に「内訳」とある量だけ。内訳の名前（「国債」「貸付金」）を書き、内訳の数だけ行を分けて返す。\n' +
+      '  1つの value に「国債:519.9,貸付金:71.8」とまとめて書かない。内訳でない量では省く。合計や割合を自分で出さない。\n' +
+      '  例：{"stratumId":"st_boj_assets_mix","part":"国債","value":"519.9","at":"2026-08-31","source":"…","url":"https://…"}\n\n' +
       '■ 出力形式\n' +
       '{"levels":[\n' +
       '  {"stratumId":"st_jp_fx_reserve","value":"12075","at":"2026-08-31",\n' +
@@ -17239,8 +17313,9 @@
       const url = typeof l.url === 'string' ? (shootSafeUrl(l.url.trim()) || '') : '';
       if (!url) { out.noUrl++; return; }                  // 捏造の入り口を塞ぐ
       if (!isDateStr(l.at)) { out.noDate++; return; }     // 札と違い eventDate で代用しない
-      const before = worldStratumLevel(s);
-      if (!worldAddLevel(s, value, l.at, '', { source: l.source, url, via: 'probe' })) { out.dup++; return; }
+      const part = worldStr(l.part, 30);   // v19.14
+      const before = s.levels.find((x) => (x.part || '') === part) || null;   // 桁の飛びは同じ内訳どうしで見る
+      if (!worldAddLevel(s, value, l.at, '', { source: l.source, url, via: 'probe', part })) { out.dup++; return; }
       out.filled++;
       // 桁が飛んだら落とさずに知らせる。本当に変わることがあるので判断は人がする
       const a = Number(String(value).replace(/,/g, '')), b = before ? Number(String(before.value).replace(/,/g, '')) : NaN;
@@ -17643,6 +17718,8 @@
     v.className = 'wsVal' + (worldStratumStale(s) ? ' wsStale' : '');
     v.textContent = worldStratumLine(s);
     el.appendChild(v);
+    const parts = worldLatestParts(s);   // v19.14
+    if (parts) el.appendChild(worldPartsEl(s, parts, worldStratumLevel(s), 'wsParts'));
     el.onclick = (e) => { e.stopPropagation(); openWorldStratum(s.id); };
   }
   let worldImportField = 'finance';   // 最後にコピーしたプロンプトの分野（JSON に field が無いときの既定）
@@ -19306,7 +19383,10 @@
     document.getElementById('worldStratumLine').textContent = s.line;
     document.getElementById('worldStratumDir').textContent =
       (WORLD_STRATUM_DIR_LABEL[s.dir] || '') + (s.dirSince ? '（' + s.dirSince + 'から）' : '') + (s.unit ? ' ・ 単位 ' + s.unit : '');
-    document.getElementById('worldStratumNow').textContent = worldStratumLine(s);
+    const nowEl = document.getElementById('worldStratumNow');
+    nowEl.textContent = worldStratumLine(s);
+    const nowParts = worldLatestParts(s);   // v19.14
+    if (nowParts) nowEl.appendChild(worldPartsEl(s, nowParts, worldStratumLevel(s), 'nowParts'));
     document.getElementById('worldStratumWhere').textContent = s.where.source ? '確認先：' + s.where.source : '確認先が未設定です。';
     document.getElementById('btnWorldStratumWhere').disabled = !s.where.url;
 
@@ -19379,9 +19459,13 @@
       const v = document.createElement('span');
       // 赤は「未記入」だけでなく「その地層にとって古い」まで広げる
       v.className = 'slVal' + (worldStratumStale(s) ? ' empty' : '');
-      v.textContent = lv ? worldLevelText(s, lv) + ' ・ ' + (worldDaysSince(lv.at)) + '日前' : '値は未記入';
+      // v19.14：内訳を持つ地層は、右には日付だけ。内訳は下に1項目1行（横に詰め込むと名前の幅が潰れる）
+      const parts = worldLatestParts(s);
+      v.textContent = !lv ? '値は未記入' : parts ? (worldDaysSince(lv.at)) + '日前' : worldLevelText(s, lv) + ' ・ ' + (worldDaysSince(lv.at)) + '日前';
       const l = document.createElement('span'); l.className = 'slLine'; l.textContent = s.line;
-      row.appendChild(n); row.appendChild(v); row.appendChild(l);
+      row.appendChild(n); row.appendChild(v);
+      if (parts) row.appendChild(worldPartsEl(s, parts, lv, 'slParts'));
+      row.appendChild(l);
       row.addEventListener('click', () => openWorldStratum(s.id));
       box.appendChild(row);
     });
