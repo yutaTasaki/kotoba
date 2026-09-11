@@ -1177,6 +1177,21 @@
   .worldMoneyRow .wmAmount { font-size: 13px; white-space: nowrap; }
   .worldMoneyRow .wmWhat { font-size: 12px; color: var(--text-dim); }
   .worldMoneyRow .wmSpan { font-size: 11px; color: var(--text-faint); }
+  /* v20 地図 */
+  .worldMapBox { width: 100%; }
+  .worldMapBox svg { display: block; width: 100%; height: auto; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+  .worldMapBox .wmC { fill: #1c1c1c; stroke: #2d2d2d; stroke-width: 0.5; }
+  .worldMapBox .wmC.on { fill: #22302a; }
+  .worldMapBox .wmDot { fill: var(--accent); stroke: #111; stroke-width: 1; }
+  .worldMapBox .wmL { fill: none; stroke: var(--accent); stroke-width: 1.6; opacity: 0.85; }
+  .worldMapBox .wmL.dot { stroke-dasharray: 1.5 3; stroke-width: 1.2; }
+  .worldMapBox .wmL.dash { stroke-dasharray: 6 4; }
+  .worldMapBox .wmArrowHead { fill: var(--accent); }
+  .worldMapBox .wmHit { fill: none; stroke: transparent; stroke-width: 14; pointer-events: stroke; cursor: pointer; }
+  .worldMapBox .wmSlot rect { fill: #1a1a1a; stroke: var(--border); }
+  .worldMapBox .wmSlot text, .worldMapBox .wmMore { fill: var(--text-dim); font-size: 10px; }
+  .worldMapBox .wmLabel { fill: var(--text-dim); font-size: 9px; }
+  #worldMapChooser { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
   /* v19.15 同じ動きを別の出典からも確かめた印。行の右端に小さく */
   .worldMoneyRow .wmSrc { margin-left: auto; font-size: 10px; color: var(--text-faint); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; white-space: nowrap; }
   .worldMoneyReach { font-size: 12px; line-height: 1.7; padding: 8px 0; }
@@ -2302,6 +2317,15 @@
       <div id="worldMainBody"></div>
     </div>
 
+    <!-- v20 M1：大きな地図。直近90日のお金の動きを線で描く -->
+    <div class="editorBody" id="worldMapView" hidden>
+      <div class="tagFilterRow" id="worldMapRegions"></div>
+      <div id="worldMapBox" class="worldMapBox"></div>
+      <div id="worldMapChooser" hidden></div>
+      <p class="fieldNote" id="worldMapStatus"></p>
+      <div id="worldMapUnknown"></div>
+    </div>
+
     <div class="editorBody" id="worldImportView" hidden>
       <div class="field">
         <span class="fieldLabel">1 プロンプトをコピー</span>
@@ -2481,6 +2505,15 @@
       <div class="field" id="worldActorStanceField" hidden>
         <span class="fieldLabel">ふだん欲しがるもの<span class="fieldNote inlineNote">（手書き・任意）</span></span>
         <input type="text" id="worldActorStanceInput" placeholder="例：国債の金利を低く保ちたい" autocomplete="off">
+      </div>
+      <!-- v20：国（地図で使う） -->
+      <div class="field" id="worldActorCountryField" hidden>
+        <div class="medRow"><span class="fieldLabel">国</span><span id="worldActorCountryText"></span><button type="button" id="btnWorldActorCountryEdit" class="linkLikeBtn">直す</button></div>
+        <div id="worldActorCountryEditBox" hidden>
+          <input type="text" id="worldActorCountryInput" placeholder="国名（例：カナダ・米国）。市場・国際機関・地域も可" autocomplete="off">
+          <button type="button" id="btnWorldActorCountrySave" class="secondaryBtn">決める</button>
+          <p class="fieldNote" id="worldActorCountryStatus"></p>
+        </div>
       </div>
       <div class="field" id="worldActorMoneyField" hidden>
         <span class="fieldLabel">この主体が動かしたお金</span>
@@ -2873,7 +2906,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v19.15';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.0';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -14473,7 +14506,27 @@
   // v19.6 段階6：お金の鎖
   const WORLD_CHAIN_DEPTH_MAX   = 12;   // 鎖を辿る深さ
   const WORLD_CHAINS_SHOWN      = 3;    // 既定の画面に出す鎖の数
-  const WORLD_SINGLES_SHOWN     = 3;    // 鎖に入らないお金の動き（単発）の数   // コピーしたプロンプトに入れた必ず見るもの（端末に控える）
+  const WORLD_SINGLES_SHOWN     = 3;    // 鎖に入らないお金の動き（単発）の数
+  // v20 地図（M1）。仕様書 docs/sekai/spec/sekai_chizu_shiyou.md
+  const WORLD_MAP_DAYS           = 90;   // 大きな地図に描く期間
+  const WORLD_MAP_TAP_PX         = 22;   // 点を押したとみなす距離（画面の px）
+  const WORLD_MAP_LINES_PER_PAIR = 5;    // 同じ国の組に描く線の上限。6本目からは「ほか◯本」
+  const WORLD_MAP_SLOTS          = ['MKT', 'INT', 'REG'];
+  const WORLD_MAP_SLOT_LABEL     = { MKT: '市場', INT: '国際機関', REG: '地域' };
+  const WORLD_MAP_REGIONS = [
+    ['world', '全体', null], ['americas', '米州', [[-170, -58], [-30, 72]]], ['europe', '欧州', [[-25, 34], [45, 71]]],
+    ['mideast', '中東', [[25, 12], [63, 42]]], ['asia', 'アジア', [[60, -12], [150, 55]]],
+  ];
+  // 後ろの決まった言葉。外した残りが別名の表と丸ごと一致したときだけ、その国（「イスラエル政府」→ イスラエル）
+  const WORLD_PLACE_SUFFIX  = ['人民銀行', '準備銀行', '中央銀行', '政府', '政権', '財務省', '議会', '国防省'];
+  // 一般名：もう片方と同じ国にいると言い切れる相手。国内に寄せる。「買い手」「購入者」は入れない（市場の枠）
+  const WORLD_PLACE_GENERIC = { exact: ['金融機関', '銀行', '株主', '企業', '家計', '投資家'], contains: ['保有者', '支払い先', '受給者'] };
+  // 種の主体21件の国（仕様書 1.2）。起動時、国をまだ一度も決めていないものだけに入れる
+  const WORLD_DEFAULT_ACTOR_COUNTRY = {
+    ac_mof_jp: 'JPN', ac_boj: 'JPN', ac_gov_jp: 'JPN', ac_fed: 'USA', ac_treasury_us: 'USA', ac_admin_us: 'USA', ac_congress_us: 'USA',
+    ac_ecb: 'REG', ac_eu: 'REG', ac_pboc: 'CHN', ac_gov_cn: 'CHN', ac_imf: 'INT', ac_bis: 'INT', ac_opec: 'INT', ac_wto: 'INT',
+    ac_nato: 'INT', ac_un: 'INT', ac_gov_ir: 'IRN', ac_gov_ru: 'RUS', ac_gov_ua: 'UKR', ac_gov_kp: 'PRK',
+  };   // コピーしたプロンプトに入れた必ず見るもの（端末に控える）
   const WORLD_FLOW_KIND_MARK  = { money: '', goods: '［物］', people: '［人］' };
   const WORLD_FLOW_KIND_LABEL = { money: 'お金の動き', goods: '物の動き', people: '人の動き' };
   const WORLD_EVENT_ID_RE     = /^w_\d{8}_\d+$/;
@@ -14821,6 +14874,7 @@
     return (f.share !== null && f.share !== '' && Number.isFinite(n) && n >= 0 && n <= 100) ? Math.round(n) : null;
   }
   function worldIsMoneyFlow(e) { return !!(e && e.flow && e.flow.kind === 'money'); }
+  function worldCountryCode(v) { const c = String(v || '').trim().toUpperCase(); return /^[A-Z]{3}$/.test(c) ? c : ''; }
   // v19.3 確度。0 は付いていない（v19.2 までの札）。付いていない札は沈めない
   function worldConfidence(v) { const n = Math.round(Number(v)); return n >= 1 && n <= WORLD_CONF_MAX ? n : 0; }
   function worldIsLowConf(e) { return !!(e && e.confidence && e.confidence <= WORLD_CONF_SINK); }
@@ -14924,6 +14978,10 @@
     } else if (isActor) {
       out.kind = WORLD_ACTOR_KINDS.includes(c.kind) ? c.kind : '';
       out.stance = worldStr(c.stance, WORLD_STANCE_MAX);   // ふだん欲しがるもの。手書き・任意
+      // v20：国。3文字の国コード、または MKT（市場）・INT（国際機関）・REG（地域）。空は「まだ分からない」。
+      // countrySetAt は種の表か手で決めた印（取り込みで生成が書いた国では付けない。付いていれば上書きしない）
+      out.country = worldCountryCode(c.country);
+      out.countrySetAt = typeof c.countrySetAt === 'string' ? c.countrySetAt : '';
     } else {
       out.field = WORLD_FIELDS.includes(c.field) ? c.field : '';
       // v11.5: related（id の配列）は links に読み替える。データは消えない。
@@ -15273,6 +15331,13 @@
       wd.actorsDirty = true;
       persistWorldActors();
     }
+    // v20：種の主体に国を入れる。国をまだ一度も決めていないものだけ（自分で直した国は上書きしない）
+    let actorCountryAdded = false;
+    wd.actors.actors.forEach((a) => {
+      const cc = WORLD_DEFAULT_ACTOR_COUNTRY[a.id];
+      if (cc && !a.country && !a.countrySetAt) { a.country = cc; a.countrySetAt = nowIso(); a.updatedAt = nowIso(); actorCountryAdded = true; }
+    });
+    if (actorCountryAdded) { wd.actors.updatedAt = nowIso(); wd.actorsDirty = true; persistWorldActors(); }
     if (!wd.strata.strata.length && !wd.strata.updatedAt) {
       wd.strata.strata = WORLD_DEFAULT_STRATA.map((x, i) => normalizeWorldStratum({ ...x, levels: [], order: i, active: 1 })).filter(Boolean);
       wd.strataDirty = true;
@@ -15901,7 +15966,7 @@
       createdAt: iso, updatedAt: iso, lastUsedAt: iso,
     };
     if (store.key === 'term') base.kind = o.kind || '';
-    else if (store.key === 'actor') { base.kind = o.kind || ''; base.stance = o.stance || ''; }
+    else if (store.key === 'actor') { base.kind = o.kind || ''; base.stance = o.stance || ''; base.country = o.country || ''; }
     else { base.field = o.field || ''; base.related = []; }
     const c = normalizeWorldEntry(base, store.key);
     if (c) store.list().push(c);
@@ -16232,6 +16297,7 @@
     delete ev._termMeta;
     worldApplyActors(ev, created);
     delete ev._actorMeta;
+    delete ev._actorCountry;   // v20
     return created;
   }
   // v12: 札の主語をストアに起こす／既存につなぐ。名前は正式名へ寄せる。
@@ -16244,7 +16310,7 @@
       let a = worldFindIn(AS, name);
       if (!a && make) {
         const src = worldSources().find((sc) => worldNormName(sc.name) === worldNormName(name));
-        a = worldAddIn(AS, { name, aka: [], kind: meta[worldNormName(name)] || '', stance: src ? src.stance : '' }, ev.id);
+        a = worldAddIn(AS, { name, aka: [], kind: meta[worldNormName(name)] || '', stance: src ? src.stance : '', country: (ev._actorCountry || {})[worldNormName(name)] || '' }, ev.id);
         if (a && created) created.actor.push(a.id);
       }
       return a;
@@ -16252,6 +16318,9 @@
     ev.actors = ev.actors.map((rec) => {
       const a = resolve(rec.name, true);
       if (!a) return rec;
+      // v20：国がまだ空の既存の主体には、生成が書いた国を入れる（種の表や手で決めた国は上書きしない）
+      const cc = (ev._actorCountry || {})[worldNormName(rec.name)];
+      if (cc && !a.country && !a.countrySetAt) a.country = cc;
       worldTouchEntry(a, ev.id);
       return { ...rec, name: a.name };
     });
@@ -16591,6 +16660,9 @@
       '          書くなら、述べたことと違うことを書く。書けなければ空でよい。\n' +
       '  - kind は state（政府・議会）／cb（中央銀行）／intl（国際機関）／industry（業界・企業）\n' +
       '    ／person（人物）／group（集まり）のどれか。すでに知っているアクターには kind を書かなくてよい。\n' +
+      // v20：地図で使う国
+      '  - country：その主体の国の3文字コード（日本は JPN、米国は USA、中国は CHN）。市場は MKT、国際機関は INT、\n' +
+      '    EU や国の集まりは REG。分からなければ空。\n' +
       // v19.9：集まりとしての主体。富裕層の札で主語が空になるのを防ぐ
       '  - group（集まり）：富裕層・家計・海外投資家のように、組織ではない集まりを主体にしてよい。\n' +
       '    立てる条件は、出典にその集まりの数字（人数・金額・割合）が書かれていること。\n' +
@@ -16776,7 +16848,7 @@
       '  "concepts":["..."],\n' +
       '  "terms":[{"name":"IMF","line":"...","kind":"org","aka":["国際通貨基金"]}],\n' +
       '  "strata":["st_jp_rate_long"],\n' +
-      '  "actors":[{"name":"財務省","did":"...","said":"...","read":"...","kind":"state"}],\n' +
+      '  "actors":[{"name":"財務省","did":"...","said":"...","read":"...","kind":"state","country":"JPN"}],\n' +
       '  "flow":{"from":"...","to":"...","what":"...","amount":"...","kind":"money","after":null,"span":"","total":"","share":null,"strata":[]},\n' +
       '  "levels":[{"stratumId":"st_jp_fx_reserve","value":"...","at":"YYYY-MM-DD"}],\n' +
       '  "fork":{"text":"...","type":"level"},\n' +
@@ -17597,6 +17669,7 @@
     (Array.isArray(it.actors) ? it.actors : []).forEach((a) => {
       if (!a || typeof a !== 'object' || !a.name) return;
       ev._actorMeta[worldNormName(a.name)] = WORLD_ACTOR_KINDS.includes(a.kind) ? a.kind : '';
+      (ev._actorCountry = ev._actorCountry || {})[worldNormName(a.name)] = worldCountryCode(a.country);   // v20
     });
     ev._termMeta = {};
       (Array.isArray(it.terms) ? it.terms : []).forEach((t) => {
@@ -18789,6 +18862,7 @@
     document.getElementById('worldCardsView').hidden = worldState.view !== 'cards';
     document.getElementById('worldActorsView').hidden = worldState.view !== 'actors';
     document.getElementById('worldTidyView').hidden = worldState.view !== 'tidy';
+    document.getElementById('worldMapView').hidden = worldState.view !== 'map';   // v20
     if (worldState.view === 'ask') renderWorldAsk();
     else if (worldState.view === 'judge') renderWorldJudge();
     else if (worldState.view === 'main') renderWorldMain();
@@ -18797,6 +18871,7 @@
     else if (worldState.view === 'cards') renderWorldCards();
     else if (worldState.view === 'actors') renderWorldActors();
     else if (worldState.view === 'tidy') renderWorldTidy();
+    else if (worldState.view === 'map') renderWorldMap();   // v20
     else renderWorldImport();
   }
   // v18 A-1: 今日の単位は「札」ではなく「主体」。readDate はそのまま残す
@@ -19555,7 +19630,8 @@
     row.type = 'button'; row.className = 'worldMoneyRow';
     const d = document.createElement('span'); d.className = 'wmDate'; d.textContent = worldShortDate(e.eventDate);
     const p = document.createElement('span'); p.className = 'wmPeer';
-    p.textContent = (e.flow.from || '？') + ' → ' + (e.flow.to || '？');
+    p.textContent = (e.flow.from || '？') + ' → ' + (e.flow.to || '？')
+      + (e.flow.kind && e.flow.kind !== 'money' ? '　' + WORLD_FLOW_KIND_MARK[e.flow.kind] + (e.flow.what || '') : '');   // v20：鎖から回ってきた物・人
     const a = document.createElement('span'); a.className = 'wmAmount'; a.textContent = e.flow.amount || '（額なし）';
     row.appendChild(d); row.appendChild(p); row.appendChild(a);
     if (e.flow.span) {
@@ -19633,8 +19709,11 @@
   // 既定の画面の一番上：お金の鎖（最大3本・最後に動いた順）と、お金の動き（単発）3本＋「お金の一覧」
   function renderWorldMoneyTop(body) {
     const all = worldFlowEvents('').filter((e) => !worldIsLowConf(e));
-    const chains = worldMoneyChains();
-    if (!all.length && !chains.length) return;
+    // v20：鎖に出すのは、まとめた後に2件以上ある塊だけ。1件になった塊は単発へ回す（仕様書 1.8）
+    const groups = worldMoneyChains();
+    const chains = groups.filter((c) => c.rows.length >= 2);
+    const collapsed = groups.filter((c) => c.rows.length < 2).flatMap((c) => c.rows);
+    if (!all.length && !chains.length && !collapsed.length) return;
     if (chains.length) {
       const head = document.createElement('div');
       head.className = 'worldSectionHead';
@@ -19654,8 +19733,10 @@
         body.appendChild(box);
       });
     }
-    const inChain = new Set(chains.flatMap((c) => c.cards.map((e) => e.id)));
-    const singles = worldMergeFlows(all.filter((e) => !inChain.has(e.id)));   // v19.15
+    const inChain = new Set(groups.flatMap((c) => c.cards.map((e) => e.id)));
+    // v20：鎖から回ってきたものは、物・人でも単発に出す（［物］の印つき）
+    const singles = worldMergeFlows(all.filter((e) => !inChain.has(e.id))).concat(collapsed)
+      .sort((a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0));
     const head = document.createElement('div');
     head.className = 'worldSectionHead';
     const l = document.createElement('span'); l.textContent = chains.length ? 'お金の動き（単発）' : 'お金の流れ';
@@ -19663,7 +19744,11 @@
     go.type = 'button'; go.className = 'linkLikeBtn';
     go.textContent = 'お金の一覧（' + worldMergeFlows(worldFlowEvents('')).length + '）';   // v19.15：同じ動きを2回数えない
     go.addEventListener('click', () => { worldState.search.money = ''; openWorldCards({ title: 'お金の一覧', money: true }); });
-    head.appendChild(l); head.appendChild(go);
+    // v20：大きな地図への入口（M5 まで）
+    const mapBtn = document.createElement('button');
+    mapBtn.type = 'button'; mapBtn.className = 'linkLikeBtn'; mapBtn.textContent = '地図';
+    mapBtn.addEventListener('click', () => { worldState.view = 'map'; renderWorld(); });
+    head.appendChild(l); head.appendChild(mapBtn); head.appendChild(go);
     body.appendChild(head);
     singles.slice(0, WORLD_SINGLES_SHOWN).forEach((e) => body.appendChild(worldMoneyBriefRowEl(e)));
   }
@@ -19769,6 +19854,306 @@
       body.appendChild(worldMoreLineEl('ほか ' + (hits.length - cap) + '件 ・ すべて見る',
         () => { worldState.searchAll = true; renderWorldMain(); }));
     }
+  }
+
+  // ---- v20 地図（M1） -------------------------------------------------------
+  // 部品（d3-geo・topojson・世界地図・国の表）は assets に置いてあり、地図を初めて開いたときに読む
+  let worldMapLibP = null;
+  let worldMapToken = 0;
+  function worldLoadScript(src) {
+    return new Promise((res, rej) => {
+      const el = document.createElement('script');
+      el.src = src;
+      el.onload = () => res();
+      el.onerror = () => rej(new Error(src.split('/').pop() + ' が読めません'));
+      document.head.appendChild(el);
+    });
+  }
+  function worldLoadMapLib() {
+    if (!worldMapLibP) {
+      worldMapLibP = (async () => {
+        if (!(window.d3 && window.d3.geoPath)) { await worldLoadScript('assets/d3-array.min.js'); await worldLoadScript('assets/d3-geo.min.js'); }
+        if (!window.topojson) await worldLoadScript('assets/topojson-client.min.js');
+        const get = async (u) => {
+          const r = await fetch(u);
+          if (!r.ok) throw new Error(u.split('/').pop() + ' が ' + r.status + ' を返しました');
+          try { return await r.json(); } catch (e) { throw new Error(u.split('/').pop() + ' の形が読めません'); }
+        };
+        const [atlas, table] = await Promise.all([get('assets/countries-110m.json'), get('assets/world_countries.json')]);
+        return worldBuildMapLib(window.d3, window.topojson, atlas, table);
+      })().catch((e) => { worldMapLibP = null; throw e; });
+    }
+    return worldMapLibP;
+  }
+  function worldBuildMapLib(d3, topojson, atlas, table) {
+    const byNum = new Map(), byName = new Map(), nameOf = new Map();
+    table.countries.forEach(([a3, num, ja, names]) => {
+      byNum.set(num, a3); nameOf.set(a3, ja);
+      names.forEach((n) => { const k = worldNormName(n); if (k && !byName.has(k)) byName.set(k, a3); });
+    });
+    const features = topojson.feature(atlas, atlas.objects.countries).features;
+    const anchors = new Map();
+    features.forEach((f) => {
+      const a3 = byNum.get(String(f.id).padStart(3, '0'));
+      f.a3 = a3 || '';
+      if (!a3) return;
+      if (table.anchors[a3]) { anchors.set(a3, table.anchors[a3]); return; }
+      // いちばん大きな島の重心（国全体の重心だと、日本・フランス・ノルウェーなどが国の外に落ちる）
+      const polys = f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.type === 'MultiPolygon' ? f.geometry.coordinates : [];
+      if (!polys.length) return;
+      const big = polys.map((c) => ({ c, a: d3.geoArea({ type: 'Polygon', coordinates: c }) })).sort((x, y) => y.a - x.a)[0].c;
+      anchors.set(a3, d3.geoCentroid({ type: 'Polygon', coordinates: big }));
+    });
+    Object.entries(table.points).forEach(([a3, ll]) => { if (!anchors.has(a3)) anchors.set(a3, ll); });
+    return { d3, table, features, byName, nameOf, anchors };
+  }
+  function worldPlaceLabel(code, lib) {
+    if (WORLD_MAP_SLOT_LABEL[code]) return WORLD_MAP_SLOT_LABEL[code];
+    return (lib && lib.nameOf.get(code)) || code || '場所不明';
+  }
+  // 名前 → 国コード／枠（MKT・INT・REG）／'SAME'（一般名。もう片方の国）／''（場所不明）。
+  // 当て方の順は仕様書 1.2：主体の国 → 別名の表と丸ごと一致 → 後ろの言葉を外して丸ごと一致 → 一般名 → 枠
+  function worldPlaceOfName(name, lib) {
+    const n = String(name || '').trim();
+    if (!n) return '';
+    const a = worldFindIn(WORLD_STORES.actor, n);
+    if (a && a.country) return a.country;
+    const names = [n].concat(a ? [a.name].concat(a.aka || []) : []);
+    const hit = (x) => lib.byName.get(worldNormName(x)) || '';
+    for (const x of names) { const c = hit(x); if (c) return c; }
+    for (const x of names) {
+      for (const suf of WORLD_PLACE_SUFFIX) {
+        if (x.length > suf.length && x.endsWith(suf)) { const c = hit(x.slice(0, -suf.length)); if (c) return c; }
+      }
+    }
+    const k = worldNormName(n);
+    if (WORLD_PLACE_GENERIC.exact.some((g) => worldNormName(g) === k) || WORLD_PLACE_GENERIC.contains.some((g) => n.includes(g))) return 'SAME';
+    const S = lib.table.slots;
+    for (const c of WORLD_MAP_SLOTS) if ((S[c].exact || []).some((x) => worldNormName(x) === k)) return c;
+    for (const c of WORLD_MAP_SLOTS) if ((S[c].contains || []).some((x) => n.includes(x))) return c;
+    return '';
+  }
+  function worldIsCountry(code, lib) { return !!code && !WORLD_MAP_SLOTS.includes(code) && code !== 'SAME' && lib.nameOf.has(code); }
+  // 動きの両端。一般名は、もう片方が国なら同じ国（言い切れないとき＝もう片方が枠や場所不明のときは場所不明）
+  function worldFlowPlaces(f, lib) {
+    let a = worldPlaceOfName(f.from, lib), b = worldPlaceOfName(f.to, lib);
+    if (a === 'SAME') a = worldIsCountry(b, lib) ? b : '';
+    if (b === 'SAME') b = worldIsCountry(a, lib) ? a : '';
+    const ok = (c) => worldIsCountry(c, lib) || WORLD_MAP_SLOTS.includes(c);
+    return [ok(a) ? a : '', ok(b) ? b : ''];
+  }
+  // 直近90日の動きを、国をまたぐ線・枠への線・国内・場所不明に分ける（v19.15 のまとめ方を先に当てる）
+  function worldMapModel(lib, from) {
+    const rows = worldMergeFlows(worldLiveEvents()
+      .filter((e) => e.flow && e.eventDate >= from && !worldIsLowConf(e))
+      .sort((a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0)));
+    const m = { lines: [], domestic: new Map(), unknown: [], all: rows };
+    rows.forEach((r) => {
+      const [a, b] = worldFlowPlaces(r.flow, lib);
+      r.places = [a, b];
+      if (!a || !b) { m.unknown.push(r); return; }
+      if (a === b && worldIsCountry(a, lib)) { if (!m.domestic.has(a)) m.domestic.set(a, []); m.domestic.get(a).push(r); return; }
+      m.lines.push(r);
+    });
+    return m;
+  }
+  function worldOpenFlowRows(rows, title) {
+    const ids = [...new Set(rows.flatMap((r) => (r.cards || [r]).map((e) => e.id)))];
+    if (ids.length === 1) { worldState.cards = null; openWorldCards({ title, ids, openId: ids[0], from: 'map' }); return; }
+    openWorldCards({ title, ids, from: 'map' });
+  }
+  function renderWorldMap() {
+    const box = document.getElementById('worldMapBox');
+    const st = document.getElementById('worldMapStatus');
+    const regions = document.getElementById('worldMapRegions');
+    const unk = document.getElementById('worldMapUnknown');
+    const chooser = document.getElementById('worldMapChooser');
+    chooser.hidden = true; chooser.innerHTML = '';
+    unk.innerHTML = '';
+    regions.innerHTML = '';
+    const cur = worldState.mapRegion || 'world';
+    WORLD_MAP_REGIONS.forEach(([k, label]) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'tagFilterBtn' + (k === cur ? ' selected' : '');
+      b.textContent = label;
+      b.addEventListener('click', () => { worldState.mapRegion = k; renderWorldMap(); });
+      regions.appendChild(b);
+    });
+    if (!box.firstChild) st.textContent = '地図を読み込んでいます…';
+    const token = ++worldMapToken;
+    worldLoadMapLib().then(async (lib) => {
+      const t = todayStr(), from = addDays(t, -WORLD_MAP_DAYS);
+      const months = [];
+      for (let mm = monthOfDate(from); mm <= monthOfDate(t) && months.length < 6; mm = monthShift(mm, 1)) months.push(mm);
+      await ensureWorldMonths(months);
+      if (token !== worldMapToken || worldState.view !== 'map') return;
+      worldDrawMap(lib, worldMapModel(lib, from), cur);
+    }).catch((e) => {
+      if (token !== worldMapToken) return;
+      box.innerHTML = '';
+      st.textContent = '地図を読み込めませんでした（' + ((e && e.message) || '理由不明') + '）。お金の流れは世界の画面の一覧で見られます。';
+    });
+  }
+  function worldSvg(tag, attrs, parent) {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    Object.entries(attrs || {}).forEach(([k, v]) => el.setAttribute(k, v));
+    if (parent) parent.appendChild(el);
+    return el;
+  }
+  function worldDrawMap(lib, model, region) {
+    const d3 = lib.d3;
+    const box = document.getElementById('worldMapBox');
+    const st = document.getElementById('worldMapStatus');
+    const chooser = document.getElementById('worldMapChooser');
+    const W = Math.max(280, Math.round(box.clientWidth || 360));
+    const reg = WORLD_MAP_REGIONS.find((r) => r[0] === region) || WORLD_MAP_REGIONS[0];
+    const proj = d3.geoEqualEarth();
+    let H;
+    if (!reg[2]) {
+      proj.fitWidth(W, { type: 'FeatureCollection', features: lib.features });
+      const b = d3.geoPath(proj).bounds({ type: 'FeatureCollection', features: lib.features });
+      H = Math.ceil(b[1][1]);
+    } else {
+      H = Math.round(W * 0.62);
+      const [[x0, y0], [x1, y1]] = reg[2];
+      proj.fitSize([W, H], { type: 'MultiPoint', coordinates: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]] });
+    }
+    const path = d3.geoPath(proj);
+    const slotTop = H + 10, slotH = 30, total = slotTop + slotH + 6;
+    box.innerHTML = '';
+    const svg = worldSvg('svg', { viewBox: '0 0 ' + W + ' ' + total, width: W, height: total, role: 'img', 'aria-label': 'お金の流れの地図' }, box);
+    const defs = worldSvg('defs', {}, svg);
+    const mk = worldSvg('marker', { id: 'wmArrow', viewBox: '0 0 10 10', refX: '9', refY: '5', markerWidth: '6', markerHeight: '6', orient: 'auto-start-reverse' }, defs);
+    worldSvg('path', { d: 'M0,0 L10,5 L0,10 z', class: 'wmArrowHead' }, mk);
+    const clip = worldSvg('clipPath', { id: 'wmClip' }, defs);
+    worldSvg('rect', { x: 0, y: 0, width: W, height: H }, clip);
+    const land = worldSvg('g', { 'clip-path': 'url(#wmClip)' }, svg);
+    const involved = new Set();
+    model.lines.forEach((r) => r.places.forEach((c) => { if (worldIsCountry(c, lib)) involved.add(c); }));
+    model.domestic.forEach((_, c) => involved.add(c));
+    lib.features.forEach((f) => worldSvg('path', { d: path(f) || '', class: 'wmC' + (involved.has(f.a3) ? ' on' : '') }, land));
+    // 場所の無い相手の置き場：地図の下の3つの枠（本部の場所には置かない）
+    const slotW = (W - 16) / 3, slotXY = {};
+    const slotCount = { MKT: 0, INT: 0, REG: 0 };
+    model.lines.forEach((r) => r.places.forEach((c) => { if (slotCount[c] !== undefined) slotCount[c]++; }));
+    WORLD_MAP_SLOTS.forEach((c, i) => {
+      const x = 4 + i * (slotW + 4);
+      const g = worldSvg('g', { class: 'wmSlot' }, svg);
+      worldSvg('rect', { x, y: slotTop, width: slotW, height: slotH, rx: 6, ry: 6 }, g);
+      const tx = worldSvg('text', { x: x + slotW / 2, y: slotTop + slotH / 2 + 4, 'text-anchor': 'middle' }, g);
+      tx.textContent = WORLD_MAP_SLOT_LABEL[c] + (slotCount[c] ? ' ' + slotCount[c] : '');
+      slotXY[c] = [x + slotW / 2, slotTop];
+    });
+    const xy = (c) => (slotXY[c] ? slotXY[c] : (() => { const ll = lib.anchors.get(c); return ll ? proj(ll) : null; })());
+    // 線：同じ組は足さずに、少しずつずらして並べる。5本まで。6本目からは「ほか◯本」
+    const pairs = new Map();
+    model.lines.forEach((r) => { const k = r.places.join('>'); if (!pairs.has(k)) pairs.set(k, []); pairs.get(k).push(r); });
+    const lineG = worldSvg('g', {}, svg);
+    pairs.forEach((rows, k) => {
+      const [a, b] = k.split('>');
+      const p1 = xy(a), p2 = xy(b);
+      if (!p1 || !p2) return;
+      const shown = rows.slice(0, WORLD_MAP_LINES_PER_PAIR);
+      const dx = p2[0] - p1[0], dy = p2[1] - p1[1], dist = Math.hypot(dx, dy) || 1;
+      const nx = -dy / dist, ny = dx / dist;
+      shown.forEach((r, i) => {
+        const off = dist * 0.18 + (i - (shown.length - 1) / 2) * 9;
+        const cx = (p1[0] + p2[0]) / 2 + nx * off, cy = (p1[1] + p2[1]) / 2 + ny * off;
+        const d = 'M' + p1[0].toFixed(1) + ',' + p1[1].toFixed(1) + ' Q' + cx.toFixed(1) + ',' + cy.toFixed(1) + ' ' + p2[0].toFixed(1) + ',' + p2[1].toFixed(1);
+        const kind = r.flow.kind && r.flow.kind !== 'money' ? ' dot' : r.flow.span ? ' dash' : '';
+        worldSvg('path', { d, class: 'wmL' + kind, 'marker-end': 'url(#wmArrow)' }, lineG);
+        const hit = worldSvg('path', { d, class: 'wmHit' }, lineG);
+        hit.addEventListener('click', (e) => {
+          e.stopPropagation();
+          worldOpenFlowRows([r], worldPlaceLabel(a, lib) + ' → ' + worldPlaceLabel(b, lib));
+        });
+      });
+      if (rows.length > shown.length) {
+        const t = worldSvg('text', { x: ((p1[0] + p2[0]) / 2 + nx * dist * 0.18).toFixed(1), y: ((p1[1] + p2[1]) / 2 + ny * dist * 0.18).toFixed(1), class: 'wmMore', 'text-anchor': 'middle' }, lineG);
+        t.textContent = 'ほか' + (rows.length - shown.length) + '本';
+      }
+    });
+    // 国の点。押せるのは、動きが絡む国だけ（押しても何も出ない点は置かない）
+    const dots = [];
+    const dotG = worldSvg('g', {}, svg);
+    involved.forEach((c) => {
+      const p = xy(c);
+      if (!p || p[1] < -4 || p[1] > H + 4 || p[0] < -4 || p[0] > W + 4) return;
+      worldSvg('circle', { cx: p[0].toFixed(1), cy: p[1].toFixed(1), r: 3.5, class: 'wmDot' }, dotG);
+      const dom = model.domestic.get(c);
+      if (reg[2] || dom) {
+        const t = worldSvg('text', { x: (p[0] + 5).toFixed(1), y: (p[1] - 4).toFixed(1), class: 'wmLabel' }, dotG);
+        t.textContent = (reg[2] ? worldPlaceLabel(c, lib) : '') + (dom ? '（国内' + dom.length + '）' : '');
+      }
+      dots.push({ c, p });
+    });
+    // 押した所から22px以内の国。2つ以上なら「この辺りの国」を出して選ばせる（欧州の点は1.5px しか離れていない）
+    svg.addEventListener('click', (e) => {
+      const rect = svg.getBoundingClientRect();
+      const sx = rect.width / W;
+      const px = (e.clientX - rect.left) / sx, py = (e.clientY - rect.top) / sx;
+      const near = dots.map((d) => ({ ...d, dd: Math.hypot(d.p[0] - px, d.p[1] - py) * sx }))
+        .filter((d) => d.dd <= WORLD_MAP_TAP_PX).sort((x, y) => x.dd - y.dd);
+      chooser.innerHTML = '';
+      if (!near.length) { chooser.hidden = true; return; }
+      if (near.length === 1) { chooser.hidden = true; worldMapOpenCountry(near[0].c, model, lib); return; }
+      const lab = document.createElement('span'); lab.className = 'fieldNote'; lab.textContent = 'この辺りの国：';
+      chooser.appendChild(lab);
+      near.forEach((d) => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'tagFilterBtn'; b.textContent = worldPlaceLabel(d.c, lib);
+        b.addEventListener('click', () => worldMapOpenCountry(d.c, model, lib));
+        chooser.appendChild(b);
+      });
+      chooser.hidden = false;
+    });
+    let dom = 0; model.domestic.forEach((v) => { dom += v.length; });
+    const toSlot = model.lines.filter((r) => r.places.some((c) => WORLD_MAP_SLOTS.includes(c))).length;
+    st.textContent = '直近' + WORLD_MAP_DAYS + '日：国をまたぐ線 ' + (model.lines.length - toSlot) + '本・枠への線 ' + toSlot + '本・国内 ' + dom + '件'
+      + '。国の点を押すと、その国が絡む動きを出します。';
+    const unk = document.getElementById('worldMapUnknown');
+    unk.innerHTML = '';
+    if (model.unknown.length) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'linkLikeBtn';
+      b.textContent = '場所不明 ' + model.unknown.length + '件';
+      b.addEventListener('click', () => worldOpenFlowRows(model.unknown, '場所不明の動き（直近' + WORLD_MAP_DAYS + '日）'));
+      unk.appendChild(b);
+    }
+  }
+  // M4（国の網）までの間：その国が絡む直近90日の札を一覧で出す
+  function worldMapOpenCountry(c, model, lib) {
+    const rows = model.lines.filter((r) => r.places.includes(c)).concat(model.domestic.get(c) || []);
+    worldOpenFlowRows(rows, worldPlaceLabel(c, lib) + 'が絡む動き（直近' + WORLD_MAP_DAYS + '日）');
+  }
+  // 主体の詳細の「国」の1行（地図で使う）
+  function worldPaintActorCountry(c) {
+    const text = document.getElementById('worldActorCountryText');
+    const edit = document.getElementById('worldActorCountryEditBox');
+    const status = document.getElementById('worldActorCountryStatus');
+    edit.hidden = true; status.textContent = '';
+    text.textContent = c.country ? c.country : '…';
+    worldLoadMapLib().then((lib) => {
+      if (worldState.conceptId !== c.id) return;
+      if (c.country) { text.textContent = worldPlaceLabel(c.country, lib) + (c.countrySetAt ? '' : '（取り込みで入った）'); return; }
+      const guess = worldPlaceOfName(c.name, lib);
+      text.textContent = (guess && guess !== 'SAME') ? worldPlaceLabel(guess, lib) + '（名前から）' : 'まだ分からない（地図では場所不明）';
+    }).catch(() => { text.textContent = c.country || 'まだ分からない'; });
+    document.getElementById('btnWorldActorCountryEdit').onclick = () => {
+      edit.hidden = !edit.hidden;
+      document.getElementById('worldActorCountryInput').value = '';
+    };
+    document.getElementById('btnWorldActorCountrySave').onclick = () => {
+      const v = document.getElementById('worldActorCountryInput').value.trim();
+      worldLoadMapLib().then((lib) => {
+        const slot = Object.keys(WORLD_MAP_SLOT_LABEL).find((k) => WORLD_MAP_SLOT_LABEL[k] === v || k === v.toUpperCase());
+        const code = slot || (lib.nameOf.has(v.toUpperCase()) ? v.toUpperCase() : '') || (() => { const p = worldPlaceOfName(v, lib); return p && p !== 'SAME' ? p : ''; })();
+        if (!code) { status.textContent = 'その名前の国が見つかりません（例：カナダ・米国・JPN・市場・国際機関・地域）。'; return; }
+        c.country = code; c.countrySetAt = nowIso(); c.updatedAt = nowIso();
+        worldSaveActors();
+        worldPaintActorCountry(c);
+      }).catch((e) => { status.textContent = '国の表を読み込めませんでした（' + e.message + '）。'; });
+    };
   }
 
   // ---- 一時的な札の一覧 (v18 A-2) -------------------------------------------
@@ -19897,6 +20282,8 @@
       inp.value = c.stance || '';
       inp.onchange = () => { const v = worldStr(inp.value, WORLD_STANCE_MAX); if (v !== c.stance) { c.stance = v; c.updatedAt = nowIso(); worldSaveActors(); } };
     }
+    document.getElementById('worldActorCountryField').hidden = !isActor;   // v20
+    if (isActor) worldPaintActorCountry(c);
 
     // v18 A-3: お金を一番上に。flow が1件も無い主体では、この段を出さない
     const moneyField = document.getElementById('worldActorMoneyField');
@@ -20469,6 +20856,7 @@
     if (worldState.view === 'stratum' && !worldState.strataAll) { worldState.strataAll = true; renderWorld(); return; }
     // 整理は設定から入る画面なので、設定に返す
     if (worldState.view === 'tidy') { worldState.view = 'main'; openSettings(); return; }
+    if (worldState.view === 'cards' && worldState.cards && worldState.cards.from === 'map') { worldState.view = 'map'; worldState.cards = null; renderWorld(); return; }   // v20
     if (worldState.view !== 'main') {
       worldState.view = 'main'; worldState.strataAll = false; worldState.cards = null;
       renderWorld(); return;
