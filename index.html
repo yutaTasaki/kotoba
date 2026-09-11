@@ -1179,7 +1179,8 @@
   .worldMoneyRow .wmSpan { font-size: 11px; color: var(--text-faint); }
   /* v20 地図 */
   .worldMapBox { width: 100%; }
-  .worldMapBox svg { display: block; width: 100%; height: auto; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+  .worldMapBox > svg { display: block; width: 100%; height: auto; overflow: hidden; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+  .worldMapBox .wmViewport { overflow: hidden; }   /* v20.1.1 地図の範囲の外を描かない */
   .worldMapBox .wmC { fill: #1c1c1c; stroke: #2d2d2d; stroke-width: 0.5; vector-effect: non-scaling-stroke; }   /* v20.1 拡大しても境界の線は細いまま */
   .worldMapBox .wmC.on { fill: #22302a; }
   .worldMapBox .wmDot { fill: var(--accent); stroke: #111; stroke-width: 1; }
@@ -2912,7 +2913,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.1';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.1.1';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -20083,11 +20084,13 @@
     const defs = worldSvg('defs', {}, svg);
     const mk = worldSvg('marker', { id: 'wmArrow', viewBox: '0 0 10 10', refX: '9', refY: '5', markerWidth: '6', markerHeight: '6', orient: 'auto-start-reverse' }, defs);
     worldSvg('path', { d: 'M0,0 L10,5 L0,10 z', class: 'wmArrowHead' }, mk);
-    const clip = worldSvg('clipPath', { id: 'wmClip' }, defs);
-    worldSvg('rect', { x: 0, y: 0, width: W, height: H }, clip);
-    const mapArea = worldSvg('g', { 'clip-path': 'url(#wmClip)' }, svg);
+    // v20.1.1：地図の範囲は入れ子の svg で切り取る（どのブラウザでも、自分の四角の外は描かない）。
+    // clipPath を <g> に付ける形は、iPhone の Safari で拡大すると効かず、地図が下の枠に重なった
+    const mapArea = worldSvg('svg', { x: 0, y: 0, width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, overflow: 'hidden', class: 'wmViewport' }, svg);
     const land = worldSvg('g', {}, mapArea);
     const overlay = worldSvg('g', {}, mapArea);
+    // 下の枠へ向かう線は、地図の上端から枠の上端までの四角の中だけに描く（枠の文字に重ならない）
+    const slotLineArea = worldSvg('svg', { x: 0, y: 0, width: W, height: slotTop, viewBox: '0 0 ' + W + ' ' + slotTop, overflow: 'hidden', class: 'wmViewport' }, svg);
     const involved = new Set();
     model.lines.forEach((r) => r.places.forEach((c) => { if (worldIsCountry(c, lib)) involved.add(c); }));
     model.domestic.forEach((_, c) => involved.add(c));
@@ -20132,9 +20135,9 @@
     const drawOverlay = () => {
       land.setAttribute('transform', 'translate(' + view.tx.toFixed(2) + ',' + view.ty.toFixed(2) + ') scale(' + view.k.toFixed(4) + ')');
       overlay.innerHTML = '';
-      // 枠へ向かう線は、地図の外（枠）へ出るので、切り取りの外側にも描けるように枠の側の線は svg 直下に置く
-      [...svg.querySelectorAll(':scope > .wmSlotLines')].forEach((el) => el.remove());
-      const slotLines = worldSvg('g', { class: 'wmSlotLines' }, svg);
+      // 枠へ向かう線は、地図の範囲を越えて枠の上端まで伸びるので、別の四角（slotLineArea）に描く
+      slotLineArea.innerHTML = '';
+      const slotLines = slotLineArea;
       pairs.forEach((rows, k) => {
         const [a, b] = k.split('>');
         const p1 = ptOf(a), p2 = ptOf(b);
@@ -20177,6 +20180,8 @@
       });
     };
     drawOverlay();
+    // v20.1.1：枠を一番上に（線や地図に隠されない）
+    svg.querySelectorAll(':scope > .wmSlot').forEach((g) => svg.appendChild(g));
     // ---- 指でつまむ拡大・縮小と、なぞって動かす ----
     // 拡大していないときの1本指はページのスクロールに任せる（地図の上に指を置いてもページが動くように）
     const setTouch = () => { svg.style.touchAction = view.k > 1.001 ? 'none' : 'pan-y'; };
