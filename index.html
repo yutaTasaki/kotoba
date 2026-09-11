@@ -1177,6 +1177,8 @@
   .worldMoneyRow .wmAmount { font-size: 13px; white-space: nowrap; }
   .worldMoneyRow .wmWhat { font-size: 12px; color: var(--text-dim); }
   .worldMoneyRow .wmSpan { font-size: 11px; color: var(--text-faint); }
+  /* v19.15 同じ動きを別の出典からも確かめた印。行の右端に小さく */
+  .worldMoneyRow .wmSrc { margin-left: auto; font-size: 10px; color: var(--text-faint); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; white-space: nowrap; }
   .worldMoneyReach { font-size: 12px; line-height: 1.7; padding: 8px 0; }
   .worldMoneyReach .wmrRow { display: flex; gap: 8px; padding: 3px 0; }
   .worldMoneyReach .wmrKey { color: var(--text-dim); white-space: nowrap; min-width: 6.5em; }
@@ -2871,7 +2873,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v19.14';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v19.15';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -16725,6 +16727,9 @@
       '         末尾の「最近のお金の動き」の id（w_…）か、\n' +
       '         同じ JSON の前の出来事なら "#番号"（上から1、2…と数える）。\n' +
       '         自分より後ろの出来事は指さない。無ければ null。無理に繋がない。\n' +
+      // v19.15：別の出典から同じ動きを書き直し、after でその動き自身を指した札が2枚並んだ
+      '         末尾の「最近のお金の動き」にすでにある動きを、別の札として書き直さない。\n' +
+      '         after に書くのは、その動きの前段（原因になった別の動き）だけで、同じ動きを指さない。\n' +
       '         例：1件目が「制裁で原油が中国へ流れた」、3件目が「その原油の代金が動いた」なら、\n' +
       '             3件目の after は "#1"。\n' +
       '  例：{"from":"財務省","to":"為替市場","what":"円買い介入","amount":"15兆円",\n' +
@@ -16808,7 +16813,7 @@
       (known.length ? known.join(' / ') : '（まだありません）') + '\n\n' +
       '■ すでに知っているアクター（actors の name はここから探す。無ければ新しく書いてよい。名前（別名）。最大' + WORLD_KNOWN_ACTORS_MAX + '件）\n' +
       (knownActors.length ? knownActors.join(' / ') : '（まだありません）') + '\n\n' +
-      '■ 最近のお金の動き（after はこの id から選ぶ。ここに無い id を書かない。［物］［人］は物と人の動き）\n' +
+      '■ 最近のお金の動き（after はこの id から選ぶ。ここに無い id を書かない。ここにある動きを別の札として書き直さない。［物］［人］は物と人の動き）\n' +
       (flowLines.length ? flowLines.join('\n') : '（まだありません）');
   }
   // 名前＋主要な別名（引き当てのため）。lastUsedAt 順
@@ -18910,10 +18915,12 @@
   // 出した瞬間に、性質の違う金を足した数字が独り歩きする。
   function worldMoneyGroups(q) {
     const byUnit = new Map();
-    worldLiveEvents()
+    // v19.15：通貨で分ける前に、同じ動きを1行にまとめる。金額の無い札は通貨が分からず別の区分に入るので、
+    // 先に分けると金額のある札と出会えない。まとめた行の通貨は、金額のある方の通貨
+    worldMergeFlows(worldLiveEvents()
       .filter((e) => worldIsMoneyFlow(e) && (e.flow.amount || e.flow.from || e.flow.to))
       .filter((e) => worldMatches(q, [e.flow.from, e.flow.to, e.flow.what, e.flow.amount]))
-      .sort((a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0))
+      .sort((a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0)))
       .forEach((e) => {
         const u = e.flow.unit || '';
         if (!byUnit.has(u)) byUnit.set(u, new Map());
@@ -18927,6 +18934,7 @@
       .map((u) => ({
         unit: u,
         label: WORLD_FLOW_UNIT_LABEL[u] || u,
+        // v19.15：rows はまとめた後の行。「N回」と並べ替えも、まとめた後の数で
         pairs: [...byUnit.get(u).values()].sort((x, y) =>
           (y.rows.length - x.rows.length) || (x.rows[0].eventDate > y.rows[0].eventDate ? -1 : 1)),
       }));
@@ -19004,7 +19012,7 @@
             s.className = 'wmSpan'; s.textContent = '（' + e.flow.span + 'の累計）';
             row.appendChild(s);
           }
-          row.addEventListener('click', () => openWorldEvent(e.id));
+          worldFlowRowWire(row, e);   // v19.15
           body.appendChild(row);
         });
       });
@@ -19504,6 +19512,44 @@
       .filter((e) => worldMatches(q, [e.flow.from, e.flow.to, e.flow.what, e.flow.amount]))
       .sort((a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0));
   }
+  // ---- v19.15 同じ動きを1行に（表示だけ。札は2枚とも残す） ----
+  // 同じ動き＝出す側・受ける側・物かお金か・日付が同じ。金額が両方にあって違うものは本当に別の動きなのでまとめない。
+  // 金額の無い札は、その日の金額が1つに決まるときだけ寄せる（2通りあるときは、どちらにも寄せない）
+  function worldFlowKey(e) { return [worldNormName(e.flow.from), worldNormName(e.flow.to), e.flow.kind || 'money', e.eventDate].join('|'); }
+  function worldAmountKey(a) { return String(a || '').replace(/[\s,，]/g, ''); }
+  function worldFlowRow(cards) {
+    const rep = cards.find((e) => e.flow.amount) || cards[0];   // 金額は入っている方を出す
+    return { rep, cards, id: rep.id, eventDate: rep.eventDate, fact: rep.fact, flow: rep.flow };
+  }
+  function worldMergeFlows(list) {
+    const byKey = new Map();
+    const order = [];
+    list.forEach((e) => { const k = worldFlowKey(e); if (!byKey.has(k)) { byKey.set(k, []); order.push(k); } byKey.get(k).push(e); });
+    const rows = [];
+    order.forEach((k) => {
+      const es = byKey.get(k);
+      const amounts = [...new Set(es.map((e) => worldAmountKey(e.flow.amount)).filter(Boolean))];
+      if (amounts.length <= 1) { rows.push(worldFlowRow(es)); return; }
+      amounts.forEach((a) => rows.push(worldFlowRow(es.filter((e) => worldAmountKey(e.flow.amount) === a))));
+      es.filter((e) => !worldAmountKey(e.flow.amount)).forEach((e) => rows.push(worldFlowRow([e])));
+    });
+    return rows;
+  }
+  // ---- v19.15 ここまで ----
+  // まとめた行の印と、押したときの行き先（2枚以上なら、元の札を並べて出す）
+  function worldFlowRowWire(row, g) {
+    const cards = (g && g.cards) || [g];
+    if (cards.length > 1) {
+      const src = document.createElement('span');
+      src.className = 'wmSrc';
+      src.textContent = cards.length + 'つの出典';
+      row.appendChild(src);
+    }
+    row.addEventListener('click', () => {
+      if (cards.length > 1) openWorldCards({ title: '同じ動きの札（' + cards.length + '枚）', ids: cards.map((e) => e.id) });
+      else openWorldEvent(cards[0].id);
+    });
+  }
   function worldMoneyBriefRowEl(e) {
     const row = document.createElement('button');
     row.type = 'button'; row.className = 'worldMoneyRow';
@@ -19522,7 +19568,7 @@
       sp.className = 'wmSpan'; sp.textContent = '（' + e.flow.total + 'のうち' + (e.flow.share != null ? e.flow.share + '%' : '一部') + '）';
       row.appendChild(sp);
     }
-    row.addEventListener('click', () => openWorldEvent(e.id));
+    worldFlowRowWire(row, e);   // v19.15：e はまとめた行（cards を持つ）でも札でもよい
     return row;
   }
   function worldMoreLineEl(text, onClick) {
@@ -19561,11 +19607,13 @@
       if (group.size < 2) return;
       const cards = [...group].map((id) => byId.get(id))
         .sort((a, b) => (a.eventDate < b.eventDate ? -1 : a.eventDate > b.eventDate ? 1 : 0));
+      // v19.15：同じ動きは1行に。件数と見出しの主体は、まとめた後の行で数える（同じ動きを2回数えない）
+      const rows = worldMergeFlows(cards);
       // 見出しは from・to に一番多く出た主体
       const count = new Map();
-      cards.forEach((e) => [e.flow.from, e.flow.to].forEach((n) => { const k = worldNormName(n); if (k) count.set(k, { name: n, n: ((count.get(k) || {}).n || 0) + 1 }); }));
+      rows.forEach((e) => [e.flow.from, e.flow.to].forEach((n) => { const k = worldNormName(n); if (k) count.set(k, { name: n, n: ((count.get(k) || {}).n || 0) + 1 }); }));
       const hub = [...count.values()].sort((a, b) => b.n - a.n)[0];
-      chains.push({ cards, hub: hub ? hub.name : '', last: cards[cards.length - 1].eventDate });
+      chains.push({ cards, rows, hub: hub ? hub.name : '', last: cards[cards.length - 1].eventDate });
     });
     return chains.sort((a, b) => (a.last > b.last ? -1 : a.last < b.last ? 1 : 0));
   }
@@ -19579,7 +19627,7 @@
     const a = document.createElement('span'); a.className = 'wmAmount'; a.textContent = e.flow.amount || '';
     row.appendChild(d); row.appendChild(p); row.appendChild(a);
     if (e.flow.span) { const sp = document.createElement('span'); sp.className = 'wmSpan'; sp.textContent = '（' + e.flow.span + 'の累計）'; row.appendChild(sp); }
-    row.addEventListener('click', () => openWorldEvent(e.id));
+    worldFlowRowWire(row, e);   // v19.15
     return row;
   }
   // 既定の画面の一番上：お金の鎖（最大3本・最後に動いた順）と、お金の動き（単発）3本＋「お金の一覧」
@@ -19596,24 +19644,24 @@
       chains.slice(0, WORLD_CHAINS_SHOWN).forEach((c) => {
         const h = document.createElement('div');
         h.className = 'worldChainHead';
-        const t = document.createElement('span'); t.textContent = (c.hub ? c.hub + 'を中心に ' : '') + c.cards.length + '件';
+        const t = document.createElement('span'); t.textContent = (c.hub ? c.hub + 'を中心に ' : '') + c.rows.length + '件';
         const last = document.createElement('span'); last.className = 'wmDate'; last.textContent = '最後 ' + worldShortDate(c.last);
         h.appendChild(t); h.appendChild(last);
         body.appendChild(h);
         const box = document.createElement('div');
         box.className = 'worldChainBody';
-        c.cards.forEach((e) => box.appendChild(worldChainRowEl(e)));
+        c.rows.forEach((e) => box.appendChild(worldChainRowEl(e)));
         body.appendChild(box);
       });
     }
     const inChain = new Set(chains.flatMap((c) => c.cards.map((e) => e.id)));
-    const singles = all.filter((e) => !inChain.has(e.id));
+    const singles = worldMergeFlows(all.filter((e) => !inChain.has(e.id)));   // v19.15
     const head = document.createElement('div');
     head.className = 'worldSectionHead';
     const l = document.createElement('span'); l.textContent = chains.length ? 'お金の動き（単発）' : 'お金の流れ';
     const go = document.createElement('button');
     go.type = 'button'; go.className = 'linkLikeBtn';
-    go.textContent = 'お金の一覧（' + worldFlowEvents('').length + '）';
+    go.textContent = 'お金の一覧（' + worldMergeFlows(worldFlowEvents('')).length + '）';   // v19.15：同じ動きを2回数えない
     go.addEventListener('click', () => { worldState.search.money = ''; openWorldCards({ title: 'お金の一覧', money: true }); });
     head.appendChild(l); head.appendChild(go);
     body.appendChild(head);
@@ -19651,7 +19699,7 @@
       return worldLiveEvents().filter((e) => worldMatches(q, [e.fact, e.why, e.detail, e.source]))
         .sort((a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0));
     }
-    if (kind === 'money') return worldFlowEvents(q);
+    if (kind === 'money') return worldMergeFlows(worldFlowEvents(q));   // v19.15
     const list = kind === 'term' ? worldTerms() : kind === 'actor' ? worldActors() : worldConcepts();
     return list.filter((c) => worldMatches(q, [c.name, (c.aka || []).join(' '), c.line, c.stance]));
   }
