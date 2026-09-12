@@ -2920,7 +2920,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.12';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.13';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -22058,12 +22058,26 @@
   // 取り込めたら、会社ごとに書類の提出日を index.pulls（sec_…）に控える。同じ書類を2度出さない
   const WORLD_SEC_API   = 'https://data.sec.gov/submissions/CIK';
   const WORLD_SEC_FORMS = ['10-Q', '10-K'];   // 訂正（10-Q/A）は見ない
+  // v20.13：表の番号は会社×書類の種類で固定（直近3回で実測）。番号が変わっていたら「書類ぜんぶ」に落ちる。
+  // ir は会社自身の決算発表（一次資料）。Microsoft の書類は 8.19MB あり、実機で開けなかったので先に置く
   const WORLD_SEC_CORPS = [
-    { id: 'sec_nvda',  cik: '0001045810', name: 'NVIDIA',    side: '作る側' },
-    { id: 'sec_mu',    cik: '0000723125', name: 'Micron',    side: '作る側' },
-    { id: 'sec_msft',  cik: '0000789019', name: 'Microsoft', side: '買う側' },
-    { id: 'sec_amzn',  cik: '0001018724', name: 'Amazon',    side: '買う側' },
-    { id: 'sec_googl', cik: '0001652044', name: 'Alphabet',  side: '買う側' },
+    { id: 'sec_nvda',  cik: '0001045810', name: 'NVIDIA',    side: '作る側',
+      tbl: { '10-Q': ['R7.htm', 'R2.htm', 'R20.htm'], '10-K': ['R9.htm', 'R3.htm'] } },
+    { id: 'sec_mu',    cik: '0000723125', name: 'Micron',    side: '作る側',
+      tbl: { '10-Q': ['R7.htm', 'R2.htm', 'R24.htm'] } },
+    { id: 'sec_msft',  cik: '0000789019', name: 'Microsoft', side: '買う側',
+      tbl: { '10-Q': ['R6.htm', 'R2.htm'], '10-K': ['R6.htm', 'R2.htm'] },
+      // 期の終わりの月から年度と四半期を出す（7月以降は翌年度。9月→Q1・12月→Q2・3月→Q3・6月→Q4）
+      ir: (period) => {
+        if (!period) return '';
+        const y = Number(period.slice(0, 4)), m = Number(period.slice(5, 7));
+        const fy = m > 6 ? y + 1 : y, q = m === 9 ? 1 : m === 12 ? 2 : m === 3 ? 3 : 4;
+        return 'https://www.microsoft.com/en-us/investor/earnings/fy-' + fy + '-q' + q + '/press-release-webcast';
+      } },
+    { id: 'sec_amzn',  cik: '0001018724', name: 'Amazon',    side: '買う側',
+      tbl: { '10-Q': ['R2.htm', 'R3.htm'], '10-K': ['R3.htm', 'R4.htm'] } },
+    { id: 'sec_googl', cik: '0001652044', name: 'Alphabet',  side: '買う側',
+      tbl: { '10-Q': ['R9.htm', 'R4.htm'], '10-K': ['R10.htm', 'R5.htm'] } },
   ];
   function worldSecLabel(c) { return '決算 ' + c.name; }
   // checked の source（「決算 NVIDIA」）から会社を引く。「TSMC 決算」「トヨタ 決算」は5社に当たらない
@@ -22084,8 +22098,12 @@
       if (!acc || !doc) return;
       const period = (r.reportDate || [])[i];
       const dir = 'https://www.sec.gov/Archives/edgar/data/' + Number(corp.cik) + '/' + acc.replace(/-/g, '');
-      best = { id: corp.id, name: corp.name, side: corp.side, form: f, period: isDateStr(period) ? period : '', filed,
-        url: dir + '/' + doc, tables: dir + '/FilingSummary.xml' };   // v20.10：表だけのページを引くための一覧
+      const per = isDateStr(period) ? period : '';
+      const tb = (corp.tbl && corp.tbl[f]) || null;   // v20.13：分かっている表の番号（無ければ表の URL は出さない）
+      best = { id: corp.id, name: corp.name, side: corp.side, form: f, period: per, filed,
+        url: dir + '/' + doc, tables: dir + '/FilingSummary.xml',
+        cfUrl: tb && tb[0] ? dir + '/' + tb[0] : '', isUrl: tb && tb[1] ? dir + '/' + tb[1] : '', segUrl: tb && tb[2] ? dir + '/' + tb[2] : '',
+        irUrl: corp.ir ? corp.ir(per) : '' };
     });
     return best;
   }
@@ -22116,17 +22134,20 @@
     L.push('買う側（Microsoft・Amazon・Alphabet）が設備に払った金が、作る側（NVIDIA・Micron）の売上になる。この鎖を見るための節。');
     list.forEach((f) => {
       L.push('- ' + f.name + '（' + f.side + '）：' + f.form + '・' + (f.period ? f.period + ' までの期・' : '') + worldShortDate(f.filed) + ' 提出');
-      L.push('  表の一覧 ' + f.tables);
-      L.push('  書類ぜんぶ（表が引けないときだけ） ' + f.url);
+      if (f.irUrl) L.push('  会社の発表（まずここ） ' + f.irUrl);
+      if (f.cfUrl) L.push('  表：お金の出入り ' + f.cfUrl);
+      if (f.isUrl) L.push('  表：損益 ' + f.isUrl);
+      if (f.segUrl) L.push('  表：区分ごとの売上 ' + f.segUrl);
+      L.push('  書類ぜんぶ（上が開けないとき） ' + f.url);
     });
     L.push('読み方：');
     // v20.10：書類ぜんぶは 1.5〜8MB あり、実機で1社しか開けなかった。表だけのページ（80〜100KB）を開かせる
-    L.push('- **まず「表の一覧」を開く**（FilingSummary.xml。30〜70KB）。中の ShortName から表を選び、その HtmlFileName（R◯.htm）を同じ場所に付けて開く。1枚80〜100KB。');
-    L.push('  - 設備投資・自社株買い・配当：名前に「CASH FLOW」を含む表（「(Parenthetical)」は除く）。');
-    L.push('  - 研究開発費：名前に「INCOME」か「OPERATIONS」を含む表（「COMPREHENSIVE」は除く）。');
-    L.push('  - 作る側の区分ごとの売上：名前に「SEGMENT」を含む表。');
-    L.push('- 表の名前と番号は会社ごとに違う（「Cash Flows」「CASH FLOWS STATEMENTS」など）。上の言葉で当たらなければ、一覧の Statements の並びから当たりを探す。');
-    L.push('- 表が一覧に無い・一覧が開けないときは「書類ぜんぶ」を開く（重いので最後の手段）。それも開けなければ、その会社は札にせず、下の "checked" に opened:false と、どこで詰まったかを note に書く。黙って飛ばさない。');
+    L.push('- **上に並べた URL を、そのまま開く。URL を自分で組み立てない**（組み立てた URL は開けない。前回それで詰まった）。');
+    L.push('  - 「表：お金の出入り」＝設備投資・自社株買い・配当。1枚80〜100KB。');
+    L.push('  - 「表：損益」＝研究開発費。「表：区分ごとの売上」＝作る側の区分（データセンター・メモリなど）。');
+    L.push('  - 「会社の発表」がある会社は、そこに4つとも載っているので、まずそれを読む（会社自身が出した一次資料）。');
+    L.push('- 開けなかったとき、または表の中身が名前と違ったときは「書類ぜんぶ」を開く（1.5〜8MB あるので最後の手段）。');
+    L.push('- それも開けなければ、その会社は札にせず、下の "checked" に opened:false と、どの URL でどう詰まったかを note に書く。黙って飛ばさない。');
     L.push('- 額は書類に書かれたとおり。10-Q のキャッシュフローは期の初めからの累計なので、引き算して3か月分にしない。flow の span に累計の期間を書く（例：「会計年度の初めから7月26日まで」）。');
     L.push('- 札は1社1枚：設備投資（from＝会社、to＝書類の言葉で行き先）。作る側は、区分の売上の札をもう1枚（from＝書類が名指しする買い手。名指しが無ければ「データセンターの買い手（書類では匿名）」、to＝会社）。');
     L.push('- 研究開発・自社株買い・配当は、設備投資の札の detail に書類の書き方のまま並べる。足さない。書類に無い項目は「記載なし」と書き、別の項目で埋めない。');
