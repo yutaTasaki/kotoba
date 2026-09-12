@@ -84,11 +84,13 @@ TSMC は年1回（20-F）なので入れない（TSMC は今までどおり「�
 ### 2.1 FRB「分配された金融勘定」（DFA）── 必ず見るもの・四半期
 
 - `ws_group_dfa`、周期 quarter。表示名は「米国の富の分布（DFA）」（「FRB」を名前に入れない。H.4.1 の引き当ての鍵に「FRB」があり、取り違えるため）
-- 確認先（人が開くページ）：`https://www.federalreserve.gov/releases/efa/efa-distributional-financial-accounts.htm`
-- **DFA の表のページは JS で数字が本文に無く、CSV の zip も CORS が無い**ので、チャットには同じ値を出している FRED の CSV（テキスト、約2KB）を読ませる
-  - 上位0.1%：`https://fred.stlouisfed.org/graph/fredgraph.csv?id=WFRBSTP1300`
-  - 下半分：`https://fred.stlouisfed.org/graph/fredgraph.csv?id=WFRBSB50215`
-- 取るもの：最新の四半期の2つの値を、札1枚の `levels` に入れる。主体は「米国の上位0.1%」「米国の下半分」（kind: group）、said は空。この源の札に限り、flow は無くてよい（地層の値を運ぶ札）
+- **チャットが読むのは FRED の系列ページ**（v20.9.1。実機でチャットが開いて確かめた）
+  - 上位0.1%：`https://fred.stlouisfed.org/series/WFRBSTP1300`（源の url もこれ）
+  - 下半分：`https://fred.stlouisfed.org/series/WFRBSB50215`
+  - どちらも本文に「Q1 2026: 14.4」の形で値が出ている（75KB、本文9千字）。FRB の分配された金融勘定と同じ値
+- **やめたもの**：FRB 自身の CSV（`dfa-networth-shares.csv`）は、チャットにはバイナリとして返り読めない。FRB の表のページは JS で数字が本文に無い。CSV の zip はブラウザからも読めない（CORS なし）
+- 地層2つの確認先も、人が開いて値が見える FRED の系列ページにする
+- 取るもの：最新の四半期の2つの値を、札1枚の `levels` に入れる。`value` は数字だけ（% は付けない）、`at` はその四半期の末日（Q1 なら 3-31）。主体は「米国の上位0.1%」「米国の下半分」（kind: group）、said は空。この源の札に限り、flow は無くてよい（地層の値を運ぶ札）
 
 ### 2.2 地層（決定3：2つとも入れる）
 
@@ -97,8 +99,8 @@ TSMC は年1回（20-F）なので入れない（TSMC は今までどおり「�
 | `st_us_wealth_top01` | 米国 上位0.1%の富の割合 | 上位0.1% | % | quarter | 8.6 | 14.4 |
 | `st_us_wealth_bottom50` | 米国 下半分の富の割合 | 下半分 | % | quarter | 3.5 | 2.5 |
 
-- 値は `dfa-networth-shares.csv` の「Net worth」列（`TopPt1` と `Bottom50`）。**合計しない**：CSV に「上位1%」の行は無い（`TopPt1` と `RemainingTop1` を足すと合計になる）ので、上位1%は作らない
-- **日付は四半期の末日**（1989-09-30、…、2026-03-31）。FRED の CSV は四半期の最初の日（2026-01-01）で書くので、この2つの地層に入る値は、取り込むときに四半期の末日へ寄せる（札から入る値も、地層を調べた値も）。寄せないと同じ四半期が2点になる
+- 値は `dfa-networth-shares.csv`（2026-09-11 に落とした zip）の「Net worth」列（`TopPt1` と `Bottom50`）。**合計しない**：CSV に「上位1%」の行は無い（`TopPt1` と `RemainingTop1` を足すと合計になる）ので、上位1%は作らない
+- **日付は四半期の末日**（1989-09-30、…、2026-03-31）。FRED は四半期を最初の日（2026-01-01）でも書くので、この2つの地層に入る値は、取り込むときに四半期の末日へ寄せる（札から入る値も、地層を調べた値も）。寄せないと同じ四半期が2点になる
 - 確認先は DFA のページ（上と同じ）
 
 ### 2.3 過去の147点（決定4：一度だけアプリに入れる）
