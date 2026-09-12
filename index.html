@@ -443,6 +443,11 @@
     color: var(--text-dim);
   }
   .statRow span:last-child { color: var(--text); }
+  /* v20.19：切り詰めの控えは1行が長い。statRow の既定（折り返さない・縮まない）に勝たせて折り返す */
+  .statRow.statTruncRow > span:first-child {
+    flex: 1 1 auto; white-space: normal; overflow-wrap: anywhere; text-align: left; margin-right: 0;
+    font-size: 13px; color: var(--text-dim);
+  }
   .consultTurns { display: flex; flex-direction: column; gap: 22px; }
   /* v9.7: three layers - the words that just came back are the only thing at
      full size; the input folds to one line once there is an answer; earlier
@@ -1941,6 +1946,8 @@
             <div class="statRow"><span>今月・合計</span><span id="statUsageMonthTotal"></span></div>
             <div class="statRow"><span>言葉1枚の保存あたり</span><span id="statUsagePerSave"></span></div>
             <div class="statRow"><span>最後の API 呼び出し</span><span id="statLastApiCall"></span></div>
+            <div class="statRow"><span>切り詰めた文</span><span id="statTruncations"></span></div>
+            <div id="statTruncationList"></div>
             <div class="statRow"><span>日ごと（この端末）</span><span id="statUsageDaysNote"></span></div>
             <div id="statUsageDays"></div>
             <div id="statUsagePerDevice"></div>
@@ -2937,7 +2944,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.18';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.19';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -12668,6 +12675,13 @@
       document.getElementById('statUsagePerSave').textContent = per ? '約$' + per.toFixed(3) + '（今月 ' + al.calls + '回の平均）' : '-';
     }
     document.getElementById('statLastApiCall').textContent = lastApiCallLine();   // v20.14
+    { // v20.19：字数の上限に当たったものを黙って捨てずに出す（端末ごと。同期しない）
+      const tr = worldTruncationLines();
+      document.getElementById('statTruncations').textContent = tr.length ? tr.length + '種類' : 'ありません';
+      const box = document.getElementById('statTruncationList');
+      box.innerHTML = '';
+      tr.forEach((t) => { const r = document.createElement('div'); r.className = 'statRow statTruncRow'; const a = document.createElement('span'); a.textContent = t; r.appendChild(a); box.appendChild(r); });
+    }
     { // v20.15：日ごとの概算額。コンソールの日ごとの額と見比べるためのもの
       const lines = usageDayLines();
       document.getElementById('statUsageDaysNote').textContent = lines.length ? '新しい順に' + lines.length + '日' : 'まだありません';
@@ -14647,6 +14661,9 @@
   const WORLD_STRATUM_ON_COLLAPSED = true;  // 朝の畳んだ行の下にも地層を1行出すか
   const WORLD_REASON_MAX           = 60;    // なぜこの札を選んだか
   const WORLD_STANCE_MAX           = 60;    // 発信者の立場
+  // v20.19：出典の「取るもの」。200 では実際の注（最長457字）が黙って切られ、
+  // トヨタの SEC 20-F の指示と DFA の地層 id が端末に届いていなかった
+  const WORLD_SRC_NOTE_MAX         = 800;
   const WORLD_STRATUM_DIRS      = ['up', 'down', 'flat'];
   const WORLD_STRATUM_DIR_LABEL = { up: '上向き', down: '下向き', flat: '横ばい' };
 
@@ -15102,7 +15119,34 @@
   // ---- 形をそろえる --------------------------------------------------------
   // 関数宣言にしてあるのは、起動時の bootKV 読み込み（この定義より前に走る）
   // から normalizeWorldIndex を呼ぶため。const の矢印関数だと TDZ で落ちる。
-  function worldStr(v, max) { return typeof v === 'string' ? v.trim().slice(0, max) : ''; }
+  function worldStr(v, max, label) {
+    if (typeof v !== 'string') return '';
+    const t = v.trim();
+    if (t.length <= max) return t;
+    if (label) recordWorldTruncation(label, t.length, max);   // v20.19：黙って切らない
+    return t.slice(0, max);
+  }
+  // v20.19：字数の上限に当たったことを端末に控える（同期しない。設定に出すだけ）。
+  // 後ろで宣言する const は使えない（起動時の読み込みの方が早い）ので鍵は直書き
+  function recordWorldTruncation(label, len, max) {
+    try {
+      const raw = localStorage.getItem('kotoba_truncations');
+      const list = raw ? JSON.parse(raw) : [];
+      const at = new Date().toISOString();
+      const hit = list.find((x) => x && x.label === label && x.max === max);
+      if (hit) { hit.n = (hit.n || 0) + 1; hit.worst = Math.max(hit.worst || 0, len); hit.at = at; }
+      else list.push({ label, max, worst: len, n: 1, at });
+      localStorage.setItem('kotoba_truncations', JSON.stringify(list.slice(-20)));
+    } catch (e) {}
+  }
+  function worldTruncationLines() {
+    try {
+      const raw = localStorage.getItem('kotoba_truncations');
+      const list = raw ? JSON.parse(raw) : [];
+      return list.filter(Boolean).sort((a, b) => (a.at > b.at ? -1 : 1))
+        .map((x) => x.label + '　' + x.max + '字で切った（最長 ' + x.worst + '字・' + x.n + '件・' + formatDateTime(x.at) + '）');
+    } catch (e) { return []; }
+  }
   function isDateStr(s) { return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(parseDateStr(s)); }
   function monthOfWorldId(id) { const m = /^w_(\d{4})(\d{2})\d{2}_/.exec(String(id || '')); return m ? m[1] + '-' + m[2] : null; }
   // id の日付部分は eventDate。月ファイルを読まなくても日付が分かる
@@ -15111,7 +15155,7 @@
   function normalizeWorldPremise(p) {
     const out = { kind: (p && p.kind === 'relation') ? 'relation' : 'new', name: '', aka: [], a: '', b: '', line: '' };
     if (!p || typeof p !== 'object') return out;
-    out.line = worldStr(p.line, 200);
+    out.line = worldStr(p.line, 200, '概念の注');
     if (out.kind === 'relation') { out.a = worldStr(p.a, 80); out.b = worldStr(p.b, 80); }
     else {
       out.name = worldStr(p.name, 80);
@@ -15416,16 +15460,16 @@
     if (!s || !s.id || !s.name) return null;
     return {
       id: String(s.id),
-      name: worldStr(s.name, 120),
+      name: worldStr(s.name, 120, '出典の名前'),
       url: (typeof s.url === 'string' ? (shootSafeUrl(s.url.trim()) || '') : ''),
       field: (s.field === 'geo' || s.field === 'both') ? s.field : 'finance',
       role: WORLD_ROLES.includes(s.role) ? s.role : 'primary',
       // v11: この発信者は何を欲しがっているか。一次ソースだから中立ではない、
       // を毎回目に入れるための1行。分野では変わらないので role とは別項目。
-      stance: worldStr(s.stance, WORLD_STANCE_MAX),
-      note: worldStr(s.note, 200),
+      stance: worldStr(s.stance, WORLD_STANCE_MAX, '出典の立場'),
+      note: worldStr(s.note, WORLD_SRC_NOTE_MAX, '出典の「取るもの」'),
       // v20.18 第2段：入れ替える前の「取るもの」。消さずに残す
-      noteWas: worldStr(s.noteWas, 200),
+      noteWas: worldStr(s.noteWas, WORLD_SRC_NOTE_MAX),
       // v19.4 段階5：周期。持っているソースが「必ず見るもの」。cadenceSetAt は一度でも決めた印（既定で上書きしない）
       cadence: WORLD_CADENCES_SRC.includes(s.cadence) ? s.cadence : '',
       cadenceSetAt: typeof s.cadenceSetAt === 'string' ? s.cadenceSetAt : '',
@@ -15751,6 +15795,14 @@
         addedMoneySrc = true;
         return;
       }
+      // v20.19：保存された注が定数の注の先頭一致なら、上限で切られた版。元の長さで入れ直す。
+      // 先頭一致は「切られた」以外に起きにくく、失う文字も無いので退避は要らない。
+      // 手で書き換えた注は先頭一致しないので触らない
+      if (cur && x.note && cur.note && cur.note !== x.note && x.note.startsWith(cur.note)) {
+        cur.note = x.note;
+        cur.updatedAt = nowIso();
+        addedMoneySrc = true;
+      }
       // v20.18 第2段：朝に read・分かれ目・選んだ理由を書かせる古い注が端末に残っていたら入れ直す。
       // 手で書いた注に read・fork・reason という語が入ることはまず無いので、これを目印にする。
       // 前の文は noteWas に残すので、入れ替えても消えない
@@ -15772,7 +15824,14 @@
       if (src) { wd.sources.sources.push(src); addedMoneySrc = true; }
     });
     WORLD_EXTRA_SOURCES.forEach((x) => {   // v20.8
-      if (wd.sources.sources.some((sc) => sc.id === x.id)) return;
+      const cur = wd.sources.sources.find((sc) => sc.id === x.id);
+      if (cur) {
+        // v20.19：こちらも切られた版なら入れ直す
+        if (x.note && cur.note && cur.note !== x.note && x.note.startsWith(cur.note)) {
+          cur.note = x.note; cur.updatedAt = nowIso(); addedMoneySrc = true;
+        }
+        return;
+      }
       const src = normalizeWorldSource({ ...x, updatedAt: nowIso() });
       if (src) { wd.sources.sources.push(src); addedMoneySrc = true; }
     });
@@ -21740,7 +21799,7 @@
       noteIn.value = s.note || '';
       noteIn.style.marginTop = '4px';
       noteIn.addEventListener('change', () => {
-        const v = worldStr(noteIn.value, 200);
+        const v = worldStr(noteIn.value, WORLD_SRC_NOTE_MAX);
         if (v === s.note) return;
         s.note = v; s.updatedAt = nowIso(); worldSaveSources();
       });
