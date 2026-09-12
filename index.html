@@ -20685,7 +20685,34 @@
     }
     return lines;
   }
-  function worldDrawMap(lib, model, region) {
+  // v20.20 第2段：地域を選んだら、その地域に関わる動きだけにする。
+  // 「関わる」＝片端がその地域の国（両端にすると、その地域が外と何をしているかが消える）。
+  // 枠（市場・国際機関・地域）への線は、もう片端がその地域なら残す。
+  // 場所不明は「どこの話か分からない」ものなので、地域では絞らない（いつも全体の数を出す）。
+  // 描くもの・数えるものはすべてこの model から出ているので、ここで1回絞れば
+  // 線・点・枠・枠の中の名前・下の数字が、必ず同じ絞り方で揃う。
+  function worldRegionBox(region) {
+    const reg = WORLD_MAP_REGIONS.find((r) => r[0] === region);
+    return (reg && reg[2]) || null;
+  }
+  function worldInRegion(code, lib, box) {
+    if (!box) return true;
+    if (!worldIsCountry(code, lib)) return false;   // 枠は、それ自体では地域に属さない
+    const ll = lib.anchors.get(code);
+    if (!ll) return false;
+    const [[x0, y0], [x1, y1]] = box;
+    return ll[0] >= x0 && ll[0] <= x1 && ll[1] >= y0 && ll[1] <= y1;
+  }
+  function worldFilterModelByRegion(model, lib, region) {
+    const box = worldRegionBox(region);
+    if (!box) return model;
+    const keep = (r) => r.places.some((c) => worldInRegion(c, lib, box));
+    const domestic = new Map();
+    model.domestic.forEach((rows, c) => { if (worldInRegion(c, lib, box)) domestic.set(c, rows); });
+    return { lines: model.lines.filter(keep), domestic, unknown: model.unknown, all: model.all };
+  }
+  function worldDrawMap(lib, model0, region) {
+    const model = worldFilterModelByRegion(model0, lib, region);
     const d3 = lib.d3;
     const box = document.getElementById('worldMapBox');
     const st = document.getElementById('worldMapStatus');
