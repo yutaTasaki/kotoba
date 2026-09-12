@@ -2944,7 +2944,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.19';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.20';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -14735,7 +14735,10 @@
   // 後ろの決まった言葉。外した残りが別名の表と丸ごと一致したときだけ、その国（「イスラエル政府」→ イスラエル）
   const WORLD_PLACE_SUFFIX  = ['人民銀行', '準備銀行', '中央銀行', '政府', '政権', '財務省', '議会', '国防省'];
   // 一般名：もう片方と同じ国にいると言い切れる相手。国内に寄せる。「買い手」「購入者」は入れない（市場の枠）
-  const WORLD_PLACE_GENERIC = { exact: ['金融機関', '銀行', '株主', '企業', '家計', '投資家'], contains: ['保有者', '支払い先', '受給者'] };
+  // v20.20 第1段：相手が「〜の取得先」「〜の供給元」のように、誰かは分からないが
+  // もう片方と同じ国にいると言い切れる言い方を足す（場所不明の最大の原因だった）
+  const WORLD_PLACE_GENERIC = { exact: ['金融機関', '銀行', '株主', '企業', '家計', '投資家'],
+    contains: ['保有者', '支払い先', '受給者', '取得先', '供給元', '需要家', '支出先', '調達枠', '輸出基地', '発電事業'] };
   // v20.2.1：頭の国名。この言葉の前が国名なら、その国（「米国の製油所」→ 米国、「ウクライナ向け防衛調達」→ ウクライナ）。
   // その端の場所を決めるだけで、向きは from／to の位置のまま（「米国向け輸出」が from にあれば、出す側が米国になるだけ）
   const WORLD_PLACE_LEAD_JOINS = ['の', '向け', '産', '系', '国内'];
@@ -20224,12 +20227,18 @@
       }
     }
     const k = worldNormName(n);
-    if (WORLD_PLACE_GENERIC.exact.some((g) => worldNormName(g) === k) || WORLD_PLACE_GENERIC.contains.some((g) => n.includes(g))) return 'SAME';
     const S = lib.table.slots;
+    // v20.2.1：頭の国名は、枠の言葉より後に当てる（「ロシアの同盟国」「中東の産油国」は地域の枠のまま）
     for (const c of WORLD_MAP_SLOTS) if ((S[c].exact || []).some((x) => worldNormName(x) === k)) return c;
     for (const c of WORLD_MAP_SLOTS) if ((S[c].contains || []).some((x) => n.includes(x))) return c;
-    // v20.2.1：頭の国名は、枠の言葉より後に当てる（「ロシアの同盟国」「中東の産油国」は地域の枠のまま）
-    return worldLeadCountry(n, lib);
+    // v20.20 第1段：頭の国名を、一般名より「前」に当てる。
+    // 「日本のジクロロシラン供給元 → 中国の半導体メーカー」を一般名で先に拾うと、
+    // 日本→中国の線が中国国内の動きに化けた（実データ2件で確認）。頭に国名がある側は、
+    // その国で確定させる。頭に国名が無い「有形固定資産の取得先」だけが一般名に落ちる
+    const lead = worldLeadCountry(n, lib);
+    if (lead) return lead;
+    if (WORLD_PLACE_GENERIC.exact.some((g) => worldNormName(g) === k) || WORLD_PLACE_GENERIC.contains.some((g) => n.includes(g))) return 'SAME';
+    return '';
   }
   // 「〜の」「〜向け」「〜産」「〜系」「〜国内」の前が、別名の表の国と丸ごと一致したときだけ、その国。
   // 長い方から試す（「米国産原油の輸入」は「米国産原油」が国でないので、次に「米国」を試す）。枠の記号には当てない
@@ -20237,8 +20246,12 @@
     for (let k = n.length - 1; k >= 1; k--) {
       const rest = n.slice(k);
       if (!WORLD_PLACE_LEAD_JOINS.some((j) => rest.startsWith(j))) continue;
-      const c = lib.byName.get(worldNormName(n.slice(0, k))) || '';
+      const head = n.slice(0, k);
+      const c = lib.byName.get(worldNormName(head)) || '';
       if (c && worldIsCountry(c, lib)) return c;
+      // v20.20 第1段：頭が主体の名前でもよい（「TSMCの顧客」→ TSMC は台湾の主体なので台湾）
+      const a = worldFindIn(WORLD_STORES.actor, head);
+      if (a && a.country && worldIsCountry(a.country, lib)) return a.country;
     }
     return '';
   }
