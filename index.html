@@ -1104,6 +1104,12 @@
   .worldStratumLine .wsStale { color: var(--danger); }
   .homeStratumLine { padding: 0 0 10px; margin-top: -6px; }
   /* v19.4 段階5 */
+  /* v20.21 予告 第1段：待っている予告。第1段では押せない（答え合わせは第2段） */
+  .homeForecastRow { margin: 10px 0 0; }
+  .homeForecastRow .hfHead { font-size: 12px; color: var(--text-dim); }
+  .homeForecastRow .hfItem { font-size: 13px; color: var(--text); line-height: 1.6; margin-top: 2px; }
+  .homeForecastRow .hfDue { color: var(--text-faint); font-size: 11px; margin-right: 6px; }
+  .homeForecastRow .hfMore { font-size: 11px; color: var(--text-faint); margin-top: 2px; }
   .homePullRow { padding: 2px 0 10px; }
   .homePullRow .homePullNone { font-size: 12px; color: var(--text-faint); }
   /* 出来事の行のタグ。概念タグより弱くして、押し合わないようにする */
@@ -1433,6 +1439,8 @@
       <button type="button" id="homeStratumLine" class="worldStratumLine homeStratumLine" hidden></button>
       <!-- v19.4 段階5：朝の流れの一番最後。期限の来た必ず見るものがあればボタン、無ければ薄い字 -->
       <div id="homePullRow" class="homePullRow" hidden></div>
+      <!-- v20.21 予告 第1段：待っている予告。第1段では押せない形（答え合わせは第2段） -->
+      <div id="homeForecastRow" class="homeForecastRow" hidden></div>
       <div id="worldStage" class="morningStage" hidden>
         <div id="homeWorldList"></div>
         <p class="emptyMsg" id="homeWorldEmpty" hidden>新しい分がありません。</p>
@@ -2950,7 +2958,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.20';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.21';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -3320,7 +3328,7 @@
   bootKV.medDocs = {};
   try { (await kvGetAllPrefix('meditation:')).forEach((v, k) => { bootKV.medDocs[k.slice(11)] = v; }); } catch (e) {}
   // v10 世界: 全月は読まない。今月・先月と、索引が「未読が残っている」と言う月だけ。
-  for (const k of ['worldIndex', 'worldDirty', 'worldStamps', 'worldConcepts', 'worldTerms', 'worldStrata', 'worldActors', 'worldAsks', 'worldSources']) { try { bootKV[k] = await kvGet(k); } catch (e) { bootKV[k] = null; } }
+  for (const k of ['worldIndex', 'worldDirty', 'worldStamps', 'worldConcepts', 'worldTerms', 'worldStrata', 'worldActors', 'worldAsks', 'worldSources', 'worldForecasts']) { try { bootKV[k] = await kvGet(k); } catch (e) { bootKV[k] = null; } }
   bootKV.worldDocs = {};
   {
     let wix = null;
@@ -7030,6 +7038,7 @@
     'walkShareStage',
     'homeStratumLine',
     'homePullRow',
+    'homeForecastRow',   // v20.21 予告 第1段
   ];
 
   function renderHome() {
@@ -7131,6 +7140,10 @@
     if (WORLD_STRATUM_ON_COLLAPSED && worldTodayStratum()) order.push('homeStratumLine');
     renderHomePullRow();   // v19.4 段階5
     order.push('homePullRow');
+    // v20.21 予告 第1段：待っている予告はホームの一番上に置く（並び替えの本体は第4段）。
+    // 0本のときは renderHomeForecastRow が自分で隠すので、ここでは並びにだけ積む
+    renderHomeForecastRow();
+    if (worldWaitingForecasts().length) order.unshift('homeForecastRow');
 
     const stepsContainer = document.getElementById('homeStepsContainer');
     order.forEach((id) => {
@@ -14832,6 +14845,7 @@
   const WORLD_STRATA_PATH   = 'world/strata.json';
   const WORLD_ACTORS_PATH   = 'world/actors.json';
   const WORLD_ASKS_PATH     = 'world/asks.json';
+  const WORLD_FORECASTS_PATH = 'world/forecasts.json';   // v20.21 予告 第1段（月割りしない）
   const WORLD_SOURCES_PATH  = 'world/sources.json';
   const worldMonthPath = (m) => 'world/' + m + '.json';
 
@@ -15542,7 +15556,7 @@
     out.deletedIds = (Array.isArray(raw.deletedIds) ? raw.deletedIds : []).filter((t) => t && t.id).map((t) => ({ id: String(t.id), deletedAt: t.deletedAt || nowIso() }));
     return out;
   }
-  function emptyWorldIndex() { return { version: 1, updatedAt: '', epoch: 0, resetAt: '', months: {}, due: {}, concepts: { updatedAt: '', count: 0 }, terms: { updatedAt: '', count: 0 }, strata: { updatedAt: '', count: 0 }, actors: { updatedAt: '', count: 0 }, asks: { updatedAt: '', count: 0 }, sources: { updatedAt: '', count: 0 }, pulls: {}, seeds: {} }; }
+  function emptyWorldIndex() { return { version: 1, updatedAt: '', epoch: 0, resetAt: '', months: {}, due: {}, concepts: { updatedAt: '', count: 0 }, terms: { updatedAt: '', count: 0 }, strata: { updatedAt: '', count: 0 }, actors: { updatedAt: '', count: 0 }, asks: { updatedAt: '', count: 0 }, sources: { updatedAt: '', count: 0 }, forecasts: { updatedAt: '', count: 0 }, pulls: {}, seeds: {} }; }
   function normalizeWorldIndex(raw) {
     const out = emptyWorldIndex();
     if (!raw || typeof raw !== 'object') return out;
@@ -15618,6 +15632,48 @@
     if (a.hidden) { out.hidden = 1; out.hiddenAt = typeof a.hiddenAt === 'string' ? a.hiddenAt : ''; }
     return out;
   }
+  // v20.21 予告 第1段：思惑から「次に起きるはずの行動」を書き、あとで答え合わせする。
+  // 結果は最初から4つ受け取る（第2段でデータの形を変えないため）。第1段が書き込むのは 'waiting' だけ。
+  // stateAt（結果を押した日時）も最初から持つ。後から足すと、すでに溜まった予告に日時が無く、
+  // 2台で押したときどちらが新しいか決められなくなる
+  const WORLD_FC_STATES = ['waiting', 'hit', 'miss', 'unverifiable'];
+  const WORLD_FC_VERBS  = ['buy', 'stop', 'lend', 'move'];
+  const WORLD_FC_VERB_LABEL = { buy: '買う／売る', stop: '出す／止める', lend: '貸す／借りる', move: '物や人を動かす' };
+  const WORLD_FC_PER_READ = 5;    // 読む回1回につき、入れる予告の上限
+  const WORLD_FC_HOME_MAX = 5;    // ホームに並べる本数（超えたら「ほか N本」）
+  const WORLD_FC_WHAT_MAX = 40;
+  const WORLD_FC_SIGN_MAX = 60;
+  function normalizeWorldForecast(f) {
+    if (!f || typeof f !== 'object') return null;
+    const actor = worldStr(f.actor, 80), what = worldStr(f.what, WORLD_FC_WHAT_MAX);
+    if (!actor || !what) return null;
+    if (!isDateStr(f.due)) return null;   // 期限は YYYY-MM-DD だけ。「9月中」は採らない
+    return {
+      id: String(f.id || ''),
+      actor,
+      verb: WORLD_FC_VERBS.includes(f.verb) ? f.verb : 'move',
+      what,
+      due: f.due,
+      sign: worldStr(f.sign, WORLD_FC_SIGN_MAX),
+      pledgeOnly: (f.pledgeOnly === true || f.pledgeOnly === 1) ? 1 : 0,
+      fromEventId: worldStr(f.fromEventId, 40),
+      // 元の思惑は写して持つ。札側の read が後で書き直されても、予告の根拠は残る
+      fromRead: worldStr(f.fromRead, WORLD_ACTOR_READ_MAX),
+      state: WORLD_FC_STATES.includes(f.state) ? f.state : 'waiting',
+      stateNote: worldStr(f.stateNote, 60),
+      stateAt: typeof f.stateAt === 'string' ? f.stateAt : '',
+      createdAt: f.createdAt || nowIso(),
+      updatedAt: f.updatedAt || f.createdAt || nowIso(),
+    };
+  }
+  function emptyWorldForecastsDoc() { return { version: 1, updatedAt: '', forecasts: [] }; }
+  function normalizeWorldForecastsDoc(raw) {
+    const out = emptyWorldForecastsDoc();
+    if (!raw || typeof raw !== 'object') return out;
+    out.updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : '';
+    out.forecasts = (Array.isArray(raw.forecasts) ? raw.forecasts : []).map(normalizeWorldForecast).filter((x) => x && x.id);
+    return out;
+  }
   function emptyWorldAsksDoc() { return { version: 1, updatedAt: '', asks: [] }; }
   function normalizeWorldAsksDoc(raw) {
     const out = emptyWorldAsksDoc();
@@ -15660,7 +15716,8 @@
     loaded: new Set(), loading: new Map(), tombs: new Map(),
     index: null, dirty: new Set(), stamps: {},
     concepts: emptyWorldConceptsDoc(), terms: emptyWorldTermsDoc(), strata: emptyWorldStrataDoc(), actors: emptyWorldActorsDoc(), asks: emptyWorldAsksDoc(), sources: emptyWorldSourcesDoc(),
-    conceptsDirty: false, termsDirty: false, strataDirty: false, actorsDirty: false, asksDirty: false, sourcesDirty: false, busy: false,
+    forecasts: emptyWorldForecastsDoc(),   // v20.21 予告 第1段
+    conceptsDirty: false, termsDirty: false, strataDirty: false, actorsDirty: false, asksDirty: false, sourcesDirty: false, forecastsDirty: false, busy: false,
   };
   function liveWorldMonths() { const t = todayStr(); const a = monthOfDate(addDays(t, -30)), b = monthOfDate(t); return a === b ? [b] : [a, b]; }
   // 起動時に読む月：今月・先月に加えて「未読が残っている月」。月ファイルは
@@ -15707,6 +15764,10 @@
   function persistWorldAsks() {
     wd.asks.updatedAt = nowIso();
     return kvSet('worldAsks', JSON.stringify(wd.asks)).catch(() => {});
+  }
+  function persistWorldForecasts() {   // v20.21 予告 第1段
+    wd.forecasts.updatedAt = nowIso();
+    return kvSet('worldForecasts', JSON.stringify(wd.forecasts)).catch(() => {});
   }
   function persistWorldActors() {
     wd.actors.updatedAt = nowIso();
@@ -15776,6 +15837,7 @@
     try { wd.strata = normalizeWorldStrataDoc(JSON.parse(bootKV.worldStrata || 'null')); } catch (e) { wd.strata = emptyWorldStrataDoc(); }
     try { wd.actors = normalizeWorldActorsDoc(JSON.parse(bootKV.worldActors || 'null')); } catch (e) { wd.actors = emptyWorldActorsDoc(); }
     try { wd.asks = normalizeWorldAsksDoc(JSON.parse(bootKV.worldAsks || 'null')); } catch (e) { wd.asks = emptyWorldAsksDoc(); }
+    try { wd.forecasts = normalizeWorldForecastsDoc(JSON.parse(bootKV.worldForecasts || 'null')); } catch (e) { wd.forecasts = emptyWorldForecastsDoc(); }   // v20.21
     try { wd.sources = normalizeWorldSourcesDoc(JSON.parse(bootKV.worldSources || 'null')); } catch (e) { wd.sources = emptyWorldSourcesDoc(); }
     worldEvents = [];
     Object.entries(bootKV.worldDocs || {}).forEach(([m, raw]) => {
@@ -16110,6 +16172,36 @@
     wd.asksDirty = false;
     wd.index.asks = { updatedAt: wd.asks.updatedAt, count: wd.asks.asks.length };
   }
+  // v20.21 予告：結果（state）は stateAt の新しい方を採る。それ以外は updatedAt の新しい方。
+  // 2台で別々に押したとき、後から押した方が勝つ（主体の表と同じ考え方）
+  function worldForecastsSignature(doc) { return doc.forecasts.map((x) => x.id + ':' + x.updatedAt + ':' + x.state + ':' + (x.stateAt || '')).sort().join('|'); }
+  function mergeWorldForecastDocs(a, b) {
+    const out = emptyWorldForecastsDoc();
+    const mA = new Map(a.forecasts.map((x) => [x.id, x])), mB = new Map(b.forecasts.map((x) => [x.id, x]));
+    new Set([...mA.keys(), ...mB.keys()]).forEach((id) => {
+      const x = mA.get(id), y = mB.get(id);
+      if (!x || !y) { out.forecasts.push(x || y); return; }
+      const base = (x.updatedAt >= y.updatedAt) ? x : y;
+      const st = ((x.stateAt || '') >= (y.stateAt || '')) ? x : y;   // 結果だけは押した日時で決める
+      out.forecasts.push({ ...base, state: st.state, stateNote: st.stateNote, stateAt: st.stateAt });
+    });
+    out.updatedAt = a.updatedAt > b.updatedAt ? a.updatedAt : b.updatedAt;
+    return out;
+  }
+  async function syncWorldForecasts(token, remoteChanged) {
+    if (!wd.forecastsDirty && !remoteChanged) return;
+    const got = await ghGetContents(GITHUB_REPO, WORLD_FORECASTS_PATH, token);
+    let rdoc = emptyWorldForecastsDoc();
+    try { if (got.text) rdoc = normalizeWorldForecastsDoc(JSON.parse(got.text)); } catch (e) {}
+    const before = worldForecastsSignature(rdoc);
+    wd.forecasts = mergeWorldForecastDocs(wd.forecasts, rdoc);
+    await persistWorldForecasts();
+    if (worldForecastsSignature(wd.forecasts) !== before) {
+      await ghPutJson(WORLD_FORECASTS_PATH, wd.forecasts, got.sha, `world forecasts: ${wd.forecasts.forecasts.length}`);
+    }
+    wd.forecastsDirty = false;
+    wd.index.forecasts = { updatedAt: wd.forecasts.updatedAt, count: wd.forecasts.forecasts.length };
+  }
   async function syncWorldActors(token, remoteChanged) {
     if (!wd.actorsDirty && !remoteChanged) return;
     const got = await ghGetContents(GITHUB_REPO, WORLD_ACTORS_PATH, token);
@@ -16169,6 +16261,7 @@
       const strataChanged = remoteIndex.strata.updatedAt > (wd.index.strata.updatedAt || '');
       const actorsChanged = remoteIndex.actors.updatedAt > (wd.index.actors.updatedAt || '');
       const asksChanged = remoteIndex.asks.updatedAt > (wd.index.asks.updatedAt || '');
+      const forecastsChanged = (remoteIndex.forecasts || {}).updatedAt > ((wd.index.forecasts || {}).updatedAt || '');   // v20.21
       const sourcesChanged = remoteIndex.sources.updatedAt > (wd.index.sources.updatedAt || '');
       const months = new Set([...liveWorldMonths(), ...wd.dirty, ...worldBootMonths(remoteIndex)]);
       wd.loaded.forEach((m) => { const r = remoteIndex.months[m]; if (r && r.updatedAt !== (wd.stamps[m] || '')) months.add(m); });
@@ -16179,9 +16272,10 @@
       await syncWorldStrata(token, strataChanged);
       await syncWorldActors(token, actorsChanged);
       await syncWorldAsks(token, asksChanged);
+      await syncWorldForecasts(token, forecastsChanged);   // v20.21 予告 第1段
       await syncWorldSources(token, sourcesChanged);
       try { await syncWorldFigures(token); } catch (e) { worldFigLastCheck = 0; }   // v20.6 段階B
-      const sig = (ix) => JSON.stringify([ix.epoch || 0, Object.keys(ix.months).sort().map((m) => [m, ix.months[m].updatedAt, ix.months[m].unread]), ix.concepts.updatedAt, ix.terms.updatedAt, ix.strata.updatedAt, ix.actors.updatedAt, ix.asks.updatedAt, ix.sources.updatedAt, Object.keys(ix.due).sort(), Object.keys(ix.pulls || {}).sort().map((k) => [k, ix.pulls[k]]), Object.keys(ix.seeds || {}).sort().map((k) => [k, ix.seeds[k].at, ix.seeds[k].n])]);
+      const sig = (ix) => JSON.stringify([ix.epoch || 0, Object.keys(ix.months).sort().map((m) => [m, ix.months[m].updatedAt, ix.months[m].unread]), ix.concepts.updatedAt, ix.terms.updatedAt, ix.strata.updatedAt, ix.actors.updatedAt, ix.asks.updatedAt, ix.sources.updatedAt, (ix.forecasts || {}).updatedAt || '', Object.keys(ix.due).sort(), Object.keys(ix.pulls || {}).sort().map((k) => [k, ix.pulls[k]]), Object.keys(ix.seeds || {}).sort().map((k) => [k, ix.seeds[k].at, ix.seeds[k].n])]);
       if (sig(wd.index) !== sig(remoteIndex)) {
         try { await ghPutJson(WORLD_INDEX_PATH, wd.index, ri.sha, 'world index'); }
         catch (e) {
@@ -17417,6 +17511,24 @@
     let n = 1; while (taken.has('q_' + t + '_' + n)) n++;
     return 'q_' + t + '_' + n;
   }
+  // ---- v20.21 予告 第1段 ------------------------------------------------------
+  function worldForecasts() { return wd.forecasts.forecasts; }
+  function worldSaveForecasts() { wd.forecastsDirty = true; persistWorldForecasts(); scheduleSync(); }
+  function worldGenForecastId() {
+    const t = todayStr().replace(/-/g, '');
+    const taken = new Set(worldForecasts().map((f) => f.id));
+    let n = 1; while (taken.has('fc_' + t + '_' + n)) n++;
+    return 'fc_' + t + '_' + n;
+  }
+  // 待っている予告（期限の近い順）。第1段では state は 'waiting' しか入らない
+  function worldWaitingForecasts() {
+    return worldForecasts().filter((f) => f.state === 'waiting').sort((a, b) => (a.due > b.due ? 1 : a.due < b.due ? -1 : 0));
+  }
+  // 同じ主体・同じ動詞・同じ期限は入れない（読む回を2回流したときの二重を防ぐ）
+  function worldForecastDup(f) {
+    const k = worldNormName(f.actor);
+    return worldForecasts().some((x) => worldNormName(x.actor) === k && x.verb === f.verb && x.due === f.due);
+  }
   // 同じ問いかどうかは本人にしか分からない。機械では「近い」までを出す
   function worldNearAsks(text) {
     const k = worldNormName(text);
@@ -17854,6 +17966,16 @@
       '    もう分かっているなら fork は null にして、その中身を read に書く。\n' +
       '  - type は level（示された水準に届くか）か event（起きるか）。\n' +
       '- reason：この札を今あらためて読む値打ちを1行。無ければ空。\n' +
+      // v20.21 予告 第1段：思惑の証拠になる「次の行動」を書かせる。当たり外れを確かめられる形にする
+      '- forecast：その思惑が本当なら、次に起きるはずの行動を1つ。**思惑を書いた主体についてだけ**。\n' +
+      '  - **全部の札に付けない。強く読めたものから、この回で最大' + WORLD_FC_PER_READ + '本まで。**書けなければ0本でよい。\n' +
+      '  - 同じ主体に何本も付けない（1主体1本）。\n' +
+      '  - actor：上の「主体：」の名前をそのまま。\n' +
+      '  - verb：buy（買う／売る）・stop（出す／止める）・lend（貸す／借りる）・move（物や人を動かす）の4つから1つ。\n' +
+      '  - what：何をどれくらいするか。数字を入れて' + WORLD_FC_WHAT_MAX + '字以内。**換算しない・合計しない**。\n' +
+      '  - due：**必ず YYYY-MM-DD**。「9月中」「近いうち」は書かない（書けないなら、その予告を出さない）。3か月以内を目安。\n' +
+      '  - sign：何が見えたら当たりか。**上の札に出ている出典の名前から選ぶ**（出典は開けないので、知らない出典を作らない）。\n' +
+      '  - pledgeOnly：「約束する」だけで実体が動かない予告なら true。実際に金や物が動くはずなら false。\n' +
       '- confidence：**下げるときだけ**書く。読んだ結果「これは確かでない」と分かったとき。\n' +
       '  - **上げてはいけません**（出典を開いていないので、確かさを上げる根拠がありません）。\n' +
       '  - 下げたときは confidenceWhy に理由を必ず書く。下げないなら両方とも省く。\n\n' +
@@ -17881,6 +18003,9 @@
       ' "fork":{"w_20260902_1":{"text":"...","type":"event"},\n' +
       '         "w_20260901_1":null},\n' +
       ' "reason":{"w_20260902_1":"..."},\n' +
+      ' "forecast":[{"fromEventId":"w_20260902_1","actor":"日本銀行","verb":"stop",\n' +
+      '              "what":"国債買い入れの減額を四半期4000億円で続ける","due":"2026-12-19",\n' +
+      '              "sign":"日本銀行の金融市場調節の公表","pledgeOnly":false}],\n' +
       ' "confidence":{"w_20260901_1":{"value":4,"why":"一次資料に当たれず報道のみ"}}}\n\n' +
       '- id は上の札のものだけを使う。name は上の「主体：」の名前をそのまま書く。\n' +
       '- 材料が足りない札は read を [] に、fork を null に、zure と reason を省く。無理に埋めない。\n' +
@@ -18023,6 +18148,35 @@
       else if (!ev.rereadAt) { ev.rereadAt = nowIso(); changed = true; }   // v20.18：書き直しを一度当てた印
       if (changed) { ev.updatedAt = nowIso(); touched.add(monthOfDate(ev.eventDate)); }
     });
+    // v20.21 予告 第1段：思惑の証拠になる「次の行動」を入れる。足すだけ。
+    // 落としたものは必ず数と理由を返す（黙って捨てない）
+    const fcIn = Array.isArray(parsed && parsed.forecast) ? parsed.forecast : [];
+    out.fcAdded = 0; out.fcBadDue = 0; out.fcDup = 0; out.fcOver = 0; out.fcNoActor = 0;
+    const fcBadDueSamples = [];
+    fcIn.forEach((r) => {
+      if (!r || typeof r !== 'object') return;
+      // 検査の順番が大事：先に中身を見て、通ったものにだけ上限を当てる。
+      // 上限を先に当てると、6本目以降が「なぜ落ちたか」を見られないまま
+      // 「本数超過」に一括りにされ、期限の書き方が悪かったことが伝わらない（実際にそうなった）
+      if (!isDateStr(r.due)) { out.fcBadDue++; if (fcBadDueSamples.length < 3 && r.due) fcBadDueSamples.push(String(r.due)); return; }
+      const ev = byId(worldStr(r.fromEventId, 40));
+      const rec = ev ? ev.actors.find((a) => worldNormName(a.name) === worldNormName(worldStr(r.actor, 80))) : null;
+      if (!worldStr(r.actor, 80)) { out.fcNoActor++; return; }
+      const f = normalizeWorldForecast({
+        id: worldGenForecastId(), actor: r.actor, verb: r.verb, what: r.what, due: r.due, sign: r.sign,
+        pledgeOnly: r.pledgeOnly, fromEventId: r.fromEventId,
+        fromRead: rec ? rec.read : '',   // 元の思惑を写して持つ（札側が書き直されても根拠が残る）
+        state: 'waiting', stateAt: '', createdAt: nowIso(), updatedAt: nowIso(),
+      });
+      if (!f) { out.fcBadDue++; return; }
+      if (worldForecastDup(f)) { out.fcDup++; return; }
+      // 中身の検査を通ったものにだけ上限を当てる（落ちた理由が混ざらないように）
+      if (out.fcAdded >= WORLD_FC_PER_READ) { out.fcOver++; return; }
+      worldForecasts().push(f);
+      out.fcAdded++;
+    });
+    out.fcBadDueSamples = fcBadDueSamples;
+    if (out.fcAdded) worldSaveForecasts();
     // 見返り：この回で鎖（お金の動きのつながり）が何本になったか
     try { out.chains = worldMoneyChains().length; } catch (e) { out.chains = 0; }
     if (touched.size) touched.forEach((m) => worldMonthChanged(m));
@@ -19297,6 +19451,37 @@
     b.addEventListener('click', () => worldPullToday(due.map((d) => d.id), b));
     box.appendChild(b);
     renderHomeReadRow(box);
+  }
+  // v20.21 予告 第1段：待っている予告を、期限の近い順に並べる。
+  // 第1段では押せない形にする（答え合わせの仕組みがまだ無いので、押しても何も起きないものを作らない）。
+  // 0本のときは行ごと出さない（「ありません」の空行を増やさない）
+  function renderHomeForecastRow() {
+    const box = document.getElementById('homeForecastRow');
+    if (!box) return;
+    box.innerHTML = '';
+    const list = worldWaitingForecasts();
+    if (!list.length) { box.hidden = true; return; }
+    box.hidden = false;
+    const head = document.createElement('div');
+    head.className = 'hfHead';
+    head.textContent = '待っている予告 ' + list.length + '本';
+    box.appendChild(head);
+    list.slice(0, WORLD_FC_HOME_MAX).forEach((f) => {
+      const row = document.createElement('div');
+      row.className = 'hfItem';
+      const due = document.createElement('span');
+      due.className = 'hfDue';
+      due.textContent = f.due.slice(5).replace('-', '/') + 'まで';
+      row.appendChild(due);
+      row.appendChild(document.createTextNode(f.actor + 'が ' + f.what));
+      box.appendChild(row);
+    });
+    if (list.length > WORLD_FC_HOME_MAX) {
+      const more = document.createElement('div');
+      more.className = 'hfMore';
+      more.textContent = 'ほか' + (list.length - WORLD_FC_HOME_MAX) + '本';
+      box.appendChild(more);
+    }
   }
   // v20.17：読んでいない札が溜まったら1行。8枚未満では出さない（毎日出ると義務になる）
   function renderHomeReadRow(box) {
@@ -23312,6 +23497,13 @@
     let msg = res.readCards + '枚に思惑が入りました（' + res.readFilled + '人ぶん）。';
     if (res.forks) msg += '　分かれ目が' + res.forks + '件立ちました。';
     if (res.rewritten) msg += '　朝の浅い読みを書き直した' + res.rewritten + '人ぶん（前の文は札に残しています）。';
+    // v20.21 予告：入った数と、落とした数・理由
+    if (res.fcAdded) msg += '　予告が' + res.fcAdded + '本入りました。';
+    if (res.fcBadDue) msg += '　※ 期限が日付でないもの' + res.fcBadDue + '本を落としました'
+      + (res.fcBadDueSamples && res.fcBadDueSamples.length ? '（「' + res.fcBadDueSamples.join('」「') + '」）' : '') + '。';
+    if (res.fcDup) msg += '　※ 同じ主体・同じ動き・同じ期限の予告' + res.fcDup + '本は既にありました。';
+    if (res.fcOver) msg += '　※ ' + (WORLD_FC_PER_READ + 1) + '本目以降の' + res.fcOver + '本を落としました（1回' + WORLD_FC_PER_READ + '本まで）。';
+    if (res.fcNoActor) msg += '　※ 主体の名前が無い予告' + res.fcNoActor + '本を落としました。';
     if (res.zure) msg += '　言っていることとの食い違いが' + res.zure + '件。';
     if (res.reasons) msg += '　読む値打ちの1行が' + res.reasons + '件。';
     if (res.lowered) msg += '　確度を下げた札が' + res.lowered + '件。';
