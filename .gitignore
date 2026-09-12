@@ -1,6 +1,8 @@
 backup/
 _*.html
 # 指示書・回答書・実行結果の JSON は公開しない（リポジトリが公開のため）
-docs/sekai/shiji/
+# 指示書の「置き場」だけは分かるように、案内の README だけ通す（中身は除外のまま）
+docs/sekai/shiji/*
+!docs/sekai/shiji/README.md
 docs/sekai/data/
 docs/toru/
