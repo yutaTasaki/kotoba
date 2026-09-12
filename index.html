@@ -1937,6 +1937,7 @@
             <div class="statRow"><span>答えを壊す（v9.0 で終了）</span><span id="statUsageMonthBreak"></span></div>
             <div class="statRow"><span>今月・合計</span><span id="statUsageMonthTotal"></span></div>
             <div class="statRow"><span>言葉1枚の保存あたり</span><span id="statUsagePerSave"></span></div>
+            <div class="statRow"><span>最後の API 呼び出し</span><span id="statLastApiCall"></span></div>
             <div id="statUsagePerDevice"></div>
             <div class="statRow"><span>先月・合計</span><span id="statUsagePrevMonthTotal"></span></div>
             <div class="statRow"><span>累計・合計</span><span id="statUsageAllTimeTotal"></span></div>
@@ -2920,7 +2921,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.13';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.14';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -5406,6 +5407,30 @@
     monthBucket[kind] = cur;
     data.usage[deviceId].months[month] = monthBucket;
     saveData(data);
+    rememberLastApiCall(kind, usage);   // v20.14：診断用（この端末だけ。同期しない）
+  }
+  // v20.14：コンソールの差額と突き合わせるための控え。返ってきた usage をそのまま残す
+  const LAST_API_CALL_KEY = 'kotoba_lastApiCall';
+  function rememberLastApiCall(kind, usage) {
+    try {
+      const v = {
+        at: nowIso(), kind, model: modelForUsageKind(kind),
+        input: usage.input_tokens || 0, output: usage.output_tokens || 0,
+        cacheWrite: usage.cache_creation_input_tokens || 0, cacheRead: usage.cache_read_input_tokens || 0,
+      };
+      v.cost = estimateCostUsd({ calls: 1, input: v.input, output: v.output, cacheWrite: v.cacheWrite, cacheRead: v.cacheRead, searches: 0 }, v.model);
+      localStorage.setItem(LAST_API_CALL_KEY, JSON.stringify(v));
+    } catch (e) {}
+  }
+  function lastApiCallLine() {
+    let v = null;
+    try { v = JSON.parse(localStorage.getItem(LAST_API_CALL_KEY) || 'null'); } catch (e) {}
+    if (!v || !v.at) return '-';
+    const k = (typeof USAGE_KIND_LABEL !== 'undefined' && USAGE_KIND_LABEL[v.kind]) || v.kind;
+    const tok = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n));
+    return formatDateTime(v.at) + '　' + k + '（' + v.model + '）　入力' + tok(v.input)
+      + '／キャッシュ書き' + tok(v.cacheWrite) + '／キャッシュ読み' + tok(v.cacheRead) + '／出力' + tok(v.output)
+      + '　約$' + v.cost.toFixed(4);
   }
 
   function emptyKindStat() { return { calls: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, searches: 0 }; }
@@ -12577,6 +12602,7 @@
       const per = al && al.calls ? estimateCostUsd(al, modelForUsageKind('autolink')) / al.calls : 0;
       document.getElementById('statUsagePerSave').textContent = per ? '約$' + per.toFixed(3) + '（今月 ' + al.calls + '回の平均）' : '-';
     }
+    document.getElementById('statLastApiCall').textContent = lastApiCallLine();   // v20.14
 
     const perDeviceEl = document.getElementById('statUsagePerDevice');
     perDeviceEl.innerHTML = '';
@@ -14886,6 +14912,39 @@
     { name: 'アジア経済研究所（IDE-JETRO）', url: 'https://www.ide.go.jp/', field: 'geo', role: 'analysis' },
   ];
 
+  // v20.14：必ず見るものも、決算と同じ「アプリが開ける URL を書く」形にする。
+  // チャットは自分で組み立てた URL を開けない（段階C で実測）。日付や四半期が入る URL は、ここで作って並べる
+  // TSMC：いまの四半期と1つ前（いまの四半期はまだ出ていないことがある）
+  function worldTsmcUrls(today) {
+    const y = Number(today.slice(0, 4)), m = Number(today.slice(5, 7));
+    const q = Math.floor((m - 1) / 3) + 1;
+    const prev = q === 1 ? [y - 1, 4] : [y, q - 1];
+    return [
+      ['四半期決算（いまの四半期）', 'https://investor.tsmc.com/english/quarterly-results/' + y + '/q' + q],
+      ['四半期決算（1つ前。上が404のとき）', 'https://investor.tsmc.com/english/quarterly-results/' + prev[0] + '/q' + prev[1]],
+      ['月次売上', 'https://investor.tsmc.com/english/monthly-revenue/' + y],
+    ];
+  }
+  // 日銀 営業毎旬報告：10日・20日・月末の回。公表は数営業日あとなので、新しい順に3つ並べて開けたものを採らせる
+  function worldBojDekadUrls(today) {
+    const d = parseDateStr(today);
+    const out = [];
+    for (let back = 0; back < 2 && out.length < 6; back++) {
+      const y = d.getFullYear(), m = d.getMonth() - back;
+      const base = new Date(y, m, 1);
+      const last = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
+      [last, 20, 10].forEach((day) => {
+        const dd = new Date(base.getFullYear(), base.getMonth(), day);
+        const ds = formatDateStr(dd);
+        if (ds <= today) out.push(ds);
+      });
+    }
+    return out.sort().reverse().slice(0, 3).map((ds, i) => [
+      i === 0 ? '最新の回（まだ出ていないことがある）' : i === 1 ? '1つ前の回' : '2つ前の回',
+      'https://www.boj.or.jp/statistics/boj/other/acmai/release/' + ds.slice(0, 4) + '/ac' + ds.slice(2, 4) + ds.slice(5, 7) + ds.slice(8, 10) + '.htm',
+    ]);
+  }
+
   // v19 段階4：必ず見るお金の源。note は「何を取るか」の1行としてプロンプトに出る
   // v19.1：label はプロンプトの「毎回必ず見るもの」と checked の source の名前、short は取り込み結果の1行、
   // match は checked の source が label と少し違って返ってきたときの引き当て
@@ -14901,7 +14960,8 @@
     { id: 'ws_money_boj_juq', label: '日銀 営業毎旬報告', short: '日銀旬報', match: ['営業毎旬', '旬報', '日銀', '日本銀行'],
       name: '日本銀行 営業毎旬報告（10日ごと）', url: 'https://www.boj.or.jp/statistics/boj/other/acmai/index.htm', role: 'primary', cadence: 'dekad',
       retiredUrls: ['https://www.boj.or.jp/statistics/boj/fm/juq/index.htm'],
-      note: '一覧の最新の回と、その1つ前の回を開く。資産の「国債」「貸付金」、負債の「当座預金」「政府預金」「売現先勘定」の残高（単位は千円）を比べ、大きく動いたものだけ札にする。この源に限り、2つの回の差を出してよい（detail に「2つの回の差」と書く）。from／to は「日本銀行」「政府」「金融機関」など' },
+      openUrls: (today) => worldBojDekadUrls(today),   // v20.14：日付ごとのページへ直接行く（一覧から探させない）
+      note: '「開く URL」を新しい順に開き、開けた中でいちばん新しい回と、その1つ前の回を使う（最新の回は公表が数営業日あとなので404のことがある）。資産の「国債」「貸付金」、負債の「当座預金」「政府預金」「売現先勘定」の残高（単位は千円）を比べ、大きく動いたものだけ札にする。この源に限り、2つの回の差を出してよい（detail に「2つの回の差」と書く）。from／to は「日本銀行」「政府」「金融機関」など' },
     // v19.10：企業と富裕層。介入は結果だが、設備投資は賭け——3年後の世界をどう読んだかが金額と行き先に出る。
     // 2026-09-11 に実際に開いて、数字が本文（HTML か PDF）にあると確かめたものだけ。
     // 見送り：EDINET（検索アプリで本文に数字が無い）、NVIDIA IR（403）、UBS Global Wealth Report（403）、
@@ -14909,14 +14969,29 @@
     // v20.8：富裕層は UBS・Knight Frank・Henley の代わりに、DFA（ここ。四半期）と WID.world（よく使う出典）にした。
     // UBS・Knight Frank・Henley は一覧に一度も入れていないので、外す作業は無い（このメモだけ残す）
     { id: 'ws_corp_tsmc', label: 'TSMC 決算', short: 'TSMC', match: ['TSMC', '台湾積体'], retiredUrls: [],
-      name: 'TSMC 四半期決算（Quarterly Results）', url: 'https://investor.tsmc.com/english/quarterly-results', role: 'primary', cadence: 'quarter',
-      note: '最新の四半期の設備投資額（capital expenditure）と、その内訳・行き先（先端工程・海外工場・国名）。金額は US$ のまま。from は「TSMC」、to は工場の場所か用途。設備投資は3年後の需要をどう読んだかの賭けなので、read にはその読みを書く' },
-    { id: 'ws_corp_toyota', label: 'トヨタ 決算', short: 'トヨタ', match: ['トヨタ', 'Toyota'], retiredUrls: [],
-      name: 'トヨタ自動車 決算報告', url: 'https://global.toyota/jp/ir/financial-results/', role: 'primary', cadence: 'quarter',
-      note: '最新の決算短信（PDF）から、設備投資・研究開発費・自社株買い・配当の金額と、通期見通しの変更。金額は円のまま。from は「トヨタ自動車」。何に賭けたか（電動化・地域）を read に' },
+      name: 'TSMC 四半期決算・月次売上', url: 'https://investor.tsmc.com/english/quarterly-results', role: 'primary', cadence: 'quarter',
+      openUrls: (today) => worldTsmcUrls(today),   // v20.14：年・四半期は URL に入るので、アプリが作って並べる
+      note: '最新の四半期の設備投資額（capital expenditure）と、その内訳・行き先（先端工程・海外工場・国名）。四半期が404なら1つ前の四半期を見る。月次売上も見て、前年同月比で大きく動いていれば1件。' +
+        '金額は US$（月次は NT$）のまま、書かれた通貨で書く。from は「TSMC」、to は工場の場所か用途。設備投資は3年後の需要をどう読んだかの賭けなので、read にはその読みを書く' },
+    // v20.14：トヨタ自身のページは本文に数字が無く（JS 描画）、チャットの取得役には 403（実測）。
+    // 数字は IR BANK から読み、札の確認先（url）はトヨタ自身の資料にする
+    { id: 'ws_corp_toyota', label: 'トヨタ 決算', short: 'トヨタ', match: ['トヨタ', 'Toyota'],
+      retiredUrls: ['https://global.toyota/jp/ir/financial-results/'],
+      name: 'トヨタ自動車 決算（数字は IR BANK から）', url: 'https://irbank.net/7203/results', role: 'primary', cadence: 'quarter',
+      openUrls: () => [
+        ['数字を読む（IR BANK）', 'https://irbank.net/7203/results'],
+        ['札の url に書く（トヨタ自身）', 'https://global.toyota/jp/ir/financial-results/'],
+      ],
+      note: '設備投資・研究開発費・自社株買い（自己株式の取得）・配当の金額と、通期見通しの変更。金額は円のまま。from は「トヨタ自動車」。何に賭けたか（電動化・地域）を read に。' +
+        'IR BANK は一次資料ではないので、札の url には「札の url に書く」のトヨタ自身の URL を書く（数字を読んだ場所と確認先が違ってよい）。' +
+        'checked の note に「IR BANK から」と、どこから読んだかを書く' },
     { id: 'ws_group_nri', label: '野村総研 富裕層推計', short: 'NRI', match: ['野村', 'NRI', '富裕層'], retiredUrls: [],
       name: '野村総合研究所 日本の富裕層の世帯数と純金融資産の推計', url: 'https://www.nri.com/jp/news/newsrelease/20250213_1.html', role: 'primary', cadence: 'quarter',
-      note: '年1回（2月ごろ）。最新の年の発表を探す。富裕層・超富裕層の世帯数と純金融資産の総額、前回からの増減。主体は「日本の富裕層」（kind: group）、said は空、read に増えた理由の読み' },
+      openUrls: () => [['確かに読める発表（2025年2月）', 'https://www.nri.com/jp/news/newsrelease/20250213_1.html']],
+      note: '年1回（2月ごろ）。まず web 検索で「野村総合研究所 富裕層 純金融資産」の新しい年の発表を探し、見つかればそれを開く（2026年版は' +
+        'この指示を書いた時点では未公開）。見つからなければ「開く URL」の2025年2月の発表を読む（こちらは確かに開ける）。' +
+        '富裕層・超富裕層の世帯数と純金融資産の総額、前回からの増減。主体は「日本の富裕層」（kind: group）、said は空、read に増えた理由の読み。' +
+        'checked の note に、何年の発表を読んだかを書く' },
     { id: 'ws_group_boj_sj', label: '日銀 資金循環', short: '資金循環', match: ['資金循環', 'Flow of Funds'], retiredUrls: [],
       name: '日本銀行 資金循環統計（四半期）', url: 'https://www.boj.or.jp/statistics/sj/index.htm', role: 'primary', cadence: 'quarter',
       note: '「参考図表」（sjexp.pdf）から、家計・企業・政府・海外の金融資産と負債の残高と、前年比で大きく動いた項目。家計の現預金・株式、海外の国債保有など。主体は「日本の家計」「海外投資家」（kind: group）、said は空' },
@@ -16673,8 +16748,14 @@
   function worldDailySources() {
     return worldSources().filter((s) => s.cadence).map((s) => {
       const x = worldDailySourceDef(s.id);
-      return { ...s, label: x ? x.label : s.name, short: x ? x.short : s.name.slice(0, 12), match: x ? x.match : [] };
+      return { ...s, label: x ? x.label : s.name, short: x ? x.short : s.name.slice(0, 12), match: x ? x.match : [], openUrls: x && x.openUrls ? x.openUrls : null };   // v20.14
     });
+  }
+  // v20.14：その源の「開く URL」の行（アプリが日付・四半期を入れて作る）
+  function worldSourceOpenLines(d) {
+    let list = [];
+    try { list = d.openUrls(todayStr()) || []; } catch (e) { return ''; }
+    return list.map((x) => '\n  開く URL（' + x[0] + '）：' + x[1]).join('');
   }
   // 期限が来ているか。一度も取り込んでいなければ来ている
   function worldSourceDue(s, today) {
@@ -16706,7 +16787,7 @@
     if (!daily.length && !sec.length) return '';
     if (!checked) return '必ず見るもの：報告なし';
     const parts = checked.map((c) => c.short + ' ' + (c.opened ? c.picked + '件' : '開けず')
-      + (c.note && (!c.opened || !c.picked) ? '（' + c.note + '）' : ''));
+      + (c.note ? '（' + c.note + '）' : ''));   // v20.14：どこから読んだかを常に出す（IR BANK など一次でない入口を使うため）
     daily.forEach((d) => { if (!checked.some((c) => c.id === d.id)) parts.push(d.short + ' 報告なし'); });
     sec.forEach((c) => { if (!checked.some((x) => worldSecOf(x.short) === c)) parts.push(worldSecLabel(c) + ' 報告なし'); });
     return '必ず見るもの：' + parts.join('／');
@@ -16801,12 +16882,15 @@
       (daily.length
         ? '■ 毎回必ず見るもの（一次。毎回かならず開く。「取るもの」に従う。\n' +
           '  決まった周期で公表されるものなので、最新の回が7日より前でもよい）\n' +
-          daily.map((d) => '- ' + d.label + '：' + d.name + ' ' + d.url + (d.note ? '\n  取るもの：' + d.note : '')).join('\n') + '\n' +
+          daily.map((d) => '- ' + d.label + '：' + d.name + ' ' + d.url
+            + ((d.openUrls ? worldSourceOpenLines(d) : '') || '')
+            + (d.note ? '\n  取るもの：' + d.note : '')).join('\n') + '\n' +
+          '- 「開く URL」が書かれている源は、その URL をそのまま開く。URL を自分で組み立てない（組み立てた URL は開けない）。\n' +
           '- この' + daily.length + '件は、札にできてもできなくても、JSON の末尾の "checked" に1件ずつ報告する。\n' +
           '  source：上の「：」の前の名前をそのまま書く（' + daily.map((d) => d.label).join('／') + '）。\n' +
           '  opened：最新の回を開いて、数字まで読めたら true。開けない・中身が読めないなら false。\n' +
           '  picked：そこから札にした件数。大きな動きが無ければ 0。\n' +
-          '  note：開けなかった理由か、札にしなかった理由を1句。無ければ空。\n\n'
+          '  note：どこから読んだか（一次資料でない場所を使ったときは必ず）。開けなかったときはその理由。無ければ空。\n\n'
         : '') +
       // v19.13：今日の数字は材料なので上に置く（最近のお金の動きは候補なので末尾のまま）
       ((opts && opts.figures) ? opts.figures + '\n' : '') +
