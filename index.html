@@ -1175,6 +1175,10 @@
   .worldMapBox .wmL { fill: none; stroke: var(--accent); stroke-width: 1.6; opacity: 0.85; }
   .worldMapBox .wmL.dot { stroke-dasharray: 1.5 3; stroke-width: 1.2; }
   .worldMapBox .wmL.dash { stroke-dasharray: 6 4; }
+  /* v20.20 第4段：約束（まだ実体が動いていない）。破線は累計で使っているので、薄さと白抜きの矢印で分ける。
+     累計かつ約束のときは「薄い破線」になり、どちらの意味も残る */
+  .worldMapBox .wmL.pledge { opacity: 0.4; }
+  .worldMapBox .wmArrowHeadOpen { fill: none; stroke: var(--accent); stroke-width: 1.4; opacity: 0.6; }
   .worldMapBox .wmArrowHead { fill: var(--accent); }
   .worldMapBox .wmHit { fill: none; stroke: transparent; stroke-width: 14; pointer-events: stroke; cursor: pointer; }
   .worldMapBox .wmSlot rect { fill: #1a1a1a; stroke: var(--border); }
@@ -2354,6 +2358,8 @@
     <!-- v20 M1：大きな地図。直近90日のお金の動きを線で描く -->
     <div class="editorBody" id="worldMapView" hidden>
       <div class="tagFilterRow" id="worldMapRegions"></div>
+      <!-- v20.20 第4段：何が動いたかで分ける。件数を出して、押す前に何本あるか見えるようにする -->
+      <div class="tagFilterRow" id="worldMapKinds"></div>
       <div id="worldMapBox" class="worldMapBox"></div>
       <div id="worldMapChooser" hidden></div>
       <p class="fieldNote" id="worldMapUsdNote" hidden></p>
@@ -15253,7 +15259,55 @@
       // 全部追えたとき・全体額が無いときは total が空で share は null
       total: worldStr(f.total, 20),
       share: worldFlowShare(f, amount),
+      // v20.20 第4段：物の品目（原油・金・半導体など1語）と、約束かどうか。
+      // 種類（money／goods／people）を増やさずに別に持つ。約束にはお金の約束も物の約束もあるため。
+      // 生成が書かなかった札（これまでの分）は、worldFlowItem／worldFlowIsPledge が文面から読む
+      item: worldStr(f.item, 20),
+      pledge: (f.pledge === true || f.pledge === 1) ? 1 : 0,
     };
+  }
+  // v20.20 第4段：品目。生成が item を書いていればそれ、無ければ what と fact から拾う。
+  // 表記ゆれを束ねるだけの小さな表にする（増やしすぎると、当たらない語が出たとき黙って外れる）
+  // 並び順が意味を持つ：長くて具体的な語から先に当てる。
+  // 「半導体用ガス」を「ガス」で拾わないよう、半導体を天然ガスより前に置く。
+  // 「金」のような1字の語は、送金・資金・代金・年金に化けるので、そのままでは使わない
+  // （「金の買い入れ」「金市場」のように、前後を含めた形でだけ当てる）。実データで3件が誤って
+  // 「金・貴金属」に入ったため、この形にした
+  const WORLD_ITEM_GROUPS = [
+    ['武器・装備', ['防衛装備', '兵器', '武器', 'ミサイル', '弾薬', '装備']],
+    ['半導体', ['半導体', 'チップ', 'ウエハ', '露光装置']],
+    ['原油・石油', ['原油', '石油製品', '石油', 'ディーゼル', 'ガソリン', '燃料']],
+    ['天然ガス・LNG', ['LNG', '天然ガス', '液化ガス']],
+    ['レアアース・鉱物', ['レアアース', 'ニッケル', '銅', '鉱物', 'リチウム', 'ウラン']],
+    ['穀物・食料', ['小麦', '穀物', 'トウモロコシ', '大豆', '食料']],
+    ['金・貴金属', ['貴金属', '金地金', '金の買い入れ', '金市場', '金準備', '銀', 'プラチナ']],
+  ];
+  function worldFlowItem(r) {
+    const e = r.rep || r, f = r.flow || (e && e.flow);
+    if (!f) return '';
+    // 生成が item を書いていれば、それを先に当てる（表記ゆれだけこちらで束ねる）
+    const explicit = worldStr(f.item, 20);
+    if (explicit) {
+      for (const [label, words] of WORLD_ITEM_GROUPS) {
+        if (words.some((w) => explicit.includes(w))) return label;
+      }
+      return explicit;
+    }
+    const hay = [f.what, e && e.fact].filter(Boolean).join(' ');
+    if (!hay) return '';
+    for (const [label, words] of WORLD_ITEM_GROUPS) {
+      if (words.some((w) => hay.includes(w))) return label;
+    }
+    return '';
+  }
+  // 約束＝まだ実体が動いていないもの（配分・表明・約束・誓約）。生成の印が無ければ文面から読む
+  const WORLD_PLEDGE_WORDS = ['配分', '表明', '約束', '誓約', 'コミット', '拠出を決め', '支援を決め', '計画を発表'];
+  function worldFlowIsPledge(r) {
+    const e = r.rep || r, f = r.flow || (e && e.flow);
+    if (!f) return false;
+    if (f.pledge) return true;
+    const hay = [f.what, e && e.fact].filter(Boolean).join(' ');
+    return WORLD_PLEDGE_WORDS.some((w) => hay.includes(w));
   }
   // 同じ単位で読めれば端末で割る（生成の割り算より確か）。読めなければ生成が書いた数を使う
   function worldFlowShare(f, amount) {
@@ -17204,6 +17258,12 @@
       '  - 書けなければ null（出来事そのものは返してよい）。\n' +
       '  kind：お金なら "money"。原油・穀物・兵器・半導体など物が動いたなら "goods"。\n' +
       '        移民・避難・人材など人が動いたなら "people"。\n' +
+      // v20.20 第4段：地図で「何が動いたか」で分けるため。品目は1語、約束はまだ実体が動いていないもの
+      '  item：物が動いたとき、その物の名前を1語（原油・天然ガス・半導体・金・小麦・装備・レアアースなど）。\n' +
+      '        出典の書き方のままでよい（こちらで表記ゆれをまとめる）。お金だけの動きでは空。\n' +
+      '  pledge：まだ実体が動いていない約束（配分・表明・拠出を決めた・支援を約束した）なら true。\n' +
+      '         すでに払った・渡した・動いた分は false。同じ出典に約束と実行の両方があるときは、\n' +
+      '         amount には実際に動いた分を書き、約束の総額は total に書く。\n' +
       // v20.2.1：説明の言葉だけの相手（「防衛装備の供給元」）は地図に乗らない。相手は国名で始めさせる
       '  from／to は主体名（actors の name）か、国名で始まる相手（「米国の製油所」「ウクライナの防衛調達」）。\n' +
       '  市場なら「為替市場」「石油市場」のように書く。国の定まらない相手（「世界の海運会社」）に国名を付け足さない。\n' +
@@ -20711,8 +20771,58 @@
     model.domestic.forEach((rows, c) => { if (worldInRegion(c, lib, box)) domestic.set(c, rows); });
     return { lines: model.lines.filter(keep), domestic, unknown: model.unknown, all: model.all };
   }
+  // v20.20 第4段：何が動いたかで分ける。人は2本しかないので独立させず、物と一緒にする（押しても空振りになるため）。
+  // 武器・穀物はいまのデータに1件も無いので作らない。物の1本目は原油・石油（物13本のうち9本）
+  const WORLD_MAP_KINDS = [
+    ['all', '全部', null],
+    ['money', 'お金', (r) => (r.flow.kind || 'money') === 'money'],
+    ['goods', '物・人', (r) => (r.flow.kind || 'money') !== 'money'],
+    ['oil', '原油・石油', (r) => worldFlowItem(r) === '原油・石油'],
+    ['pledge', '約束', (r) => worldFlowIsPledge(r)],
+  ];
+  function worldKindDef(key) { return WORLD_MAP_KINDS.find((k) => k[0] === key) || WORLD_MAP_KINDS[0]; }
+  function worldFilterModelByKind(model, kind) {
+    const def = worldKindDef(kind);
+    if (!def[2]) return model;
+    const keep = def[2];
+    const domestic = new Map();
+    model.domestic.forEach((rows, c) => { const kept = rows.filter(keep); if (kept.length) domestic.set(c, kept); });
+    return { lines: model.lines.filter(keep), domestic, unknown: model.unknown, all: model.all };
+  }
+  // 種類ごとの本数（いま選んでいる地域で数える）。押す前に何本あるか見えるようにするため
+  function worldKindCount(model, key) {
+    const def = worldKindDef(key);
+    let n = 0;
+    const add = (rows) => rows.forEach((r) => { if (!def[2] || def[2](r)) n++; });
+    add(model.lines);
+    model.domestic.forEach((rows) => add(rows));
+    return n;
+  }
+  // 種類のボタン。件数は「いまの地域で押したら何本か」。0本のものは押せなくする
+  // （押しても何も起きないものを作らない）。選んでいるものが0本になったら「全部」に戻す
+  function worldPaintMapKinds(byRegion) {
+    const row = document.getElementById('worldMapKinds');
+    if (!row) return;
+    row.innerHTML = '';
+    const cur = worldState.mapKind || 'all';
+    if (cur !== 'all' && !worldKindCount(byRegion, cur)) worldState.mapKind = 'all';
+    WORLD_MAP_KINDS.forEach(([key, label]) => {
+      const n = worldKindCount(byRegion, key);
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'tagFilterBtn' + (key === (worldState.mapKind || 'all') ? ' selected' : '');
+      b.textContent = label + '（' + n + '）';
+      b.disabled = !n;
+      b.addEventListener('click', () => { worldState.mapKind = key; renderWorldMap(); });
+      row.appendChild(b);
+    });
+  }
   function worldDrawMap(lib, model0, region) {
-    const model = worldFilterModelByRegion(model0, lib, region);
+    // v20.20：地域で絞ってから、種類で絞る。種類の件数は「いまの地域で押したら何本か」を出したいので、
+    // 地域で絞ったあとの model で数える（押す前の数字と、押した後の数字が必ず一致する）
+    const byRegion = worldFilterModelByRegion(model0, lib, region);
+    worldPaintMapKinds(byRegion);
+    const model = worldFilterModelByKind(byRegion, worldState.mapKind);
     const d3 = lib.d3;
     const box = document.getElementById('worldMapBox');
     const st = document.getElementById('worldMapStatus');
@@ -20738,6 +20848,9 @@
     // v20.3：矢印の大きさは線の太さに比例させない（7px の線で矢印が大きくなりすぎるため）
     const mk = worldSvg('marker', { id: 'wmArrow', viewBox: '0 0 10 10', refX: '9', refY: '5', markerUnits: 'userSpaceOnUse', markerWidth: '9', markerHeight: '9', orient: 'auto-start-reverse' }, defs);
     worldSvg('path', { d: 'M0,0 L10,5 L0,10 z', class: 'wmArrowHead' }, mk);
+    // v20.20 第4段：約束の矢印は白抜き（まだ実体が動いていないことを、形で分かるようにする）
+    const mkOpen = worldSvg('marker', { id: 'wmArrowOpen', viewBox: '0 0 10 10', refX: '9', refY: '5', markerUnits: 'userSpaceOnUse', markerWidth: '9', markerHeight: '9', orient: 'auto-start-reverse' }, defs);
+    worldSvg('path', { d: 'M0,0 L10,5 L0,10 z', class: 'wmArrowHeadOpen' }, mkOpen);
     // v20.1.1：地図の範囲は入れ子の svg で切り取る（どのブラウザでも、自分の四角の外は描かない）。
     // clipPath を <g> に付ける形は、iPhone の Safari で拡大すると効かず、地図が下の枠に重なった
     const mapArea = worldSvg('svg', { x: 0, y: 0, width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, overflow: 'hidden', class: 'wmViewport' }, svg);
@@ -20814,7 +20927,9 @@
           // v20.3：物・人・換算できないものは細い点線。累計（span）と期間あたり（月・年）は破線。太さはドル換算の5段
           const u = usdOfRow(r);
           const kind = !u ? ' dot' : (r.flow.span || u.per) ? ' dash' : '';
-          const la = { d, class: 'wmL' + kind, 'marker-end': 'url(#wmArrow)' };
+          // v20.20 第4段：約束は薄く・矢印は白抜き。累計かつ約束なら「薄い破線」になり、両方の意味が残る
+          const pledge = worldFlowIsPledge(r);
+          const la = { d, class: 'wmL' + kind + (pledge ? ' pledge' : ''), 'marker-end': pledge ? 'url(#wmArrowOpen)' : 'url(#wmArrow)' };
           if (u) la.style = 'stroke-width:' + worldUsdWidth(u.value) + 'px';
           worldSvg('path', la, parent);
           // v20.3.2：押したときの判定は地図全体でまとめて行う（重なった線の一番上しか押せなかったため）。帯は指の形のためだけに残す
