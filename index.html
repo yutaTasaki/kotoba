@@ -583,6 +583,7 @@
   .calDot.dotQuestion { background: #d3b16a; }
   .calDot.dotTraining { background: #e07a5f; }
   .calDot.dotMeditation { background: #5aa89a; }
+  .calDot.dotWeight { background: #7f8d96; }   /* v20.11：体重だけの日 */
   /* 撮る (v8.5) */
   .deckRow { background: var(--bg-card); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; cursor: pointer; margin-bottom: 10px; }
   .deckRowTop { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
@@ -1406,6 +1407,10 @@
           <span class="fieldLabel">投稿文</span>
           <textarea id="walkShareTextInput" rows="4" autocomplete="off"></textarea>
         </div>
+        <div class="medRow">
+          <button type="button" id="btnPostExplain" class="tagFilterBtn">説明を作る</button>
+        </div>
+        <p class="fieldNote" id="postExplainStatus"></p>
         <button id="btnWalkShare" class="primaryBtn">Xで投稿</button>
         <div id="walkShareStatus"></div>
       </div>
@@ -2913,7 +2918,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.10';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.11';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -3118,6 +3123,7 @@
       links: [...linksById.values()],
       rejectedLinks: Array.isArray(n.rejectedLinks) ? [...new Set(n.rejectedLinks.filter(Boolean).map(String))] : [],
       autoLinkedAt: n.autoLinkedAt || null,
+      postLine: typeof n.postLine === 'string' ? n.postLine.trim().slice(0, 200) : '',   // v20.11：投稿に載せる短い説明（読む人向け。一度作って持ち回す）
       createdAt: n.createdAt || nowIso(),
       updatedAt: n.updatedAt || n.createdAt || nowIso(),
     };
@@ -5287,6 +5293,7 @@
   const COMPRESS_THRESHOLD_KEY = 'kotoba_compressThreshold';
   const MORNING_QUOTE_HEADING_KEY = 'kotoba_morningQuoteHeading';
   const DEFAULT_MORNING_QUOTE_HEADING = '今日の言葉';
+  const POST_EXPLAIN_MAX = 60;   // v20.11：投稿に載せる説明の字数。名言は原文のまま、縮めるのは説明だけ
   const LAST_AUTO_LINK_ERROR_KEY = 'kotoba_lastAutoLinkError';
   const USAGE_BUDGET_KEY = 'kotoba_usageBudgetUsd';
   const DEFAULT_USAGE_BUDGET_USD = 2.00;
@@ -5345,7 +5352,7 @@
   // {calls,input,output,cacheWrite,cacheRead} } } } - each device only ever
   // writes its own subtree (see mergeUsageData), so PC and iPhone combine
   // under sync while still keeping a per-device breakdown.
-  const USAGE_KINDS = ['autolink', 'morning', 'consult', 'searchAgain', 'bulk', 'question', 'muscle', 'reading', 'cards', 'break'];
+  const USAGE_KINDS = ['autolink', 'morning', 'consult', 'searchAgain', 'bulk', 'question', 'muscle', 'reading', 'cards', 'break', 'postline'];
   // web search is billed per search on top of the tokens ($10 / 1,000). The
   // month's cap counts tokens only unless this is added in.
   const WEB_SEARCH_USD = 0.01;
@@ -6591,6 +6598,41 @@
     // a kept draft older than the jump window is put back the moment you open
     // that screen yourself (applyInputDraftFields only acts on a match)
     applyInputDraftFields();
+    rememberScreen();   // v20.11：戻ってきたときに同じ画面へ戻すため
+  }
+
+  // v20.11：開いていた画面の控え。画面に戻ると更新の確認で読み込み直すことがあり（checkForUpdate）、
+  // iOS は裏に回ったページを捨てるので、そのたびに朝の画面へ落ちていた。
+  // 4時間以上あいていたら朝から始める——朝のステップが日課の入口なので、そこは潰さない
+  const LAST_SCREEN_KEY = 'kotoba_lastScreen';
+  const LAST_SCREEN_MAX_AGE_MS = 4 * 3600 * 1000;
+  const LAST_SCREEN_OK = new Set(['list', 'records', 'training', 'meditation', 'shoot', 'world', 'settings']);
+  const LAST_WORLD_VIEW_OK = new Set(['main', 'map', 'import', 'actors', 'tidy', 'ask']);   // 一時的な中身に頼る表示（札の一覧・概念・地層・国の網）は戻さない
+  function rememberScreen() {
+    try {
+      if (!LAST_SCREEN_OK.has(nav.screen)) { localStorage.removeItem(LAST_SCREEN_KEY); return; }
+      const v = { screen: nav.screen, at: nowIso() };
+      if (nav.screen === 'world') v.worldView = LAST_WORLD_VIEW_OK.has(worldState.view) ? worldState.view : 'main';
+      const sh = document.getElementById('shell');
+      if (sh && sh.scrollTop > 0) v.scroll = Math.round(sh.scrollTop);
+      localStorage.setItem(LAST_SCREEN_KEY, JSON.stringify(v));
+    } catch (e) {}
+  }
+  function restoreLastScreen() {
+    let v = null;
+    try { v = JSON.parse(localStorage.getItem(LAST_SCREEN_KEY) || 'null'); } catch (e) {}
+    if (!v || !LAST_SCREEN_OK.has(v.screen) || !v.at || Date.now() - new Date(v.at).getTime() > LAST_SCREEN_MAX_AGE_MS) { goHome(); return; }
+    try {
+      if (v.screen === 'list') openList();
+      else if (v.screen === 'records') openRecords();
+      else if (v.screen === 'training') openTraining();
+      else if (v.screen === 'meditation') openMeditation();
+      else if (v.screen === 'shoot') openShoot();
+      else if (v.screen === 'settings') openSettings();
+      else if (v.screen === 'world') { openWorld(); if (v.worldView && v.worldView !== 'main') { worldState.view = v.worldView; renderWorld(); } }
+      else { goHome(); return; }
+    } catch (e) { recordFeatureError('画面の復元', e); goHome(); return; }
+    if (v.scroll) { const sh = document.getElementById('shell'); if (sh) setTimeout(() => { sh.scrollTop = v.scroll; }, 60); }
   }
 
   // v9.6: a background sync used to repaint the screen mid-typing, which on
@@ -6630,6 +6672,56 @@
     canvas.toBlob((blob) => { walkSharePngBlob = blob; if (btn) btn.disabled = false; }, 'image/png');
   }
 
+  // v20.11 投稿の説明。名言は説明が無いと何を言っているのか伝わらないので、投稿文に1〜2文を添える。
+  // 言葉そのものは縮めない（一字変えると別の言葉になる）。縮めるのは説明の側だけ。
+  // 句点で切る。切れ目が見つからなければ読点、それも無ければそのまま切って「…」を付ける
+  function shortenAtPause(text, max) {
+    const t = String(text || '').replace(/\s+/g, ' ').trim();
+    if (t.length <= max) return t;
+    const head = t.slice(0, max);
+    const end = Math.max(head.lastIndexOf('。'), head.lastIndexOf('！'), head.lastIndexOf('？'));
+    if (end >= Math.floor(max * 0.4)) return head.slice(0, end + 1);
+    const comma = head.lastIndexOf('、');
+    if (comma >= Math.floor(max * 0.6)) return head.slice(0, comma) + '…';
+    return head + '…';
+  }
+  // 載せる説明。作ってあればそれ、無ければ自分の言葉（なければ朝の「なぜ今日これか」）を短くして使う
+  function notePostExplain(note, pick) {
+    if (!note) return '';
+    if (note.postLine) return note.postLine;
+    const base = note.myWords || (pick && pick.why ? String(pick.why) : '');
+    return base ? shortenAtPause(base, POST_EXPLAIN_MAX) : '';
+  }
+  // 言葉1枚につき一度だけ作り、言葉に保存する（次に同じ言葉を載せるときは呼ばない）
+  async function callPostLineApi(note) {
+    const model = getClaudeAutoLinkModel();
+    const system = [{ type: 'text', text:
+      'あなたは、毎朝1つの言葉を投稿する人に、その言葉へ添える短い説明を書く係です。\n' +
+      '読むのは、その言葉を初めて見る人です。\n' +
+      '- ' + POST_EXPLAIN_MAX + '字以内。1〜2文。\n' +
+      '- その言葉が何を言っているのかを、平たい言葉で書く。\n' +
+      '- 言い換えただけで終わらせない。なぜそれが効くのかを一言入れる。\n' +
+      '- 「この言葉は」「筆者は」などの前置きを書かない。\n' +
+      '- 投稿する人自身の話（今日の体調・出来事）は書かない。\n' +
+      '- 説明の文だけを返す。かぎ括弧・見出し・箇条書きを付けない。' }];
+    const user = JSON.stringify({ 言葉: note.text, 出典: note.source, 自分の言葉: note.myWords });
+    const json = await aiFetch({ model, max_tokens: 300, system, messages: [{ role: 'user', content: user }] });
+    recordApiUsage('postline', json.usage);
+    const out = (json.content || []).map((b) => b.text || '').join('').trim().replace(/^[「『]/, '').replace(/[」』]$/, '');
+    return shortenAtPause(out, POST_EXPLAIN_MAX + 20);
+  }
+  async function makeNotePostLine(note, opts) {
+    opts = opts || {};
+    if (!note) return '';
+    if (!opts.redo && note.postLine) return note.postLine;
+    const line = await callPostLineApi(note);
+    if (!line) return '';
+    note.postLine = line;
+    note.updatedAt = nowIso();
+    saveData(data);   // 月ファイル方式でも persistLocal が月を書いて同期に乗せる
+    return line;
+  }
+
   // v3.1: the morning share text, editable for the day it applies to.
   const WALK_SHARE_TEXT_EDIT_KEY = 'kotoba_walkShareTextEdit';
   // v3.3: leaves an empty paragraph between the day-count line and the quote
@@ -6643,7 +6735,8 @@
     const note = pick ? findNote(pick.id) : null;
     if (!note) return `${dayLine}\n\n`;
     const sourceDisplay = (note.source || '').startsWith('自分') ? '自分の言葉' : (note.source || '');
-    return `${dayLine}\n\n\n\n${getMorningQuoteHeading()}\n「${note.text}」\n— ${sourceDisplay}`;
+    const explain = notePostExplain(note, pick);   // v20.11
+    return `${dayLine}\n\n\n\n${getMorningQuoteHeading()}\n「${note.text}」\n— ${sourceDisplay}` + (explain ? '\n\n' + explain : '');
   }
   function getShareTextEdit(today) {
     try {
@@ -7087,6 +7180,30 @@
 
   document.getElementById('walkShareTextInput').addEventListener('input', (e) => {
     saveShareTextEdit(todayStr(), e.target.value);
+  });
+
+  // v20.11：投稿の説明を作る（読む人向けに1〜2文）。作った説明は言葉に残るので、次からは呼ばない
+  document.getElementById('btnPostExplain').addEventListener('click', async () => {
+    const btn = document.getElementById('btnPostExplain');
+    const st = document.getElementById('postExplainStatus');
+    const box = document.getElementById('walkShareTextInput');
+    const morningEntry = todaysMorningJournalEntry();
+    const pick = morningEntry && morningEntry.picks && morningEntry.picks[0];
+    const note = pick ? findNote(pick.id) : null;
+    if (!note) { st.textContent = '今日の言葉がまだ届いていません。'; return; }
+    if (isUsageOverBudget()) { st.textContent = '今月の上限に達しています（設定 → Claude API）。'; return; }
+    btn.disabled = true;
+    st.textContent = '説明を作っています…';
+    try {
+      const line = await makeNotePostLine(note, { redo: true });
+      if (!line) { st.textContent = '説明を作れませんでした。'; return; }
+      const cur = box.value.replace(/\s+$/, '');
+      box.value = cur.includes(line) ? cur : cur + '\n\n' + line;
+      saveShareTextEdit(todayStr(), box.value);
+      st.textContent = '説明を入れました（' + line.length + '字）。文はそのまま直せます。';
+    } catch (e) {
+      st.textContent = aiErrorText('説明を作れませんでした', e);
+    } finally { btn.disabled = false; }
   });
 
   // --- List ---------------------------------------------------------------
@@ -8810,6 +8927,8 @@
     scheduleTrainingSync();
   }
   function findTrainingDay(date) { return trainingData.days.find((d) => d.date === date) || null; }
+  // v20.11：その日に体を動かしたか。体重だけの日は数えない（種目が1つも無い日）。有酸素は種目なので数える
+  function trDidWork(day) { return !!day && day.parts.some((p) => p.exercises.length); }
 
   function mergeTrainingData(a, b) {
     const dA = new Map((a.days || []).map((d) => [d.id, d])), dB = new Map((b.days || []).map((d) => [d.id, d]));
@@ -9782,7 +9901,8 @@
     top.className = 'recordEntryTop';
     const label = document.createElement('span');
     label.className = 'recordEntryDate';
-    label.textContent = '筋トレ ・ ' + day.parts.map((p) => p.part).join('・') + (day.weight !== null ? ' ・ ' + fmtKg(day.weight) + 'kg' : '');
+    // v20.11：種目が無い日は「体重」。区切りが二重に出ていたのも直る
+    label.textContent = (trDidWork(day) ? '筋トレ ・ ' + day.parts.map((p) => p.part).join('・') : '体重') + (day.weight !== null ? ' ・ ' + fmtKg(day.weight) + 'kg' : '');
     top.appendChild(label);
     item.appendChild(top);
     day.parts.forEach((p) => p.exercises.forEach((e) => {
@@ -9827,14 +9947,16 @@
       item.appendChild(row);
     }));
     const editBtn = document.createElement('button');
-    const muscleBtn = document.createElement('button');
-    muscleBtn.type = 'button'; muscleBtn.className = 'linkLikeBtn'; muscleBtn.textContent = '筋肉 (3D)';
-    muscleBtn.addEventListener('click', () => openMuscleView(day.date));
-    item.appendChild(muscleBtn);
-    const weekBtn = document.createElement('button');
-    weekBtn.type = 'button'; weekBtn.className = 'linkLikeBtn'; weekBtn.textContent = 'この週の筋肉';
-    weekBtn.addEventListener('click', () => openMuscleView(day.date, 'week'));
-    item.appendChild(weekBtn);
+    if (trDidWork(day)) {   // v20.11：体重だけの日には出さない
+      const muscleBtn = document.createElement('button');
+      muscleBtn.type = 'button'; muscleBtn.className = 'linkLikeBtn'; muscleBtn.textContent = '筋肉 (3D)';
+      muscleBtn.addEventListener('click', () => openMuscleView(day.date));
+      item.appendChild(muscleBtn);
+      const weekBtn = document.createElement('button');
+      weekBtn.type = 'button'; weekBtn.className = 'linkLikeBtn'; weekBtn.textContent = 'この週の筋肉';
+      weekBtn.addEventListener('click', () => openMuscleView(day.date, 'week'));
+      item.appendChild(weekBtn);
+    }
     editBtn.type = 'button'; editBtn.className = 'linkLikeBtn'; editBtn.textContent = '開く';
     editBtn.addEventListener('click', () => openTraining(day.date));
     item.appendChild(editBtn);
@@ -10401,7 +10523,8 @@
       const hasDraw = data.journal.some((j) => j.kind === 'draw' && j.date === dateStr);
       const hasQuestion = data.journal.some((j) => j.kind === 'question' && j.date === dateStr);
       const trainingDay = findTrainingDay(dateStr);
-      const hasTraining = !!trainingDay;
+      const hasTraining = trDidWork(trainingDay);   // v20.11：体重だけの日は筋トレにしない
+      const weightOnly = !hasTraining && !!trainingDay && trainingDay.weight !== null;
       const hasMeditation = medDateSet.has(dateStr);
       const walked = walkedSet.has(dateStr);
 
@@ -10430,6 +10553,7 @@
       if (hasDraw) { const d = document.createElement('span'); d.className = 'calDot dotDraw'; dots.appendChild(d); }
       if (hasQuestion) { const d = document.createElement('span'); d.className = 'calDot dotQuestion'; dots.appendChild(d); }
       if (hasTraining) { const d = document.createElement('span'); d.className = 'calDot dotTraining'; dots.appendChild(d); }
+      if (weightOnly) { const d = document.createElement('span'); d.className = 'calDot dotWeight'; dots.appendChild(d); }
       if (hasMeditation) { const d = document.createElement('span'); d.className = 'calDot dotMeditation'; dots.appendChild(d); }
       el.appendChild(dots);
       if (calShowParts && trainingDay && trainingDay.parts.length) {
@@ -10552,7 +10676,7 @@
   function dayPositionLine(dateStr) {
     const walk = walkData.walkedDates.filter((d) => d <= dateStr).length;
     const notes = data.notes.filter((n) => { const d = localDateOfIso(n.createdAt); return d && d <= dateStr; }).length;
-    const tr = trainingData.days.filter((d) => d.date <= dateStr).length;
+    const tr = trainingData.days.filter((d) => d.date <= dateStr && trDidWork(d)).length;   // v20.11
     const medMin = medSum(medData.sessions.filter((x) => x.date <= dateStr));
     const parts = [`一万日の ${walk} 日目 / 10000`, `言葉 ${notes} 枚`, `筋トレ ${tr} 日`, `瞑想 ${medMin >= 60 ? (medMin / 60).toFixed(1) + ' 時間' : medMin + ' 分'}`];
     return parts.join(' ・ ') + (dateStr < todayStr() ? '（当時）' : '');
@@ -10959,7 +11083,7 @@
     const monthQuestions = data.journal.filter((j) => j.kind === 'question' && inMonth(j.date));
     const usedQuestions = monthQuestions.filter((j) => j.used).length;
     document.getElementById('summaryQuestionCount').textContent = `${monthQuestions.length}件 / 使った ${usedQuestions}件`;
-    document.getElementById('summaryTrainingDays').textContent = `${trainingData.days.filter((d) => inMonth(d.date)).length}日`;
+    document.getElementById('summaryTrainingDays').textContent = `${trainingData.days.filter((d) => inMonth(d.date) && trDidWork(d)).length}日`;   // v20.11
     { const ms = medData.sessions.filter((x) => inMonth(x.date)); document.getElementById('summaryMeditation').textContent = ms.length ? `${new Set(ms.map((x) => x.date)).size}日 ／ ${ms.length}回 ${medSum(ms)}分` : '0日'; }
     {
       const read = worldLiveEvents().filter((e) => inMonth(e.readDate));
@@ -22577,8 +22701,8 @@
     if (nav.screen === 'editor') updateSaveButtonState();
   }
   document.addEventListener('input', (e) => { if (e.target && e.target.closest && e.target.closest('#app')) scheduleInputDraft(); }, true);
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') captureInputDraftNow(); });
-  window.addEventListener('pagehide', () => captureInputDraftNow());
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { captureInputDraftNow(); rememberScreen(); } });
+  window.addEventListener('pagehide', () => { captureInputDraftNow(); rememberScreen(); });
   // settings: any 保存 press clears, then the still-unsaved fields are captured again
   document.getElementById('screen-settings').addEventListener('click', (e) => { if (e.target.closest('button')) { clearInputDraft(); setTimeout(captureInputDraftNow, 100); } });
 
@@ -22587,7 +22711,7 @@
   journalBoot();
   meditationBoot();
   worldBoot();
-  goHome();
+  restoreLastScreen();   // v20.11：控えが4時間以内なら、その画面から始める
   restoreInputDraft();
   medResumeTimer();
   syncAllNow();

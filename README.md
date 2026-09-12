@@ -166,6 +166,7 @@ IndexedDB が使えない環境では同じキーが localStorage（`kotoba_kv_`
   keep?: 1（「残したい」の印。普通は項目なし）, lastViewedAt?（一覧の「眠っている順」から詳細を開いた最終日時。眠り順の計算にだけ使う）,
   context?: [{text, at}]（周辺のメモ。AI には渡さない）,
   links: [{id, kind: 'auto'|'manual', relation?: 'similar'|'opposite'|'supplement', reason?}], rejectedLinks: [],
+  postLine?（v20.11。投稿に載せる短い説明。読む人向けに60字前後で1回だけ作り、言葉に持たせる）,
   textHistory?: [], myWordsHistory?: [], video?: {batchId, title, questionId, filmedAt}, autoLinkedAt, createdAt, updatedAt }
 ```
 
@@ -467,6 +468,9 @@ v18 A-2 でタブを無くし、いまは既定の画面の「お金の一覧」
 | 撮る（デッキ・カード・撮影表示） | `SHOOT_SAVE_MS`（自動保存 0.4 秒）, `SHOOT_CARD_LABEL`, `SHOOT_BELIEF_LABEL`, `shootSafeUrl`（出典を開くのは http/https だけ）, `normalizeDeckCard` |
 | 振り返る（記録タブの入り口） | `LOOKBACK_SEARCH_DAYS`（記録のない日から近い日を探す範囲、400 日）, `DAY_NOTES_SHOWN`（その日に追加した言葉の表示枚数、5）, `dayPositionLine`（「一万日の N 日目 / 10000 ・ 言葉 ・ 筋トレ ・ 瞑想」の行）, `dayHeadlineNote`（その日の言葉：★ → 朝の最初の言葉） |
 | 世界（プロンプトの長さ・API の数字・決算・地層・必ず見るもの） | `WORLD_PROMPT_WARN_LEN`（23,000字。超えたら取り込む画面に知らせるだけで、切らない）, `WORLD_FIG_*`（段階B。米財務省の数字を貯める）, `WORLD_SEC_CORPS`（段階C。5社）, `WORLD_DEFAULT_STRATA` / `WORLD_MIX_STRATA` / `WORLD_DFA_SEED`（地層の既定と DFA の過去の値）, `WORLD_MONEY_SOURCES`（必ず見るもの）。仕様書は `docs/sekai/spec/` |
+| 投稿の説明（v20.11） | `POST_EXPLAIN_MAX`（60字）, `note.postLine`（言葉に持たせる説明）, `shortenAtPause`（句点→読点→そのまま切る）, `callPostLineApi` / `makeNotePostLine`（安いモデルで1枚1回だけ・費用の種類は `postline`）, `notePostExplain`（説明が無ければ自分の言葉を短くして使う。費用0）, `computeDefaultShareText`（投稿文の組み立て）。**名言そのものは縮めない** |
+| 画面の復元（v20.11） | `LAST_SCREEN_KEY`, `LAST_SCREEN_MAX_AGE_MS`（4時間。これより古ければ朝から）, `LAST_SCREEN_OK` / `LAST_WORLD_VIEW_OK`, `rememberScreen`（`showScreen` と裏に回るときに控える） / `restoreLastScreen`（起動時。`goHome` の代わり）。戻ってくると `checkForUpdate` が読み込み直すことがあり、iOS は裏のページを捨てるので、朝に落ちていた |
+| 筋トレの「やった日」（v20.11） | `trDidWork(day)`（種目が1つも無い日＝体重だけの日は筋トレに数えない。有酸素は種目なので数える）。カレンダーの点・「筋トレ N 日」（`dayPositionLine`）・月の筋トレ日数・その日のカードがこれを通る。体重だけの日は灰色の点（`.calDot.dotWeight`）とカード「体重 ・ 68.5kg」 |
 | 入力の退避（未保存の下書き） | `INPUT_DRAFT_KEY`, `captureInputDraftNow`, `restoreInputDraft`（対象外にしたい欄は `INPUT_DRAFT_SKIP`、画面ごと外すのは `INPUT_DRAFT_SKIP_SCREENS`）, `INPUT_DRAFT_NAV_MAX_AGE_MS`（これより古い下書きは起動時にその画面へ飛ばない。開いたときに入るだけ） |
 
 ### 4.2 直して反映するまで
