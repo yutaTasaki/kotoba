@@ -1104,6 +1104,22 @@
   .worldStratumLine .wsStale { color: var(--danger); }
   .homeStratumLine { padding: 0 0 10px; margin-top: -6px; }
   /* v19.4 段階5 */
+  /* v20.22 第2段A：世界タブの予告への入口。期限が来ているときだけ色を変える */
+  #btnWorldForecast { display: block; width: 100%; text-align: left; margin: 0 0 10px; }
+  #btnWorldForecast.hasDue { color: var(--accent); font-weight: 700; }
+  /* v20.22 第2段A：予告の画面。根拠はボタンより上に置く（押す前に読ませる） */
+  .wfRow { border-top: 1px solid var(--border); padding: 10px 0; }
+  .wfRow.done { opacity: 0.75; }
+  .wfHead { font-size: 14px; line-height: 1.6; }
+  .wfDue { color: var(--text-faint); font-size: 11px; margin-right: 6px; }
+  .wfSign, .wfGuess, .wfNote, .wfEvidence, .wfResult { font-size: 12px; line-height: 1.7; margin-top: 2px; }
+  .wfSign { color: var(--text-dim); }
+  .wfGuess { color: var(--text-dim); }
+  .wfNote { color: var(--text); border-left: 2px dashed var(--guess); padding-left: 8px; }
+  .wfEvidence { color: var(--text-faint); }
+  .wfResult { color: var(--accent); }
+  .wfBtns { margin-top: 6px; }
+  .wfSection { margin: 14px 0 0; }
   /* v20.21 予告 第1段：待っている予告。第1段では押せない（答え合わせは第2段） */
   .homeForecastRow { margin: 10px 0 0; }
   .homeForecastRow .hfHead { font-size: 12px; color: var(--text-dim); }
@@ -2345,6 +2361,9 @@
         <button type="button" id="btnWorldDropStale" class="tagFilterBtn">まとめて捨てる</button>
       </div>
 
+      <!-- v20.22 第2段A：予告への入口。0本でも出す（出さないと最初の1本が入るまで辿り着けない） -->
+      <button type="button" id="btnWorldForecast" class="linkLikeBtn">予告 ▸</button>
+
       <!-- v20.5 M5：直近7日の小さな地図。押すと大きな地図（90日） -->
       <div id="worldMiniMap" class="worldMapBox worldMiniMap" role="button" aria-label="直近7日のお金の流れ。押すと大きな地図"></div>
 
@@ -2373,6 +2392,19 @@
       <p class="fieldNote" id="worldMapUsdNote" hidden></p>
       <p class="fieldNote" id="worldMapStatus"></p>
       <div id="worldMapUnknown"></div>
+    </div>
+
+    <!-- v20.22 第2段A：予告の画面。期限が来たものを押して、当たり／外れ／確かめられない を確定する -->
+    <div class="editorBody" id="worldForecastView" hidden>
+      <div class="worldSectionHead">
+        <h3 style="margin:0;">予告</h3>
+      </div>
+      <p class="fieldNote" id="worldFcRate"></p>
+      <p class="fieldNote" id="worldFcFoldHint" hidden></p>
+      <div id="worldFcList"></div>
+      <div class="field">
+        <button type="button" id="btnWorldFcBack" class="secondaryBtn">世界に戻る</button>
+      </div>
     </div>
 
     <!-- v20.4 M4：国の網。点＝主体（と札に名前だけ出てきた相手）、矢印＝お金の動き -->
@@ -2958,7 +2990,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.21';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.22';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -15639,10 +15671,30 @@
   const WORLD_FC_STATES = ['waiting', 'hit', 'miss', 'unverifiable'];
   const WORLD_FC_VERBS  = ['buy', 'stop', 'lend', 'move'];
   const WORLD_FC_VERB_LABEL = { buy: '買う／売る', stop: '出す／止める', lend: '貸す／借りる', move: '物や人を動かす' };
+  const WORLD_FC_STATE_LABEL = { waiting: 'まだ', hit: '当たり', miss: '外れ', unverifiable: '確かめられない' };
   const WORLD_FC_PER_READ = 5;    // 読む回1回につき、入れる予告の上限
   const WORLD_FC_HOME_MAX = 5;    // ホームに並べる本数（超えたら「ほか N本」）
   const WORLD_FC_WHAT_MAX = 40;
   const WORLD_FC_SIGN_MAX = 60;
+  // v20.22 第2段A：答え合わせ
+  const WORLD_FC_VERIFY_MAX = 5;      // 1回の朝に渡す期限切れの本数
+  const WORLD_FC_NOTE_MAX   = 80;     // 生成が書く根拠1行
+  const WORLD_FC_UNV_FOLD   = 3;      // 「確かめられない」がこの回数で畳む
+  const WORLD_FC_FOLD_HINT  = 5;      // 畳んだ本数がこれを超えたら、印の立て方を見直す1行を出す
+  const WORLD_FC_RATE_MIN   = 10;     // 当たり＋外れがこの件数に届くまで、割合を出さず件数だけ
+  // 数字で確かめられる地層（実測：政府債務総額403点・DFA 上位0.1% 147点・下半分147点）。
+  // 残り17系列は1〜3点か0点なので、印に使うと照合できない
+  const WORLD_FC_THICK_STRATA = ['st_us_debt_total', 'st_us_wealth_top01', 'st_us_wealth_bottom50'];
+  // v20.22 第2段A：判定に使った数字。4つ組で残す。
+  // 米国の政府債務は同じ日付の値が後から訂正される（worldAddLevel は同じ日の API の値だけ
+  // 新しい方で置き換える）。基準日だけでは後から見た値が変わっているので、
+  // 「そのとき見えていた値」を写して初めて再現できる
+  function normalizeWorldFcEvidence(e) {
+    if (!e || typeof e !== 'object') return null;
+    const stratumId = worldStr(e.stratumId, 40), value = worldStr(e.value, 40);
+    if (!stratumId || !value || !isDateStr(e.at)) return null;
+    return { stratumId, at: e.at, value, readAt: typeof e.readAt === 'string' ? e.readAt : '' };
+  }
   function normalizeWorldForecast(f) {
     if (!f || typeof f !== 'object') return null;
     const actor = worldStr(f.actor, 80), what = worldStr(f.what, WORLD_FC_WHAT_MAX);
@@ -15662,6 +15714,14 @@
       state: WORLD_FC_STATES.includes(f.state) ? f.state : 'waiting',
       stateNote: worldStr(f.stateNote, 60),
       stateAt: typeof f.stateAt === 'string' ? f.stateAt : '',
+      // v20.22 第2段A：生成が持ってきた材料。人が押す state とは別に持つ
+      // （混ぜると「これは誰が決めたのか」が後から辿れなくなる）
+      verdictSuggest: WORLD_FC_STATES.includes(f.verdictSuggest) && f.verdictSuggest !== 'waiting' ? f.verdictSuggest : '',
+      verdictNote: worldStr(f.verdictNote, WORLD_FC_NOTE_MAX),
+      verdictAt: typeof f.verdictAt === 'string' ? f.verdictAt : '',
+      evidence: normalizeWorldFcEvidence(f.evidence),
+      unverifiableCount: Math.max(0, Math.floor(Number(f.unverifiableCount) || 0)),
+      foldedAt: typeof f.foldedAt === 'string' ? f.foldedAt : '',
       createdAt: f.createdAt || nowIso(),
       updatedAt: f.updatedAt || f.createdAt || nowIso(),
     };
@@ -17422,6 +17482,9 @@
       '- confidenceWhy：confidence が' + WORLD_CONF_WHY_BELOW + '以下なら、理由を1行。' + (WORLD_CONF_WHY_BELOW + 1) + '以上なら空。\n\n' +
       '■ 並べ方\n' +
       '重要だと思う順に並べる。上から読まれる。\n\n' +
+      // v20.22 第2段A：期限が来た予告の答え合わせ。0本のときは何も出ない。
+      // 既知の概念・アクターの羅列より前に置く（羅列は末尾に置く決まりで、規則を押しのけさせない）
+      worldForecastVerifySection() +
       '■ 出力形式\n' +
       (seed ? '{"seed":"' + seed[0] + '",\n"events":[{\n' : '{"events":[{\n') +   // v20.2：初期投入の印
       '  "fact":"...",\n' +
@@ -17446,6 +17509,14 @@
         : '') + '}\n\n' +
       (boot ? '' : 'kind が "relation" のときの premise：\n' +
         '  {"kind":"relation","a":"既知の概念1","b":"既知の概念2","line":"..."}\n') +
+      // v20.22 第2段A：期限が来た予告があるときだけ、答え合わせの形を示す
+      (worldOverdueForecasts().length
+        ? '\n答え合わせ（上の「期限が来た予告」に1本ずつ）：\n' +
+          '"verify":[{"id":"fc_20260912_1","verdict":"hit","note":"そう判断した根拠を1行",\n' +
+          '           "evidence":{"stratumId":"st_us_debt_total","at":"2026-11-30","value":"38.9"}}]\n' +
+          '  verdict は hit（当たり）／miss（外れ）／unverifiable（確かめられない）のどれか。\n' +
+          '  evidence は数字で確かめられたときだけ。書けないなら省く（省いたら unverifiable）。\n\n'
+        : '') +
       'どの地層にも乗らないとき： "strata": []\n' +
       '動いたものが無い・書けないとき： "flow": null\n' +
       '前の動きの続きでないとき： "after": null\n' +
@@ -17520,9 +17591,38 @@
     let n = 1; while (taken.has('fc_' + t + '_' + n)) n++;
     return 'fc_' + t + '_' + n;
   }
-  // 待っている予告（期限の近い順）。第1段では state は 'waiting' しか入らない
+  // 待っている予告（期限の近い順）。畳んだものは外す
   function worldWaitingForecasts() {
-    return worldForecasts().filter((f) => f.state === 'waiting').sort((a, b) => (a.due > b.due ? 1 : a.due < b.due ? -1 : 0));
+    return worldForecasts().filter((f) => f.state === 'waiting' && !f.foldedAt).sort((a, b) => (a.due > b.due ? 1 : a.due < b.due ? -1 : 0));
+  }
+  // v20.22 第2段A：期限が来たもの（古い順）。押せるのはこれだけ
+  function worldOverdueForecasts(today) {
+    const t = today || todayStr();
+    return worldWaitingForecasts().filter((f) => f.due <= t);
+  }
+  function worldFoldedForecasts() { return worldForecasts().filter((f) => f.foldedAt); }
+  // 当たり率。分母は「当たり＋外れ」だけ（確かめられない・まだ・畳んだものは入れない）
+  function worldForecastRate() {
+    const all = worldForecasts().filter((f) => !f.foldedAt);
+    const hit = all.filter((f) => f.state === 'hit').length;
+    const miss = all.filter((f) => f.state === 'miss').length;
+    const unv = all.filter((f) => f.state === 'unverifiable').length;
+    const waiting = all.filter((f) => f.state === 'waiting').length;
+    const n = hit + miss;
+    return { hit, miss, unv, waiting, n, folded: worldFoldedForecasts().length,
+      pct: n >= WORLD_FC_RATE_MIN ? Math.round((hit / n) * 100) : null };
+  }
+  // v20.22 第2段A：朝のプロンプトに足す「期限が来た予告」の節。
+  // 0本のときは空文字を返す（「ありません」の節を出さない。長くなるだけ）
+  function worldForecastVerifySection() {
+    const list = worldOverdueForecasts().slice(0, WORLD_FC_VERIFY_MAX);
+    if (!list.length) return '';
+    return '■ 期限が来た予告（答え合わせ）\n' +
+      'この' + list.length + '本について、当たり・外れ・確かめられない のどれかと、根拠を1行で返してください。\n' +
+      '- 確かめる数字や公表が見つからないときは unverifiable。**「まだ」に倒さない**。\n' +
+      '- 数字で確かめられたときだけ evidence を書く（書けないなら省く）。\n' +
+      list.map((f) => '[' + f.id + ']　' + f.actor + 'が「' + f.what + '」\n' +
+        '  期限 ' + f.due + ' ／ 当たりの印：' + (f.sign || '（印なし）')).join('\n') + '\n\n';
   }
   // 同じ主体・同じ動詞・同じ期限は入れない（読む回を2回流したときの二重を防ぐ）
   function worldForecastDup(f) {
@@ -17975,6 +18075,11 @@
       '  - what：何をどれくらいするか。数字を入れて' + WORLD_FC_WHAT_MAX + '字以内。**換算しない・合計しない**。\n' +
       '  - due：**必ず YYYY-MM-DD**。「9月中」「近いうち」は書かない（書けないなら、その予告を出さない）。3か月以内を目安。\n' +
       '  - sign：何が見えたら当たりか。**上の札に出ている出典の名前から選ぶ**（出典は開けないので、知らない出典を作らない）。\n' +
+      // v20.22 第2段A：照合できない印が立ち続けるのを防ぐ。ただし公表を印にするのは有効なので禁じない
+      '    - 数字で確かめられるのは、いまのところ次の3つだけ：\n' +
+      '      米国の政府債務総額／米国 上位0.1%の富の割合／米国 下半分の富の割合。\n' +
+      '    - それ以外は「公表そのもの」を印にしてよい（「日本銀行の金融市場調節の公表」など）。\n' +
+      '      公表を印にするのは有効。無理に数字の印を作らない。\n' +
       '  - pledgeOnly：「約束する」だけで実体が動かない予告なら true。実際に金や物が動くはずなら false。\n' +
       '- confidence：**下げるときだけ**書く。読んだ結果「これは確かでない」と分かったとき。\n' +
       '  - **上げてはいけません**（出典を開いていないので、確かさを上げる根拠がありません）。\n' +
@@ -18319,6 +18424,31 @@
     });
     await ensureWorldMonths([...months]);
 
+    // v20.22 第2段A：答え合わせの材料を入れる。**state は絶対に触らない**。
+    // ここで state を動かすと、見た目は「人が押している」のに中身は機械判定になる。
+    // 入れるのは生成の見立て・根拠・数字・判定日時だけで、結果は人が押して初めて変わる
+    const vIn = Array.isArray(parsed && parsed.verify) ? parsed.verify : [];
+    const vOut = { added: 0, unknown: 0, already: 0, badVerdict: 0 };
+    if (vIn.length) {
+      const iso = nowIso();
+      vIn.forEach((v) => {
+        if (!v || typeof v !== 'object') return;
+        const f = worldForecasts().find((x) => x.id === worldStr(v.id, 40));
+        if (!f) { vOut.unknown++; return; }
+        if (f.state !== 'waiting' || f.foldedAt) { vOut.already++; return; }   // 既に押したものは上書きしない
+        const verdict = ['hit', 'miss', 'unverifiable'].includes(v.verdict) ? v.verdict : '';
+        if (!verdict) { vOut.badVerdict++; return; }
+        f.verdictSuggest = verdict;
+        f.verdictNote = worldStr(v.note, WORLD_FC_NOTE_MAX);
+        f.verdictAt = iso;
+        // 読み取った日時は端末が入れる（生成に書かせると、生成が名乗った時刻になる）
+        const ev = normalizeWorldFcEvidence(v.evidence);
+        f.evidence = ev ? { ...ev, readAt: iso } : null;
+        f.updatedAt = iso;
+        vOut.added++;
+      });
+      if (vOut.added) worldSaveForecasts();
+    }
     const taken = new Set(worldEvents.map((e) => e.id));
     wd.tombs.forEach((mm) => mm.forEach((_, id) => taken.add(id)));
     const batchId = 'wb_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -18466,6 +18596,7 @@
       }));
     }
     return {
+      verify: vOut,   // v20.22 第2段A
       added: added.length, rejected, old, forks, leans, droppedForks, onStrata, droppedStrata, unknownConcepts,
       createdConcepts, createdTerms, createdActors, batchId, linked, partnerIds: [...partnerIds],
       addedIds: added.map((e) => e.id),
@@ -19535,6 +19666,7 @@
     document.getElementById('worldTidyView').hidden = worldState.view !== 'tidy';
     document.getElementById('worldMapView').hidden = worldState.view !== 'map';   // v20
     document.getElementById('worldNetView').hidden = worldState.view !== 'net';   // v20.4
+    document.getElementById('worldForecastView').hidden = worldState.view !== 'forecast';   // v20.22 第2段A
     if (worldState.view === 'ask') renderWorldAsk();
     else if (worldState.view === 'main') renderWorldMain();
     else if (worldState.view === 'concept') renderWorldConcept();
@@ -19544,6 +19676,7 @@
     else if (worldState.view === 'tidy') renderWorldTidy();
     else if (worldState.view === 'map') renderWorldMap();   // v20
     else if (worldState.view === 'net') renderWorldNet();   // v20.4
+    else if (worldState.view === 'forecast') renderWorldForecast();   // v20.22 第2段A
     else renderWorldImport();
   }
   // v18 A-1: 今日の単位は「札」ではなく「主体」。readDate はそのまま残す
@@ -19625,6 +19758,18 @@
     const bar = document.getElementById('worldStaleBar');
     bar.hidden = !stale.length;
     if (stale.length) document.getElementById('worldStaleText').textContent = '古い未読が ' + stale.length + ' 件あります';
+
+    // v20.22 第2段A：予告への入口。期限が来たものは急ぐので先に言う。
+    // 0本でも入口は出す（出さないと、最初の1本が入るまで予告の画面に辿り着けない）
+    {
+      const btn = document.getElementById('btnWorldForecast');
+      const over = worldOverdueForecasts().length;
+      const wait = worldWaitingForecasts().length;
+      btn.textContent = over
+        ? '予告 ・ 期限が来たもの ' + over + '本 ▸'
+        : (wait ? '予告 ・ 待っている ' + wait + '本 ▸' : '予告 ▸');
+      btn.classList.toggle('hasDue', !!over);
+    }
 
     // 今日の地層。出来事があってもなくても出る（変化がないものを毎日見せる）
     paintStratumLine(document.getElementById('worldStratumToday'), worldTodayStratum());
@@ -21372,6 +21517,120 @@
     showScreen('world');
     renderWorld();
   }
+  // ---- v20.22 第2段A：予告の画面 ---------------------------------------------
+  function worldOpenForecast() {
+    worldState.view = 'forecast';
+    showScreen('world');
+    renderWorld();
+  }
+  // 押したときだけ結果が変わる（取り込みでは変わらない）。
+  // 押し直せるので「取り消し」は作らない。「確かめられない」は3回で畳む
+  function worldPressForecast(f, verdict) {
+    f.state = verdict;
+    f.stateAt = nowIso();
+    f.updatedAt = f.stateAt;
+    if (verdict === 'unverifiable') {
+      f.unverifiableCount = (f.unverifiableCount || 0) + 1;
+      if (f.unverifiableCount >= WORLD_FC_UNV_FOLD) f.foldedAt = f.stateAt;
+    } else {
+      f.foldedAt = '';   // 押し直して別の結果にしたら、畳みを解く
+    }
+    worldSaveForecasts();
+    renderWorldForecast();
+  }
+  function worldFcRowEl(f, pressable) {
+    const box = document.createElement('div');
+    box.className = 'wfRow' + (f.state !== 'waiting' ? ' done' : '');
+    const head = document.createElement('div');
+    head.className = 'wfHead';
+    const due = document.createElement('span');
+    due.className = 'wfDue';
+    due.textContent = f.due.slice(5).replace('-', '/') + 'まで';
+    head.appendChild(due);
+    head.appendChild(document.createTextNode(f.actor + 'が ' + f.what));
+    box.appendChild(head);
+    if (f.sign) {
+      const s = document.createElement('div'); s.className = 'wfSign';
+      s.textContent = '当たりの印：' + f.sign;
+      box.appendChild(s);
+    }
+    // 生成の見立てと根拠は、押すボタンより「上」に置く（押す前に必ず読ませる）
+    if (f.verdictSuggest) {
+      const g = document.createElement('div'); g.className = 'wfGuess';
+      g.textContent = '生成の見立て：' + WORLD_FC_STATE_LABEL[f.verdictSuggest];
+      box.appendChild(g);
+    }
+    if (f.verdictNote) {
+      const n = document.createElement('div'); n.className = 'wfNote';
+      n.textContent = f.verdictNote;
+      box.appendChild(n);
+    }
+    if (f.evidence) {
+      const e = document.createElement('div'); e.className = 'wfEvidence';
+      const st = worldStratumById(f.evidence.stratumId);
+      e.textContent = '使った数字：' + (st ? st.name : f.evidence.stratumId) + '　' + f.evidence.value + '（' + f.evidence.at + '時点）';
+      box.appendChild(e);
+    }
+    if (f.state !== 'waiting') {
+      const r = document.createElement('div'); r.className = 'wfResult';
+      r.textContent = '結果：' + WORLD_FC_STATE_LABEL[f.state]
+        + (f.unverifiableCount ? '（確かめられない ' + f.unverifiableCount + '回目）' : '');
+      box.appendChild(r);
+    }
+    // 期限前は押せない（押しても何も起きないボタンを作らない）
+    if (pressable) {
+      const row = document.createElement('div');
+      row.className = 'tagFilterRow wfBtns';
+      [['hit', '当たり'], ['miss', '外れ'], ['unverifiable', '確かめられない']].forEach(([k, label]) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'tagFilterBtn' + (f.state === k ? ' selected' : '');
+        b.textContent = label;
+        b.addEventListener('click', () => worldPressForecast(f, k));
+        row.appendChild(b);
+      });
+      box.appendChild(row);
+    }
+    return box;
+  }
+  function renderWorldForecast() {
+    const rate = worldForecastRate();
+    const rateEl = document.getElementById('worldFcRate');
+    rateEl.textContent = rate.pct === null
+      ? '当たり ' + rate.hit + '・外れ ' + rate.miss + '・確かめられない ' + rate.unv + '・まだ ' + rate.waiting
+        + '（当たりと外れが' + WORLD_FC_RATE_MIN + '件そろうまで、割合は出しません）'
+      : '当たり ' + rate.hit + '/' + rate.n + '（' + rate.pct + '%）　外れ ' + rate.miss
+        + '・確かめられない ' + rate.unv + '・まだ ' + rate.waiting;
+    const hint = document.getElementById('worldFcFoldHint');
+    hint.hidden = rate.folded <= WORLD_FC_FOLD_HINT;
+    if (!hint.hidden) hint.textContent = '確かめられなかった予告が' + rate.folded + '本あります。印の立て方を見直す時期です。';
+
+    const box = document.getElementById('worldFcList');
+    box.innerHTML = '';
+    const today = todayStr();
+    const overdue = worldOverdueForecasts(today);
+    const waiting = worldWaitingForecasts().filter((f) => f.due > today);
+    const done = worldForecasts().filter((f) => f.state !== 'waiting' && !f.foldedAt);
+    const folded = worldFoldedForecasts();
+    const section = (label, list, pressable) => {
+      if (!list.length) return;
+      const h = document.createElement('p');
+      h.className = 'fieldNote wfSection';
+      h.textContent = label + ' ' + list.length + '本';
+      box.appendChild(h);
+      list.forEach((f) => box.appendChild(worldFcRowEl(f, pressable)));
+    };
+    section('期限が来た（押して確定してください）', overdue, true);
+    section('待っている', waiting, false);
+    section('押したもの', done, true);     // 押し直せる
+    section('畳んだもの', folded, false);
+    if (!overdue.length && !waiting.length && !done.length && !folded.length) {
+      const p = document.createElement('p');
+      p.className = 'emptyMsg';
+      p.textContent = 'まだ予告がありません。世界タブの「取り込む」で読む回を流すと、思惑から予告が入ります。';
+      box.appendChild(p);
+    }
+  }
   // v20.4 M4：国の点を押したら、その国の網へ（前の「その国が絡む札の一覧」は網の下の1行に残す）
   function worldOpenCountryNet(c) {
     worldState.netCountry = c;
@@ -22562,6 +22821,9 @@
     const toNet = worldState.cards && worldState.cards.from === 'net';   // v20.4
     worldState.cards = null; worldState.view = toNet ? 'net' : 'main'; renderWorld();
   });
+  // v20.22 第2段A：予告の画面
+  document.getElementById('btnWorldForecast').addEventListener('click', worldOpenForecast);
+  document.getElementById('btnWorldFcBack').addEventListener('click', () => { worldState.view = 'main'; renderWorld(); });
   // v20.4 M4：網の画面
   document.getElementById('btnWorldNetBack').addEventListener('click', () => { worldState.view = 'map'; renderWorld(); });
   document.getElementById('btnWorldNetList').addEventListener('click', () => {
@@ -23235,6 +23497,14 @@
     if (drops.length) msg += '　' + drops.join('／') + ' を落としました。';
     if (res.createdConcepts.length) msg += '　新しい概念 ' + res.createdConcepts.length + '件。';
     if (res.createdTerms.length) msg += '　新しい用語 ' + res.createdTerms.length + '件。';
+    // v20.22 第2段A：答え合わせの材料。結果はまだ変わっていない（押して確定する）
+    if (res.verify) {
+      const v = res.verify;
+      if (v.added) msg += '　答え合わせの候補が' + v.added + '本つきました（世界タブの「予告」で押して確定してください）。';
+      if (v.unknown) msg += '　※ 端末に無い予告' + v.unknown + '本は無視しました。';
+      if (v.already) msg += '　※ すでに押してある予告' + v.already + '本は変えていません。';
+      if (v.badVerdict) msg += '　※ 当たり／外れ／確かめられない のどれでもない判定' + v.badVerdict + '本を落としました。';
+    }
     if (res.added) msg += '　地層に乗った ' + res.onStrata + '件。';   // v19.5（v20.18：分かれ目は読む回へ移した）
     if (res.added) msg += '　動かした側つき ' + res.withActors + '件／全 ' + res.added + '件。思惑と分かれ目は、このあと「読む」で書きます。';
     // v19 段階3
