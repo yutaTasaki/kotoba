@@ -1104,6 +1104,9 @@
   .worldStratumLine .wsStale { color: var(--danger); }
   .homeStratumLine { padding: 0 0 10px; margin-top: -6px; }
   /* v19.4 段階5 */
+  /* v20.23 B-1：朝タブの予告の1行。押すと世界タブの予告の画面へ */
+  .homeForecastBtn { display: block; width: 100%; text-align: left; font-size: 13px; }
+  .homeForecastBtn.hasDue { color: var(--accent); font-weight: 700; }
   /* v20.22 第2段A：世界タブの予告への入口。期限が来ているときだけ色を変える */
   #btnWorldForecast { display: block; width: 100%; text-align: left; margin: 0 0 10px; }
   #btnWorldForecast.hasDue { color: var(--accent); font-weight: 700; }
@@ -2990,7 +2993,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.22';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.23';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -14808,6 +14811,15 @@
   const WORLD_READ_MAX     = 20;   // 一度に読ませる札の数
   const WORLD_READ_NUDGE   = 8;    // これだけ溜まったら朝に1行出す（毎日出すと義務になる）
   const WORLD_READ_LINKED  = 2;    // 1枚に添えるつながる札の数（id と fact だけ）
+  // v20.23 B-1：読む枠20枚の配分。**調整するのはこの2つの数字だけでよい。**
+  // 実測（2026-09-12）：札115枚・未読75枚・浅い読み20枚。未読だけで枠が埋まり、
+  // v20.18 で作った「朝の浅い読みを書き直す」が一度も動いていなかった。
+  // 種類ごとに枠を確保して、どれも必ず回るようにする。
+  // 足りない種類の枠は他へ回すので、合計は必ず WORLD_READ_MAX に収まる
+  const WORLD_READ_QUOTA = {
+    miss: 3,     // 予告が外れた札（B-2 で入る。いまは常に0枚）
+    reread: 5,   // 朝の浅い読みを書き直す札　← 何回か流して調整する
+  };
   // v15 お金：残高は flow に入れない（from も to も無い flow は「流れ」ではない）。
   // 残高は地層の levels に入れる。器はもともとある。
   const WORLD_FLOW_STRATA_MAX  = 2;     // 1つの flow が動かす地層の数
@@ -18016,12 +18028,40 @@
       .filter((e) => e.readAt && !e.rereadAt && worldHasMorningRead(e))
       .sort((a, b) => (a.eventDate > b.eventDate ? -1 : 1));
   }
-  // 未読が優先。枠が余ったぶんだけ書き直しの候補を足す（毎回20枚を使い切る）
-  function worldReadTargets() {
-    const unread = worldUnreadCards();
-    if (unread.length >= WORLD_READ_MAX) return unread.slice(0, WORLD_READ_MAX);
-    return unread.concat(worldRereadCards().slice(0, WORLD_READ_MAX - unread.length));
+  // v20.23 B-1：予告が外れた札（B-2 で入る）。いまは常に空
+  function worldMissCards() {
+    return worldLiveEvents()
+      .filter((e) => e.missAt && (!e.rereadAt || e.rereadAt < e.missAt))
+      .sort((a, b) => (a.missAt > b.missAt ? -1 : 1));
   }
+  // v20.23 B-1：種類ごとに枠を配る。足りない種類の枠は他へ回すので、枠を遊ばせない。
+  // 前は「未読が優先、余りに書き直し」だったため、未読75枚で埋まって書き直しが回らなかった
+  function worldReadPick() {
+    const pools = [
+      ['miss', worldMissCards(), WORLD_READ_QUOTA.miss],
+      ['reread', worldRereadCards(), WORLD_READ_QUOTA.reread],
+      ['unread', worldUnreadCards(), Infinity],   // 未読は残り全部
+    ];
+    const taken = { miss: [], reread: [], unread: [] };
+    let left = WORLD_READ_MAX;
+    // 1周目：種類ごとの枠まで取る
+    pools.forEach(([key, list, quota]) => {
+      const n = Math.min(list.length, quota === Infinity ? 0 : quota, left);
+      taken[key] = list.slice(0, n);
+      left -= n;
+    });
+    // 2周目：余った枠を、まだ残っている札に回す（未読 → 浅い読み → 外れた札の順）
+    ['unread', 'reread', 'miss'].forEach((key) => {
+      if (left <= 0) return;
+      const list = pools.find((p) => p[0] === key)[1];
+      const more = list.slice(taken[key].length, taken[key].length + left);
+      taken[key] = taken[key].concat(more);
+      left -= more.length;
+    });
+    const cards = taken.miss.concat(taken.reread, taken.unread);
+    return { cards, mix: { miss: taken.miss.length, reread: taken.reread.length, unread: taken.unread.length } };
+  }
+  function worldReadTargets() { return worldReadPick().cards; }
   // つながる札（同じ概念に触れている札）を id と fact だけ添える。本文は渡さない
   function worldReadLinkedLines(ev) {
     const mine = new Set(worldEventConcepts(ev).map((c) => c.id));
@@ -18203,10 +18243,16 @@
     const touched = new Set();
     const byId = (id) => worldLiveEvents().find((e) => e.id === id) || null;
     const ids = new Set([...Object.keys(reads || {}), ...Object.keys(zures || {}), ...Object.keys(forks || {}), ...Object.keys(reasons || {}), ...Object.keys(confs || {})]);
+    // v20.23 B-1：読んだ札の内訳。**変える前に決める**（取り込みが readAt を押すと、
+    // 未読と書き直しの区別が消えてしまう）
+    out.mix = { miss: 0, reread: 0, unread: 0 };
     ids.forEach((id) => {
       const ev = byId(id);
       if (!ev) { out.unknown++; return; }
       let changed = false;
+      if (ev.missAt && (!ev.rereadAt || ev.rereadAt < ev.missAt)) out.mix.miss++;
+      else if (ev.readAt) out.mix.reread++;
+      else out.mix.unread++;
       // read：主体ごと。名前で引き当て、空いているものだけ埋める
       const list = Array.isArray(reads && reads[id]) ? reads[id] : [];
       let filledHere = 0;
@@ -19586,33 +19632,24 @@
   // v20.21 予告 第1段：待っている予告を、期限の近い順に並べる。
   // 第1段では押せない形にする（答え合わせの仕組みがまだ無いので、押しても何も起きないものを作らない）。
   // 0本のときは行ごと出さない（「ありません」の空行を増やさない）
+  // v20.23 B-1：朝タブは1行だけ。押すと世界タブの予告の画面へ（戻ると朝に返る）。
+  // 朝は体調・言葉・散歩という個人の流れなので、世界の話を全部並べると割り込みになる。
+  // ただし毎朝目に入る場所なので、入口は残す
   function renderHomeForecastRow() {
     const box = document.getElementById('homeForecastRow');
     if (!box) return;
     box.innerHTML = '';
-    const list = worldWaitingForecasts();
-    if (!list.length) { box.hidden = true; return; }
+    const waiting = worldWaitingForecasts().length;
+    const over = worldOverdueForecasts().length;
+    if (!waiting && !over) { box.hidden = true; return; }   // 両方0なら行ごと出さない
     box.hidden = false;
-    const head = document.createElement('div');
-    head.className = 'hfHead';
-    head.textContent = '待っている予告 ' + list.length + '本';
-    box.appendChild(head);
-    list.slice(0, WORLD_FC_HOME_MAX).forEach((f) => {
-      const row = document.createElement('div');
-      row.className = 'hfItem';
-      const due = document.createElement('span');
-      due.className = 'hfDue';
-      due.textContent = f.due.slice(5).replace('-', '/') + 'まで';
-      row.appendChild(due);
-      row.appendChild(document.createTextNode(f.actor + 'が ' + f.what));
-      box.appendChild(row);
-    });
-    if (list.length > WORLD_FC_HOME_MAX) {
-      const more = document.createElement('div');
-      more.className = 'hfMore';
-      more.textContent = 'ほか' + (list.length - WORLD_FC_HOME_MAX) + '本';
-      box.appendChild(more);
-    }
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'linkLikeBtn homeForecastBtn' + (over ? ' hasDue' : '');
+    // 0を並べない：期限が来たものが無ければ、その部分は出さない
+    b.textContent = '待っている予告 ' + waiting + '本' + (over ? '・期限が来たもの ' + over + '本' : '') + ' ▸';
+    b.addEventListener('click', () => worldOpenForecast('home'));
+    box.appendChild(b);
   }
   // v20.17：読んでいない札が溜まったら1行。8枚未満では出さない（毎日出ると義務になる）
   function renderHomeReadRow(box) {
@@ -21518,9 +21555,16 @@
     renderWorld();
   }
   // ---- v20.22 第2段A：予告の画面 ---------------------------------------------
-  function worldOpenForecast() {
+  // v20.23 B-1：どこから入ったかを覚えて、戻るときに返す（朝から入って世界タブに残ると迷子になる）
+  function worldOpenForecast(from) {
+    worldState.fcFrom = from === 'home' ? 'home' : 'world';
     worldState.view = 'forecast';
     showScreen('world');
+    renderWorld();
+  }
+  function worldForecastBack() {
+    if (worldState.fcFrom === 'home') { worldState.fcFrom = ''; showScreen('home'); renderHome(); return; }
+    worldState.view = 'main';
     renderWorld();
   }
   // 押したときだけ結果が変わる（取り込みでは変わらない）。
@@ -21594,6 +21638,8 @@
     return box;
   }
   function renderWorldForecast() {
+    // v20.23 B-1：朝から入ったときは「朝に戻る」。どこへ返るかを文字でも示す
+    document.getElementById('btnWorldFcBack').textContent = worldState.fcFrom === 'home' ? '朝に戻る' : '世界に戻る';
     const rate = worldForecastRate();
     const rateEl = document.getElementById('worldFcRate');
     rateEl.textContent = rate.pct === null
@@ -22352,9 +22398,15 @@
     const n = worldUnreadCards().length;
     const t = worldReadTargets().length;
     const rr = worldRereadCards().length;   // v20.18：朝が書いた浅い読みが残っている札
-    el.textContent = (n || rr)
+    const pick = worldReadPick();           // v20.23 B-1：この回に何が何枚回るか
+    const mixTxt = [
+      pick.mix.miss ? '外れた札' + pick.mix.miss : '',
+      pick.mix.reread ? '浅い読み' + pick.mix.reread : '',
+      pick.mix.unread ? '未読' + pick.mix.unread : '',
+    ].filter(Boolean).join('・');
+    el.textContent = (n || rr || pick.cards.length)
       ? 'まだ読んでいない札が' + n + '枚' + (rr ? '、朝の浅い読みが残っている札が' + rr + '枚' : '') +
-        '。1回で' + WORLD_READ_MAX + '枚まで読ませます（この回は' + t + '枚）。新しく探させず、思惑・ずれ・分かれ目だけを書かせます。'
+        '。1回で' + WORLD_READ_MAX + '枚まで読ませます（この回は' + t + '枚' + (mixTxt ? '：' + mixTxt : '') + '）。新しく探させず、思惑・ずれ・分かれ目だけを書かせます。'
       : 'いまは読む札がありません。取り込んだ札に主体が付くと、ここに溜まります。';
     const btn = document.getElementById('btnWorldReadPrompt');
     if (btn) btn.disabled = !t;
@@ -22626,13 +22678,16 @@
   // bump=true は捨てた側（その版が勝つように日時を進める）。
   // bump=false は、別の端末で捨てられたのを受けた側（日時を進めない）。
   async function worldResetLocal(epoch, resetAt, bump) {
-    const counts = { events: worldEvents.length, concepts: wd.concepts.concepts.length, terms: wd.terms.terms.length, asks: wd.asks.asks.length };
+    const counts = { events: worldEvents.length, concepts: wd.concepts.concepts.length, terms: wd.terms.terms.length, asks: wd.asks.asks.length,
+      forecasts: wd.forecasts.forecasts.length };   // v20.23 B-1
     const iso = nowIso();
     worldEvents = [];
     wd.tombs = new Map(); wd.loaded = new Set(); wd.dirty = new Set(); wd.stamps = {};
     try { for (const k of await kvKeys('world:')) await kvDel(k); } catch (e) {}
     liveWorldMonths().forEach((m) => applyWorldMonthToMemory(m, emptyWorldMonthDoc(m)));
+    // v20.23 B-1（順番2）：予告も空にする。予告は札の思惑から出たものなので、根拠が消えたら意味を失う
     wd.concepts = emptyWorldConceptsDoc(); wd.terms = emptyWorldTermsDoc(); wd.asks = emptyWorldAsksDoc();
+    wd.forecasts = emptyWorldForecastsDoc();
     wd.actors.actors.forEach((a) => worldClearActorLinks(a, bump));
     wd.strata.strata.forEach((s) => worldUnlinkCardLevels(s, bump));
     wd.index = emptyWorldIndex();
@@ -22641,7 +22696,8 @@
       // 捨てた側：器ごとに新しい日付を付けて、相手の古い版より勝たせる
       await persistWorldConcepts(); await persistWorldTerms(); await persistWorldAsks();
       await persistWorldActors(); await persistWorldStrata();
-      ['concepts', 'terms', 'asks', 'actors', 'strata'].forEach((k) => {
+      await persistWorldForecasts();   // v20.23 B-1（順番3）
+      ['concepts', 'terms', 'asks', 'actors', 'strata', 'forecasts'].forEach((k) => {
         const doc = wd[k];
         wd.index[k] = { updatedAt: doc.updatedAt, count: (doc[k] || []).length };
       });
@@ -22651,6 +22707,7 @@
       await kvSet('worldConcepts', JSON.stringify(wd.concepts)); await kvSet('worldTerms', JSON.stringify(wd.terms));
       await kvSet('worldAsks', JSON.stringify(wd.asks)); await kvSet('worldActors', JSON.stringify(wd.actors));
       await kvSet('worldStrata', JSON.stringify(wd.strata));
+      await kvSet('worldForecasts', JSON.stringify(wd.forecasts));   // v20.23 B-1（順番4）
     }
     await persistWorldIndex(); await persistWorldDirty(); await persistWorldStamps();
     worldState.cards = null; worldState.lastBatch = null; worldState.candidates = []; worldState.view = 'main';
@@ -22763,6 +22820,9 @@
       await put(WORLD_ASKS_PATH, wd.asks, '問い');
       await put(WORLD_ACTORS_PATH, wd.actors, '主体');
       await put(WORLD_STRATA_PATH, wd.strata, '地層');
+      // v20.23 B-1：予告も捨てる。地層の後・月ファイルの前に置く（器を全部片付けてから月に入る）。
+      // **この1番目を足さないと、端末で消えても保存庫に残り、次の同期で戻ってくる**
+      await put(WORLD_FORECASTS_PATH, wd.forecasts, '予告');
       for (const m of b.months) {
         step.at = '月 ' + m;
         const got = await ghGetContents(GITHUB_REPO, worldMonthPath(m), token);
@@ -22822,8 +22882,8 @@
     worldState.cards = null; worldState.view = toNet ? 'net' : 'main'; renderWorld();
   });
   // v20.22 第2段A：予告の画面
-  document.getElementById('btnWorldForecast').addEventListener('click', worldOpenForecast);
-  document.getElementById('btnWorldFcBack').addEventListener('click', () => { worldState.view = 'main'; renderWorld(); });
+  document.getElementById('btnWorldForecast').addEventListener('click', () => worldOpenForecast('world'));
+  document.getElementById('btnWorldFcBack').addEventListener('click', worldForecastBack);
   // v20.4 M4：網の画面
   document.getElementById('btnWorldNetBack').addEventListener('click', () => { worldState.view = 'map'; renderWorld(); });
   document.getElementById('btnWorldNetList').addEventListener('click', () => {
@@ -23696,14 +23756,30 @@
   });
   document.getElementById('btnWorldReset').addEventListener('click', async () => {
     const st = document.getElementById('worldResetStatus');
-    if (!confirm('札・概念・用語・問いを消します。主体・地層の値・ソースは残します。元に戻すにはバックアップを手で戻す必要があります。捨てますか？')) return;
+    // v20.23 B-1：押す前に数える。「1 バックアップを作る」で全月を保存庫から読み直しているので、
+    // ここで足りない月だけを読み足せば全部の数になる（既に読んだ月は何もしないので二重には読まない）
+    st.textContent = '数えています…';
+    let missing = 0;
+    try {
+      const months = await worldAllKnownMonths();
+      await ensureWorldMonths(months);
+      missing = months.filter((m) => !wd.loaded.has(m)).length;
+    } catch (e) { missing = -1; }
+    st.textContent = '';
+    const warn = missing > 0 ? '\n※ 読み込めなかった月が ' + missing + 'か月あります。実際はこれより多い可能性があります。'
+      : missing < 0 ? '\n※ 月を読み込めませんでした。実際はこれより多い可能性があります。' : '';
+    const ask = '札 ' + worldEvents.length + '枚・概念 ' + wd.concepts.concepts.length + '件・用語 ' + wd.terms.terms.length
+      + '件・問い ' + wd.asks.asks.length + '件・予告 ' + wd.forecasts.forecasts.length + '本を捨てます。\n'
+      + '主体・地層の値・ソースは残します。\n元に戻すにはバックアップを手で戻す必要があります。' + warn + '\n捨てますか？';
+    if (!confirm(ask)) return;
     worldResetState.busy = true;
     renderWorldReset();
     st.textContent = '捨てています…';
     try {
       const r = await worldResetNow();
       const c = r.counts;
-      st.textContent = '札 ' + c.events + '件・概念 ' + c.concepts + '件・用語 ' + c.terms + '件・問い ' + c.asks + '件を消しました。世代 ' + r.epoch;
+      st.textContent = '札 ' + c.events + '件・概念 ' + c.concepts + '件・用語 ' + c.terms + '件・問い ' + c.asks
+        + '件・予告 ' + (c.forecasts || 0) + '本を消しました。世代 ' + r.epoch;   // v20.23 B-1
     } catch (e) {
       st.textContent = e && e.message ? e.message : String(e);
       // 途中で止まったときは、1・2 をやり直さずに 3 だけ押せるようにする
@@ -23767,6 +23843,14 @@
     let msg = res.readCards + '枚に思惑が入りました（' + res.readFilled + '人ぶん）。';
     if (res.forks) msg += '　分かれ目が' + res.forks + '件立ちました。';
     if (res.rewritten) msg += '　朝の浅い読みを書き直した' + res.rewritten + '人ぶん（前の文は札に残しています）。';
+    // v20.23 B-1：何が回ったかを必ず出す。見えないと、また「作ったのに動いていない」に戻る
+    if (res.mix) {
+      const parts = [];
+      if (res.mix.miss) parts.push('外れた札' + res.mix.miss);
+      if (res.mix.reread) parts.push('浅い読み' + res.mix.reread);
+      if (res.mix.unread) parts.push('未読' + res.mix.unread);
+      if (parts.length) msg += '　読んだ内訳：' + parts.join('・') + '。';
+    }
     // v20.21 予告：入った数と、落とした数・理由
     if (res.fcAdded) msg += '　予告が' + res.fcAdded + '本入りました。';
     if (res.fcBadDue) msg += '　※ 期限が日付でないもの' + res.fcBadDue + '本を落としました'
