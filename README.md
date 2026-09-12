@@ -306,6 +306,8 @@ v15 で2つ足した。`span`：その金額が**累計か1回の動きか**（�
 表示：札の展開の why の直下に「動かした側」（name+did の1行が既定、押すと述べた／推定）。段数を増やさないよう用語と地層を1行にまとめた。出典の立場（v11 C）は、その出典が札のアクターに含まれるときは出さない。アクターの詳細は**時系列**（`eventIds` から月を割り出して必要な月だけ読む）で、`flow` の金額が右端に縦に並ぶ——「7月 介入 5兆円 → 9月 介入 15兆円」がこの層で一番見たい絵。同じ単位だけが並ぶ。
 **遡及**：概念のときと逆に作った（主語の軸は履歴が無いと開く意味がない）。取り込み画面の「既存の札に付け直す」でプロンプト（`worldRetroPromptText`。出典を開き直さないぶん縛りが厳しい：did は fact・detail の行動だけ、said は「述べた」と分かる形があるときだけ、read は必ず推定、`levels` は detail に数字が書かれているときだけ）をコピーし、返った JSON を足す。**置き換えない**——主語は `ev.actors` が空の札にだけ、`flow` は無い札に、既にある `flow` には空いている `span`・`strata` だけ。v15 で対象を「端末にある札（新しい順に最大40件）」に広げた（地層の値は主語がもう付いている札からも拾えるため）。主語が付いている札にはプロンプト側で「※ 主語は付いています」の印が付き、`actors` は空で返る。
 
+**読む（v20.17。第1段）**：集める（探す・書き写す）と読む（思惑・分かれ目）を別の回に分けた。未読＝**`readAt` が無く `actors` が1つ以上ある札**（`read` が空かどうかでは見ない——述べた理由と同じなら `read` は正直に空になるので、空を未読にすると永久に出続ける）。取り込み画面の「読む」でプロンプト（`worldReadPromptText`。新しい出来事を探させず、出典も開けない前提。同じ主体には違う読みを書く／said と did のずれ（`zure`）／損を承知の犠牲を書く／すでに答えが出ている分かれ目は立てない）をコピーし、返った JSON を `worldImportReadJson` で足す。**足すだけ**——空いている `read`・`zure`・`fork`・`reason` だけを埋め、既にある値は上書きしない。`said` のなぞりは入れない。`confidence` は**下げるときだけ**通し（`confidenceWhy` 必須）、**上げる値は捨てる**（出典を開いていない側が確かさを上げる根拠がないため）。読んだ札には `readAt` を押す（材料が足りず空振りした札にも押す）。朝の1行は8枚（`WORLD_READ_NUDGE`）以上溜まってから出る。20枚のプロンプトは実測9,634字。朝のプロンプトは第1段では変えていない。
+
 **ソース（`world/sources.json`）**: `{ version:1, updatedAt, sources: [{id, name, url, field:'finance'|'geo'|'both', role:'primary'|'analysis', stance（v11: この発信者が欲しいもの）, note（プロンプトの「取るもの」）, cadence:''|'day'|'week'|'dekad'|'month'|'quarter'（v19.4。周期があるものが「必ず見るもの」）, cadenceSetAt, updatedAt}] }`
 `role` の `primary`（中銀・政府・国際機関・統計）は出来事・日付・数字の出所。`analysis`（シンクタンク）は why を書くための補助で、**それだけを根拠に出来事を立てさせない**。プロンプトでは2つの一覧を分けて差し込み、使い分けを明記してある。一度も保存されていないときだけ初期リスト22件が入る。
 
@@ -471,6 +473,7 @@ v18 A-2 でタブを無くし、いまは既定の画面の「お金の一覧」
 | 投稿の説明（v20.11） | `POST_EXPLAIN_MAX`（60字）, `note.postLine`（言葉に持たせる説明）, `shortenAtPause`（句点→読点→そのまま切る）, `callPostLineApi` / `makeNotePostLine`（安いモデルで1枚1回だけ・費用の種類は `postline`）, `notePostExplain`（説明が無ければ自分の言葉を短くして使う。費用0）, `computeDefaultShareText`（投稿文の組み立て）。**名言そのものは縮めない** |
 | 画面の復元（v20.11） | `LAST_SCREEN_KEY`, `LAST_SCREEN_MAX_AGE_MS`（4時間。これより古ければ朝から）, `LAST_SCREEN_OK` / `LAST_WORLD_VIEW_OK`, `rememberScreen`（`showScreen` と裏に回るときに控える） / `restoreLastScreen`（起動時。`goHome` の代わり）。戻ってくると `checkForUpdate` が読み込み直すことがあり、iOS は裏のページを捨てるので、朝に落ちていた |
 | 筋トレの「やった日」（v20.11） | `trDidWork(day)`（種目が1つも無い日＝体重だけの日は筋トレに数えない。有酸素は種目なので数える）。カレンダーの点・「筋トレ N 日」（`dayPositionLine`）・月の筋トレ日数・その日のカードがこれを通る。体重だけの日は灰色の点（`.calDot.dotWeight`）とカード「体重 ・ 68.5kg」 |
+| 読む（v20.17） | `WORLD_READ_MAX`（20枚）, `WORLD_READ_NUDGE`（8枚で朝に1行）, `WORLD_READ_LINKED`（つながる札2枚を id と fact だけ）, `worldUnreadCards` / `worldReadTargets`（未読＝`readAt` 無し＋`actors` 1つ以上）, `worldReadPromptText`, `worldImportReadJson`（足すだけ・確度は下げるだけ）, `readAt` / `zure`（`normalizeWorldEvent` に明示的に足した項目）, `renderHomeReadRow` / `worldOpenRead`（1行→写して貼る欄へ）。**朝のプロンプトは変えていない** |
 | 入力の退避（未保存の下書き） | `INPUT_DRAFT_KEY`, `captureInputDraftNow`, `restoreInputDraft`（対象外にしたい欄は `INPUT_DRAFT_SKIP`、画面ごと外すのは `INPUT_DRAFT_SKIP_SCREENS`）, `INPUT_DRAFT_NAV_MAX_AGE_MS`（これより古い下書きは起動時にその画面へ飛ばない。開いたときに入るだけ） |
 
 ### 4.2 直して反映するまで

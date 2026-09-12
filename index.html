@@ -2409,6 +2409,17 @@
         <button type="button" id="btnWorldRetroImport" class="secondaryBtn">取り込む</button>
         <p class="fieldNote" id="worldRetroStatus"></p>
       </div>
+      <!-- v20.17 第1段：集めることと読むことを分ける。ここは「読む」側 -->
+      <div class="field" id="worldReadField">
+        <span class="fieldLabel">読む（溜まった札の思惑と分かれ目）</span>
+        <p class="fieldNote" id="worldReadNote"></p>
+        <div class="medRow">
+          <button type="button" id="btnWorldReadPrompt" class="tagFilterBtn">プロンプトをコピー</button>
+        </div>
+        <textarea id="worldReadPaste" rows="3" placeholder='{"read":{...},"fork":{...}} をここに貼る' autocomplete="off"></textarea>
+        <button type="button" id="btnWorldReadImport" class="secondaryBtn">読んだ結果を取り込む</button>
+        <p class="fieldNote" id="worldReadStatus"></p>
+      </div>
       <div class="field" id="worldMergeField" hidden>
         <span class="fieldLabel">3 近い名前の概念</span>
         <p class="fieldNote">同じものなら1つにまとめます。別のものだと答えた組は二度と聞きません。</p>
@@ -2923,7 +2934,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.16';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.17';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -14718,6 +14729,11 @@
   const WORLD_FLOW_KIND_LABEL = { money: 'お金の動き', goods: '物の動き', people: '人の動き' };
   const WORLD_EVENT_ID_RE     = /^w_\d{8}_\d+$/;
   const WORLD_RETRO_MAX        = 40;    // 遡及プロンプトに載せる札の数
+  // v20.17 第1段：読むプロンプト。集める（探す・書き写す）と読む（思惑・分かれ目）を分ける。
+  // 20枚で約11,600字（実測。1枚464字）。朝のプロンプトは第1段では変えない
+  const WORLD_READ_MAX     = 20;   // 一度に読ませる札の数
+  const WORLD_READ_NUDGE   = 8;    // これだけ溜まったら朝に1行出す（毎日出すと義務になる）
+  const WORLD_READ_LINKED  = 2;    // 1枚に添えるつながる札の数（id と fact だけ）
   // v15 お金：残高は flow に入れない（from も to も無い flow は「流れ」ではない）。
   // 残高は地層の levels に入れる。器はもともとある。
   const WORLD_FLOW_STRATA_MAX  = 2;     // 1つの flow が動かす地層の数
@@ -15041,18 +15057,21 @@
     // ブラウザの UA なら 200 だが本文に数字が無い（JS 描画）。IR BANK は実機で2回続けてボット検知で弾かれた。
     // よって「開く」のは日経か、検索で見つけたトヨタ自身の資料。トヨタ自身の URL は札の確認先としてだけ載せる
     { id: 'ws_corp_toyota', label: 'トヨタ 決算', short: 'トヨタ', match: ['トヨタ', 'Toyota'],
-      retiredUrls: ['https://global.toyota/jp/ir/financial-results/', 'https://irbank.net/7203/results', 'https://irbank.net/E02144/results'],
-      name: 'トヨタ自動車 決算（数字は検索で見つけたトヨタ自身の資料か、日経から）', url: 'https://www.nikkei.com/nkd/company/kessan/?scode=7203', role: 'primary', cadence: 'quarter',
-      // v20.16：IR BANK を外した。トヨタ自身のページは直接開けないので、確認先としてだけ載せる
+      retiredUrls: ['https://global.toyota/jp/ir/financial-results/', 'https://irbank.net/7203/results', 'https://irbank.net/E02144/results', 'https://www.nikkei.com/nkd/company/kessan/?scode=7203'],
+      name: 'トヨタ自動車 決算（四半期は stockanalysis、年1回は SEC の 20-F）', url: 'https://stockanalysis.com/quote/tyo/7203/financials/cash-flow-statement/', role: 'primary', cadence: 'quarter',
+      // v20.17：四半期は stockanalysis、年1回の一次資料は SEC の 20-F（トヨタは CIK 0001094517）。
+      // トヨタ自身のページはチャットの取得役に 403 なので開かせない（確認先としてだけ）
       openUrls: () => [
-        ['数字を読む（日経）', 'https://www.nikkei.com/nkd/company/kessan/?scode=7203'],
+        ['四半期の数字（stockanalysis）', 'https://stockanalysis.com/quote/tyo/7203/financials/cash-flow-statement/'],
+        ['一次資料（SEC の 20-F。年1回）', 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001094517&type=20-F&dateb=&owner=include&count=10'],
         ['札の url に書く（トヨタ自身。開かなくてよい）', 'https://global.toyota/jp/ir/financial-results/'],
       ],
       note: '設備投資・研究開発費・自社株買い（自己株式の取得）・配当の金額と、通期見通しの変更。金額は円のまま。from は「トヨタ自動車」。何に賭けたか（電動化・地域）を read に。' +
-        'まず web 検索で「トヨタ 決算短信 最新の四半期」を探し、トヨタ自身の資料（決算短信・決算概況）が開けるならそれを読む（一次資料なので最良）。' +
-        '見つからない・開けないときは「数字を読む（日経）」を読む。トヨタ自身のページ（global.toyota）は直接開くと弾かれるので、開かなくてよい。' +
-        '札の url には「札の url に書く」のトヨタ自身の URL を書く（数字を読んだ場所と確認先が違ってよい）。' +
-        'checked の note に、どこから読んだか（トヨタ自身／日経）を必ず書く' },
+        '四半期の数字は「四半期の数字（stockanalysis）」から読む（Capital expenditures／Research and development／Dividends paid／Repurchases of stock）。金額は書かれた通貨のまま。' +
+        '年に一度、SEC の 20-F が出ているときは「一次資料（SEC の 20-F）」の一覧から最新の 20-F を開き、そちらの数字を優先する。' +
+        'トヨタ自身のページ（global.toyota）は直接開くと弾かれるので、開かなくてよい。' +
+        '札の url は、20-F を読んだときはその SEC の URL（一次資料）。stockanalysis から読んだときは「札の url に書く」のトヨタ自身の URL を書く。' +
+        'checked の note に、どこから読んだか（SEC 20-F／stockanalysis）を必ず書く' },
     { id: 'ws_group_nri', label: '野村総研 富裕層推計', short: 'NRI', match: ['野村', 'NRI', '富裕層'], retiredUrls: [],
       name: '野村総合研究所 日本の富裕層の世帯数と純金融資産の推計', url: 'https://www.nri.com/jp/news/newsrelease/20250213_1.html', role: 'primary', cadence: 'quarter',
       openUrls: () => [['確かに読める発表（2025年2月）', 'https://www.nri.com/jp/news/newsrelease/20250213_1.html']],
@@ -15261,6 +15280,10 @@
     // v10.5 ★: 出来事そのものに付く。言葉側の picks とは別で、重みには使わない
     if (e.hit) { out.hit = 1; out.hitAt = typeof e.hitAt === 'string' ? e.hitAt : ''; }
     if (e.slim) out.slim = 1;   // 段階1.6（痩せさせ）。読み込みだけ先に通しておく
+    // v20.17 第1段：読む側を通した印と、said と did のずれ。read が空かどうかでは未読を判定しない
+    // （述べた理由と同じなら read は正直に空になるので、それを未読と見なすと永久に出続ける）
+    if (typeof e.readAt === 'string' && e.readAt) out.readAt = e.readAt;
+    if (typeof e.zure === 'string' && e.zure.trim()) out.zure = worldStr(e.zure, 200);
     if (e.viaAsk) out.viaAsk = String(e.viaAsk);   // v14: どの問いから掘り当てたか
     // v20.2：初期投入の札（地域のキー）。未読にも「今日読んだ札」にも数えない
     if (['americas', 'europe', 'mideast_africa', 'asia_pacific'].includes(e.seed)) out.seed = e.seed;
@@ -17653,6 +17676,86 @@
   // v15：地層の値（levels）とお金の期間・動かした地層は、主語がもう付いている札
   // からも拾えるので、対象を「端末にある札」に広げた。主語が付いている札は
   // プロンプト側で印を付けて、actors を空で返させる。
+  // v20.17：まだ読んでいない札。新しい順。readAt を押した札は二度と出ない
+  function worldUnreadCards() {
+    return worldLiveEvents()
+      .filter((e) => !e.readAt && e.actors.length)
+      .sort((a, b) => (a.eventDate > b.eventDate ? -1 : 1));
+  }
+  function worldReadTargets() { return worldUnreadCards().slice(0, WORLD_READ_MAX); }
+  // つながる札（同じ概念に触れている札）を id と fact だけ添える。本文は渡さない
+  function worldReadLinkedLines(ev) {
+    const mine = new Set(worldEventConcepts(ev).map((c) => c.id));
+    if (!mine.size) return [];
+    return worldLiveEvents()
+      .filter((x) => x.id !== ev.id && worldEventConcepts(x).some((c) => mine.has(c.id)))
+      .sort((a, b) => (a.eventDate > b.eventDate ? -1 : 1))
+      .slice(0, WORLD_READ_LINKED)
+      .map((x) => '  つながる札：[' + x.id + '] ' + x.fact);
+  }
+  function worldReadPromptText() {
+    const cards = worldReadTargets();
+    const knownActors = worldKnownActorLines();
+    const today = todayStr();
+    return SHOOT_PROMPT_HEAD +
+      'あなたは、すでに取り込んである出来事の札を読んで、思惑と分かれ目を書く係です。\n' +
+      '新しい出来事を探しません。web 検索も使いません。\n' +
+      '下に並ぶ札の文章だけを材料にします。\n\n' +
+      // 遡及の文面をそのまま流用する（効いているものを使う）
+      '■ 材料の限界を先に言っておきます\n' +
+      '- 出典のページは開けません。fact・why・detail に書かれていることが全部です。\n' +
+      '- だから、通常の生成より厳しく縛ります。書かれていないことを書かないでください。\n' +
+      '- 全部の札に思惑が要るわけではありません。材料が足りない札は read を空にしてください。\n\n' +
+      '■ この仕事は「探す」ではなく「読む」です\n' +
+      '- 事実（fact・金額・出典）は、すでに書き写されています。直さないでください。\n' +
+      '- あなたがするのは、その裏で働いている力を読むことだけです。\n\n' +
+      '■ それぞれの札に書くこと\n' +
+      '- read：主体ごとの思惑。推定であることを前提に書く。\n' +
+      '  - 述べた理由（said）と同じ内容なら空にする。なぞって推定に化かさない。\n' +
+      '  - **同じ主体が何枚にも出てきます。同じ主体には違う読みを書いてください**（同じ文を繰り返さない）。\n' +
+      '  - 損を承知でやっているなら、何を犠牲にしたかを書く（儲かることをするのは当たり前で、思惑は読めない）。\n' +
+      '  - 資金繰りの都合で止めない。なぜその時期に、その相手に、その額なのかまで書く。\n' +
+      '- zure：said と did がずれている札は、そのずれの中身を1文で書く。ずれていなければ空。\n' +
+      '  「支援すると言いながら金が動いていない」「減らすと言いながら増えている」のような食い違い。\n' +
+      '- fork：3か月ほどで決着する分かれ目を1つ。思いつかなければ null。\n' +
+      '  - **すでに答えが出ていることを fork にしない**（今日は ' + today + ' です）。\n' +
+      '    もう分かっているなら fork は null にして、その中身を read に書く。\n' +
+      '  - type は level（示された水準に届くか）か event（起きるか）。\n' +
+      '- reason：この札を今あらためて読む値打ちを1行。無ければ空。\n' +
+      '- confidence：**下げるときだけ**書く。読んだ結果「これは確かでない」と分かったとき。\n' +
+      '  - **上げてはいけません**（出典を開いていないので、確かさを上げる根拠がありません）。\n' +
+      '  - 下げたときは confidenceWhy に理由を必ず書く。下げないなら両方とも省く。\n\n' +
+      '■ 札（' + cards.length + '枚）\n' +
+      (cards.length ? cards.map((e) => {
+        const acts = e.actors.map((a) => '  主体：' + a.name + '｜した：' + a.did + (a.said ? '｜述べた：' + a.said : '｜述べた：（無し）')).join('\n');
+        const fl = e.flow ? '  お金：' + (e.flow.from || '？') + '→' + (e.flow.to || '？') + '　' + (e.flow.what || '') + (e.flow.amount ? '　' + e.flow.amount : '') + (e.flow.span ? '（' + e.flow.span + 'の累計）' : '') : '';
+        const linked = worldReadLinkedLines(e);
+        return '[' + e.id + ']　' + e.eventDate + (e.confidence ? '　確度' + e.confidence : '') + '\n' +
+          'fact：' + e.fact + '\n' +
+          'why：' + (e.why || '') + '\n' +
+          'detail：' + (e.detail || '') + '\n' +
+          'source：' + (e.source || '') + '\n' +
+          (acts ? acts + '\n' : '') + (fl ? fl + '\n' : '') +
+          (e.concepts.length ? '  概念：' + e.concepts.join('・') + '\n' : '') +
+          (linked.length ? linked.join('\n') + '\n' : '') +
+          (e.fork ? '  すでにある分かれ目：' + e.fork.text + '（fork は null にする）\n' : '');
+      }).join('\n') : '（まだ読んでいない札がありません）') + '\n' +
+      '■ 出力形式\n' +
+      '{"read":{"w_20260902_1":[{"name":"日本銀行","read":"..."}],\n' +
+      '         "w_20260901_1":[]},\n' +
+      ' "zure":{"w_20260902_1":"支援を表明しながら、動いた金は前年より少ない"},\n' +
+      ' "fork":{"w_20260902_1":{"text":"...","type":"event"},\n' +
+      '         "w_20260901_1":null},\n' +
+      ' "reason":{"w_20260902_1":"..."},\n' +
+      ' "confidence":{"w_20260901_1":{"value":4,"why":"一次資料に当たれず報道のみ"}}}\n\n' +
+      '- id は上の札のものだけを使う。name は上の「主体：」の名前をそのまま書く。\n' +
+      '- 材料が足りない札は read を [] に、fork を null に、zure と reason を省く。無理に埋めない。\n' +
+      '- confidence は下げる札だけ書く。上げる値を書かない。\n' +
+      '- JSON のみ。\n\n' +
+      '────────────────────────────────────────\n' +
+      '■ すでに知っているアクター（name はここから探す。先頭の名前だけを書き、［別名：…］は書かない）\n' +
+      (knownActors.length ? knownActors.join(' / ') : '（まだありません）');
+  }
   function worldRetroTargets() {
     return worldLiveEvents()
       .sort((a, b) => (a.eventDate > b.eventDate ? -1 : 1)).slice(0, WORLD_RETRO_MAX);
@@ -17720,6 +17823,67 @@
       (strataLines.length ? strataLines.join('\n') : '（まだありません）') + '\n\n' +
       '■ すでに知っているアクター（name はここから探す。無ければ新しく書いてよい。先頭の名前だけを書き、［別名：…］は書かない）\n' +
       (knownActors.length ? knownActors.join(' / ') : '（まだありません）');
+  }
+  // v20.17 第1段：読んだ結果を入れる。同じ入口（遡及）に枝を足した。
+  // 足すだけ：空いている read・fork・reason だけを埋め、既にある値は上書きしない。
+  // confidence は下げるときだけ通す（出典を開いていない側が上げるのは筋が通らない）
+  function worldImportReadJson(raw) {
+    const parsed = shootParseJson(raw);
+    const obj = (k) => (parsed && typeof parsed === 'object' && parsed[k] && typeof parsed[k] === 'object') ? parsed[k] : null;
+    const reads = obj('read'), zures = obj('zure'), forks = obj('fork'), reasons = obj('reason'), confs = obj('confidence');
+    if (!reads && !forks && !reasons && !confs && !zures) {
+      return { error: 'JSON として読めませんでした。{"read":{...},"fork":{...},"reason":{...}} の形で貼ってください。' };
+    }
+    const out = { readFilled: 0, readCards: 0, zure: 0, forks: 0, reasons: 0, lowered: 0, kept: 0, unknown: 0, chains: 0 };
+    const touched = new Set();
+    const byId = (id) => worldLiveEvents().find((e) => e.id === id) || null;
+    const ids = new Set([...Object.keys(reads || {}), ...Object.keys(zures || {}), ...Object.keys(forks || {}), ...Object.keys(reasons || {}), ...Object.keys(confs || {})]);
+    ids.forEach((id) => {
+      const ev = byId(id);
+      if (!ev) { out.unknown++; return; }
+      let changed = false;
+      // read：主体ごと。名前で引き当て、空いているものだけ埋める
+      const list = Array.isArray(reads && reads[id]) ? reads[id] : [];
+      let filledHere = 0;
+      list.forEach((r) => {
+        if (!r || typeof r !== 'object') return;
+        const name = worldNormName(worldStr(r.name, 80));
+        const text = worldStr(r.read, WORLD_ACTOR_READ_MAX);
+        if (!name || !text) return;
+        const rec = ev.actors.find((a) => worldNormName(a.name) === name);
+        if (!rec) return;
+        if (rec.read) { out.kept++; return; }                                   // 既にある推定は上書きしない
+        if (rec.said && worldNormName(text) === worldNormName(rec.said)) return; // 述べた理由のなぞりは入れない
+        rec.read = text;
+        filledHere++; changed = true;
+      });
+      if (filledHere) { out.readFilled += filledHere; out.readCards++; }
+      // zure：said と did のずれ。空いているときだけ
+      const z = worldStr(zures && zures[id], 200);
+      if (z && !ev.zure) { ev.zure = z; out.zure++; changed = true; }
+      // fork：無い札にだけ立てる。すでに期限が過ぎている分かれ目は立てない
+      const fk = normalizeWorldFork(forks && forks[id]);
+      if (fk && !ev.fork) { ev.fork = fk; out.forks++; changed = true; }
+      // reason：空いているときだけ
+      const rs = worldStr(reasons && reasons[id], WORLD_REASON_MAX);
+      if (rs && !ev.reason) { ev.reason = rs; out.reasons++; changed = true; }
+      // confidence：下げるときだけ。上げる値は捨てる。下げたら理由を必ず残す
+      const c = confs && confs[id];
+      if (c && typeof c === 'object') {
+        const v = worldConfidence(c.value);
+        const why = worldStr(c.why, 80);
+        if (v && ev.confidence && v < ev.confidence && why) {
+          ev.confidence = v; ev.confidenceWhy = why; out.lowered++; changed = true;
+        }
+      }
+      // 読んだ印。空振りでも押す（材料が足りない札を毎回出し続けないため）
+      if (!ev.readAt) { ev.readAt = nowIso(); changed = true; }
+      if (changed) { ev.updatedAt = nowIso(); touched.add(monthOfDate(ev.eventDate)); }
+    });
+    // 見返り：この回で鎖（お金の動きのつながり）が何本になったか
+    try { out.chains = worldMoneyChains().length; } catch (e) { out.chains = 0; }
+    if (touched.size) touched.forEach((m) => worldMonthChanged(m));
+    return out;
   }
   // 足すだけ。主語は actors が空の札にだけ、flow の空欄と地層の値はどの札にも。id が端末に無い札は無視。
   function worldImportRetroJson(raw) {
@@ -18327,6 +18491,12 @@
           const k = document.createElement('span'); k.className = 'waKey'; k.textContent = '述べた';
           l.appendChild(k); l.appendChild(document.createTextNode(rec.said));
           open.appendChild(l);
+        }
+        if (ev.zure && rec.said) {   // v20.17：言っていることと、していることのずれ
+          const z = document.createElement('div'); z.className = 'waRead';
+          const zb = document.createElement('span'); zb.className = 'guessBadge'; zb.textContent = 'ずれ';
+          z.appendChild(zb); z.appendChild(document.createTextNode(ev.zure));
+          open.appendChild(z);
         }
         if (rec.read) {
           const l = document.createElement('div'); l.className = 'waRead';
@@ -18968,6 +19138,30 @@
     b.textContent = '今日の取り込み（' + due.length + '件）';
     b.addEventListener('click', () => worldPullToday(due.map((d) => d.id), b));
     box.appendChild(b);
+    renderHomeReadRow(box);
+  }
+  // v20.17：読んでいない札が溜まったら1行。8枚未満では出さない（毎日出ると義務になる）
+  function renderHomeReadRow(box) {
+    const n = worldUnreadCards().length;
+    if (n < WORLD_READ_NUDGE) return;
+    const r = document.createElement('button');
+    r.type = 'button'; r.className = 'linkLikeBtn';
+    r.textContent = 'まだ読んでいない札が' + n + '枚あります ▸';
+    r.addEventListener('click', () => worldOpenRead());
+    box.appendChild(r);
+  }
+  // 押すとプロンプトをコピーして、貼る欄まで連れていく（動線は取り込みと同じ）
+  function worldOpenRead() {
+    worldState.view = 'import';
+    showScreen('world');
+    renderWorld();
+    copyToClipboard(worldReadPromptText()).then((ok) => {
+      const n = worldReadTargets().length;
+      document.getElementById('worldReadStatus').textContent = ok
+        ? n + '枚ぶんのプロンプトをコピーしました。Claude のチャットに貼り、返ってきた JSON を下に貼ってください。'
+        : 'コピーできませんでした。「プロンプトをコピー」をもう一度押してください。';
+      document.getElementById('worldReadPaste').scrollIntoView({ block: 'center' });
+    });
   }
   // v18 A-1: 単位を「件」から「動いた主体」に変える。統計だけの日は
   // 主体が0になるので、そこだけ背景の札の件数で言い直す
@@ -21373,7 +21567,20 @@
     const r = WORLD_SEED_REGIONS.find((x) => x[0] === k);
     return { label: r ? r[1] : k, n: wd.index.seeds[k].n };
   }
+  // v20.17：読む欄の見出しの1行
+  function paintWorldReadNote() {
+    const el = document.getElementById('worldReadNote');
+    if (!el) return;
+    const n = worldUnreadCards().length;
+    const t = worldReadTargets().length;
+    el.textContent = n
+      ? 'まだ読んでいない札が' + n + '枚。1回で' + WORLD_READ_MAX + '枚まで読ませます（この回は' + t + '枚）。新しく探させず、思惑・ずれ・分かれ目だけを書かせます。'
+      : 'いまは読んでいない札がありません。取り込んだ札に主体が付くと、ここに溜まります。';
+    const btn = document.getElementById('btnWorldReadPrompt');
+    if (btn) btn.disabled = !n;
+  }
   function renderWorldImport() {
+    paintWorldReadNote();   // v20.17 第1段
     renderWorldSeedList();   // v20.2
     renderWorldOutside();   // v19.11
     document.getElementById('worldImportStatus').textContent = worldState.lastResult;
@@ -22750,6 +22957,36 @@
     } else if (res.stance || res.strata) box.value = '';
     renderWorldSources();
     st.textContent = msg;
+  });
+  // v20.17 第1段：読む
+  document.getElementById('btnWorldReadPrompt').addEventListener('click', () => {
+    const st = document.getElementById('worldReadStatus');
+    const n = worldReadTargets().length;
+    if (!n) { st.textContent = '読んでいない札がありません。'; return; }
+    copyToClipboard(worldReadPromptText()).then((ok) => {
+      st.textContent = ok ? n + '枚ぶんをコピーしました。Claude のチャットに貼ってください。' : 'コピーできませんでした。';
+    });
+  });
+  document.getElementById('btnWorldReadImport').addEventListener('click', () => {
+    const box = document.getElementById('worldReadPaste');
+    const st = document.getElementById('worldReadStatus');
+    const before = (() => { try { return worldMoneyChains().length; } catch (e) { return 0; } })();
+    const res = worldImportReadJson(box.value);
+    if (res.error) { st.textContent = res.error; return; }
+    // 見返りを数字で返す（読んだあとに何が増えたかが見える）
+    let msg = res.readCards + '枚に思惑が入りました（' + res.readFilled + '人ぶん）。';
+    if (res.forks) msg += '　分かれ目が' + res.forks + '件立ちました。';
+    if (res.zure) msg += '　言っていることとの食い違いが' + res.zure + '件。';
+    if (res.reasons) msg += '　読む値打ちの1行が' + res.reasons + '件。';
+    if (res.lowered) msg += '　確度を下げた札が' + res.lowered + '件。';
+    if (res.kept) msg += '　※ すでに思惑が付いていた' + res.kept + '人ぶんはそのまま。';
+    if (res.unknown) msg += '　※ 端末に無い札' + res.unknown + '件は無視。';
+    const gained = Math.max(0, res.chains - before);
+    if (gained) msg += '　鎖が' + gained + '本つながりました（いま' + res.chains + '本）。';
+    if (res.readCards || res.forks) box.value = '';
+    st.textContent = msg;
+    paintWorldReadNote();
+    renderWorldImport();
   });
   // v16 B: 地層の現在値を調べる
   document.getElementById('btnWorldProbePrompt').addEventListener('click', () => {
