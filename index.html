@@ -2923,7 +2923,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.15';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.16';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -5690,6 +5690,15 @@
     };
   }
 
+  // v20.16：キャッシュが効く形に割る。古い分は「50枚単位で切り下げた枚数」までなので、
+  // 50枚たまるまで一字も変わらない＝2回目以降はキャッシュ読み（0.1倍）になる。
+  // 新しい分は毎回変わるが、数枚ぶんしか課金されない
+  const NOTE_CACHE_STEP = 50;
+  function stableNoteSplit() {
+    const all = data.notes;
+    const stable = Math.floor(all.length / NOTE_CACHE_STEP) * NOTE_CACHE_STEP;
+    return { older: all.slice(0, stable).map(buildCompactNote), newer: all.slice(stable).map(buildCompactNote) };
+  }
   // The full note list in stable (insertion) order, unfiltered by any
   // per-call exclusion - identical across calls whenever the note set itself
   // hasn't changed, which is exactly what makes it safe to cache. Only used
@@ -5736,10 +5745,11 @@
   // call with the same note set re-hits the same cache entry at 0.1x price
   // instead of re-billing the full list at 1x every time.
   function buildAutoLinkSystemBlocks() {
+    const split = notesInlineMode() ? null : stableNoteSplit();   // v20.16
     const text =
       (notesInlineMode()
         ? 'この人が集めたノート（言葉・出典・自分の解釈・タグ）のうち、対象に近いものの一覧をユーザーメッセージで渡す。\n'
-        : '以下はこの人が集めたノート（言葉・出典・自分の解釈・タグ）の一覧である。\n' + JSON.stringify(stableCompactNotesList())) +
+        : '以下はこの人が集めたノート（言葉・出典・自分の解釈・タグ）の一覧である。\n' + JSON.stringify(split.older)) +
       '\n\nこのあとユーザーメッセージで対象ノートと、除外すべきid（対象自身・既にリンク済み・却下済み）を提示する。' +
       '除外id以外の一覧の中から、対象ノートと同じ考えを別の言い方で述べている（similar）／反対の立場を取っている（opposite）／' +
       '前提や具体例として補い合う（supplement）ノートを最大5件、関連の強い順に選び、JSONのみで返してください。' +
@@ -5749,7 +5759,10 @@
       '該当がなければ空配列を返してください。reason には引用符や改行を使わないでください。\n\n' +
       '返答形式（JSON配列のみ、他の文章は含めない）:\n' +
       '[{"id": "...", "relation": "similar", "reason": "..."}]';
-    return [{ type: 'text', text, cache_control: { type: 'ephemeral' } }];
+    // v20.16：古い分までを1つ目のブロックに入れてキャッシュし、新しい分は2つ目のブロック（キャッシュしない）で足す
+    const blocks = [{ type: 'text', text, cache_control: { type: 'ephemeral' } }];
+    if (split && split.newer.length) blocks.push({ type: 'text', text: '最近加わったノート（上の一覧の続き）:\n' + JSON.stringify(split.newer) });
+    return blocks;
   }
 
   // Shared by the morning flow and the consult screen (same model, same
@@ -5757,10 +5770,11 @@
   // history differ) so both hit the same cache entry rather than each
   // maintaining its own.
   function buildChatSystemBlocks() {
+    const split = notesInlineMode() ? null : stableNoteSplit();   // v20.16
     const text =
       (notesInlineMode()
         ? 'この人が本や名言集から集めた言葉と本人の解釈のうち、今の状態に近いものの一覧をユーザーメッセージで渡す。その中から選ぶこと。\n'
-        : '以下はこの人が本や名言集から集めた言葉と、本人の解釈である。\n' + JSON.stringify(stableCompactNotesList())) +
+        : '以下はこの人が本や名言集から集めた言葉と、本人の解釈である。\n' + JSON.stringify(split.older)) +
       'k は種類（quote=名言, book=本, self=本人の考え）。\n' +
       '\n\nこのあとユーザーメッセージで、今の状態（および直近のやり取りがあればそれ）と、' +
       '最大何件選ぶかを提示する。入力された状態に対して、指定された件数まで最も応える言葉を選び、' +
@@ -5769,7 +5783,10 @@
       '該当がなければ空にしてください。why・closing には引用符や改行を使わないでください。\n\n' +
       '返答形式（JSONのみ、他の文章は含めない）:\n' +
       '{"picks":[{"id":"...","why":"..."}],"closing":"..."}';
-    return [{ type: 'text', text, cache_control: { type: 'ephemeral' } }];
+    // v20.16：関連づけと同じ割り方。古い分はキャッシュ、新しい分だけ毎回送る
+    const blocks = [{ type: 'text', text, cache_control: { type: 'ephemeral' } }];
+    if (split && split.newer.length) blocks.push({ type: 'text', text: '最近加わった言葉（上の一覧の続き）:\n' + JSON.stringify(split.newer) });
+    return blocks;
   }
 
   // v3.2 bulk-input decomposition. kind: 'book' (名言集・引用) or
@@ -14966,6 +14983,11 @@
       ['月次売上', 'https://investor.tsmc.com/english/monthly-revenue/' + y],
     ];
   }
+  // v20.16：源の url に入れる、いちばん新しい候補の日付のページ（起動時に1回評価される）
+  function worldBojLatestUrl() {
+    const list = worldBojDekadUrls(todayStr());
+    return list.length ? list[0][1] : 'https://www.boj.or.jp/statistics/boj/other/acmai/index.htm';
+  }
   // 日銀 営業毎旬報告：10日・20日・月末の回。公表は数営業日あとなので、新しい順に3つ並べて開けたものを採らせる
   function worldBojDekadUrls(today) {
     const d = parseDateStr(today);
@@ -14999,10 +15021,11 @@
       retiredUrls: ['https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/'],
       note: '表1（Factors Affecting Reserve Balances）で、Securities held outright（保有する国債など）・Loans（貸出）・Central bank liquidity swaps（外国の中銀へのドル供給）・U.S. Treasury, General Account（米財務省の口座）・Reserve balances with Federal Reserve Banks（銀行の準備預金）のうち、前週比（Change from week ended）が大きく動いたもの。単位は百万ドル。from／to は「FRB」「米財務省」「銀行」など' },
     { id: 'ws_money_boj_juq', label: '日銀 営業毎旬報告', short: '日銀旬報', match: ['営業毎旬', '旬報', '日銀', '日本銀行'],
-      name: '日本銀行 営業毎旬報告（10日ごと）', url: 'https://www.boj.or.jp/statistics/boj/other/acmai/index.htm', role: 'primary', cadence: 'dekad',
-      retiredUrls: ['https://www.boj.or.jp/statistics/boj/fm/juq/index.htm'],
+      // v20.16：源の url も日付ごとのページにする（一覧のままだと、そちらを先に開いて PDF を探しに行っていた）
+      name: '日本銀行 営業毎旬報告（10日ごと・日付ごとのページ）', url: worldBojLatestUrl(), role: 'primary', cadence: 'dekad',
+      retiredUrls: ['https://www.boj.or.jp/statistics/boj/fm/juq/index.htm', 'https://www.boj.or.jp/statistics/boj/other/acmai/index.htm'],
       openUrls: (today) => worldBojDekadUrls(today),   // v20.14：日付ごとのページへ直接行く（一覧から探させない）
-      note: '「開く URL」を新しい順に開き、開けた中でいちばん新しい回と、その1つ前の回を使う（最新の回は公表が数営業日あとなので404のことがある）。資産の「国債」「貸付金」、負債の「当座預金」「政府預金」「売現先勘定」の残高（単位は千円）を比べ、大きく動いたものだけ札にする。この源に限り、2つの回の差を出してよい（detail に「2つの回の差」と書く）。from／to は「日本銀行」「政府」「金融機関」など' },
+      note: '一覧（acmai/index.htm）は開かない。PDF（参考図表）も読まない。「開く URL」を新しい順に開き、開けた中でいちばん新しい回と、その1つ前の回を、HTML の本文だけで読む（数値は本文の表にある）。資産の「国債」「貸付金」、負債の「当座預金」「政府預金」「売現先勘定」の残高（単位は千円）を比べ、大きく動いたものだけ札にする。この源に限り、2つの回の差を出してよい（detail に「2つの回の差」と書く）。from／to は「日本銀行」「政府」「金融機関」など' },
     // v19.10：企業と富裕層。介入は結果だが、設備投資は賭け——3年後の世界をどう読んだかが金額と行き先に出る。
     // 2026-09-11 に実際に開いて、数字が本文（HTML か PDF）にあると確かめたものだけ。
     // 見送り：EDINET（検索アプリで本文に数字が無い）、NVIDIA IR（403）、UBS Global Wealth Report（403）、
@@ -15014,22 +15037,22 @@
       openUrls: (today) => worldTsmcUrls(today),   // v20.14：年・四半期は URL に入るので、アプリが作って並べる
       note: '最新の四半期の設備投資額（capital expenditure）と、その内訳・行き先（先端工程・海外工場・国名）。四半期が404なら1つ前の四半期を見る。月次売上も見て、前年同月比で大きく動いていれば1件。' +
         '金額は US$（月次は NT$）のまま、書かれた通貨で書く。from は「TSMC」、to は工場の場所か用途。設備投資は3年後の需要をどう読んだかの賭けなので、read にはその読みを書く' },
-    // v20.14：トヨタ自身のページは本文に数字が無く（JS 描画）、チャットの取得役には 403（実測）。
-    // 数字は IR BANK から読み、札の確認先（url）はトヨタ自身の資料にする
+    // v20.16：トヨタ自身のページは、チャットの取得役に全部 403（一覧・PDF・アーカイブ・ライブラリとも実測）。
+    // ブラウザの UA なら 200 だが本文に数字が無い（JS 描画）。IR BANK は実機で2回続けてボット検知で弾かれた。
+    // よって「開く」のは日経か、検索で見つけたトヨタ自身の資料。トヨタ自身の URL は札の確認先としてだけ載せる
     { id: 'ws_corp_toyota', label: 'トヨタ 決算', short: 'トヨタ', match: ['トヨタ', 'Toyota'],
-      retiredUrls: ['https://global.toyota/jp/ir/financial-results/'],
-      name: 'トヨタ自動車 決算（数字は IR BANK から）', url: 'https://irbank.net/7203/results', role: 'primary', cadence: 'quarter',
-      // v20.15：1本目が弾かれても止まらないよう2本にする（実機で IR BANK がボット検知で開けなかった）。
-      // 転送後の URL を直接書く（irbank.net/7203/results → /E02144/results）
+      retiredUrls: ['https://global.toyota/jp/ir/financial-results/', 'https://irbank.net/7203/results', 'https://irbank.net/E02144/results'],
+      name: 'トヨタ自動車 決算（数字は検索で見つけたトヨタ自身の資料か、日経から）', url: 'https://www.nikkei.com/nkd/company/kessan/?scode=7203', role: 'primary', cadence: 'quarter',
+      // v20.16：IR BANK を外した。トヨタ自身のページは直接開けないので、確認先としてだけ載せる
       openUrls: () => [
-        ['数字を読む1（IR BANK）', 'https://irbank.net/E02144/results'],
-        ['数字を読む2（日経。1が開けないとき）', 'https://www.nikkei.com/nkd/company/kessan/?scode=7203'],
-        ['札の url に書く（トヨタ自身）', 'https://global.toyota/jp/ir/financial-results/'],
+        ['数字を読む（日経）', 'https://www.nikkei.com/nkd/company/kessan/?scode=7203'],
+        ['札の url に書く（トヨタ自身。開かなくてよい）', 'https://global.toyota/jp/ir/financial-results/'],
       ],
       note: '設備投資・研究開発費・自社株買い（自己株式の取得）・配当の金額と、通期見通しの変更。金額は円のまま。from は「トヨタ自動車」。何に賭けたか（電動化・地域）を read に。' +
-        '「数字を読む1」が開けなければ「数字を読む2」へ。どちらも駄目なら web 検索で「トヨタ 決算 設備投資 研究開発費」の新しい発表を探す。' +
-        'どこも一次資料ではないので、札の url には「札の url に書く」のトヨタ自身の URL を書く（数字を読んだ場所と確認先が違ってよい）。' +
-        'checked の note に、どこから読んだか（IR BANK／日経／ほか）を必ず書く' },
+        'まず web 検索で「トヨタ 決算短信 最新の四半期」を探し、トヨタ自身の資料（決算短信・決算概況）が開けるならそれを読む（一次資料なので最良）。' +
+        '見つからない・開けないときは「数字を読む（日経）」を読む。トヨタ自身のページ（global.toyota）は直接開くと弾かれるので、開かなくてよい。' +
+        '札の url には「札の url に書く」のトヨタ自身の URL を書く（数字を読んだ場所と確認先が違ってよい）。' +
+        'checked の note に、どこから読んだか（トヨタ自身／日経）を必ず書く' },
     { id: 'ws_group_nri', label: '野村総研 富裕層推計', short: 'NRI', match: ['野村', 'NRI', '富裕層'], retiredUrls: [],
       name: '野村総合研究所 日本の富裕層の世帯数と純金融資産の推計', url: 'https://www.nri.com/jp/news/newsrelease/20250213_1.html', role: 'primary', cadence: 'quarter',
       openUrls: () => [['確かに読める発表（2025年2月）', 'https://www.nri.com/jp/news/newsrelease/20250213_1.html']],
