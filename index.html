@@ -1932,9 +1932,11 @@
             <div class="statRow"><span>問い</span><span id="statUsageMonthQuestion"></span></div>
             <div class="statRow"><span>筋肉の対応</span><span id="statUsageMonthMuscle"></span></div>
             <div class="statRow"><span>読書メモ</span><span id="statUsageMonthReading"></span></div>
+            <div class="statRow"><span>投稿の説明</span><span id="statUsageMonthPostline"></span></div>
             <div class="statRow"><span>撮るのカード（v9.0 で終了）</span><span id="statUsageMonthCards"></span></div>
             <div class="statRow"><span>答えを壊す（v9.0 で終了）</span><span id="statUsageMonthBreak"></span></div>
             <div class="statRow"><span>今月・合計</span><span id="statUsageMonthTotal"></span></div>
+            <div class="statRow"><span>言葉1枚の保存あたり</span><span id="statUsagePerSave"></span></div>
             <div id="statUsagePerDevice"></div>
             <div class="statRow"><span>先月・合計</span><span id="statUsagePrevMonthTotal"></span></div>
             <div class="statRow"><span>累計・合計</span><span id="statUsageAllTimeTotal"></span></div>
@@ -2918,7 +2920,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.11';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.12';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -5451,6 +5453,16 @@
     if (kind === 'question') return getClaudeQuestionModel();
     return getClaudeChatModel();
   }
+  // v20.12：費用の判断は材料が無いとできないので、今月いくら使ったかを1行で出す（設定の見出し）
+  const USAGE_KIND_LABEL = { autolink: '関連づけ', morning: '朝', consult: '相談', searchAgain: '探し直し', bulk: '一括入力', question: '問い', muscle: '筋肉', reading: '読書メモ', cards: '撮る', break: '壊す', postline: '説明' };
+  function usageMonthLine() {
+    const u = sumUsageAcrossDevices(currentMonthKey());
+    const cost = totalCostForKindStats(u);
+    const parts = USAGE_KINDS.filter((k) => u[k] && u[k].calls)
+      .sort((x, y) => u[y].calls - u[x].calls).slice(0, 4)
+      .map((k) => (USAGE_KIND_LABEL[k] || k) + u[k].calls + '回');
+    return '今月 約$' + cost.toFixed(2) + (parts.length ? '（' + parts.join('・') + '）' : '（まだ使っていません）');
+  }
   function totalCostForKindStats(kindStats) {
     return USAGE_KINDS.reduce((sum, k) => sum + estimateCostUsd(kindStats[k], modelForUsageKind(k)), 0);
   }
@@ -5823,17 +5835,21 @@
   }
 
   // Fire-and-forget from the save handler and the "関連を探し直す" button:
-  // shows the small in-flight indicator, then persists+syncs only if a link
-  // was actually added (so an unconfigured/disabled auto-link never touches
-  // sync state).
+  // shows the small in-flight indicator, then persists+syncs whenever the call
+  // actually ran (an unconfigured/disabled auto-link returns skipped and never
+  // touches sync state).
+  // v20.12: it used to pass markLinkedAt:false and save only when a link was
+  // added, so a note linked at save time never got autoLinkedAt - and
+  // runBatchAutoLink's pool is exactly !autoLinkedAt, so 一括で関連づけ paid for
+  // those notes a second time. Mark it, and save so the mark survives a reload.
   async function triggerAutoLinkForNote(noteId, usageKind) {
     const note = findNote(noteId);
     if (!note) return;
     autoLinkInFlight.add(noteId);
     refreshAutoLinkIndicators();
-    const result = await autoLinkNote(note, { markLinkedAt: false, usageKind: usageKind || 'autolink' });
+    const result = await autoLinkNote(note, { markLinkedAt: true, usageKind: usageKind || 'autolink' });
     autoLinkInFlight.delete(noteId);
-    if (result && result.ok && result.added > 0) saveData(data);
+    if (result && result.ok) saveData(data);   // v20.12：0件でも印を残す（次に一括で課金し直さないため）
     refreshCurrentScreen();
     refreshAutoLinkIndicators();
   }
@@ -12504,7 +12520,8 @@
   function paintSettingsSummaries() {
     const set = (id, t) => { const el = document.getElementById(id); if (el) el.textContent = t; };
     set('setSubSync', getGhToken() ? '設定済み' : 'トークン未設定');
-    set('setSubApi', getClaudeApiKey() ? (getClaudeChatModel() + ' ・ 上限 $' + getUsageBudget().toFixed(2)) : 'キー未設定');
+    set('setSubApi', getClaudeApiKey() ? (getClaudeChatModel() + ' ・ 上限 $' + getUsageBudget().toFixed(2) + ' ・ ' + usageMonthLine()) : 'キー未設定');
+    set('setSubStats', usageMonthLine());   // v20.12：折りたたみを開かなくても今月の額が見える
     set('setSubWords', data.notes.length + '件');
     set('setSubWalk', computeWalkDerived().n + '日');
     set('setSubWorld', 'ソース ' + worldSources().length + '件 ・ 版 ' + APP_BUILD);
@@ -12549,11 +12566,17 @@
     document.getElementById('statUsageMonthQuestion').textContent = formatUsageRow(monthUsage.question, modelForUsageKind('question'));
     document.getElementById('statUsageMonthMuscle').textContent = formatUsageRow(monthUsage.muscle, modelForUsageKind('muscle'));
     document.getElementById('statUsageMonthReading').textContent = formatUsageRow(monthUsage.reading, modelForUsageKind('reading'));
+    document.getElementById('statUsageMonthPostline').textContent = formatUsageRow(monthUsage.postline, modelForUsageKind('postline'));   // v20.12
     document.getElementById('statUsageMonthCards').textContent = formatUsageRow(monthUsage.cards, modelForUsageKind('cards'));
     document.getElementById('statUsageMonthBreak').textContent = formatUsageRow(monthUsage.break, modelForUsageKind('break'));
     const monthCost = totalCostForKindStats(monthUsage);
     const budget = getUsageBudget();
     document.getElementById('statUsageMonthTotal').textContent = `約$${monthCost.toFixed(3)}（上限 $${budget.toFixed(2)} の${Math.round((monthCost / budget) * 100)}%）`;
+    { // v20.12：関連づけ1回あたりの目安（言葉の件数で変わるので、実測から出す）
+      const al = monthUsage.autolink;
+      const per = al && al.calls ? estimateCostUsd(al, modelForUsageKind('autolink')) / al.calls : 0;
+      document.getElementById('statUsagePerSave').textContent = per ? '約$' + per.toFixed(3) + '（今月 ' + al.calls + '回の平均）' : '-';
+    }
 
     const perDeviceEl = document.getElementById('statUsagePerDevice');
     perDeviceEl.innerHTML = '';
