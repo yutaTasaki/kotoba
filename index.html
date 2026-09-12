@@ -20768,6 +20768,8 @@
         g.addEventListener('click', (e) => {
           e.stopPropagation();
           if (view.moved) return;
+          // v20.20 第3段：市場は中身が混ざっているので、一覧ではなく網を開く（誰と誰の取引かが見える）
+          if (c === 'MKT') { worldOpenMarketNet(); return; }
           worldOpenFlowRows(party.rows, WORLD_MAP_SLOT_LABEL[c] + '（' + party.names.join('・') + '）が絡む動き（直近' + WORLD_MAP_DAYS + '日）');
         });
       }
@@ -21002,9 +21004,78 @@
       unk.appendChild(b);
     }
   }
+  // v20.20 第3段：市場の網。枠「市場」には、本物の市場（国債・為替・株式・石油・金）と、
+  // 相手が分からないときの受け皿（買い手・株主・投資家）が混ざって入っている。
+  // 枠に丸めると「誰と誰の取引か」が消えるが、元の名前は札に残っているので拾い直せる。
+  // 点＝市場の名前そのもの、外の札＝相手の国と向き。上の帯が入れる側、下の帯が出す側になる。
+  // 名前に「市場」が入っているものを本物の市場、入っていないものを受け皿として、点の並びで分ける。
+  function worldMarketIsReal(name) { return String(name || '').includes('市場'); }
+  function worldMarketNet(model, lib) {
+    const nodes = new Map();
+    const nodeOf = (name, r) => {
+      const key = 'm:' + worldNormName(name);
+      if (!nodes.has(key)) {
+        nodes.set(key, { key, name: String(name || '？'), actor: worldFindIn(WORLD_STORES.actor, name) || null,
+          rows: [], real: worldMarketIsReal(name) });
+      }
+      const n = nodes.get(key);
+      if (!n.rows.includes(r)) n.rows.push(r);
+      return key;
+    };
+    const outs = new Map();
+    const addOut = (dir, type, code, r, nodeKey) => {
+      const k = dir + '|' + type + '|' + code;
+      if (!outs.has(k)) {
+        const place = type === 'country' ? worldPlaceShort(code, lib) : type === 'slot' ? WORLD_MAP_SLOT_LABEL[code] : '場所不明';
+        const full = type === 'country' ? worldPlaceLabel(code, lib) : place;
+        outs.set(k, { key: k, dir, type, code, place, full, rows: [], nodeKeys: [] });
+      }
+      const o = outs.get(k);
+      o.rows.push(r); o.nodeKeys.push(nodeKey);
+    };
+    const allRows = [];
+    model.lines.forEach((r) => {
+      const [a, b] = r.places || [];
+      const aM = a === 'MKT', bM = b === 'MKT';
+      if (!aM && !bM) return;
+      allRows.push(r);
+      if (aM && bM) { nodeOf(r.flow.from, r); nodeOf(r.flow.to, r); return; }   // 市場どうしは点だけ出す
+      const nk = nodeOf(aM ? r.flow.from : r.flow.to, r);
+      const other = aM ? b : a;
+      const type = !other ? 'unknown' : WORLD_MAP_SLOTS.includes(other) ? 'slot' : 'country';
+      // 市場から見た向き：市場が出し元なら「出す（→）」、相手が出し元なら「入れる（←）」
+      addOut(aM ? 'out' : 'in', type, other || '', r, nk);
+    });
+    let list = [...nodes.values()];
+    let more = null;
+    if (list.length > WORLD_NET_MAX_NODES) {
+      const keep = list.slice().sort((x, y) => (y.rows.length - x.rows.length) || x.name.localeCompare(y.name, 'ja')).slice(0, WORLD_NET_MAX_NODES - 1);
+      const keepKeys = new Set(keep.map((n) => n.key));
+      const rest = list.filter((n) => !keepKeys.has(n.key));
+      more = { key: 'more', name: 'ほか' + rest.length, actor: null, more: true, names: rest.map((n) => n.name), rows: [...new Set(rest.flatMap((n) => n.rows))] };
+      const remap = (k) => (k == null ? k : keepKeys.has(k) ? k : 'more');
+      outs.forEach((o) => { o.nodeKeys = o.nodeKeys.map(remap); });
+      list = keep;
+    }
+    // 本物の市場が先、受け皿が後ろ（網の中で分ける）
+    list.sort((x, y) => (Number(y.real) - Number(x.real)) || x.name.localeCompare(y.name, 'ja'));
+    if (more) list.push(more);
+    const real = list.filter((n) => n.real && !n.more).length;
+    return { c: 'MKT', slot: 'MKT', nodes: list, inner: [], outs: [...outs.values()], allRows, selfRows: 0,
+      real, recv: list.filter((n) => !n.real && !n.more).length };
+  }
+  function worldOpenMarketNet() {
+    worldState.netSlot = 'MKT';
+    worldState.netCountry = '';
+    worldState.netView = null;
+    worldState.view = 'net';
+    showScreen('world');
+    renderWorld();
+  }
   // v20.4 M4：国の点を押したら、その国の網へ（前の「その国が絡む札の一覧」は網の下の1行に残す）
   function worldOpenCountryNet(c) {
     worldState.netCountry = c;
+    worldState.netSlot = '';   // v20.20：市場の網から国の網へ移るときに、前の状態を残さない
     worldState.netView = null;
     worldState.view = 'net';
     showScreen('world');
@@ -21222,6 +21293,7 @@
     const box = document.getElementById('worldNetBox');
     const st = document.getElementById('worldNetStatus');
     const listBtn = document.getElementById('btnWorldNetList');
+    const slot = worldState.netSlot || '';   // v20.20 第3段：枠（いまは市場）の網かどうか
     const c = worldState.netCountry;
     const token = ++worldNetToken;
     listBtn.hidden = true;
@@ -21232,12 +21304,20 @@
       for (let mm = monthOfDate(from); mm <= monthOfDate(t) && months.length < 6; mm = monthShift(mm, 1)) months.push(mm);
       await ensureWorldMonths(months);
       if (token !== worldNetToken || worldState.view !== 'net') return;
-      const net = worldCountryNet(c, worldMapModel(lib, from), lib);
-      worldState.netLast = { c, net, label: worldPlaceLabel(c, lib) };
-      document.getElementById('worldNetTitle').textContent = worldPlaceLabel(c, lib) + 'の網（直近' + WORLD_MAP_DAYS + '日）';
+      const model = worldMapModel(lib, from);
+      // v20.20 第3段：枠「市場」を押したときは市場の網。描くところは国の網と同じものを使う
+      const net = slot ? worldMarketNet(model, lib) : worldCountryNet(c, model, lib);
+      const label = slot ? WORLD_MAP_SLOT_LABEL[slot] : worldPlaceLabel(c, lib);
+      worldState.netLast = { c: slot || c, net, label };
+      document.getElementById('worldNetTitle').textContent = label + 'の網（直近' + WORLD_MAP_DAYS + '日）';
+      listBtn.textContent = slot ? 'この市場の札を一覧で見る' : 'この国の札を一覧で見る';
+      document.getElementById('worldNetLegend').textContent = slot
+        ? '点：市場の名前（本物の市場が先、相手が分からない受け皿が後ろ）　上の帯：市場に入れる側　下の帯：市場から出す側'
+        : '● 塗った点：登録している主体（押すと詳しく）　○ 白抜きの点：札に名前だけ出てきた相手（押すとその札）';
       if (!net.nodes.length && !net.outs.length) {
         box.innerHTML = ''; box.style.height = '';
-        st.textContent = 'この国の網に出せる動きがありません（「' + worldPlaceShort(c, lib) + '」から「' + worldPlaceShort(c, lib) + '」への動きだけです）。下の「この国の札を一覧で見る」から見られます。';
+        st.textContent = slot ? 'この枠に出せる動きがありません。'
+          : 'この国の網に出せる動きがありません（「' + worldPlaceShort(c, lib) + '」から「' + worldPlaceShort(c, lib) + '」への動きだけです）。下の「この国の札を一覧で見る」から見られます。';
         listBtn.hidden = !net.allRows.length;
         return;
       }
@@ -21246,8 +21326,12 @@
       const drawnW = Math.max(200, Math.round(document.getElementById('worldNetBox').clientWidth || 360));
       if (Math.abs(drawnW - Number(document.getElementById('worldNetBox').dataset.w || drawnW)) > 1) worldDrawNet(net, lib);
       const inner = net.inner.filter((x) => x.from !== x.to).length;
-      st.textContent = '点 ' + net.nodes.length + '・国内の矢印 ' + inner + '本・外の札 ' + net.outs.length + '枚。点・矢印・外の札を押すと開きます。二本指で拡大・縮小できます。'
-        + (net.selfRows ? '　「' + worldPlaceShort(c, lib) + '」から「' + worldPlaceShort(c, lib) + '」への動き ' + net.selfRows + '件は、網には出さず「この国の札を一覧で見る」に入れています。' : '');   // v20.5.1
+      st.textContent = slot
+        // v20.20 第3段：市場の網は「何が混ざっていたか」を先に言う（枠に丸められて見えなくなっていたもの）
+        ? '市場 ' + net.real + '・相手が分からない受け皿 ' + net.recv + '・外の札 ' + net.outs.length + '枚。'
+          + '上の帯が市場に入れる側、下の帯が市場から出す側です。点を押すとその市場の動き、相手の国の札を押すとその国の網へ移ります。二本指で拡大・縮小できます。'
+        : '点 ' + net.nodes.length + '・国内の矢印 ' + inner + '本・外の札 ' + net.outs.length + '枚。点・矢印・外の札を押すと開きます。二本指で拡大・縮小できます。'
+          + (net.selfRows ? '　「' + worldPlaceShort(c, lib) + '」から「' + worldPlaceShort(c, lib) + '」への動き ' + net.selfRows + '件は、網には出さず「この国の札を一覧で見る」に入れています。' : '');   // v20.5.1
       listBtn.hidden = !net.allRows.length;
     }).catch((e) => {
       if (token !== worldNetToken) return;
