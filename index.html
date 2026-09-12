@@ -2913,7 +2913,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.9.1';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.10';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -21936,8 +21936,9 @@
       const acc = String((r.accessionNumber || [])[i] || ''), doc = String((r.primaryDocument || [])[i] || '');
       if (!acc || !doc) return;
       const period = (r.reportDate || [])[i];
+      const dir = 'https://www.sec.gov/Archives/edgar/data/' + Number(corp.cik) + '/' + acc.replace(/-/g, '');
       best = { id: corp.id, name: corp.name, side: corp.side, form: f, period: isDateStr(period) ? period : '', filed,
-        url: 'https://www.sec.gov/Archives/edgar/data/' + Number(corp.cik) + '/' + acc.replace(/-/g, '') + '/' + doc };
+        url: dir + '/' + doc, tables: dir + '/FilingSummary.xml' };   // v20.10：表だけのページを引くための一覧
     });
     return best;
   }
@@ -21968,15 +21969,24 @@
     L.push('買う側（Microsoft・Amazon・Alphabet）が設備に払った金が、作る側（NVIDIA・Micron）の売上になる。この鎖を見るための節。');
     list.forEach((f) => {
       L.push('- ' + f.name + '（' + f.side + '）：' + f.form + '・' + (f.period ? f.period + ' までの期・' : '') + worldShortDate(f.filed) + ' 提出');
-      L.push('  ' + f.url);
+      L.push('  表の一覧 ' + f.tables);
+      L.push('  書類ぜんぶ（表が引けないときだけ） ' + f.url);
     });
     L.push('読み方：');
-    L.push('- 読むのは、キャッシュフロー計算書の設備投資・自社株買い・配当と、損益計算書の研究開発費。作る側は、区分ごとの売上（データセンター・メモリなど）も。');
+    // v20.10：書類ぜんぶは 1.5〜8MB あり、実機で1社しか開けなかった。表だけのページ（80〜100KB）を開かせる
+    L.push('- **まず「表の一覧」を開く**（FilingSummary.xml。30〜70KB）。中の ShortName から表を選び、その HtmlFileName（R◯.htm）を同じ場所に付けて開く。1枚80〜100KB。');
+    L.push('  - 設備投資・自社株買い・配当：名前に「CASH FLOW」を含む表（「(Parenthetical)」は除く）。');
+    L.push('  - 研究開発費：名前に「INCOME」か「OPERATIONS」を含む表（「COMPREHENSIVE」は除く）。');
+    L.push('  - 作る側の区分ごとの売上：名前に「SEGMENT」を含む表。');
+    L.push('- 表の名前と番号は会社ごとに違う（「Cash Flows」「CASH FLOWS STATEMENTS」など）。上の言葉で当たらなければ、一覧の Statements の並びから当たりを探す。');
+    L.push('- 表が一覧に無い・一覧が開けないときは「書類ぜんぶ」を開く（重いので最後の手段）。それも開けなければ、その会社は札にせず、下の "checked" に opened:false と、どこで詰まったかを note に書く。黙って飛ばさない。');
     L.push('- 額は書類に書かれたとおり。10-Q のキャッシュフローは期の初めからの累計なので、引き算して3か月分にしない。flow の span に累計の期間を書く（例：「会計年度の初めから7月26日まで」）。');
     L.push('- 札は1社1枚：設備投資（from＝会社、to＝書類の言葉で行き先）。作る側は、区分の売上の札をもう1枚（from＝書類が名指しする買い手。名指しが無ければ「データセンターの買い手（書類では匿名）」、to＝会社）。');
     L.push('- 研究開発・自社株買い・配当は、設備投資の札の detail に書類の書き方のまま並べる。足さない。書類に無い項目は「記載なし」と書き、別の項目で埋めない。');
+    // v20.10：行の言い方は5社で全部違う（実測）。Amazon は3つとも行が無いので、探させない
+    L.push('  行の言い方は会社ごとに違う（例：設備投資は「Purchases of property and equipment」「Additions to property and equipment」「Expenditures for property, plant, and equipment」）。Amazon は研究開発費・自社株買い・配当の行が無いので「記載なし」と書く。');
     L.push('- 作る側の売上の札の after に、買う側の設備投資の札（同じ JSON の "#番号" か、最近のお金の動きの id）を書いてよい。書類に買い手の名前が無いときは、つながりを read に推定と書き、confidence を7以下にする。');
-    L.push('- url は上の書類の URL。source は「会社名 10-Q（提出日）」。eventDate は提出日。');
+    L.push('- url は上の「書類ぜんぶ」の URL（表のページではなく、人が開いて確かめられる方）。source は「会社名 10-Q（提出日）」。eventDate は提出日。');
     L.push('- 1社ずつ "checked" に報告する。source は「決算 会社名」（' + list.map(worldSecLabel).join('／') + '）。');
     return L.join('\n') + '\n';
   }

@@ -32,7 +32,44 @@ TSMC は年1回（20-F）なので入れない（TSMC は今までどおり「�
 - 書類の種類 `10-Q` と `10-K` のうち、提出日（`filingDate`）がいちばん新しいものを1社1つ。訂正（`10-Q/A`）は見ない
 - **新しい書類**＝その提出日が、控え（`index.pulls` の `sec_…`）より新しいもの。控えが無ければ新しい（最初の1回は5社とも出る）
 - 書類の URL：`https://www.sec.gov/Archives/edgar/data/{CIK}/{受付番号からハイフンを抜いたもの}/{primaryDocument}`（人が開ける本文のページ。札の url になる）
+- 表の一覧の URL：同じ場所の `FilingSummary.xml`（v20.10。表だけのページを引くため）
 - 新しい書類が無い会社は、プロンプトに出さない（字数のため）
+
+#### 1.3.1 なぜ「表だけのページ」を読ませるか（v20.10）
+
+実機の1回目は、5社のうち NVIDIA だけが読めた。調べた結果：
+
+- 5社の書類の URL は**同じ形で、5社とも開ける**（形の違いは無かった）
+- 違うのは大きさと順番。NVIDIA 1.45MB（一覧の1番目で最小）／Micron 1.46／Amazon 1.52／Alphabet 2.35／**Microsoft 8.19MB**
+- つまり原因は URL ではなく、1回の取り込みで開ける量
+
+EDGAR は書類ごとに `FilingSummary.xml`（30〜70KB）を持ち、そこから**表1枚だけのページ**（`R◯.htm`・80〜100KB）が引ける。5社ぶん、キャッシュフロー・損益・区分を全部開いても**合計1.93MB**（書類ぜんぶだと15MB）。
+
+**表の名前と番号は会社ごとに違う**（実測）。だから番号で決め打ちせず、名前で探させる。
+
+| 会社 | キャッシュフロー | 損益 | 区分 |
+|---|---|---|---|
+| NVIDIA | R7「Condensed Consolidated Statements of Cash Flows」 | R2「…Statements of Income」 | R20「Segment Information」 |
+| Micron | R7「CONSOLIDATED STATEMENTS OF CASH FLOWS」 | R2「…STATEMENTS OF OPERATIONS」 | R24「Segment and Other Information」 |
+| Microsoft | R6「CASH FLOWS STATEMENTS」 | R2「INCOME STATEMENTS」 | R28「SEGMENT INFORMATION AND GEOGRAPHIC DATA」 |
+| Amazon | R2「Consolidated Statements of Cash Flows」 | R3「…Statements of Operations」 | R15「Segment Information」 |
+| Alphabet | R9「CONSOLIDATED STATEMENTS OF CASH FLOWS」 | R4「CONSOLIDATED STATEMENTS OF INCOME」 | R24「Information about Segments and Geographic Areas」 |
+
+**逃げ道（3段）**：①表の一覧 → ②引けなければ「書類ぜんぶ」（重いので最後の手段。URL もプロンプトに並べる）→ ③それも開けなければ、その会社は札にせず `checked` に `opened:false` と、どこで詰まったかを `note` に書く。③のとき控えは進まないので、次の取り込みでもう一度出る。取り込み結果の1行にも「決算 ◯◯ 開けず（理由）」が出る（黙って落とさない）。
+
+#### 1.3.2 見つけ方は 10-Q／10-K のまま（8-K は採らない。v20.10 実測）
+
+8-K（項目2.02）で早く気づける案を測ったところ、**0〜1日しか早くならなかった**ので採らない。
+
+| 会社 | 8-K(2.02) | 次の 10-Q／10-K | 差 |
+|---|---|---|---|
+| NVIDIA | 8/26 | 8/26 | 0日 |
+| Microsoft | 7/29 | 7/29 | 0日 |
+| Micron | 6/24 | 6/25 | 1日 |
+| Amazon | 7/30 | 7/31 | 1日 |
+| Alphabet | 7/22 | 7/23 | 1日 |
+
+直近4回ぶんで見ても同じ（Micron の 2025-09-23 → 10-K 10/3 の10日だけが例外）。8-K には表のページが無く、決算発表の本文（EX-99.1）も NVIDIA・Alphabet では一覧に見当たらない。**1日のために、表が引けない経路へ移す理由が無い。**
 
 ### 1.4 プロンプトの節「■ 決算」
 
@@ -42,10 +79,15 @@ TSMC は年1回（20-F）なので入れない（TSMC は今までどおり「�
 ■ 決算（SEC に出た新しい書類。5社のうち 5社。書類を開いて読む）
 買う側（Microsoft・Amazon・Alphabet）が設備に払った金が、作る側（NVIDIA・Micron）の売上になる。この鎖を見るための節。
 - NVIDIA（作る側）：10-Q・2026-07-26 までの期・8/26 提出
-  https://www.sec.gov/Archives/edgar/data/1045810/000104581026000075/nvda-20260726.htm
+  表の一覧 https://www.sec.gov/Archives/edgar/data/1045810/000104581026000075/FilingSummary.xml
+  書類ぜんぶ（表が引けないときだけ） https://www.sec.gov/Archives/edgar/data/1045810/000104581026000075/nvda-20260726.htm
 - （以下、新しい書類のある会社だけ）
 読み方：
-- 読むのは、キャッシュフロー計算書の設備投資・自社株買い・配当と、損益計算書の研究開発費。作る側は、区分ごとの売上（データセンター・メモリなど）も。
+- **まず「表の一覧」を開く**。ShortName から表を選び、その HtmlFileName（R◯.htm）を同じ場所に付けて開く（1枚80〜100KB）。
+  - 設備投資・自社株買い・配当：名前に「CASH FLOW」を含む表（「(Parenthetical)」は除く）
+  - 研究開発費：名前に「INCOME」か「OPERATIONS」を含む表（「COMPREHENSIVE」は除く）
+  - 作る側の区分ごとの売上：名前に「SEGMENT」を含む表
+- 表の名前と番号は会社ごとに違う。当たらなければ一覧の Statements の並びから探す。表が無い・一覧が開けないときは「書類ぜんぶ」を開き、それも開けなければ札にせず checked に opened:false と理由を書く。
 - 額は書類に書かれたとおり。10-Q のキャッシュフローは期の初めからの累計なので、引き算して3か月分にしない。flow の span に累計の期間を書く（例：「会計年度の初めから7月26日まで」）。
 - 札は1社1枚：設備投資（from＝会社、to＝書類の言葉で行き先）。作る側は、区分の売上の札をもう1枚（from＝書類が名指しする買い手。名指しが無ければ「データセンターの買い手（書類では匿名）」、to＝会社）。
 - 研究開発・自社株買い・配当は、設備投資の札の detail に書類の書き方のまま並べる。足さない。書類に無い項目は「記載なし」と書き、別の項目で埋めない。
