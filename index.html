@@ -1248,6 +1248,9 @@
   .worldActorOpen .waKey { display: inline-block; min-width: 3.2em; color: var(--text-faint); font-size: 11px; margin-right: 6px; }
   /* 推定：色（琥珀）と形（バッジ＋左の破線）で事実と分ける */
   .worldActorOpen .waRead { border-left: 2px dashed var(--guess); padding-left: 8px; margin-top: 2px; }
+  /* v20.18 第2段：まだ読んでいない主体と、書き直す前の読み */
+  .worldActorOpen .waNotRead { color: var(--text-faint); font-size: 11px; margin-top: 3px; }
+  .worldActorOpen .waWas { color: var(--text-faint); font-size: 11px; margin-top: 3px; text-decoration: line-through; }
   .guessBadge {
     display: inline-block; font-size: 10px; line-height: 1; padding: 3px 6px; border-radius: 4px;
     background: var(--guess); color: #1a1408; margin-right: 6px; vertical-align: 1px; font-weight: 700;
@@ -2934,7 +2937,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.17';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.18';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -15052,7 +15055,7 @@
       name: 'TSMC 四半期決算・月次売上', url: 'https://investor.tsmc.com/english/quarterly-results', role: 'primary', cadence: 'quarter',
       openUrls: (today) => worldTsmcUrls(today),   // v20.14：年・四半期は URL に入るので、アプリが作って並べる
       note: '最新の四半期の設備投資額（capital expenditure）と、その内訳・行き先（先端工程・海外工場・国名）。四半期が404なら1つ前の四半期を見る。月次売上も見て、前年同月比で大きく動いていれば1件。' +
-        '金額は US$（月次は NT$）のまま、書かれた通貨で書く。from は「TSMC」、to は工場の場所か用途。設備投資は3年後の需要をどう読んだかの賭けなので、read にはその読みを書く' },
+        '金額は US$（月次は NT$）のまま、書かれた通貨で書く。from は「TSMC」、to は工場の場所か用途' },
     // v20.16：トヨタ自身のページは、チャットの取得役に全部 403（一覧・PDF・アーカイブ・ライブラリとも実測）。
     // ブラウザの UA なら 200 だが本文に数字が無い（JS 描画）。IR BANK は実機で2回続けてボット検知で弾かれた。
     // よって「開く」のは日経か、検索で見つけたトヨタ自身の資料。トヨタ自身の URL は札の確認先としてだけ載せる
@@ -15066,7 +15069,7 @@
         ['一次資料（SEC の 20-F。年1回）', 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001094517&type=20-F&dateb=&owner=include&count=10'],
         ['札の url に書く（トヨタ自身。開かなくてよい）', 'https://global.toyota/jp/ir/financial-results/'],
       ],
-      note: '設備投資・研究開発費・自社株買い（自己株式の取得）・配当の金額と、通期見通しの変更。金額は円のまま。from は「トヨタ自動車」。何に賭けたか（電動化・地域）を read に。' +
+      note: '設備投資・研究開発費・自社株買い（自己株式の取得）・配当の金額と、通期見通しの変更。金額は円のまま。from は「トヨタ自動車」。' +
         '四半期の数字は「四半期の数字（stockanalysis）」から読む（Capital expenditures／Research and development／Dividends paid／Repurchases of stock）。金額は書かれた通貨のまま。' +
         '年に一度、SEC の 20-F が出ているときは「一次資料（SEC の 20-F）」の一覧から最新の 20-F を開き、そちらの数字を優先する。' +
         'トヨタ自身のページ（global.toyota）は直接開くと弾かれるので、開かなくてよい。' +
@@ -15077,7 +15080,7 @@
       openUrls: () => [['確かに読める発表（2025年2月）', 'https://www.nri.com/jp/news/newsrelease/20250213_1.html']],
       note: '年1回（2月ごろ）。まず web 検索で「野村総合研究所 富裕層 純金融資産」の新しい年の発表を探し、見つかればそれを開く（2026年版は' +
         'この指示を書いた時点では未公開）。見つからなければ「開く URL」の2025年2月の発表を読む（こちらは確かに開ける）。' +
-        '富裕層・超富裕層の世帯数と純金融資産の総額、前回からの増減。主体は「日本の富裕層」（kind: group）、said は空、read に増えた理由の読み。' +
+        '富裕層・超富裕層の世帯数と純金融資産の総額、前回からの増減。主体は「日本の富裕層」（kind: group）、said は空。' +
         'checked の note に、何年の発表を読んだかを書く' },
     { id: 'ws_group_boj_sj', label: '日銀 資金循環', short: '資金循環', match: ['資金循環', 'Flow of Funds'], retiredUrls: [],
       name: '日本銀行 資金循環統計（四半期）', url: 'https://www.boj.or.jp/statistics/sj/index.htm', role: 'primary', cadence: 'quarter',
@@ -15130,7 +15133,22 @@
     const said = worldStr(a.said, WORLD_ACTOR_SAID_MAX);
     let read = worldStr(a.read, WORLD_ACTOR_READ_MAX);
     if (read && said && worldNormName(read) === worldNormName(said)) read = '';
-    return { name, did, said, read };
+    const rec = { name, did, said, read };
+    // v20.18 第2段：書き直す前の文は消さずに残す。readBy は「読む回が書いた読み」の印。
+    // 印が無い read は朝が書いたもの（第2段より前の札）。これで移行処理なしに見分けられる
+    const was = worldStr(a.readWas, WORLD_ACTOR_READ_MAX);
+    if (was) rec.readWas = was;
+    if (a.readBy === 'yomu') rec.readBy = 'yomu';
+    return rec;
+  }
+  // v20.18 第2段：朝が返した read は捨てる。読むのは別の回で、朝が浅い読みで場所を埋めない
+  function worldStripMorningRead(list) {
+    return (Array.isArray(list) ? list : []).map((a) => {
+      if (!a || typeof a !== 'object') return a;
+      const c = Object.assign({}, a);
+      delete c.read;
+      return c;
+    });
   }
   function normalizeWorldActorList(list) {
     return (Array.isArray(list) ? list : []).map(normalizeWorldActorRec).filter(Boolean).slice(0, WORLD_ACTORS_PER_EVENT);
@@ -15283,6 +15301,7 @@
     // v20.17 第1段：読む側を通した印と、said と did のずれ。read が空かどうかでは未読を判定しない
     // （述べた理由と同じなら read は正直に空になるので、それを未読と見なすと永久に出続ける）
     if (typeof e.readAt === 'string' && e.readAt) out.readAt = e.readAt;
+    if (typeof e.rereadAt === 'string' && e.rereadAt) out.rereadAt = e.rereadAt;   // v20.18 第2段
     if (typeof e.zure === 'string' && e.zure.trim()) out.zure = worldStr(e.zure, 200);
     if (e.viaAsk) out.viaAsk = String(e.viaAsk);   // v14: どの問いから掘り当てたか
     // v20.2：初期投入の札（地域のキー）。未読にも「今日読んだ札」にも数えない
@@ -15405,6 +15424,8 @@
       // を毎回目に入れるための1行。分野では変わらないので role とは別項目。
       stance: worldStr(s.stance, WORLD_STANCE_MAX),
       note: worldStr(s.note, 200),
+      // v20.18 第2段：入れ替える前の「取るもの」。消さずに残す
+      noteWas: worldStr(s.noteWas, 200),
       // v19.4 段階5：周期。持っているソースが「必ず見るもの」。cadenceSetAt は一度でも決めた印（既定で上書きしない）
       cadence: WORLD_CADENCES_SRC.includes(s.cadence) ? s.cadence : '',
       cadenceSetAt: typeof s.cadenceSetAt === 'string' ? s.cadenceSetAt : '',
@@ -15726,9 +15747,18 @@
       const cur = wd.sources.sources.find((sc) => sc.id === x.id);
       // v19.2：差し替え前の URL のままなら中身を入れ替える。手で直した URL には触らない
       if (cur && x.retiredUrls.includes(cur.url)) {
-        Object.assign(cur, normalizeWorldSource({ ...cur, name: x.name, url: x.url, note: x.note, role: x.role, cadence: x.cadence, cadenceSetAt: nowIso(), updatedAt: nowIso() }));
+        Object.assign(cur, normalizeWorldSource({ ...cur, name: x.name, url: x.url, noteWas: cur.note, note: x.note, role: x.role, cadence: x.cadence, cadenceSetAt: nowIso(), updatedAt: nowIso() }));
         addedMoneySrc = true;
         return;
+      }
+      // v20.18 第2段：朝に read・分かれ目・選んだ理由を書かせる古い注が端末に残っていたら入れ直す。
+      // 手で書いた注に read・fork・reason という語が入ることはまず無いので、これを目印にする。
+      // 前の文は noteWas に残すので、入れ替えても消えない
+      if (cur && x.note && cur.note && cur.note !== x.note && /read|fork|reason/.test(cur.note)) {
+        cur.noteWas = cur.note;
+        cur.note = x.note;
+        cur.updatedAt = nowIso();
+        addedMoneySrc = true;
       }
       // v19.4：周期をまだ一度も決めていなければ既定の周期を入れる（自分で「周期なし」にしたものには触らない）
       if (cur) {
@@ -17019,12 +17049,11 @@
       '  - 統計・論文・報告書の公表そのものを行動としない。公表した機関は、それだけでは\n' +
       '    アクターにならない。行動とは、決定・合意・介入・融資・買い入れ・制裁・提案・撤回など、\n' +
       '    何かを動かす意思の表れ。統計の札で動かした主体が特定できなければ、その札は返さない（選び方を見る）。\n' +
-      '  - 3つに分けて書く。混ぜない。\n' +
+      '  - 2つに分けて書く。混ぜない。\n' +
       '    did：出典に書かれた行動。数字・金額はここにだけ。20〜' + WORLD_ACTOR_DID_MAX + '字。\n' +
       '    said：出典が自ら述べた理由。言い換えず、引用に近く。出典に無ければ空。\n' +
-      '    read：あなたが読んだ思惑。推定であることを前提に書く。\n' +
-      '          said と同じ内容なら空にする。述べたことをなぞって推定に見せない。\n' +
-      '          書くなら、述べたことと違うことを書く。書けなければ空でよい。\n' +
+      '  - 思惑（read）は書かない。集めた札をあとでまとめて読む回に、別の係が書く。\n' +
+      '    ここで先に書くと、読む側が書く場所が無くなる（空欄しか埋められないため）。\n' +
       '  - kind は state（政府・議会）／cb（中央銀行）／intl（国際機関）／industry（業界・企業）\n' +
       '    ／person（人物）／group（集まり）のどれか。すでに知っているアクターには kind を書かなくてよい。\n' +
       // v20：地図で使う国
@@ -17034,23 +17063,15 @@
       '  - group（集まり）：富裕層・家計・海外投資家のように、組織ではない集まりを主体にしてよい。\n' +
       '    立てる条件は、出典にその集まりの数字（人数・金額・割合）が書かれていること。\n' +
       '    値動きから推し量った説明（「市場参加者が売った」「投資家が嫌気した」）は主体にしない。\n' +
-      '    said は空にする（誰も述べていない）。read だけ書く。did にはその数字を書く。\n' +
+      '    said は空にする（誰も述べていない）。did にはその数字を書く。\n' +
       '    良い例：出典に「純資産3000万ドル以上の人が2026年に英国から1万6500人流出した」とあれば\n' +
-      '      {"name":"英国の富裕層","did":"2026年に1万6500人が英国から流出","said":"",\n' +
-      '       "read":"税制の変更を嫌って出た","kind":"group"}\n' +
+      '      {"name":"英国の富裕層","did":"2026年に1万6500人が英国から流出","said":"","kind":"group"}\n' +
       '    悪い例：「円が売られた」→ 主体を立てない（誰が売ったか出典に無い）\n' +
       '  良い例：\n' +
-      '    {"name":"財務省","did":"円買い介入 15兆円","said":"投機的な動きに対応",\n' +
-      '     "read":"円安による輸入物価上昇を止めたい","kind":"state"}\n' +
+      '    {"name":"財務省","did":"円買い介入 15兆円","said":"投機的な動きに対応","kind":"state"}\n' +
       '  悪い例：\n' +
-      '    {"name":"財務省","did":"為替を安定させた","said":"","read":"投機的な動きに対応"}\n' +
-      '    （did に行動でなく評価が書かれ、述べた理由が read に移されている）\n' +
-      '\n' +
-      '- reason：なぜこの札を選んだかを20字程度で1つ。\n' +
-      '  why は「なぜ動いたか」、reason は「なぜ選んだか」。別のものを書く。\n' +
-      '  何が続くから選んだのかを書く。\n' +
-      '  良い例：「減額の速度が財政側の要求で決まる形が続く」\n' +
-      '  悪い例：「重要なニュースだから」「市場への影響が大きい」\n' +
+      '    {"name":"財務省","did":"為替を安定させた","said":""}\n' +
+      '    （did に行動でなく評価が書かれている）\n' +
       '\n' +
       '- premise：この件を理解するのに最低限必要な「概念」を 1つだけ。\n' +
       '  概念とは、積み上がって世界の見方になるもの（外貨準備、交易条件、\n' +
@@ -17101,30 +17122,6 @@
       '  - 一覧に無い地層を新しく作らない。増えると意味がなくなる。\n' +
       '  - どれにも乗らないなら空の配列にする。無理に乗せない。\n' +
       '  - 迷ったら、その出来事が長い目で見て「どの量を動かすか」で選ぶ。\n' +
-      '\n' +
-      '- fork：おおむね' + Math.round(WORLD_FORK_DAYS / 30) + 'ヶ月で決着する「分かれ目」を1つ。検証可能なものだけ。\n' +
-      '  - その出来事が言っていること自体が本当かを問う形にする。\n' +
-      '    出典が予想・見通し・想定を述べているときは、その予想が当たるかどうかを\n' +
-      '    fork にする。外れたときに「その見立てが外れた」という意味が残るため。\n' +
-      '  - 統計の次の1回の数値を当てる形にしない。数字を当てても、\n' +
-      '    当たっても外れても世界の見方は変わらない。\n' +
-      '    良い例：「米政府の見通しどおり、10月にディーゼル在庫が1億バレルを割るか」\n' +
-      '    悪い例：「10月末の米ディーゼル小売価格が1ガロン5.55ドルを超えるか」\n' +
-      '  - 出典が予想を述べていないときは、その出来事が狙った効果が出るかを問う。\n' +
-      '    それも立たなければ null にする。\n' +
-      '  - type が "level" のとき：示された水準に届くか（text の例\n' +
-      '    「政府の見通しどおり在庫が1億バレルを割るか」）\n' +
-      '  - type が "event" のとき：起きるか起きないかがはっきりする事実（text の例\n' +
-      '    「IMF理事会が年内に承認するか」）\n' +
-      '  - ' + Math.round(WORLD_FORK_DAYS / 30) + 'ヶ月では決着しないものを書かない。1年かけて決まることを書かれると、\n' +
-      '    どう転んでも「どちらとも」にしかならない。\n' +
-      '  - 思いつかなければ null にする。無理に作らない。\n' +
-      '    「原油価格は変動するか」のような、どちらにも転ばない書き方は禁止。\n' +
-      '  - 誰がどう見ても同じ判定になる書き方にする。\n' +
-      '    「市場が落ち着くか」「関係が改善するか」は書かない。\n' +
-      '  - 分かれ目を書くのは、上から' + WORLD_FORK_PER_BATCH + '件までにする。' + (WORLD_FORK_PER_BATCH + 1) + '件目からは fork を null にする。\n' +
-      '    分かれ目が立つ札は、その週に数件しかないのが正常。\n' +
-      '  - どちらに転ぶかの見立ては書かない（分かれ目の文だけ）。\n' +
       '\n' +
       // v19: お金の欄を必須寄りに。kind と after を足す
       '- flow：この出来事で動いたもの。お金を優先して書く。\n' +
@@ -17213,15 +17210,13 @@
       (seed ? '{"seed":"' + seed[0] + '",\n"events":[{\n' : '{"events":[{\n') +   // v20.2：初期投入の印
       '  "fact":"...",\n' +
       '  "why":"...",\n' +
-      '  "reason":"...",\n' +
       '  "premise":{"kind":"new","name":"...","aka":["...","..."],"line":"..."},\n' +
       '  "concepts":["..."],\n' +
       '  "terms":[{"name":"IMF","line":"...","kind":"org","aka":["国際通貨基金"]}],\n' +
       '  "strata":["st_jp_rate_long"],\n' +
-      '  "actors":[{"name":"財務省","did":"...","said":"...","read":"...","kind":"state","country":"JPN"}],\n' +
+      '  "actors":[{"name":"財務省","did":"...","said":"...","kind":"state","country":"JPN"}],\n' +
       '  "flow":{"from":"...","to":"...","what":"...","amount":"...","kind":"money","after":null,"span":"","total":"","share":null,"strata":[]},\n' +
       '  "levels":[{"stratumId":"st_jp_fx_reserve","value":"...","at":"YYYY-MM-DD"}],\n' +
-      '  "fork":{"text":"...","type":"level"},\n' +
       '  "detail":"...",\n' +
       '  "source":"...",\n' +
       '  "url":"https://...",\n' +
@@ -17236,15 +17231,13 @@
       (boot ? '' : 'kind が "relation" のときの premise：\n' +
         '  {"kind":"relation","a":"既知の概念1","b":"既知の概念2","line":"..."}\n') +
       'どの地層にも乗らないとき： "strata": []\n' +
-      '分かれ目が思いつかないとき： "fork": null\n' +
       '動いたものが無い・書けないとき： "flow": null\n' +
       '前の動きの続きでないとき： "after": null\n' +
       '全部追えたとき・全体の金額が無いとき： "total": "", "share": null\n' +
       'confidence が' + (WORLD_CONF_WHY_BELOW + 1) + '以上のとき： "confidenceWhy": ""\n' +
       (daily.length || filings.length ? '毎回必ず見るもの' + (filings.length ? '・決算' : '') + 'から札にしなかったとき： "checked" は省かず "picked": 0\n' : '') +
       '地層の値が出典に書かれていないとき： "levels": []\n' +
-      '述べた理由が出典に無いとき： "said": ""\n' +
-      '読んだ思惑が述べた理由と同じとき： "read": ""\n\n' +
+      '述べた理由が出典に無いとき： "said": ""\n\n' +
       // 既知の羅列は末尾に置く。上に置くと規則を押しのける。
       '────────────────────────────────────────\n' +
       '■ 地層の一覧（strata・levels はこの id から選ぶ。ここに無いものを作らない）\n' +
@@ -17682,7 +17675,19 @@
       .filter((e) => !e.readAt && e.actors.length)
       .sort((a, b) => (a.eventDate > b.eventDate ? -1 : 1));
   }
-  function worldReadTargets() { return worldUnreadCards().slice(0, WORLD_READ_MAX); }
+  // v20.18 第2段：readBy の無い read ＝ 朝が書いた浅い読み。一度当てた札は rereadAt で外す
+  function worldHasMorningRead(e) { return e.actors.some((a) => a.read && a.readBy !== 'yomu'); }
+  function worldRereadCards() {
+    return worldLiveEvents()
+      .filter((e) => e.readAt && !e.rereadAt && worldHasMorningRead(e))
+      .sort((a, b) => (a.eventDate > b.eventDate ? -1 : 1));
+  }
+  // 未読が優先。枠が余ったぶんだけ書き直しの候補を足す（毎回20枚を使い切る）
+  function worldReadTargets() {
+    const unread = worldUnreadCards();
+    if (unread.length >= WORLD_READ_MAX) return unread.slice(0, WORLD_READ_MAX);
+    return unread.concat(worldRereadCards().slice(0, WORLD_READ_MAX - unread.length));
+  }
   // つながる札（同じ概念に触れている札）を id と fact だけ添える。本文は渡さない
   function worldReadLinkedLines(ev) {
     const mine = new Set(worldEventConcepts(ev).map((c) => c.id));
@@ -17715,6 +17720,11 @@
       '  - **同じ主体が何枚にも出てきます。同じ主体には違う読みを書いてください**（同じ文を繰り返さない）。\n' +
       '  - 損を承知でやっているなら、何を犠牲にしたかを書く（儲かることをするのは当たり前で、思惑は読めない）。\n' +
       '  - 資金繰りの都合で止めない。なぜその時期に、その相手に、その額なのかまで書く。\n' +
+      '- すでに「いまの読み」が付いている主体：\n' +
+      '  - それが述べた理由のなぞり・言い換え・当たり前のこと（「儲けたい」「安定させたい」）なら、\n' +
+      '    書き直してよい。そのときだけ rewrite を true にする。**元の文はこちらで残すので消えません**。\n' +
+      '  - 読みとして十分なら、その主体を出力に入れない（触らない）。\n' +
+      '  - 「朝が書いたもの」は浅いことが多い。「読む回が書いたもの」は原則そのままにする。\n' +
       '- zure：said と did がずれている札は、そのずれの中身を1文で書く。ずれていなければ空。\n' +
       '  「支援すると言いながら金が動いていない」「減らすと言いながら増えている」のような食い違い。\n' +
       '- fork：3か月ほどで決着する分かれ目を1つ。思いつかなければ null。\n' +
@@ -17727,7 +17737,8 @@
       '  - 下げたときは confidenceWhy に理由を必ず書く。下げないなら両方とも省く。\n\n' +
       '■ 札（' + cards.length + '枚）\n' +
       (cards.length ? cards.map((e) => {
-        const acts = e.actors.map((a) => '  主体：' + a.name + '｜した：' + a.did + (a.said ? '｜述べた：' + a.said : '｜述べた：（無し）')).join('\n');
+        const acts = e.actors.map((a) => '  主体：' + a.name + '｜した：' + a.did + (a.said ? '｜述べた：' + a.said : '｜述べた：（無し）')
+          + (a.read ? '\n    いまの読み（' + (a.readBy === 'yomu' ? '読む回' : '朝') + 'が書いたもの）：' + a.read : '')).join('\n');
         const fl = e.flow ? '  お金：' + (e.flow.from || '？') + '→' + (e.flow.to || '？') + '　' + (e.flow.what || '') + (e.flow.amount ? '　' + e.flow.amount : '') + (e.flow.span ? '（' + e.flow.span + 'の累計）' : '') : '';
         const linked = worldReadLinkedLines(e);
         return '[' + e.id + ']　' + e.eventDate + (e.confidence ? '　確度' + e.confidence : '') + '\n' +
@@ -17742,6 +17753,7 @@
       }).join('\n') : '（まだ読んでいない札がありません）') + '\n' +
       '■ 出力形式\n' +
       '{"read":{"w_20260902_1":[{"name":"日本銀行","read":"..."}],\n' +
+      '         "w_20260903_2":[{"name":"財務省","read":"...","rewrite":true}],\n' +
       '         "w_20260901_1":[]},\n' +
       ' "zure":{"w_20260902_1":"支援を表明しながら、動いた金は前年より少ない"},\n' +
       ' "fork":{"w_20260902_1":{"text":"...","type":"event"},\n' +
@@ -17750,6 +17762,7 @@
       ' "confidence":{"w_20260901_1":{"value":4,"why":"一次資料に当たれず報道のみ"}}}\n\n' +
       '- id は上の札のものだけを使う。name は上の「主体：」の名前をそのまま書く。\n' +
       '- 材料が足りない札は read を [] に、fork を null に、zure と reason を省く。無理に埋めない。\n' +
+      '- rewrite は、すでにある読みを書き直すときだけ true にする。新しく書くときは書かない。\n' +
       '- confidence は下げる札だけ書く。上げる値を書かない。\n' +
       '- JSON のみ。\n\n' +
       '────────────────────────────────────────\n' +
@@ -17834,7 +17847,7 @@
     if (!reads && !forks && !reasons && !confs && !zures) {
       return { error: 'JSON として読めませんでした。{"read":{...},"fork":{...},"reason":{...}} の形で貼ってください。' };
     }
-    const out = { readFilled: 0, readCards: 0, zure: 0, forks: 0, reasons: 0, lowered: 0, kept: 0, unknown: 0, chains: 0 };
+    const out = { readFilled: 0, readCards: 0, rewritten: 0, zure: 0, forks: 0, reasons: 0, lowered: 0, kept: 0, unknown: 0, chains: 0 };
     const touched = new Set();
     const byId = (id) => worldLiveEvents().find((e) => e.id === id) || null;
     const ids = new Set([...Object.keys(reads || {}), ...Object.keys(zures || {}), ...Object.keys(forks || {}), ...Object.keys(reasons || {}), ...Object.keys(confs || {})]);
@@ -17852,9 +17865,16 @@
         if (!name || !text) return;
         const rec = ev.actors.find((a) => worldNormName(a.name) === name);
         if (!rec) return;
-        if (rec.read) { out.kept++; return; }                                   // 既にある推定は上書きしない
         if (rec.said && worldNormName(text) === worldNormName(rec.said)) return; // 述べた理由のなぞりは入れない
-        rec.read = text;
+        if (rec.read) {
+          // v20.18 第2段：書き直しは rewrite を明示したときだけ。前の文は readWas に必ず残す
+          if (r.rewrite !== true || worldNormName(text) === worldNormName(rec.read)) { out.kept++; return; }
+          if (!rec.readWas) rec.readWas = rec.read;   // 最初の文だけを残す（書き直しを重ねても消えない）
+          rec.read = text; rec.readBy = 'yomu';
+          out.rewritten++; changed = true;
+          return;
+        }
+        rec.read = text; rec.readBy = 'yomu';
         filledHere++; changed = true;
       });
       if (filledHere) { out.readFilled += filledHere; out.readCards++; }
@@ -17878,6 +17898,7 @@
       }
       // 読んだ印。空振りでも押す（材料が足りない札を毎回出し続けないため）
       if (!ev.readAt) { ev.readAt = nowIso(); changed = true; }
+      else if (!ev.rereadAt) { ev.rereadAt = nowIso(); changed = true; }   // v20.18：書き直しを一度当てた印
       if (changed) { ev.updatedAt = nowIso(); touched.add(monthOfDate(ev.eventDate)); }
     });
     // 見返り：この回で鎖（お金の動きのつながり）が何本になったか
@@ -18057,8 +18078,8 @@
         wants: it.wants, confidence: it.confidence, confidenceWhy: it.confidenceWhy,   // v19.3
         srcCadence: it.srcCadence,   // v19.11
         seed: seedRegion || undefined,   // v20.2
-        terms: it.terms, fork: it.fork, reason: it.reason,
-        actors: it.actors, flow: it.flow,   // v12: ここで渡さないと normalize に届かない
+        terms: it.terms,   // v20.18 第2段：fork・reason は朝から外した（読む回で書く）
+        actors: worldStripMorningRead(it.actors), flow: it.flow,   // v12: ここで渡さないと normalize に届かない
         viaAsk: viaAsk || it.viaAsk || '',   // v14: どの問いから掘り当てたか
         // 地層は生成に作らせない。一覧に無い id はここで落とす
         strata: (Array.isArray(it.strata) ? it.strata : []).filter((x) => worldStratumById(String(x))),
@@ -18503,6 +18524,21 @@
           const k = document.createElement('span'); k.className = 'guessBadge'; k.textContent = '推定';
           l.appendChild(k); l.appendChild(document.createTextNode(rec.read));
           open.appendChild(l);
+        }
+        if (rec.readWas) {   // v20.18：書き直す前の文。消さずに残す
+          const w = document.createElement('div'); w.className = 'waWas';
+          const k = document.createElement('span'); k.className = 'waKey'; k.textContent = '前の読み';
+          w.appendChild(k); w.appendChild(document.createTextNode(rec.readWas));
+          open.appendChild(w);
+        }
+        if (!rec.read) {   // v20.18 第2段：朝は思惑を書かない。空欄が放置に見えないようにする
+          const nr = document.createElement('div'); nr.className = 'waNotRead';
+          nr.textContent = 'まだ読んでいません（思惑は「読む」でまとめて書きます）';
+          open.appendChild(nr);
+          const go = document.createElement('button');
+          go.type = 'button'; go.className = 'linkLikeBtn'; go.textContent = 'いま読む ▸';
+          go.addEventListener('click', (e2) => { e2.stopPropagation(); worldOpenRead(); });
+          open.appendChild(go);
         }
         if (actor) {
           const go = document.createElement('button');
@@ -19029,7 +19065,7 @@
       + (rows.length ? rows.map(({ event: e, rec, amount }) =>
           '- ' + e.eventDate + '　' + (rec ? rec.did : e.fact) + (amount ? '　' + amount : '')
           + (rec && rec.said ? '\n    述べた理由「' + rec.said + '」' : '')
-          + (rec && rec.read ? '\n    推定（生成が付けたもの）「' + rec.read + '」' : '')).join('\n')
+          + (rec && rec.read ? '\n    推定（読む回が付けたもの）「' + rec.read + '」' : '')).join('\n')
         : '（読み込んでいる月にはありません）') + '\n'
       + (ask ? worldAskTail(ask) : '');
   }
@@ -21573,11 +21609,13 @@
     if (!el) return;
     const n = worldUnreadCards().length;
     const t = worldReadTargets().length;
-    el.textContent = n
-      ? 'まだ読んでいない札が' + n + '枚。1回で' + WORLD_READ_MAX + '枚まで読ませます（この回は' + t + '枚）。新しく探させず、思惑・ずれ・分かれ目だけを書かせます。'
-      : 'いまは読んでいない札がありません。取り込んだ札に主体が付くと、ここに溜まります。';
+    const rr = worldRereadCards().length;   // v20.18：朝が書いた浅い読みが残っている札
+    el.textContent = (n || rr)
+      ? 'まだ読んでいない札が' + n + '枚' + (rr ? '、朝の浅い読みが残っている札が' + rr + '枚' : '') +
+        '。1回で' + WORLD_READ_MAX + '枚まで読ませます（この回は' + t + '枚）。新しく探させず、思惑・ずれ・分かれ目だけを書かせます。'
+      : 'いまは読む札がありません。取り込んだ札に主体が付くと、ここに溜まります。';
     const btn = document.getElementById('btnWorldReadPrompt');
-    if (btn) btn.disabled = !n;
+    if (btn) btn.disabled = !t;
   }
   function renderWorldImport() {
     paintWorldReadNote();   // v20.17 第1段
@@ -22714,9 +22752,8 @@
     if (drops.length) msg += '　' + drops.join('／') + ' を落としました。';
     if (res.createdConcepts.length) msg += '　新しい概念 ' + res.createdConcepts.length + '件。';
     if (res.createdTerms.length) msg += '　新しい用語 ' + res.createdTerms.length + '件。';
-    if (res.added) msg += '　分かれ目つき ' + res.forks + '件、地層に乗った ' + res.onStrata + '件。';   // v19.5
-    if (res.droppedForks) msg += '　※ ' + (WORLD_FORK_PER_BATCH + 1) + '件目以降の分かれ目 ' + res.droppedForks + '件を落としました（答え合わせが追いつかなくなるため）。';
-    if (res.added) msg += '　動かした側つき ' + res.withActors + '件、推定を書いた札 ' + res.withRead + '件／全 ' + res.added + '件。';
+    if (res.added) msg += '　地層に乗った ' + res.onStrata + '件。';   // v19.5（v20.18：分かれ目は読む回へ移した）
+    if (res.added) msg += '　動かした側つき ' + res.withActors + '件／全 ' + res.added + '件。思惑と分かれ目は、このあと「読む」で書きます。';
     // v19 段階3
     if (res.added) {
       msg += '　お金つき ' + res.withFlow + '件（金額あり ' + res.flowAmount + '・物 ' + res.flowGoods + '・人 ' + res.flowPeople + '）／続き ' + res.afterLinked + '件';
@@ -22976,6 +23013,7 @@
     // 見返りを数字で返す（読んだあとに何が増えたかが見える）
     let msg = res.readCards + '枚に思惑が入りました（' + res.readFilled + '人ぶん）。';
     if (res.forks) msg += '　分かれ目が' + res.forks + '件立ちました。';
+    if (res.rewritten) msg += '　朝の浅い読みを書き直した' + res.rewritten + '人ぶん（前の文は札に残しています）。';
     if (res.zure) msg += '　言っていることとの食い違いが' + res.zure + '件。';
     if (res.reasons) msg += '　読む値打ちの1行が' + res.reasons + '件。';
     if (res.lowered) msg += '　確度を下げた札が' + res.lowered + '件。';
