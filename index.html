@@ -1938,6 +1938,8 @@
             <div class="statRow"><span>今月・合計</span><span id="statUsageMonthTotal"></span></div>
             <div class="statRow"><span>言葉1枚の保存あたり</span><span id="statUsagePerSave"></span></div>
             <div class="statRow"><span>最後の API 呼び出し</span><span id="statLastApiCall"></span></div>
+            <div class="statRow"><span>日ごと（この端末）</span><span id="statUsageDaysNote"></span></div>
+            <div id="statUsageDays"></div>
             <div id="statUsagePerDevice"></div>
             <div class="statRow"><span>先月・合計</span><span id="statUsagePrevMonthTotal"></span></div>
             <div class="statRow"><span>累計・合計</span><span id="statUsageAllTimeTotal"></span></div>
@@ -2921,7 +2923,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.14';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.15';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -5295,6 +5297,8 @@
   const MORNING_ENABLED_KEY = 'kotoba_morningEnabled';
   const COMPRESS_THRESHOLD_KEY = 'kotoba_compressThreshold';
   const MORNING_QUOTE_HEADING_KEY = 'kotoba_morningQuoteHeading';
+  const LAST_API_CALL_KEY = 'kotoba_lastApiCall';   // v20.15：診断用の控え（この端末だけ。同期しない）
+  const USAGE_DAY_KEY     = 'kotoba_usageDays';     // v20.15：日ごとの概算額（同上）
   const DEFAULT_MORNING_QUOTE_HEADING = '今日の言葉';
   const POST_EXPLAIN_MAX = 60;   // v20.11：投稿に載せる説明の字数。名言は原文のまま、縮めるのは説明だけ
   const LAST_AUTO_LINK_ERROR_KEY = 'kotoba_lastAutoLinkError';
@@ -5410,25 +5414,55 @@
     rememberLastApiCall(kind, usage);   // v20.14：診断用（この端末だけ。同期しない）
   }
   // v20.14：コンソールの差額と突き合わせるための控え。返ってきた usage をそのまま残す
-  const LAST_API_CALL_KEY = 'kotoba_lastApiCall';
+  // v20.15：どの端末の記録かを残す（控えは同期しないので、別の端末で見ると空に見える）。
+  // 失敗も黙って飲まず、設定の「最後のエラー」に残す
   function rememberLastApiCall(kind, usage) {
     try {
       const v = {
-        at: nowIso(), kind, model: modelForUsageKind(kind),
+        at: nowIso(), kind, model: modelForUsageKind(kind), device: getDeviceLabel(),
         input: usage.input_tokens || 0, output: usage.output_tokens || 0,
         cacheWrite: usage.cache_creation_input_tokens || 0, cacheRead: usage.cache_read_input_tokens || 0,
       };
       v.cost = estimateCostUsd({ calls: 1, input: v.input, output: v.output, cacheWrite: v.cacheWrite, cacheRead: v.cacheRead, searches: 0 }, v.model);
       localStorage.setItem(LAST_API_CALL_KEY, JSON.stringify(v));
-    } catch (e) {}
+      addUsageDay(v.cost, kind);
+      if (nav.screen === 'settings') openSettings();   // 設定を開いたままでも、押した直後に出る（描き直しは openSettings の中）
+    } catch (e) { recordFeatureError('使用量の控え', e); }
+  }
+  // v20.15：日ごとの概算額と回数。コンソールの日ごとの額と並べれば、どの日に差が開いたかが見える。
+  // 45日より古い日は落とす（この端末の localStorage に置くだけ。同期しない）
+  function addUsageDay(cost, kind) {
+    let all = {};
+    try { all = JSON.parse(localStorage.getItem(USAGE_DAY_KEY) || '{}') || {}; } catch (e) {}
+    const d = todayStr();
+    const day = all[d] || { cost: 0, calls: 0, kinds: {} };
+    day.cost += cost || 0;
+    day.calls += 1;
+    day.kinds[kind] = (day.kinds[kind] || 0) + 1;
+    all[d] = day;
+    const cut = addDays(d, -45);
+    Object.keys(all).forEach((k) => { if (k < cut) delete all[k]; });
+    try { localStorage.setItem(USAGE_DAY_KEY, JSON.stringify(all)); } catch (e) {}
+  }
+  // 新しい順に14日ぶん。「09.12　約$0.310（12回：関連づけ10・朝1・説明1）」の形
+  function usageDayLines() {
+    let all = {};
+    try { all = JSON.parse(localStorage.getItem(USAGE_DAY_KEY) || '{}') || {}; } catch (e) {}
+    const days = Object.keys(all).sort().reverse().slice(0, 14);
+    return days.map((d) => {
+      const v = all[d];
+      const kinds = Object.entries(v.kinds || {}).sort((a, b) => b[1] - a[1])
+        .map(([k, n]) => (USAGE_KIND_LABEL[k] || k) + n).join('・');
+      return dotDate(d).slice(5) + '　約$' + (v.cost || 0).toFixed(3) + '（' + v.calls + '回' + (kinds ? '：' + kinds : '') + '）';
+    });
   }
   function lastApiCallLine() {
     let v = null;
     try { v = JSON.parse(localStorage.getItem(LAST_API_CALL_KEY) || 'null'); } catch (e) {}
-    if (!v || !v.at) return '-';
+    if (!v || !v.at) return 'この端末ではまだ呼んでいません（控えは端末ごとで、同期しません）';
     const k = (typeof USAGE_KIND_LABEL !== 'undefined' && USAGE_KIND_LABEL[v.kind]) || v.kind;
     const tok = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n));
-    return formatDateTime(v.at) + '　' + k + '（' + v.model + '）　入力' + tok(v.input)
+    return formatDateTime(v.at) + '　' + k + '（' + v.model + (v.device ? '・' + v.device : '') + '）　入力' + tok(v.input)
       + '／キャッシュ書き' + tok(v.cacheWrite) + '／キャッシュ読み' + tok(v.cacheRead) + '／出力' + tok(v.output)
       + '　約$' + v.cost.toFixed(4);
   }
@@ -12603,6 +12637,13 @@
       document.getElementById('statUsagePerSave').textContent = per ? '約$' + per.toFixed(3) + '（今月 ' + al.calls + '回の平均）' : '-';
     }
     document.getElementById('statLastApiCall').textContent = lastApiCallLine();   // v20.14
+    { // v20.15：日ごとの概算額。コンソールの日ごとの額と見比べるためのもの
+      const lines = usageDayLines();
+      document.getElementById('statUsageDaysNote').textContent = lines.length ? '新しい順に' + lines.length + '日' : 'まだありません';
+      const box = document.getElementById('statUsageDays');
+      box.innerHTML = '';
+      lines.forEach((t) => { const r = document.createElement('div'); r.className = 'statRow'; const a = document.createElement('span'); a.textContent = '　' + t; r.appendChild(a); box.appendChild(r); });
+    }
 
     const perDeviceEl = document.getElementById('statUsagePerDevice');
     perDeviceEl.innerHTML = '';
@@ -14978,13 +15019,17 @@
     { id: 'ws_corp_toyota', label: 'トヨタ 決算', short: 'トヨタ', match: ['トヨタ', 'Toyota'],
       retiredUrls: ['https://global.toyota/jp/ir/financial-results/'],
       name: 'トヨタ自動車 決算（数字は IR BANK から）', url: 'https://irbank.net/7203/results', role: 'primary', cadence: 'quarter',
+      // v20.15：1本目が弾かれても止まらないよう2本にする（実機で IR BANK がボット検知で開けなかった）。
+      // 転送後の URL を直接書く（irbank.net/7203/results → /E02144/results）
       openUrls: () => [
-        ['数字を読む（IR BANK）', 'https://irbank.net/7203/results'],
+        ['数字を読む1（IR BANK）', 'https://irbank.net/E02144/results'],
+        ['数字を読む2（日経。1が開けないとき）', 'https://www.nikkei.com/nkd/company/kessan/?scode=7203'],
         ['札の url に書く（トヨタ自身）', 'https://global.toyota/jp/ir/financial-results/'],
       ],
       note: '設備投資・研究開発費・自社株買い（自己株式の取得）・配当の金額と、通期見通しの変更。金額は円のまま。from は「トヨタ自動車」。何に賭けたか（電動化・地域）を read に。' +
-        'IR BANK は一次資料ではないので、札の url には「札の url に書く」のトヨタ自身の URL を書く（数字を読んだ場所と確認先が違ってよい）。' +
-        'checked の note に「IR BANK から」と、どこから読んだかを書く' },
+        '「数字を読む1」が開けなければ「数字を読む2」へ。どちらも駄目なら web 検索で「トヨタ 決算 設備投資 研究開発費」の新しい発表を探す。' +
+        'どこも一次資料ではないので、札の url には「札の url に書く」のトヨタ自身の URL を書く（数字を読んだ場所と確認先が違ってよい）。' +
+        'checked の note に、どこから読んだか（IR BANK／日経／ほか）を必ず書く' },
     { id: 'ws_group_nri', label: '野村総研 富裕層推計', short: 'NRI', match: ['野村', 'NRI', '富裕層'], retiredUrls: [],
       name: '野村総合研究所 日本の富裕層の世帯数と純金融資産の推計', url: 'https://www.nri.com/jp/news/newsrelease/20250213_1.html', role: 'primary', cadence: 'quarter',
       openUrls: () => [['確かに読める発表（2025年2月）', 'https://www.nri.com/jp/news/newsrelease/20250213_1.html']],
