@@ -3014,7 +3014,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.27';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.28';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -19628,16 +19628,14 @@
     input.type = 'search';
     input.placeholder = placeholder;
     input.value = worldState.search[key] || '';
+    // v20.28：打つたびに画面をまるごと描き直すと、打っている入力欄が消える。そのときブラウザが「離れた」合図を出し、
+    // 「描き直した後に戻る」印を消していたので、1文字でフォーカスが外れた（v11.5 から）。iPhone では作り直すとキーボードも閉じ、変換も切れる。
+    // だから入力欄は作り直さない。onChange は、探す欄より下の結果だけを描き直す関数を渡すこと
     input.addEventListener('input', () => {
       worldState.search[key] = input.value;
-      worldState.searchFocus = key;
-      onChange();   // まるごと描き直すので、下でフォーカスを戻す
+      onChange();
     });
-    input.addEventListener('blur', () => { if (worldState.searchFocus === key) worldState.searchFocus = ''; });
     wrap.appendChild(input);
-    if (worldState.searchFocus === key) {
-      setTimeout(() => { try { input.focus(); const n = input.value.length; input.setSelectionRange(n, n); } catch (e) {} }, 0);
-    }
     return wrap;
   }
   function worldMatches(q, parts) {
@@ -20003,70 +20001,81 @@
       body.appendChild(box);
     }
 
-    body.appendChild(worldSearchBoxEl('money', 'お金を探す（誰から・誰へ・何を・いくら）', renderWorld));
-    // v20.25：使い道の絞り。件数は、探す言葉で絞ったあとの、まとめた行の数（押す前の数＝押した後の数）
-    const q = worldState.search.money;
-    const allRows = worldMoneyGroups(q).flatMap((g) => g.pairs.flatMap((p) => p.rows));
-    if (!worldMoneyUseFilters().some(([k]) => k === worldState.moneyUse) || !allRows.some((r) => worldMoneyUseKeep(r, worldState.moneyUse))) worldState.moneyUse = 'all';
-    const use = worldState.moneyUse;
-    const useRow = document.createElement('div');
-    useRow.className = 'tagFilterRow worldMoneyUses';
-    worldMoneyUseFilters().forEach(([key, label]) => {
-      useRow.appendChild(worldCountBtnEl({ label, count: allRows.filter((r) => worldMoneyUseKeep(r, key)).length, selected: key === use,
-        onClick: () => { worldState.moneyUse = key; renderWorld(); } }));
-    });
-    body.appendChild(useRow);
-    if (worldMoneyUseLine(use)) { const up = document.createElement('p'); up.className = 'fieldNote wmPick'; up.textContent = worldMoneyUseLine(use); body.appendChild(up); }   // v20.26
-    // 地図は直近90日、一覧は読み込んでいる月。数が合わない理由を見せる
-    const idxMonths = Object.keys((wd.index && wd.index.months) || {});
-    const loadedN = idxMonths.filter((m) => wd.loaded.has(m)).length;
-    const mNote = document.createElement('p'); mNote.className = 'fieldNote';
-    mNote.textContent = '読み込んでいる月：' + loadedN + ' か月（記録のある月は全部で ' + idxMonths.length + ' か月）。件数と一覧はこの月の分です。地図は直近' + WORLD_MAP_DAYS + '日なので、数が合わないことがあります。一覧は確度3以下の札も出します（地図は外しています）。';
-    body.appendChild(mNote);
-    const groups = worldMoneyGroups(q, use);
-    if (!groups.length) {
-      const p = document.createElement('p'); p.className = 'emptyMsg';
-      p.textContent = q ? '見つかりませんでした（端末に読み込んでいる月だけを探しています）。' : 'まだお金の動きがある札がありません。';
-      body.appendChild(p);
-      body.appendChild(worldGuideEl('money', worldMoneyGuideSections()));   // v20.26
-      return;
-    }
-    groups.forEach((g) => {
-      const uh = document.createElement('div');
-      uh.className = 'worldMoneyUnit';
-      uh.textContent = g.label;
-      body.appendChild(uh);
-      g.pairs.forEach((p) => {
-        const ph = document.createElement('div');
-        ph.className = 'worldMoneyPair';
-        const n = document.createElement('span');
-        n.className = 'wmpName'; n.textContent = (p.from || '？') + ' → ' + (p.to || '？');
-        ph.appendChild(n);
-        // 繰り返しがゲートの代わり。同じ相手に何度も出しているものが自然に上に来る
-        if (p.rows.length > 1) {
-          const c = document.createElement('span');
-          c.className = 'wmpCount'; c.textContent = p.rows.length + '回';
-          ph.appendChild(c);
+    body.appendChild(worldSearchBoxEl('money', 'お金を探す（誰から・誰へ・何を・いくら）', () => paintResults()));
+    // v20.28：ここから下は結果の入れ物に描く。探す欄に打ったときは、この入れ物だけを描き直す（入力欄は作り直さない）
+    const results = document.createElement('div');
+    body.appendChild(results);
+    const paintResults = () => {
+      results.innerHTML = '';
+      (() => {
+        const body = results;
+        // v20.25：使い道の絞り。件数は、探す言葉で絞ったあとの、まとめた行の数（押す前の数＝押した後の数）
+        const q = worldState.search.money;
+        const allRows = worldMoneyGroups(q).flatMap((g) => g.pairs.flatMap((p) => p.rows));
+        if (!worldMoneyUseFilters().some(([k]) => k === worldState.moneyUse) || !allRows.some((r) => worldMoneyUseKeep(r, worldState.moneyUse))) worldState.moneyUse = 'all';
+        const use = worldState.moneyUse;
+        const useRow = document.createElement('div');
+        useRow.className = 'tagFilterRow worldMoneyUses';
+        worldMoneyUseFilters().forEach(([key, label]) => {
+          useRow.appendChild(worldCountBtnEl({ label, count: allRows.filter((r) => worldMoneyUseKeep(r, key)).length, selected: key === use,
+            onClick: () => { worldState.moneyUse = key; renderWorld(); } }));
+        });
+        body.appendChild(useRow);
+        if (worldMoneyUseLine(use)) { const up = document.createElement('p'); up.className = 'fieldNote wmPick'; up.textContent = worldMoneyUseLine(use); body.appendChild(up); }   // v20.26
+        // 地図は直近90日、一覧は読み込んでいる月。数が合わない理由を見せる
+        const idxMonths = Object.keys((wd.index && wd.index.months) || {});
+        const loadedN = idxMonths.filter((m) => wd.loaded.has(m)).length;
+        const mNote = document.createElement('p'); mNote.className = 'fieldNote';
+        mNote.textContent = '読み込んでいる月：' + loadedN + ' か月（記録のある月は全部で ' + idxMonths.length + ' か月）。件数と一覧はこの月の分です。地図は直近' + WORLD_MAP_DAYS + '日なので、数が合わないことがあります。一覧は確度3以下の札も出します（地図は外しています）。';
+        body.appendChild(mNote);
+        const groups = worldMoneyGroups(q, use);
+        if (!groups.length) {
+          const p = document.createElement('p'); p.className = 'emptyMsg';
+          p.textContent = q ? '見つかりませんでした（端末に読み込んでいる月だけを探しています）。' : 'まだお金の動きがある札がありません。';
+          body.appendChild(p);
+          body.appendChild(worldGuideEl('money', worldMoneyGuideSections()));   // v20.26
+          return;
         }
-        body.appendChild(ph);
-        p.rows.forEach((e) => body.appendChild(worldMoneyRowEl(e, use !== 'all')));   // v20.25
-      });
-    });
-    // v20.25：使い道が決まらなかった候補。0本でも押せない形で出す（新しい言い方が黙って落ちるのに気づくため）
-    if (use === 'self') {
-      const cand = allRows.filter(worldIsUseCandidate);
-      const cb = document.createElement('button');
-      cb.type = 'button'; cb.className = 'linkLikeBtn worldUseCand';
-      cb.textContent = '使い道が決まらなかった候補 ' + cand.length + '本';
-      cb.disabled = !cand.length;
-      if (cand.length) cb.addEventListener('click', () => openWorldCards({ title: '使い道が決まらなかった候補', note: WORLD_LIST_NOTES.candidate, ids: [...new Set(cand.flatMap((r) => (r.cards || [r]).map((x) => x.id)))] }));
-      body.appendChild(cb);
-    }
-    const note = document.createElement('p');
-    note.className = 'fieldNote';
-    note.textContent = '合計は出しません。通貨をまたいで足すには為替レートを選ぶことになり、推定が事実の顔をして混ざります。';
-    body.appendChild(note);
-    body.appendChild(worldGuideEl('money', worldMoneyGuideSections()));   // v20.26
+        groups.forEach((g) => {
+          const uh = document.createElement('div');
+          uh.className = 'worldMoneyUnit';
+          uh.textContent = g.label;
+          body.appendChild(uh);
+          g.pairs.forEach((p) => {
+            const ph = document.createElement('div');
+            ph.className = 'worldMoneyPair';
+            const n = document.createElement('span');
+            n.className = 'wmpName'; n.textContent = (p.from || '？') + ' → ' + (p.to || '？');
+            ph.appendChild(n);
+            // 繰り返しがゲートの代わり。同じ相手に何度も出しているものが自然に上に来る
+            if (p.rows.length > 1) {
+              const c = document.createElement('span');
+              c.className = 'wmpCount'; c.textContent = p.rows.length + '回';
+              ph.appendChild(c);
+            }
+            body.appendChild(ph);
+            p.rows.forEach((e) => body.appendChild(worldMoneyRowEl(e, use !== 'all')));   // v20.25
+          });
+        });
+        // v20.25：使い道が決まらなかった候補。0本でも押せない形で出す（新しい言い方が黙って落ちるのに気づくため）
+        if (use === 'self') {
+          const cand = allRows.filter(worldIsUseCandidate);
+          const cb = document.createElement('button');
+          cb.type = 'button'; cb.className = 'linkLikeBtn worldUseCand';
+          cb.textContent = '使い道が決まらなかった候補 ' + cand.length + '本';
+          cb.disabled = !cand.length;
+          if (cand.length) cb.addEventListener('click', () => openWorldCards({ title: '使い道が決まらなかった候補', note: WORLD_LIST_NOTES.candidate, ids: [...new Set(cand.flatMap((r) => (r.cards || [r]).map((x) => x.id)))] }));
+          body.appendChild(cb);
+        }
+        const note = document.createElement('p');
+        note.className = 'fieldNote';
+        note.textContent = '合計は出しません。通貨をまたいで足すには為替レートを選ぶことになり、推定が事実の顔をして混ざります。';
+        body.appendChild(note);
+        body.appendChild(worldGuideEl('money', worldMoneyGuideSections()));   // v20.26
+      
+      })();
+    };
+    paintResults();
   }
   // v20.26：数字の見方。押すと開き、もう一度押すと閉じる（閉じた状態で始める）。中身は判定の表から作る
   function worldGuideEl(key, sections) {
@@ -20174,43 +20183,54 @@
     };
 
     const kindLabel = isActor ? 'アクター' : '概念';
-    body.appendChild(worldSearchBoxEl(worldState.entryKind, kindLabel + 'を探す（名前・別名' + (isActor ? '' : '・注') + '）', renderWorldTidy));
-    const q = worldState.search[worldState.entryKind];
-
-    // つながりが1本も無いのに札が溜まっているときだけ、作り直しを促す
-    if (!isActor && !q && worldLiveEvents().length >= WORLD_COOC_HINT_EVENTS && worldCoocLinkCount() === 0) {
-      const hint = document.createElement('p');
-      hint.className = 'fieldNote warn';
-      hint.textContent = 'つながりがまだ作られていません。設定 → 世界 →「概念のつながりを作り直す」で、これまでの札から繋ぎ直せます。';
-      body.appendChild(hint);
-    }
-
-    const all = (isActor ? worldActors() : worldConcepts()).filter((c) => worldMatches(q, [c.name, (c.aka || []).join(' '), c.line, c.stance]));
-
-    if (!all.length) {
-      const p = document.createElement('p'); p.className = 'emptyMsg';
-      p.textContent = q ? '見つかりませんでした。' : ('まだ' + kindLabel + 'がありません。');
-      body.appendChild(p); return;
-    }
-
-    if (worldState.entrySort === 'parent') {
-      // 親でまとめる。2段までなので、見出し＋子だけ
-      const parents = worldSortEntries(all.filter((c) => !c.parent), 'count');
-      parents.forEach((p) => {
-        const kids = worldSortEntries(worldConceptChildren(p.id), 'count');
-        if (kids.length) {
-          const h = document.createElement('div');
-          h.className = 'parentGroupHead';
-          h.textContent = p.name + '（' + kids.length + '）';
-          body.appendChild(h);
+    body.appendChild(worldSearchBoxEl(worldState.entryKind, kindLabel + 'を探す（名前・別名' + (isActor ? '' : '・注') + '）', () => paintResults()));
+    // v20.28：ここから下は結果の入れ物に描く。探す欄に打ったときは、この入れ物だけを描き直す（入力欄は作り直さない）
+    const results = document.createElement('div');
+    body.appendChild(results);
+    const paintResults = () => {
+      results.innerHTML = '';
+      (() => {
+        const body = results;
+        const q = worldState.search[worldState.entryKind];
+    
+        // つながりが1本も無いのに札が溜まっているときだけ、作り直しを促す
+        if (!isActor && !q && worldLiveEvents().length >= WORLD_COOC_HINT_EVENTS && worldCoocLinkCount() === 0) {
+          const hint = document.createElement('p');
+          hint.className = 'fieldNote warn';
+          hint.textContent = 'つながりがまだ作られていません。設定 → 世界 →「概念のつながりを作り直す」で、これまでの札から繋ぎ直せます。';
+          body.appendChild(hint);
         }
-        body.appendChild(entryRow(p, false));
-        kids.forEach((k) => body.appendChild(entryRow(k, true)));
-      });
-    } else {
-      worldSortEntries(all, worldState.entrySort).forEach((c) => body.appendChild(entryRow(c, false)));
-    }
-
+    
+        const all = (isActor ? worldActors() : worldConcepts()).filter((c) => worldMatches(q, [c.name, (c.aka || []).join(' '), c.line, c.stance]));
+    
+        if (!all.length) {
+          const p = document.createElement('p'); p.className = 'emptyMsg';
+          p.textContent = q ? '見つかりませんでした。' : ('まだ' + kindLabel + 'がありません。');
+          body.appendChild(p); return;
+        }
+    
+        if (worldState.entrySort === 'parent') {
+          // 親でまとめる。2段までなので、見出し＋子だけ
+          const parents = worldSortEntries(all.filter((c) => !c.parent), 'count');
+          parents.forEach((p) => {
+            const kids = worldSortEntries(worldConceptChildren(p.id), 'count');
+            if (kids.length) {
+              const h = document.createElement('div');
+              h.className = 'parentGroupHead';
+              h.textContent = p.name + '（' + kids.length + '）';
+              body.appendChild(h);
+            }
+            body.appendChild(entryRow(p, false));
+            kids.forEach((k) => body.appendChild(entryRow(k, true)));
+          });
+        } else {
+          worldSortEntries(all, worldState.entrySort).forEach((c) => body.appendChild(entryRow(c, false)));
+        }
+    
+      
+      })();
+    };
+    paintResults();
   }
 
   // ---- 問いの画面 (v14) ------------------------------------------------------
@@ -20705,54 +20725,65 @@
     const l = document.createElement('span'); l.textContent = '探す';
     head.appendChild(l);
     body.appendChild(head);
-    body.appendChild(worldSearchBoxEl('main', '札・概念・アクター・お金を探す', renderWorldMain));
-    const q = worldState.search.main || '';
-    if (!q.trim()) return;   // 語を入れるまで何も出さない
-
-    const counts = {};
-    WORLD_SEARCH_KINDS.forEach(([k]) => { counts[k] = worldSearchHits(k, q).length; });
-    // 空の型を選んだままにしない（打つたびに「見つかりません」に落ちるのを防ぐ）
-    if (!counts[worldState.searchKind]) {
-      const first = WORLD_SEARCH_KINDS.map(([k]) => k).find((k) => counts[k]);
-      if (first) { worldState.searchKind = first; worldState.searchAll = false; }
-    }
-    const row = document.createElement('div');
-    row.className = 'tagFilterRow';
-    WORLD_SEARCH_KINDS.forEach(([k, label]) => {
-      const b = document.createElement('button');
-      b.type = 'button'; b.className = 'tagFilterBtn' + (worldState.searchKind === k ? ' selected' : '');
-      b.textContent = label + ' ' + counts[k];
-      b.disabled = !counts[k];
-      b.addEventListener('click', () => { worldState.searchKind = k; worldState.searchAll = false; renderWorldMain(); });
-      row.appendChild(b);
-    });
-    body.appendChild(row);
-
-    const kind = worldState.searchKind;
-    const hits = worldSearchHits(kind, q);
-    if (!hits.length) {
-      const p = document.createElement('p'); p.className = 'emptyMsg';
-      p.textContent = '見つかりませんでした（端末に読み込んでいる月だけを探しています）。';
-      body.appendChild(p); return;
-    }
-    if (kind === 'card' || kind === 'money') {
-      const shown = hits.slice(0, WORLD_SEARCH_SHOW);
-      if (kind === 'card') { const box = document.createElement('div'); renderWorldList(box, shown, ''); body.appendChild(box); }
-      else shown.forEach((e) => body.appendChild(worldMoneyBriefRowEl(e)));
-      if (hits.length > WORLD_SEARCH_SHOW) {
-        body.appendChild(worldMoreLineEl('ほか ' + (hits.length - WORLD_SEARCH_SHOW) + '件 ・ すべて見る', () => {
-          if (kind === 'money') { worldState.search.money = q; openWorldCards({ title: '「' + q + '」のお金', money: true }); }
-          else openWorldCards({ title: '「' + q + '」の札', ids: hits.map((e) => e.id) });
-        }));
-      }
-      return;
-    }
-    const cap = worldState.searchAll ? hits.length : WORLD_SEARCH_SHOW;
-    hits.slice(0, cap).forEach((c) => body.appendChild(worldEntryRowEl(c, kind, false)));
-    if (hits.length > cap) {
-      body.appendChild(worldMoreLineEl('ほか ' + (hits.length - cap) + '件 ・ すべて見る',
-        () => { worldState.searchAll = true; renderWorldMain(); }));
-    }
+    body.appendChild(worldSearchBoxEl('main', '札・概念・アクター・お金を探す', () => paintResults()));
+    // v20.28：ここから下は結果の入れ物に描く。探す欄に打ったときは、この入れ物だけを描き直す（入力欄は作り直さない）
+    const results = document.createElement('div');
+    body.appendChild(results);
+    const paintResults = () => {
+      results.innerHTML = '';
+      (() => {
+        const body = results;
+        const q = worldState.search.main || '';
+        if (!q.trim()) return;   // 語を入れるまで何も出さない
+    
+        const counts = {};
+        WORLD_SEARCH_KINDS.forEach(([k]) => { counts[k] = worldSearchHits(k, q).length; });
+        // 空の型を選んだままにしない（打つたびに「見つかりません」に落ちるのを防ぐ）
+        if (!counts[worldState.searchKind]) {
+          const first = WORLD_SEARCH_KINDS.map(([k]) => k).find((k) => counts[k]);
+          if (first) { worldState.searchKind = first; worldState.searchAll = false; }
+        }
+        const row = document.createElement('div');
+        row.className = 'tagFilterRow';
+        WORLD_SEARCH_KINDS.forEach(([k, label]) => {
+          const b = document.createElement('button');
+          b.type = 'button'; b.className = 'tagFilterBtn' + (worldState.searchKind === k ? ' selected' : '');
+          b.textContent = label + ' ' + counts[k];
+          b.disabled = !counts[k];
+          b.addEventListener('click', () => { worldState.searchKind = k; worldState.searchAll = false; renderWorldMain(); });
+          row.appendChild(b);
+        });
+        body.appendChild(row);
+    
+        const kind = worldState.searchKind;
+        const hits = worldSearchHits(kind, q);
+        if (!hits.length) {
+          const p = document.createElement('p'); p.className = 'emptyMsg';
+          p.textContent = '見つかりませんでした（端末に読み込んでいる月だけを探しています）。';
+          body.appendChild(p); return;
+        }
+        if (kind === 'card' || kind === 'money') {
+          const shown = hits.slice(0, WORLD_SEARCH_SHOW);
+          if (kind === 'card') { const box = document.createElement('div'); renderWorldList(box, shown, ''); body.appendChild(box); }
+          else shown.forEach((e) => body.appendChild(worldMoneyBriefRowEl(e)));
+          if (hits.length > WORLD_SEARCH_SHOW) {
+            body.appendChild(worldMoreLineEl('ほか ' + (hits.length - WORLD_SEARCH_SHOW) + '件 ・ すべて見る', () => {
+              if (kind === 'money') { worldState.search.money = q; openWorldCards({ title: '「' + q + '」のお金', money: true }); }
+              else openWorldCards({ title: '「' + q + '」の札', ids: hits.map((e) => e.id) });
+            }));
+          }
+          return;
+        }
+        const cap = worldState.searchAll ? hits.length : WORLD_SEARCH_SHOW;
+        hits.slice(0, cap).forEach((c) => body.appendChild(worldEntryRowEl(c, kind, false)));
+        if (hits.length > cap) {
+          body.appendChild(worldMoreLineEl('ほか ' + (hits.length - cap) + '件 ・ すべて見る',
+            () => { worldState.searchAll = true; renderWorldMain(); }));
+        }
+      
+      })();
+    };
+    paintResults();
   }
 
   // ---- v20 地図（M1） -------------------------------------------------------
