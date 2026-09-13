@@ -1594,6 +1594,7 @@
         <div id="detailLinks" class="detailLinksList"></div>
         <div id="detailLinksEmpty" class="emptyMsg" hidden>関連ノートはありません。</div>
         <button id="btnRelinkNote" class="secondaryBtn">関連を探し直す</button>
+        <p class="fieldNote" id="detailRelinkStatus" hidden></p>
         <button id="btnDetailGraph" class="secondaryBtn">網で見る（遠い対立）</button>
       </div>
       <div class="field">
@@ -3014,7 +3015,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.29';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.29.1';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -5964,9 +5965,10 @@
   // returned result.
   async function autoLinkNote(note, opts) {
     opts = opts || {};
-    if (!opts.force && !getAutoLinkEnabled()) return { skipped: true };
-    if (!getClaudeApiKey()) return { skipped: true };
-    if (isUsageOverBudget()) return { skipped: true };
+    // v20.29.1：飛ばした理由を返す（「関連を探し直す」が何も言わずに終わっていたため）
+    if (!opts.force && !getAutoLinkEnabled()) return { skipped: true, reason: 'disabled' };
+    if (!getClaudeApiKey()) return { skipped: true, reason: 'nokey' };
+    if (isUsageOverBudget()) return { skipped: true, reason: 'budget' };
     const linkedIds = new Set(note.links.map((l) => l.id));
     const rejectedIds = new Set(note.rejectedLinks || []);
     const excludeIds = [note.id, ...linkedIds, ...rejectedIds];
@@ -6019,6 +6021,7 @@
     if (result && result.ok) saveData(data);   // v20.12：0件でも印を残す（次に一括で課金し直さないため）
     refreshCurrentScreen();
     refreshAutoLinkIndicators();
+    return result;   // v20.29.1
   }
 
   // Home and detail both show a per-note "探しています" line independent of
@@ -8682,6 +8685,7 @@
 
   // --- Detail ---------------------------------------------------------------
   function openDetail(id, originScreen) {
+    detailRelinkMsg = { noteId: null, text: '' };   // v20.29.1：開き直したら前の結果は消す
     nav.detailStack = [];
     nav.detailOrigin = originScreen;
     nav.detailId = id;
@@ -8814,6 +8818,7 @@
     renderHistory(document.getElementById('detailMyWordsHistory'), note.myWordsHistory);
 
     document.getElementById('detailLinkingStatus').hidden = !autoLinkInFlight.has(note.id);
+    paintDetailRelinkStatus(note.id);   // v20.29.1
 
     const linksEl = document.getElementById('detailLinks');
     linksEl.innerHTML = '';
@@ -8965,8 +8970,36 @@
     saveData(data);
     backFromDetail();
   });
-  document.getElementById('btnRelinkNote').addEventListener('click', () => {
-    triggerAutoLinkForNote(nav.detailId, 'searchAgain');
+  // v20.29.1：押した結果を必ず出す（押しても何も起きないボタンを作らない）
+  var detailRelinkMsg = { noteId: null, text: '' };   // var：起動の途中で詳しい画面を描いても参照できるように
+  function relinkResultText(result) {
+    if (!result) return '';
+    if (result.skipped) {
+      if (result.reason === 'budget') {
+        const cost = totalCostForKindStats(sumUsageAcrossDevices(currentMonthKey()));
+        return '今月の API 使用額（$' + cost.toFixed(2) + '）が上限（$' + getUsageBudget().toFixed(2) + '）を越えているので、探しませんでした。上限は 設定 → Claude API の「月の上限（USD）」で変えられます。';
+      }
+      if (result.reason === 'disabled') return '設定の「保存時に自動で関連づける」が切ってあるので、探しませんでした（設定 → Claude API）。';
+      if (result.reason === 'nokey') return 'Claude API キーが無いので、探しませんでした（設定 → Claude API）。';
+      return '探しませんでした。';
+    }
+    if (result.ok) return result.added ? '関連を ' + result.added + '件 足しました。' : '新しい関連は見つかりませんでした。';
+    const msg = result.error && result.error.message ? result.error.message : String(result.error || '');
+    return '探せませんでした（' + (msg || '理由不明').slice(0, 120) + '）。';
+  }
+  function paintDetailRelinkStatus(noteId) {
+    const el = document.getElementById('detailRelinkStatus');
+    const show = detailRelinkMsg.noteId === noteId && !!detailRelinkMsg.text;
+    el.hidden = !show;
+    el.textContent = show ? detailRelinkMsg.text : '';
+  }
+  document.getElementById('btnRelinkNote').addEventListener('click', async () => {
+    const id = nav.detailId;
+    detailRelinkMsg = { noteId: id, text: '' };
+    paintDetailRelinkStatus(id);
+    const result = await triggerAutoLinkForNote(id, 'searchAgain');
+    detailRelinkMsg = { noteId: id, text: relinkResultText(result) };
+    if (nav.screen === 'detail' && nav.detailId === id) paintDetailRelinkStatus(id);
   });
 
   // Note image share: images only per spec (no text passed alongside), so
