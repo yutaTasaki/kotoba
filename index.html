@@ -1206,7 +1206,8 @@
   /* v20.30 第3段：根（主体の国の点から真下。先は⊥。いつも実線） */
   .worldMapBox .wmRoot { fill: none; stroke: var(--accent); opacity: 0.85; stroke-linecap: butt; }
   .worldMapBox .wmRoot.pledge { opacity: 0.4; }
-  .worldMapBox .wmRootFill { stroke: none; }   /* v20.31 形で描く根（消える・くさび）。濃さは形の中で決める */
+  .worldMapBox .wmRootFill { stroke: none; }
+  .worldMapBox .wmRootFill.hollow { fill: none; }   /* v20.32 約束の根：白抜き。輪郭の色は形の中で決める */   /* v20.31 形で描く根（消える・くさび）。濃さは形の中で決める */
   .worldMapBox .wmRootFill.pledge { opacity: 0.4; }
   .worldMapBox .wmArrowHeadOpen { fill: none; stroke: var(--accent); stroke-width: 1.4; opacity: 0.6; }
   .worldMapBox .wmArrowHead { fill: var(--accent); }
@@ -3020,7 +3021,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.31';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.32';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -14838,6 +14839,18 @@
   const WORLD_ROOT_LEN = 11;           // 点の中心から先まで（px）。v20.30 は ⊥ で 9
   const WORLD_ROOT_FADE = [0.85, 0.15]; // 'fade' の濃さ（点の下 → 先）。先で0にしない（細い根が消えないように）
   const WORLD_ROOT_TAP_PAD = 4;        // 根の上を押したとみなす広さ（根の形の左右と先の下に、この px 足す。画面の px）
+  const WORLD_DOT_TAP_PAD = 4;         // v20.32：国の点の上を押したとみなす広さ（点の半径3.5に、この px 足す。画面の px）
+  // v20.32：点か根を押したとき。'pair'＝押した国の「網」と「根」を並べて選ぶ／'split'＝点なら網・根なら根を直接開く（v20.31）／'list'＝近くの線・国を全部並べる（v20.30）
+  //   点と根を合わせても縦22px前後で、指の目安（44pt）の半分しかなく、押し分けられないため 'pair'
+  const WORLD_ROOT_TAP = 'pair';
+  const WORLD_ROOT_START = 0;          // v20.32：根を描き始める所（点の中心からの px）。0＝点の下に隠れて、点と根の間にすき間が見えない。v20.31 は 3.5（点の縁）
+  // v20.32：約束の根。'hollow'＝白抜き（輪郭だけ）＋下へ消える（線の約束の白抜きの矢印と揃える。薄さは掛けない）
+  //   'weak'＝消え方を弱く（WORLD_ROOT_PLEDGE_WEAK）×薄さ0.4／'dim'＝ふつうの根×薄さ0.4（v20.31。実機で見えなかった）
+  //   実機で白抜きが「U」の字に見えたら 'weak'
+  const WORLD_ROOT_PLEDGE = 'hollow';
+  const WORLD_ROOT_HOLLOW_MIN = 3.5;   // この太さより細い約束の根は白抜きにできないので 'weak' で描く
+  const WORLD_ROOT_HOLLOW_FADE = [0.9, 0.2];   // 白抜きの輪郭の濃さ（点の下 → 先）
+  const WORLD_ROOT_PLEDGE_WEAK = [0.85, 0.5];  // 'weak' の濃さ（点の下 → 先）。これに薄さ0.4を掛ける
   // 根の形：描く部品と、点 (px,py) から形までの距離（中なら0）。触れる判定と押す判定に使う
   function worldRootShape(tip, x, y, w, L) {
     const segD = (px, py, ax, ay, bx, by) => { const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy || 1; let t = ((px - ax) * dx + (py - ay) * dy) / l2; t = Math.max(0, Math.min(1, t)); return Math.hypot(px - (ax + t * dx), py - (ay + t * dy)); };
@@ -14845,11 +14858,11 @@
     if (tip === 'tee') {
       const half = (w + 4) / 2;
       return { half, dist: (px, py) => Math.max(0, Math.min(segD(px, py, x, y + 4, x, y + L) - w / 2, segD(px, py, x - half, y + L, x + half, y + L) - 0.75)),
-        parts: [{ tag: 'path', at: { d: 'M' + x.toFixed(1) + ',' + top.toFixed(1) + ' L' + x.toFixed(1) + ',' + (y + L).toFixed(1) }, stroke: w }, { tag: 'path', at: { d: 'M' + (x - half).toFixed(1) + ',' + (y + L).toFixed(1) + ' L' + (x + half).toFixed(1) + ',' + (y + L).toFixed(1) }, stroke: 1.5 }] };
+        parts: [{ tag: 'path', at: { d: 'M' + x.toFixed(1) + ',' + (y + WORLD_ROOT_START).toFixed(1) + ' L' + x.toFixed(1) + ',' + (y + L).toFixed(1) }, stroke: w }, { tag: 'path', at: { d: 'M' + (x - half).toFixed(1) + ',' + (y + L).toFixed(1) + ' L' + (x + half).toFixed(1) + ',' + (y + L).toFixed(1) }, stroke: 1.5 }] };
     }
     if (tip === 'bar') {
       return { half: w / 2, dist: (px, py) => Math.max(0, segD(px, py, x, y + 4, x, y + L - w / 2) - w / 2),
-        parts: [{ tag: 'path', at: { d: 'M' + x.toFixed(1) + ',' + top.toFixed(1) + ' L' + x.toFixed(1) + ',' + (y + L - w / 2).toFixed(1), 'stroke-linecap': 'round' }, stroke: w }] };
+        parts: [{ tag: 'path', at: { d: 'M' + x.toFixed(1) + ',' + (y + WORLD_ROOT_START).toFixed(1) + ' L' + x.toFixed(1) + ',' + (y + L - w / 2).toFixed(1), 'stroke-linecap': 'round' }, stroke: w }] };
     }
     if (tip === 'wedge') {
       const a = [x - w / 2, y + 3], b = [x + w / 2, y + 3], c = [x, y + L];
@@ -14859,7 +14872,7 @@
     }
     // 'fade'：太さそのままの長方形を、下へ薄く
     return { half: w / 2, dist: (px, py) => Math.hypot(Math.max(Math.abs(px - x) - w / 2, 0), Math.max(top - py, py - (y + L), 0)),
-      parts: [{ tag: 'rect', at: { x: (x - w / 2).toFixed(2), y: top.toFixed(1), width: w, height: (L - 3.5).toFixed(1) }, fade: [top, y + L] }] };
+      parts: [{ tag: 'rect', at: { x: (x - w / 2).toFixed(2), y: (y + WORLD_ROOT_START).toFixed(1), width: w, height: (L - WORLD_ROOT_START).toFixed(1) }, fade: [top, y + L], w }] };   // v20.32：描くのは点の中心から、濃さは点の縁から
   }
   function worldRootTipName() { return { fade: '下へ薄くなって消える形', bar: '先の丸い棒', wedge: '下へ尖るくさび', tee: '先が⊥' }[WORLD_ROOT_TIP] || ''; }
   const WORLD_MAP_LINES_PER_PAIR = 5;    // 同じ国の組に描く線の上限。6本目からは「ほか◯本」
@@ -20201,8 +20214,9 @@
       '根の位置は持ち主の国で、使った場所ではない（海外工場の設備も持ち主の国に描く）。',
       '相手が別の国にある金は、自分に使う金でも横の線のまま（国の外へ出ている分）。',
       '額は根の太さで、根の長さはどの国も同じ（' + WORLD_ROOT_LEN + 'px）。1つの国の根は1本で、太さはその国の一番大きい1本の段（足さない）。',
-      'ほかの国の点に触れる根は、その図では出さず、地図の下に「〇〇の図で見られる根」と出す。約束の金の根は薄い。',
-      '根の上（点のすぐ下から先まで）を押すと、その国の根の一覧が、国の点の上を押すと、その国の網が開く。']]] : []);
+      'ほかの国の点に触れる根は、その図では出さず、地図の下に「〇〇の図で見られる根」と出す。',
+      (WORLD_ROOT_PLEDGE === 'hollow' ? '約束の金の根は白抜き（輪郭だけ）。線の約束の白抜きの矢印と同じ意味。細い根（' + WORLD_ROOT_HOLLOW_MIN + 'px未満）は白抜きにできないので、薄く描く。' : '約束の金の根は薄い。'),
+      (WORLD_ROOT_TAP === 'pair' ? '国の点か根を押すと、地図の下にその国の「網」と「根」が並ぶので、どちらかを選ぶ（点と根は小さく、指で押し分けられないため）。' : '根の上（点のすぐ下から先まで）を押すと、その国の根の一覧が、国の点の上を押すと、その国の網が開く。')]]] : []);
   }
   function worldMoneyGuideSections() {
     return [
@@ -21809,11 +21823,20 @@
           shape.parts.forEach((pt) => {
             const at = Object.assign({}, pt.at);
             if (pt.fade) {
+              // v20.32：約束の根の描き方は WORLD_ROOT_PLEDGE で決める
+              const mode = !pledge ? 'plain' : WORLD_ROOT_PLEDGE === 'hollow' ? (pt.w >= WORLD_ROOT_HOLLOW_MIN ? 'hollow' : 'weak') : WORLD_ROOT_PLEDGE;
+              const stops = mode === 'hollow' ? WORLD_ROOT_HOLLOW_FADE : mode === 'weak' ? WORLD_ROOT_PLEDGE_WEAK : WORLD_ROOT_FADE;
               const id = 'wmRootFade' + (fadeN++);
               const lg = worldSvg('linearGradient', { id, x1: '0', y1: pt.fade[0].toFixed(1), x2: '0', y2: pt.fade[1].toFixed(1), gradientUnits: 'userSpaceOnUse' }, rootDefs);
-              worldSvg('stop', { offset: '0', style: 'stop-color:var(--accent);stop-opacity:' + WORLD_ROOT_FADE[0] }, lg);
-              worldSvg('stop', { offset: '1', style: 'stop-color:var(--accent);stop-opacity:' + WORLD_ROOT_FADE[1] }, lg);
-              at.fill = 'url(#' + id + ')'; at.class = 'wmRootFill' + (pledge ? ' pledge' : '');
+              worldSvg('stop', { offset: '0', style: 'stop-color:var(--accent);stop-opacity:' + stops[0] }, lg);
+              worldSvg('stop', { offset: '1', style: 'stop-color:var(--accent);stop-opacity:' + stops[1] }, lg);
+              if (mode === 'hollow') {
+                // 白抜き：輪郭だけ（線の太さ1px）。薄さ0.4は掛けない（掛けると見えなくなった）
+                at.x = (+at.x + 0.5).toFixed(2); at.width = Math.max(pt.w - 1, 0.1); at.height = (+at.height - 0.5).toFixed(1);
+                at.style = 'fill:none;stroke-width:1px'; at.stroke = 'url(#' + id + ')'; at.class = 'wmRootFill hollow';
+              } else {
+                at.fill = 'url(#' + id + ')'; at.class = 'wmRootFill' + (pledge ? ' pledge' : '') + (mode === 'weak' ? ' weak' : '');
+              }
             } else if (pt.fill) {
               at.class = 'wmRootFill' + (pledge ? ' pledge' : ''); at.style = 'fill:var(--accent);fill-opacity:0.85';
             } else {
@@ -21951,13 +21974,41 @@
         const pad = WORLD_ROOT_TAP_PAD / sx;
         const onRoot = lineHits.filter((L) => L.root && py >= L.dot[1] + 3.5 && py <= L.dot[1] + L.len + pad && Math.abs(px - L.dot[0]) <= L.half + pad)
           .sort((a, b) => Math.abs(px - a.dot[0]) - Math.abs(px - b.dot[0]))[0];
-        if (onRoot) {
+        // v20.32 'pair'：押した所が、根の国の点か根の範囲に入っていれば、その国の「網」と「根」を並べて選ばせる（近くの別の国も入っていれば一緒に）
+        if (WORLD_ROOT_TAP === 'pair' && rootGroups.size) {
+          const dpad = WORLD_DOT_TAP_PAD / sx;
+          const hitCountries = lineHits.filter((L) => L.root).map((L) => {
+            const dDot = Math.hypot(px - L.dot[0], py - L.dot[1]);
+            const onDotZone = dDot <= 3.5 + dpad;
+            const onRootZone = py >= L.dot[1] + 3.5 && py <= L.dot[1] + L.len + pad && Math.abs(px - L.dot[0]) <= L.half + pad;
+            return (onDotZone || onRootZone) ? { L, dd: onDotZone ? dDot : Math.abs(px - L.dot[0]) } : null;
+          }).filter(Boolean).sort((a, b) => a.dd - b.dd);
+          if (hitCountries.length) {
+            const head = document.createElement('span'); head.className = 'fieldNote wmPickHead';
+            head.textContent = (hitCountries.length > 1 ? 'この辺りの国と根' : worldPlaceLabel(hitCountries[0].L.a, lib)) + '：';
+            chooser.appendChild(head);
+            hitCountries.forEach(({ L }) => {
+              const name = worldPlaceLabel(L.a, lib);
+              const bNet = document.createElement('button');
+              bNet.type = 'button'; bNet.className = 'tagFilterBtn wmPairNet'; bNet.textContent = name + 'の網';
+              bNet.addEventListener('click', () => worldOpenCountryNet(L.a));
+              const bRoot = document.createElement('button');
+              bRoot.type = 'button'; bRoot.className = 'tagFilterBtn wmPairRoot'; bRoot.textContent = name + 'の根（' + L.rows.length + '本）';
+              bRoot.addEventListener('click', () => worldOpenFlowRows(L.rows, name + 'の根（' + L.rows.length + '本・自分に使う金・直近' + WORLD_MAP_DAYS + '日）'));
+              chooser.appendChild(bNet); chooser.appendChild(bRoot);
+            });
+            chooser.hidden = false;
+            try { chooser.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (err) {}
+            return;
+          }
+        }
+        if (onRoot && WORLD_ROOT_TAP === 'split') {
           chooser.hidden = true;
           worldOpenFlowRows(onRoot.rows, worldPlaceLabel(onRoot.a, lib) + 'の根（' + onRoot.rows.length + '本・自分に使う金・直近' + WORLD_MAP_DAYS + '日）');
           return;
         }
         // v20.31：根を出している画面では、国の点の上（点の半径＋同じ広さ）を押したら、その国の網を直接開く（点のすぐ下に自分の根があり、いつも一覧になっていたため）
-        if (rootGroups.size) {
+        if (rootGroups.size && WORLD_ROOT_TAP === 'split') {
           const onDot = dots.map((d) => ({ d, dd: Math.hypot(d.p[0] - px, d.p[1] - py) })).filter((x) => x.dd <= 3.5 + pad).sort((x, y) => x.dd - y.dd)[0];
           if (onDot) { chooser.hidden = true; worldOpenCountryNet(onDot.d.c); return; }
         }
@@ -22020,7 +22071,7 @@
       const countries = new Set(roots.map((r) => r.places[0]).filter((c) => worldIsCountry(c, lib)));
       // v20.31：1行目を根の数え方に置き換える（国をまたぐ線・枠への線・国内の足し算をさせない）
       st.textContent = '直近' + WORLD_MAP_DAYS + '日：自分に使う ' + (roots.length + model.lines.length) + '本＝根 ' + roots.length + '本' + (countries.size ? '（' + countries.size + 'か国）' : '') + '・相手が別の国の線 ' + model.lines.length + '本'
-        + '。二本指で拡大・縮小、拡大中は指でなぞって動かせます。根や線、国の点を押すと、その動きを出します。近くに2つ以上あるときは、地図の下の一覧から選べます。';
+        + '。二本指で拡大・縮小、拡大中は指でなぞって動かせます。' + (WORLD_ROOT_TAP === 'pair' ? '国の点か根を押すと、その国の網と根を地図の下から選べます。線を押すと、その動きを出します。' : '根や線、国の点を押すと、その動きを出します。近くに2つ以上あるときは、地図の下の一覧から選べます。');
       const rootOnly = roots.filter((r) => (model.rootUnknown || []).includes(r));
       if (rootOnly.length) line(['相手の場所が分からず、主体の国に根だけ描いたもの ', linkBtn(rootOnly.length + '本', () => worldOpenFlowRows(rootOnly, '相手の場所が分からず、主体の国に根だけ描いたもの（直近' + WORLD_MAP_DAYS + '日）', 'map', WORLD_LIST_NOTES.rootOnly))]);
       (rootHidden || []).forEach(({ c, rows }) => {
