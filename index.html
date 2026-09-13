@@ -1383,6 +1383,13 @@
   .waqCards { font-size: 11px; color: var(--text-faint); margin-top: 8px; }
   .worldActorMind .waKey { display: inline-block; min-width: 3.2em; color: var(--text-faint); font-size: 11px; margin-right: 6px; }
   .worldActorMind .waRead { border-left: 2px dashed var(--guess); padding-left: 8px; margin-top: 2px; }
+  /* v20.34：時系列の述べた・推定は決まった行数だけ。はみ出すときだけ行の終わりに「…続き」 */
+  .worldActorMind .tlClamp.shut { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+  .worldActorMind .tlClamp { position: relative; }
+  .worldActorMind .tlClamp.more { cursor: pointer; }
+  .worldActorMind .tlMore { position: absolute; right: 0; bottom: 0; padding-left: 22px; color: var(--accent); font-size: 11px;
+    background: linear-gradient(to right, rgba(18,18,18,0), var(--bg) 18px); }
+  .worldActorMind .tlClamp.open .tlMore { position: static; display: block; text-align: right; padding-left: 0; background: none; }
   /* v11.7 つながる札：札を読んでいる最中に、隣の札が勝手に見える */
   .worldLinked { margin-top: 12px; }
   .worldLinked .rowLabel { font-size: 11px; color: var(--text-faint); margin-bottom: 4px; }
@@ -3021,7 +3028,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.33';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.34';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -3033,6 +3040,8 @@
     postSave: 200,   // 投稿の説明：言葉に保存する上限
     postReply: 80,   // 投稿の説明：「説明を作る」の返事の上限
   };
+  // v20.34：主体の時系列で、述べた・推定を何行まで見せるか（超える分は「…続き」を押すと出る）
+  const WORLD_TL_MIND_LINES = 2;
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -19675,8 +19684,8 @@
       if (rec && (rec.said || rec.read)) {
         const mind = document.createElement('div');
         mind.className = 'worldActorMind';
-        if (rec.said) { const l = document.createElement('div'); l.className = 'waSaid'; const k = document.createElement('span'); k.className = 'waKey'; k.textContent = '述べた'; l.appendChild(k); l.appendChild(document.createTextNode(rec.said)); mind.appendChild(l); }
-        if (rec.read) { const l = document.createElement('div'); l.className = 'waRead'; const k = document.createElement('span'); k.className = 'guessBadge'; k.textContent = '推定'; l.appendChild(k); l.appendChild(document.createTextNode(rec.read)); mind.appendChild(l); }
+        if (rec.said) { const l = document.createElement('div'); l.className = 'waSaid'; const k = document.createElement('span'); k.className = 'waKey'; k.textContent = '述べた'; l.appendChild(k); l.appendChild(document.createTextNode(rec.said)); mind.appendChild(worldTlClamp(l)); }
+        if (rec.read) { const l = document.createElement('div'); l.className = 'waRead'; const k = document.createElement('span'); k.className = 'guessBadge'; k.textContent = '推定'; l.appendChild(k); l.appendChild(document.createTextNode(rec.read)); mind.appendChild(worldTlClamp(l)); }
         box.appendChild(mind);
       }
       const open = document.createElement('div');
@@ -19688,7 +19697,40 @@
       box.appendChild(open);
       row.addEventListener('click', () => { open.hidden = !open.hidden; car.textContent = open.hidden ? '▸' : '▾'; });
     });
+    requestAnimationFrame(() => worldTlClampCheck(box));
   }
+  // v20.34：行数で畳む。はみ出すかは描いた後でしか分からないので、印（…続き）は測ってから付ける。
+  // はみ出さない行には印も押す動きも付けない（押しても何も起きない部品を作らない）
+  function worldTlClamp(l) {
+    l.classList.add('tlClamp', 'shut');
+    l.style.webkitLineClamp = String(WORLD_TL_MIND_LINES);
+    l.addEventListener('click', () => {
+      if (!l.classList.contains('more')) return;
+      const shut = !l.classList.contains('shut');
+      l.classList.toggle('shut', shut); l.classList.toggle('open', !shut);
+      const m = l.querySelector('.tlMore'); if (m) m.textContent = shut ? '…続き' : '閉じる';
+    });
+    return l;
+  }
+  function worldTlClampCheck(root, tries) {
+    let unseen = 0;
+    (root || document).querySelectorAll('.tlClamp').forEach((l) => {
+      if (l.classList.contains('open')) return;   // 開いているものは閉じるまでそのまま
+      if (!l.clientHeight) { unseen++; return; }   // 見えていない（画面が隠れている）ときは測れない
+      const over = l.scrollHeight > l.clientHeight + 1;
+      let m = l.querySelector('.tlMore');
+      if (over && !m) { m = document.createElement('span'); m.className = 'tlMore'; m.textContent = '…続き'; l.appendChild(m); }
+      if (!over && m) m.remove();
+      l.classList.toggle('more', over);
+    });
+    // 測れなかった行は少し待って測り直す。それでも測れなければ畳まない（印の無いまま隠さない）
+    if (unseen && root && root.isConnected) {
+      if ((tries || 0) < 30) requestAnimationFrame(() => worldTlClampCheck(root, (tries || 0) + 1));
+      else root.querySelectorAll('.tlClamp.shut:not(.more)').forEach((l) => { if (!l.clientHeight) l.classList.remove('shut'); });
+    }
+  }
+  // 幅が変わると（向きを変えたとき）はみ出すかが変わる
+  window.addEventListener('resize', () => { const b = document.getElementById('worldConceptEvents'); if (b) worldTlClampCheck(b); });
   function worldActorCopyText(c, ask) {
     const rows = worldActorRows(c);
     const borrowed = worldFindIn(WORLD_STORES.term, c.name);
