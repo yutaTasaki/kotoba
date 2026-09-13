@@ -1290,6 +1290,12 @@
   .worldUseCand { display: block; margin-top: 8px; }
   .worldUseCand:disabled, .wmSelfUnknown:disabled { opacity: 0.4; text-decoration: none; cursor: default; }
   .wmRegionNote { margin: 2px 0 6px; }
+  .wmPick { margin: 4px 0 2px; color: var(--text-dim); }   /* v20.26 選んでいる絞りの説明 */
+  .wmListNote { margin: 0 0 8px; }
+  .worldGuide { margin-top: 12px; }
+  .worldGuideBody { margin-top: 4px; }
+  .worldGuideBody .rowLabel { margin-top: 8px; }
+  .worldConfWhy { margin-top: 8px; }
   #worldMapUnknown { display: flex; flex-wrap: wrap; gap: 0 12px; }   /* v20.24 場所不明・「・」で決めた・推し量った */
   #worldMapUnknown .linkLikeBtn:disabled { opacity: 0.4; text-decoration: none; cursor: default; }
   .guessBadge {
@@ -2395,15 +2401,19 @@
     <!-- v20 M1：大きな地図。直近90日のお金の動きを線で描く -->
     <div class="editorBody" id="worldMapView" hidden>
       <div class="tagFilterRow" id="worldMapRegions"></div>
+      <!-- v20.26：いま選んでいる地域・種類の説明（全体・全部では出さない） -->
+      <p class="fieldNote wmPick" id="worldMapRegionPick" hidden></p>
       <!-- v20.25：地域の件数を足しても全体にならない理由（数が合わない理由は必ず見せる） -->
       <p class="fieldNote wmRegionNote">国をまたぐ線は両端の地域で数えます。どの地域にも入らない国もあるので、足しても全体になりません。</p>
       <!-- v20.20 第4段：何が動いたかで分ける。件数を出して、押す前に何本あるか見えるようにする -->
       <div class="tagFilterRow" id="worldMapKinds"></div>
+      <p class="fieldNote wmPick" id="worldMapKindPick" hidden></p>
       <div id="worldMapBox" class="worldMapBox"></div>
       <div id="worldMapChooser" hidden></div>
       <p class="fieldNote" id="worldMapUsdNote" hidden></p>
       <p class="fieldNote" id="worldMapStatus"></p>
       <div id="worldMapUnknown"></div>
+      <div id="worldMapGuide"></div>
     </div>
 
     <!-- v20.22 第2段A：予告の画面。期限が来たものを押して、当たり／外れ／確かめられない を確定する -->
@@ -3002,7 +3012,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.25';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.26';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -18931,7 +18941,7 @@
       if (ev.confidence) {
         const c = document.createElement('span');
         c.className = 'wConf' + (ev.confidence <= WORLD_CONF_LOUD ? ' isLow' : '');
-        c.textContent = '確' + ev.confidence;
+        c.textContent = '確度' + ev.confidence;
         if (ev.confidenceWhy) c.title = ev.confidenceWhy;
         right.appendChild(c);
       }
@@ -19161,6 +19171,14 @@
       }
     }
 
+    // v20.26：確度の理由は「詳しく」を押さなくても見える所に（札の行の吹き出しは iPhone で出ないため）
+    if (ev.confidence && ev.confidenceWhy) {
+      const p = document.createElement('div');
+      p.className = 'worldMetaLine worldConfWhy';
+      const k = document.createElement('span'); k.className = 'wmKey'; k.textContent = '確度 ' + ev.confidence + '/' + WORLD_CONF_MAX + '：';
+      p.appendChild(k); p.appendChild(document.createTextNode(ev.confidenceWhy));
+      box.appendChild(p);
+    }
     // 数字・出典・URL は既定で閉じている。ここが「読みに行ってしまう」入口。
     const deep = document.createElement('div');
     deep.className = 'worldDeep';
@@ -19184,8 +19202,8 @@
       deep.appendChild(p);
     }
     if (ev.source) { const p = document.createElement('div'); p.textContent = ev.source; deep.appendChild(p); }
-    // v19.3 確度。低いときは理由も
-    if (ev.confidence) {
+    // v19.3 確度。v20.26：理由があるときは「詳しく」の外に出したので、ここは理由の無い確度だけ（二重に出さない）
+    if (ev.confidence && !ev.confidenceWhy) {
       const p = document.createElement('div');
       p.className = 'worldMetaLine';
       const k = document.createElement('span'); k.className = 'wmKey'; k.textContent = '確度：';
@@ -19304,7 +19322,7 @@
   function worldFlowLine(f) {
     return [f.from || '？', '→', f.to || '？', f.what ? '　' + f.what : '', f.amount ? ' ' + f.amount : '',
       // v15: 1回の拠出か累計かで意味がまるで違う。額の隣に必ず出す
-      f.span ? '（' + f.span + 'の累計）' : '',
+      f.span ? '（期間：' + f.span + '）' : '',   // v20.26：「累計」は計画の額にも出て、実績に見えた
       // v19.3 追えた割合。残りを次に調べる手がかりにする
       worldFlowTrackedText(f)].join(' ').replace(/\s+/g, ' ').trim();
   }
@@ -19459,7 +19477,7 @@
     n.textContent = (r.actor && r.actor.name) || r.name || '';
     const d = document.createElement('span'); d.className = 'wbDid'; d.textContent = r.did || (r.partial ? '…' : '');
     const meta = document.createElement('span'); meta.className = 'wbMeta';
-    meta.textContent = worldShortDate(r.date) + '　' + r.count + '件';
+    meta.textContent = worldShortDate(r.date) + '　札' + r.count + '枚';
     const mk = document.createElement('span');
     // 述べずに動いている主体が、探さずに見えるようにする。
     // 色（琥珀）だけだと「述推」と並んだとき弱いので、中黒で位置もずらす。
@@ -19493,7 +19511,7 @@
         worldAppendUsd(row, e);   // v20.3
         if (e.flow.span) {
           const s = document.createElement('span');
-          s.className = 'wmSpan'; s.textContent = '（' + e.flow.span + 'の累計）';
+          s.className = 'wmSpan'; s.textContent = '期間：' + e.flow.span;
           row.appendChild(s);
         }
         row.addEventListener('click', () => openWorldEvent(e.id));
@@ -19797,7 +19815,7 @@
   function renderWorldAskBrief(body) {
     const ask = document.createElement('button');
     ask.type = 'button'; ask.className = 'worldAskEntry';
-    ask.textContent = '知りたいことから引く' + (worldAsks().length ? '（' + worldAsks().length + '）' : '') + '　▸';
+    ask.textContent = '知りたいことから引く' + (worldAsks().length ? '（問い' + worldAsks().length + '）' : '') + '　▸';
     ask.addEventListener('click', () => { worldState.view = 'ask'; renderWorld(); });
     body.appendChild(ask);
 
@@ -19916,7 +19934,14 @@
   ];
   // v18 A-2: 出来事タブが無くなったので、札の一覧画面（view:'cards'）の中身になる
   // v20.25：お金の一覧の使い道の絞り。全部・自分に使う・使い道ごと（使い道の表から作る）
-  function worldMoneyUseFilters() { return [['all', '全部'], ['self', '自分に使う']].concat(WORLD_USE_KINDS.map((k) => [k[0], k[0]])); }
+  function worldMoneyUseFilters() { return [['all', '全部'], ['self', '自分に使う']].concat(WORLD_USE_KINDS.map((k) => [k.name, k.name])); }
+  // v20.26：いま選んでいる使い道の説明（「全部」は出さない）
+  function worldMoneyUseLine(use) {
+    if (!use || use === 'all') return '';
+    if (use === 'self') return worldSelfUseLine();
+    const k = WORLD_USE_KINDS.find((x) => x.name === use);
+    return k ? k.line : '';
+  }
   function worldMoneyUseKeep(r, use) {
     if (!use || use === 'all') return true;
     const u = worldUseOf(r);
@@ -19936,7 +19961,7 @@
       add('wmSpan', e.flow.span ? '期間：' + e.flow.span : '期間なし');
       add('wmPlan', worldPlanLike(e) ? '計画らしい' : '区別なし');
     } else if (e.flow.span) {
-      add('wmSpan', '（' + e.flow.span + 'の累計）');
+      add('wmSpan', '期間：' + e.flow.span);
     }
     worldFlowRowWire(row, e);   // v19.15
     return row;
@@ -19982,6 +20007,7 @@
         onClick: () => { worldState.moneyUse = key; renderWorld(); } }));
     });
     body.appendChild(useRow);
+    if (worldMoneyUseLine(use)) { const up = document.createElement('p'); up.className = 'fieldNote wmPick'; up.textContent = worldMoneyUseLine(use); body.appendChild(up); }   // v20.26
     // 地図は直近90日、一覧は読み込んでいる月。数が合わない理由を見せる
     const idxMonths = Object.keys((wd.index && wd.index.months) || {});
     const loadedN = idxMonths.filter((m) => wd.loaded.has(m)).length;
@@ -19992,7 +20018,9 @@
     if (!groups.length) {
       const p = document.createElement('p'); p.className = 'emptyMsg';
       p.textContent = q ? '見つかりませんでした（端末に読み込んでいる月だけを探しています）。' : 'まだお金の動きがある札がありません。';
-      body.appendChild(p); return;
+      body.appendChild(p);
+      body.appendChild(worldGuideEl('money', worldMoneyGuideSections()));   // v20.26
+      return;
     }
     groups.forEach((g) => {
       const uh = document.createElement('div');
@@ -20022,13 +20050,65 @@
       cb.type = 'button'; cb.className = 'linkLikeBtn worldUseCand';
       cb.textContent = '使い道が決まらなかった候補 ' + cand.length + '本';
       cb.disabled = !cand.length;
-      if (cand.length) cb.addEventListener('click', () => openWorldCards({ title: '使い道が決まらなかった候補', ids: [...new Set(cand.flatMap((r) => (r.cards || [r]).map((x) => x.id)))] }));
+      if (cand.length) cb.addEventListener('click', () => openWorldCards({ title: '使い道が決まらなかった候補', note: WORLD_LIST_NOTES.candidate, ids: [...new Set(cand.flatMap((r) => (r.cards || [r]).map((x) => x.id)))] }));
       body.appendChild(cb);
     }
     const note = document.createElement('p');
     note.className = 'fieldNote';
     note.textContent = '合計は出しません。通貨をまたいで足すには為替レートを選ぶことになり、推定が事実の顔をして混ざります。';
     body.appendChild(note);
+    body.appendChild(worldGuideEl('money', worldMoneyGuideSections()));   // v20.26
+  }
+  // v20.26：数字の見方。押すと開き、もう一度押すと閉じる（閉じた状態で始める）。中身は判定の表から作る
+  function worldGuideEl(key, sections) {
+    const wrap = document.createElement('div');
+    wrap.className = 'worldGuide';
+    if (!worldState.guideOpen) worldState.guideOpen = {};
+    const open = !!worldState.guideOpen[key];
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'linkLikeBtn worldGuideBtn';
+    b.textContent = '数字の見方 ' + (open ? '▾' : '▸');
+    wrap.appendChild(b);
+    const bodyEl = document.createElement('div');
+    bodyEl.className = 'worldGuideBody';
+    bodyEl.hidden = !open;
+    sections.forEach(([head, lines]) => {
+      const h = document.createElement('div'); h.className = 'rowLabel'; h.textContent = head; bodyEl.appendChild(h);
+      lines.forEach((t) => { const p = document.createElement('p'); p.className = 'fieldNote'; p.textContent = t; bodyEl.appendChild(p); });
+    });
+    wrap.appendChild(bodyEl);
+    b.addEventListener('click', () => {
+      worldState.guideOpen[key] = bodyEl.hidden;
+      bodyEl.hidden = !bodyEl.hidden;
+      b.textContent = '数字の見方 ' + (bodyEl.hidden ? '▸' : '▾');
+    });
+    return wrap;
+  }
+  function worldMapGuideSections() {
+    const generic = WORLD_PLACE_GENERIC.exact.concat(WORLD_PLACE_GENERIC.contains);
+    return [
+      ['種類のボタン', WORLD_MAP_KINDS.filter((k) => k[0] !== 'all').map((k) => k[1] + '：' + worldKindLine(k[0]))],
+      ['地域のボタン', ['地域を選ぶと「' + worldRegionLine('americas') + '」のように、片端がその地域の国にある線と、その地域の国の中の動きを数える。',
+        '国をまたぐ線は両端の地域で数える。どの地域にも入らない国もあるので、足しても全体にならない。']],
+      ['地図の下の数字の行', ['国をまたぐ線＝両端が別の国。枠への線＝片端が市場・国際機関・地域。国内＝両端が同じ国。']],
+      ['場所不明', [WORLD_LIST_NOTES.unknown]],
+      ['名前の先頭で国を決めた相手', [WORLD_LIST_NOTES.dot + '（「カナダ・オンタリオ州の工場」ならカナダ）。']],
+      ['国をもう片方と同じとみなした動き', [WORLD_LIST_NOTES.same + '。', '当てる言葉（' + generic.length + '語）：' + generic.join('・')]],
+      [WORLD_FOREIGN_LABEL, [WORLD_LIST_NOTES.foreign + '。「〜保有者」への支払いが対象。',
+        '当てる言葉：' + WORLD_PLACE_FOREIGN_WORDS.join('・') + '。ドルの言葉で、もう片方が米国なら当てない（米国の自国の通貨なので）。']],
+      ['線の太さ', ['ドル換算の5段（地図の左下の見本のとおり）。換算できないものは点線。']],
+    ];
+  }
+  function worldMoneyGuideSections() {
+    return [
+      ['使い道のボタン', WORLD_USE_KINDS.map((k) => k.name + '：' + k.line + '（拾う言葉：' + k.words.join('・') + (k.where === 'what' ? '。何の支払いかの欄だけを見て、' + WORLD_USE_EXCLUDE_WORDS.join('・') + 'は除く' : '。何の支払いかと見出しを見る') + '）')],
+      ['自分に使う', [worldSelfUseLine() + '。上の使い道のどれかに当たったもの。']],
+      ['計画らしい／区別なし', ['計画らしい＝次の言葉がある：' + WORLD_PLEDGE_WORDS.concat(WORLD_PLAN_WORDS).join('・') + '。生成が約束の印を付けたものも入る。',
+        '区別なし＝どちらの言葉も無い。実績という意味ではない。']],
+      ['期間', ['期間＝生成が書いた、その額が何の期間の分か。無ければ「期間なし」（使い道で絞ったときだけ出す）。']],
+      ['使い道が決まらなかった候補', [WORLD_LIST_NOTES.candidate + '。', '手がかりの言葉：' + WORLD_USE_CANDIDATE_LIST.join('・') + '（何の支払いかと、受け取る側の名前だけを見る）']],
+      ['読み込んでいる月', ['件数と一覧は、端末に読み込んでいる月の分。地図は直近' + WORLD_MAP_DAYS + '日なので、数が合わないことがある。']],
+    ];
   }
   function worldSortEntries(list, sort) {
     const copy = list.slice();
@@ -20073,7 +20153,7 @@
       row.className = 'worldConceptRow' + (child ? ' isChild' : '');
       const n = document.createElement('span');
       n.textContent = c.name + (isActor && c.kind ? '（' + WORLD_ACTOR_KIND_LABEL[c.kind] + '）' : '');
-      const cnt = document.createElement('span'); cnt.className = 'wcCount'; cnt.textContent = worldConceptCount(c) + '件';
+      const cnt = document.createElement('span'); cnt.className = 'wcCount'; cnt.textContent = '札' + worldConceptCount(c) + '枚';
       row.appendChild(n); row.appendChild(cnt);
       row.addEventListener('click', () => openWorldEntry(c.id, 'tidy'));
       return row;
@@ -20303,7 +20383,7 @@
       const w = document.createElement('span'); w.className = 'wmWhat'; w.textContent = e.flow.what || '';
       row.appendChild(d); row.appendChild(n); row.appendChild(a); row.appendChild(w);
       worldAppendUsd(row, e);   // v20.3
-      if (e.flow.span) { const sp = document.createElement('span'); sp.className = 'wmSpan'; sp.textContent = '（' + e.flow.span + 'の累計）'; row.appendChild(sp); }
+      if (e.flow.span) { const sp = document.createElement('span'); sp.className = 'wmSpan'; sp.textContent = '期間：' + e.flow.span; row.appendChild(sp); }
       row.addEventListener('click', () => openWorldEvent(e.id));
       fbox.appendChild(row);
     });
@@ -20444,7 +20524,7 @@
     if (cards.length > 1) {
       const src = document.createElement('span');
       src.className = 'wmSrc';
-      src.textContent = cards.length + 'つの出典';
+      src.textContent = '同じ動きの札' + cards.length + '枚';
       row.appendChild(src);
     }
     row.addEventListener('click', () => {
@@ -20464,7 +20544,7 @@
     worldAppendUsd(row, e);   // v20.3
     if (e.flow.span) {
       const sp = document.createElement('span');
-      sp.className = 'wmSpan'; sp.textContent = '（' + e.flow.span + 'の累計）';
+      sp.className = 'wmSpan'; sp.textContent = '期間：' + e.flow.span;
       row.appendChild(sp);
     }
     if (e.flow.total) {   // v19.3
@@ -20530,7 +20610,7 @@
     p.textContent = (e.flow.from || '？') + ' → ' + (e.flow.to || '？') + '　' + WORLD_FLOW_KIND_MARK[e.flow.kind] + (e.flow.what || '');
     const a = document.createElement('span'); a.className = 'wmAmount'; a.textContent = e.flow.amount || '';
     row.appendChild(d); row.appendChild(p); row.appendChild(a);
-    if (e.flow.span) { const sp = document.createElement('span'); sp.className = 'wmSpan'; sp.textContent = '（' + e.flow.span + 'の累計）'; row.appendChild(sp); }
+    if (e.flow.span) { const sp = document.createElement('span'); sp.className = 'wmSpan'; sp.textContent = '期間：' + e.flow.span; row.appendChild(sp); }
     worldFlowRowWire(row, e);   // v19.15
     return row;
   }
@@ -20551,7 +20631,7 @@
       chains.slice(0, WORLD_CHAINS_SHOWN).forEach((c) => {
         const h = document.createElement('div');
         h.className = 'worldChainHead';
-        const t = document.createElement('span'); t.textContent = (c.hub ? c.hub + 'を中心に ' : '') + c.rows.length + '件';
+        const t = document.createElement('span'); t.textContent = (c.hub ? c.hub + 'を中心に ' : '') + '動き' + c.rows.length + '本';
         const last = document.createElement('span'); last.className = 'wmDate'; last.textContent = '最後 ' + worldShortDate(c.last);
         h.appendChild(t); h.appendChild(last);
         body.appendChild(h);
@@ -20599,7 +20679,7 @@
     n.textContent = c.name
       + (kind === 'term' && c.kind ? '（' + WORLD_TERM_KIND_LABEL[c.kind] + '）' : '')
       + (kind === 'actor' && c.kind ? '（' + WORLD_ACTOR_KIND_LABEL[c.kind] + '）' : '');
-    const cnt = document.createElement('span'); cnt.className = 'wcCount'; cnt.textContent = worldConceptCount(c) + '件';
+    const cnt = document.createElement('span'); cnt.className = 'wcCount'; cnt.textContent = '札' + worldConceptCount(c) + '枚';
     row.appendChild(n); row.appendChild(cnt);
     row.addEventListener('click', () => openWorldEntry(c.id, 'list'));
     return row;
@@ -20827,11 +20907,12 @@
     });
     return m;
   }
-  function worldOpenFlowRows(rows, title, from) {
+  // v20.26：note は開いた一覧の頭に出す1行の説明
+  function worldOpenFlowRows(rows, title, from, note) {
     const ids = [...new Set(rows.flatMap((r) => (r.cards || [r]).map((e) => e.id)))];
     const back = from || 'map';   // v20.4：網から開いた一覧は網へ戻る
-    if (ids.length === 1) { worldState.cards = null; openWorldCards({ title, ids, openId: ids[0], from: back }); return; }
-    openWorldCards({ title, ids, from: back });
+    if (ids.length === 1) { worldState.cards = null; openWorldCards({ title, ids, openId: ids[0], from: back, note }); return; }
+    openWorldCards({ title, ids, from: back, note });
   }
   // ---- v20.3 M3：ドル換算と線の太さ ----------------------------------------
   // 太さの5段：この額（ドル）未満ならこの太さ（px）
@@ -21136,6 +21217,8 @@
     const cur = worldState.mapRegion || 'world';
     // v20.25：件数には国の位置（地図の部品）が要るので、読み込むまでは名前だけの押せない形。描いた後に件数つきで描き直す
     WORLD_MAP_REGIONS.forEach(([k, label]) => regions.appendChild(worldCountBtnEl({ label, selected: k === cur, loading: true })));
+    worldPaintPick('worldMapRegionPick', worldRegionLine(cur));   // v20.26：説明は位置が要らないので、読み込む前から出せる
+    worldPaintPick('worldMapKindPick', worldKindLine(worldState.mapKind || 'all'));
     worldPaintUsdNote();   // v20.3
     if (!box.firstChild) st.textContent = '地図を読み込んでいます…';
     const token = ++worldMapToken;
@@ -21258,17 +21341,25 @@
   // 武器・穀物はいまのデータに1件も無いので作らない。物の1本目は原油・石油（物13本のうち9本）
   // v20.25「自分に使う」第2段：使い道の表。上から当て、最初に当たった1つ。お金の動きだけ。
   // 札には書き込まない（描くたびに決める）。「投資だけ外す」は、この表から投資の行を消すだけでできる
+  // v20.26：拾う言葉は「言葉の並び」で持ち、拾う仕組みも画面の説明も同じ並びから作る（直したとき片方だけ古くならない）。
+  // line は画面に出す説明（幅320で1行に収まる26字以内）
   const WORLD_USE_KINDS = [
-    ['設備', 'what+fact', /設備投資|有形固定資産|property and equipment|設備増強/i],
-    ['自社株', 'what+fact', /自社株|自己株式/],
-    ['注入', 'what+fact', /資本注入|資本を補う/],
-    ['買収', 'what+fact', /買収/],
-    ['投資', 'what', /投資|出資/],   // 投資だけは「何の支払いか」だけを見る（見出しや本文には投資信託・投資家が出る）
+    { name: '設備', where: 'what+fact', words: ['設備投資', '有形固定資産', 'property and equipment', '設備増強'], line: '設備投資・有形固定資産などの支払い' },
+    { name: '自社株', where: 'what+fact', words: ['自社株', '自己株式'], line: '自社株買い・自己株式の取得' },
+    { name: '注入', where: 'what+fact', words: ['資本注入', '資本を補う'], line: '資本注入・資本を補う支払い' },
+    { name: '買収', where: 'what+fact', words: ['買収'], line: '会社を買う支払い（買収）' },
+    // 投資だけは「何の支払いか」だけを見る（見出しや本文には投資信託・投資家が出る）
+    { name: '投資', where: 'what', words: ['投資', '出資'], line: '何の支払いかに「投資」「出資」とあるもの' },
   ];
   // 当てる前に取り除く言葉（使い道の投資と、候補の両方で使う）
-  const WORLD_USE_EXCLUDE = /投資家|投資信託|投資適格|投資銀行|投資顧問|投資収益|投資判断/g;
+  const WORLD_USE_EXCLUDE_WORDS = ['投資家', '投資信託', '投資適格', '投資銀行', '投資顧問', '投資収益', '投資判断'];
   // 使い道が決まらなかった候補の手がかり。何の支払いかと受け取る側（to）だけを見る（払う側の名前は「誰が払ったか」なので見ない）
-  const WORLD_USE_CANDIDATE_WORDS = /取得|増資|設備|工場|株主|資本|投資|出資/;
+  const WORLD_USE_CANDIDATE_LIST = ['取得', '増資', '設備', '工場', '株主', '資本', '投資', '出資'];
+  function worldWordsRe(words, flags) { return new RegExp(words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), flags || ''); }
+  // 大文字小文字は区別しない（「property and equipment」を今までどおり拾う）
+  function worldUseKindRe(k) { if (!k._re || k._reSrc !== k.words.join('|')) { k._re = worldWordsRe(k.words, 'i'); k._reSrc = k.words.join('|'); } return k._re; }
+  function worldUseExclude(text) { return String(text || '').replace(worldWordsRe(WORLD_USE_EXCLUDE_WORDS, 'g'), ''); }
+  function worldSelfUseLine() { return '自分の側に積む金（' + WORLD_USE_KINDS.map((k) => k.name).join('・') + '）'; }
   // 一覧の「計画らしい」だけに使う言葉（地図の「約束」の見分け方は変えない。変えると約束の線が3本→17本になる）
   const WORLD_PLAN_WORDS = ['上限', '枠', '決定', '決めた', '合意', '予定', 'へ引き上げ', '残している'];
   function worldIsMoneyRow(r) { const f = r && (r.flow || (r.rep && r.rep.flow)); return !!f && (f.kind || 'money') === 'money'; }
@@ -21276,16 +21367,16 @@
     if (!worldIsMoneyRow(r)) return '';
     const e = r.rep || r, f = r.flow || e.flow;
     const what = String(f.what || '');
-    for (const [name, where, re] of WORLD_USE_KINDS) {
-      const text = where === 'what' ? what.replace(WORLD_USE_EXCLUDE, '') : what + ' ' + String(e.fact || '');
-      if (re.test(text)) return name;
+    for (const k of WORLD_USE_KINDS) {
+      const text = k.where === 'what' ? worldUseExclude(what) : what + ' ' + String(e.fact || '');
+      if (worldUseKindRe(k).test(text)) return k.name;
     }
     return '';
   }
   function worldIsUseCandidate(r) {
     if (!worldIsMoneyRow(r) || worldUseOf(r)) return false;
     const f = r.flow || (r.rep && r.rep.flow);
-    return WORLD_USE_CANDIDATE_WORDS.test((String(f.what || '') + ' ' + String(f.to || '')).replace(WORLD_USE_EXCLUDE, ''));
+    return worldWordsRe(WORLD_USE_CANDIDATE_LIST).test(worldUseExclude(String(f.what || '') + ' ' + String(f.to || '')));
   }
   function worldPlanLike(r) {
     const e = r.rep || r, f = r.flow || e.flow;
@@ -21294,13 +21385,26 @@
     return WORLD_PLAN_WORDS.some((w) => hay.includes(w));
   }
   const WORLD_MAP_KINDS = [
-    ['all', '全部', null],
-    ['money', 'お金', (r) => (r.flow.kind || 'money') === 'money'],
-    ['goods', '物・人', (r) => (r.flow.kind || 'money') !== 'money'],
-    ['oil', '原油・石油', (r) => worldFlowItem(r) === '原油・石油'],
-    ['pledge', '約束', (r) => worldFlowIsPledge(r)],
-    ['self', '自分に使う', (r) => !!worldUseOf(r)],   // v20.25
+    // v20.26：4つ目は選んだときに出す説明（関数なら表から作る）
+    ['all', '全部', null, ''],
+    ['money', 'お金', (r) => (r.flow.kind || 'money') === 'money', 'お金が動いたもの'],
+    ['goods', '物・人', (r) => (r.flow.kind || 'money') !== 'money', '物か人が動いたもの（お金以外）'],
+    ['oil', '原油・石油', (r) => worldFlowItem(r) === '原油・石油', '物のうち原油・石油製品が動いたもの'],
+    ['pledge', '約束', (r) => worldFlowIsPledge(r), 'まだ動いていない約束の金（配分・表明など）'],
+    ['self', '自分に使う', (r) => !!worldUseOf(r), () => worldSelfUseLine()],   // v20.25
   ];
+  function worldKindLine(key) { const d = worldKindDef(key); return typeof d[3] === 'function' ? d[3]() : (d[3] || ''); }
+  // v20.26：地域の説明は地域の名前から作る（地域を足しても文を書き足さない）
+  function worldRegionLine(key) {
+    const reg = WORLD_MAP_REGIONS.find((r) => r[0] === key);
+    return reg && reg[2] ? '片端が' + reg[1] + 'の国にある線と、' + reg[1] + 'の国の中の動き' : '';
+  }
+  function worldPaintPick(id, text) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text || '';
+    el.hidden = !text;
+  }
   function worldKindDef(key) { return WORLD_MAP_KINDS.find((k) => k[0] === key) || WORLD_MAP_KINDS[0]; }
   function worldFilterModelByKind(model, kind) {
     const def = worldKindDef(kind);
@@ -21322,6 +21426,16 @@
   // v20.25 共通の道具：件数つきの絞りボタン。件数を必ず出し、0件なら押せない。
   // 件数を渡し忘れたら「件数がありません」と出して押せない形にする（黙って件数なしのボタンを出さない）。
   // loading は、件数をまだ出せないとき（地図の部品を読み込む前）。名前だけの押せない形
+  // 幅320で3行以上になるなら「外国の持ち主への支払い」に縮める（実装時に測って決める。回答書）
+  const WORLD_FOREIGN_LABEL = '外国の持ち主への支払いとして市場に入れた動き';
+  const WORLD_LIST_NOTES = {
+    unknown: 'どちらかの端の国が分からない動き',
+    dot: '名前の「・」の前だけを見て国を決めたもの',
+    same: '株主・取得先などを、もう片方と同じ国にしたもの',
+    foreign: '保有者への支払いに外貨建て・ドル債などとあるもの',
+    selfUnknown: '自分に使う金のうち、どちらかの端の国が分からないもの',
+    candidate: '使い道に当たらないが、取得・設備などの言葉があるもの',
+  };
   function worldCountBtnEl({ label, count, selected, onClick, loading }) {
     const b = document.createElement('button');
     b.type = 'button';
@@ -21345,6 +21459,7 @@
       row.appendChild(worldCountBtnEl({ label, count: worldKindCount(byRegion, key), selected: key === (worldState.mapKind || 'all'),
         onClick: () => { worldState.mapKind = key; renderWorldMap(); } }));
     });
+    worldPaintPick('worldMapKindPick', worldKindLine(worldState.mapKind || 'all'));   // v20.26
   }
   // v20.25：地域のボタン。件数は「いまの種類で、その地域を押したら何本か」（地域で絞る＋種類ごとに数える、をそのまま組み合わせる）
   function worldPaintMapRegions(model0, lib) {
@@ -21356,6 +21471,7 @@
       row.appendChild(worldCountBtnEl({ label, count: worldKindCount(worldFilterModelByRegion(model0, lib, k), kind), selected: k === cur,
         onClick: () => { worldState.mapRegion = k; renderWorldMap(); } }));
     });
+    worldPaintPick('worldMapRegionPick', worldRegionLine(cur));   // v20.26
   }
   function worldDrawMap(lib, model0, region) {
     // v20.20：地域で絞ってから、種類で絞る。種類の件数は「いまの地域で押したら何本か」を出したいので、
@@ -21663,7 +21779,7 @@
         const b = document.createElement('button');
         b.type = 'button'; b.className = 'linkLikeBtn wmSelfUnknown';
         b.textContent = selfUnknown.length + '本';
-        b.addEventListener('click', () => worldOpenFlowRows(selfUnknown, '自分に使う金のうち、場所不明で描けないもの（直近' + WORLD_MAP_DAYS + '日）'));
+        b.addEventListener('click', () => worldOpenFlowRows(selfUnknown, '自分に使う金のうち、場所不明で描けないもの（直近' + WORLD_MAP_DAYS + '日）', 'map', WORLD_LIST_NOTES.selfUnknown));
         st.appendChild(b);
       }
     }
@@ -21673,17 +21789,17 @@
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'linkLikeBtn';
       b.textContent = '場所不明 ' + model.unknown.length + '件';
-      b.addEventListener('click', () => worldOpenFlowRows(model.unknown, '場所不明の動き（直近' + WORLD_MAP_DAYS + '日）'));
+      b.addEventListener('click', () => worldOpenFlowRows(model.unknown, '場所不明の動き（直近' + WORLD_MAP_DAYS + '日）', 'map', WORLD_LIST_NOTES.unknown));
       unk.appendChild(b);
     }
     // v20.24：名前の読み方で場所を決めた・推し量った動き。0件でも押せない形で出す（黙って決めない）。
     // 場所不明と同じく地域では絞らない（いつも全体の数）
-    const countBtn = (label, rows, title) => {
+    const countBtn = (label, rows, title, note) => {
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'linkLikeBtn';
       b.textContent = label + ' ' + rows.length + '件';
       b.disabled = !rows.length;
-      if (rows.length) b.addEventListener('click', () => worldOpenFlowRows(rows, title));
+      if (rows.length) b.addEventListener('click', () => worldOpenFlowRows(rows, title, 'map', note));
       unk.appendChild(b);
     };
     const dotRows = model0.dotRows || [], sameRows = model0.sameRows || [];
@@ -21691,10 +21807,14 @@
     dotRows.forEach((r) => [r.flow.from, r.flow.to].forEach((n) => {
       if (String(n || '').includes('・') && worldDotOthers(n, lib).length && !others.includes(n)) others.push(n);
     }));
-    countBtn('「・」の前で場所を決めた相手', dotRows, '「・」の前で場所を決めた相手（直近' + WORLD_MAP_DAYS + '日）'
-      + (others.length ? '。うち' + others.length + '件は「・」の後にもほかの国・主体が並んでいる（先頭で描いた）：' + others.join('、') : ''));
-    countBtn('相手の国をもう片方から推し量った動き', sameRows, '相手の国をもう片方から推し量った動き（直近' + WORLD_MAP_DAYS + '日）');
-    countBtn('外貨建てとして市場の枠に入れた動き', model0.foreignRows || [], '外貨建てとして市場の枠に入れた動き（直近' + WORLD_MAP_DAYS + '日）');   // v20.25
+    // v20.26：名前を分かる言葉に変え、開いた一覧の頭に1行の説明
+    countBtn('名前の先頭で国を決めた相手', dotRows, '名前の先頭で国を決めた相手（直近' + WORLD_MAP_DAYS + '日）'
+      + (others.length ? '。うち' + others.length + '件は「・」の後にもほかの国・主体が並んでいる（先頭で描いた）：' + others.join('、') : ''), WORLD_LIST_NOTES.dot);
+    countBtn('国をもう片方と同じとみなした動き', sameRows, '国をもう片方と同じとみなした動き（直近' + WORLD_MAP_DAYS + '日）', WORLD_LIST_NOTES.same);
+    countBtn(WORLD_FOREIGN_LABEL, model0.foreignRows || [], WORLD_FOREIGN_LABEL + '（直近' + WORLD_MAP_DAYS + '日）', WORLD_LIST_NOTES.foreign);   // v20.25
+    // v20.26：数字の見方（地図）
+    const guide = document.getElementById('worldMapGuide');
+    if (guide) { guide.innerHTML = ''; guide.appendChild(worldGuideEl('map', worldMapGuideSections())); }
   }
   // v20.20 第3段：市場の網。枠「市場」には、本物の市場（国債・為替・株式・石油・金）と、
   // 相手が分からないときの受け皿（買い手・株主・投資家）が混ざって入っている。
@@ -22045,7 +22165,7 @@
     const items = net.outs.map((o) => {
       let sx = 0, sy = 0;
       o.nodeKeys.forEach((k) => { const t = ang.get(k); if (t != null) { sx += Math.cos(t); sy += Math.sin(t); } });
-      const label = (o.dir === 'out' ? '→ ' : '← ') + worldNetCut(o.place) + '（' + o.rows.length + '）';
+      const label = (o.dir === 'out' ? '→ ' : '← ') + worldNetCut(o.place) + '（' + o.rows.length + '本）';
       const w = [...label].reduce((a, ch) => a + (/[\x20-\x7e]/.test(ch) ? 6 : 10.5), 0) + 18;
       const top = n === 1 ? o.dir === 'in' : sy < -1e-6 || (Math.abs(sy) <= 1e-6 && o.dir === 'in');
       const h = Math.hypot(sx, sy);
@@ -22340,6 +22460,7 @@
     const byDate = (a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0);
     const list = worldLiveEvents().filter((e) => d.ids.includes(e.id)).sort(byDate);
     document.getElementById('worldCardsTitle').textContent = d.title + '（' + list.length + '）';
+    if (d.note) { const p = document.createElement('p'); p.className = 'fieldNote wmListNote'; p.textContent = d.note; body.appendChild(p); }   // v20.26
     const box = document.createElement('div');
     renderWorldList(box, list, '端末に残っていません（読み込んでいない月の札です）。');
     body.appendChild(box);
@@ -22700,7 +22821,7 @@
     top.className = 'recordEntryTop';
     const label = document.createElement('span');
     label.className = 'recordEntryDate';
-    label.textContent = '世界 ・ ' + list.length + '件';
+    label.textContent = '世界 ・ 読んだ札' + list.length + '枚';
     top.appendChild(label);
     item.appendChild(top);
     list.forEach((ev) => {
