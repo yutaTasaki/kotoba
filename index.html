@@ -1285,6 +1285,8 @@
   /* v20.18 第2段：まだ読んでいない主体と、書き直す前の読み */
   .worldActorOpen .waNotRead { color: var(--text-faint); font-size: 11px; margin-top: 3px; }
   .worldActorOpen .waWas { color: var(--text-faint); font-size: 11px; margin-top: 3px; text-decoration: line-through; }
+  #worldMapUnknown { display: flex; flex-wrap: wrap; gap: 0 12px; }   /* v20.24 場所不明・「・」で決めた・推し量った */
+  #worldMapUnknown .linkLikeBtn:disabled { opacity: 0.4; text-decoration: none; cursor: default; }
   .guessBadge {
     display: inline-block; font-size: 10px; line-height: 1; padding: 3px 6px; border-radius: 4px;
     background: var(--guess); color: #1a1408; margin-right: 6px; vertical-align: 1px; font-weight: 700;
@@ -2993,7 +2995,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.23';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.24';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -14792,10 +14794,22 @@
   // v20.20 第1段：相手が「〜の取得先」「〜の供給元」のように、誰かは分からないが
   // もう片方と同じ国にいると言い切れる言い方を足す（場所不明の最大の原因だった）
   const WORLD_PLACE_GENERIC = { exact: ['金融機関', '銀行', '株主', '企業', '家計', '投資家'],
-    contains: ['保有者', '支払い先', '受給者', '取得先', '供給元', '需要家', '支出先', '調達枠', '輸出基地', '発電事業'] };
+    contains: ['保有者', '支払い先', '受給者', '取得先', '供給元', '需要家', '支出先', '調達枠', '輸出基地', '発電事業',
+      // v20.24「自分に使う」第1段。「工場」は足さない（海外工場・カナダの工場を自国の国内にしてしまうため）
+      '売り手', '製造装置', '業者', '金融企業'] };
   // v20.2.1：頭の国名。この言葉の前が国名なら、その国（「米国の製油所」→ 米国、「ウクライナ向け防衛調達」→ ウクライナ）。
   // その端の場所を決めるだけで、向きは from／to の位置のまま（「米国向け輸出」が from にあれば、出す側が米国になるだけ）
-  const WORLD_PLACE_LEAD_JOINS = ['の', '向け', '産', '系', '国内'];
+  // v20.24：「・」を足す（「カナダ・オンタリオ州の工場」→ カナダ、「PIF・シルバーレイク・アフィニティ」→ PIF の国）。
+  // 「・」で決めた動きは地図の下に件数で出す（先頭だけで決めたことを黙らない）
+  const WORLD_PLACE_LEAD_JOINS = ['の', '向け', '産', '系', '国内', '・'];
+  // v20.24：アプリが入れる主体。主体は札の「動かした側」からしか増えないので、場所を読むためだけに要る主体をここに置く。
+  // その番号の主体が表に1件でもあれば（隠れていても）足さない＝消したりまとめたりしたものを戻さない。
+  // 国は推定。主体の詳細に「推定」の印を出す。2件目・3件目が要るようになったら、ここに足さず「手で主体を足す入口」を作る話にする
+  const WORLD_APP_ACTORS = [
+    { id: 'ac_app_ea', name: 'EA', aka: ['エレクトロニック・アーツ', 'Electronic Arts'], kind: 'industry', country: 'USA' },   // PIF などによる EA 買収の代金の行き先
+  ];
+  const WORLD_APP_ACTOR_SET_AT = '2026-09-13T00:00:00.000Z';   // この日時の国は「アプリの表で入れた国」。手で直すと別の日時になる
+  const WORLD_APP_ACTOR_USED_AT = '2000-01-01T00:00:00.000Z';  // 最近使った順で一番後ろに置く（プロンプトの既知の主体60件に割り込ませない）
   // 種の主体21件の国（仕様書 1.2）。起動時、国をまだ一度も決めていないものだけに入れる
   const WORLD_DEFAULT_ACTOR_COUNTRY = {
     ac_mof_jp: 'JPN', ac_boj: 'JPN', ac_gov_jp: 'JPN', ac_fed: 'USA', ac_treasury_us: 'USA', ac_admin_us: 'USA', ac_congress_us: 'USA',
@@ -15934,6 +15948,16 @@
       if (cc && !a.country && !a.countrySetAt) { a.country = cc; a.countrySetAt = nowIso(); a.updatedAt = nowIso(); actorCountryAdded = true; }
     });
     if (actorCountryAdded) { wd.actors.updatedAt = nowIso(); wd.actorsDirty = true; persistWorldActors(); }
+    // v20.24：アプリが入れる主体。同じ番号が1件でもあれば（隠れていても）、同じ名前の主体が既にあっても足さない
+    let appActorAdded = false;
+    WORLD_APP_ACTORS.forEach((x) => {
+      if (wd.actors.actors.some((a) => a.id === x.id)) return;
+      if (worldFindIn(WORLD_STORES.actor, x.name)) return;
+      const rec = normalizeWorldActor({ id: x.id, name: x.name, aka: x.aka, kind: x.kind, country: x.country, countrySetAt: WORLD_APP_ACTOR_SET_AT,
+        eventIds: [], createdAt: WORLD_APP_ACTOR_SET_AT, updatedAt: nowIso(), lastUsedAt: WORLD_APP_ACTOR_USED_AT });
+      if (rec) { wd.actors.actors.push(rec); appActorAdded = true; }
+    });
+    if (appActorAdded) { wd.actors.updatedAt = nowIso(); wd.actorsDirty = true; persistWorldActors(); }
     worldAbsorbBracketActors();   // v20.2.1：括弧つきの重複主体を元の主体へまとめる
     if (!wd.strata.strata.length && !wd.strata.updatedAt) {
       // v20.8：DFA の2つだけは、アプリに書いておいた実際の値（推測ではない）を最初から入れる
@@ -17433,6 +17457,8 @@
       // v20.2.1：説明の言葉だけの相手（「防衛装備の供給元」）は地図に乗らない。相手は国名で始めさせる
       '  from／to は主体名（actors の name）か、国名で始まる相手（「米国の製油所」「ウクライナの防衛調達」）。\n' +
       '  市場なら「為替市場」「石油市場」のように書く。国の定まらない相手（「世界の海運会社」）に国名を付け足さない。\n' +
+      // v20.24：「PIF・シルバーレイク・アフィニティ」のように複数社を1つの名前にすると、先頭の社でしか場所が読めない
+      '  買い手・出し手が複数の会社のときは、主導する1社を from に書き、ほかの会社は detail に書く。\n' +
       '  what は何をしたか。\n' +
       '  amount は出典の書き方のまま（「15兆円」「1.4億ドル」）。goods・people では空でよい。\n' +
       '  span：その金額が期間の累計・合計なら、その期間（「2022年以降」「2026年度」）。\n' +
@@ -20640,66 +20666,94 @@
   }
   // 名前 → 国コード／枠（MKT・INT・REG）／'SAME'（一般名。もう片方の国）／''（場所不明）。
   // 当て方の順は仕様書 1.2：主体の国 → 別名の表と丸ごと一致 → 後ろの言葉を外して丸ごと一致 → 一般名 → 枠
-  function worldPlaceOfName(name, lib) {
+  function worldPlaceOfName(name, lib) { return worldPlaceHow(name, lib).code; }
+  // v20.24：場所の主体を引く。札の「GM」を主体「GM（ゼネラルモーターズ）」に当てる（括弧の前か中と丸ごと一致）
+  function worldFindActorForPlace(name) {
+    const a = worldFindIn(WORLD_STORES.actor, name);
+    if (a) return a;
+    const k = worldNormName(name);
+    if (!k) return null;
+    return WORLD_STORES.actor.list().find((c) => {
+      const m = /^(.*?)\s*[（(]([^（）()]*)[）)]\s*$/.exec(String(c.name || ''));
+      return !!m && (worldNormName(m[1]) === k || worldNormName(m[2]) === k);
+    }) || null;
+  }
+  // v20.24：どう決めたかも返す。how：actor・name・suffix・slot・lead・dot（「・」の前）・same（一般名）・''（決まらない）
+  function worldPlaceHow(name, lib) {
     const n = String(name || '').trim();
-    if (!n) return '';
-    const a = worldFindIn(WORLD_STORES.actor, n);
-    if (a && a.country) return a.country;
+    if (!n) return { code: '', how: '' };
+    const a = worldFindActorForPlace(n);
+    if (a && a.country) return { code: a.country, how: 'actor' };
     const names = [n].concat(a ? [a.name].concat(a.aka || []) : []);
     const hit = (x) => lib.byName.get(worldNormName(x)) || '';
-    for (const x of names) { const c = hit(x); if (c) return c; }
+    for (const x of names) { const c = hit(x); if (c) return { code: c, how: 'name' }; }
     for (const x of names) {
       for (const suf of WORLD_PLACE_SUFFIX) {
-        if (x.length > suf.length && x.endsWith(suf)) { const c = hit(x.slice(0, -suf.length)); if (c) return c; }
+        if (x.length > suf.length && x.endsWith(suf)) { const c = hit(x.slice(0, -suf.length)); if (c) return { code: c, how: 'suffix' }; }
       }
     }
     const k = worldNormName(n);
     const S = lib.table.slots;
     // v20.2.1：頭の国名は、枠の言葉より後に当てる（「ロシアの同盟国」「中東の産油国」は地域の枠のまま）
-    for (const c of WORLD_MAP_SLOTS) if ((S[c].exact || []).some((x) => worldNormName(x) === k)) return c;
-    for (const c of WORLD_MAP_SLOTS) if ((S[c].contains || []).some((x) => n.includes(x))) return c;
+    for (const c of WORLD_MAP_SLOTS) if ((S[c].exact || []).some((x) => worldNormName(x) === k)) return { code: c, how: 'slot' };
+    for (const c of WORLD_MAP_SLOTS) if ((S[c].contains || []).some((x) => n.includes(x))) return { code: c, how: 'slot' };
     // v20.20 第1段：頭の国名を、一般名より「前」に当てる。
     // 「日本のジクロロシラン供給元 → 中国の半導体メーカー」を一般名で先に拾うと、
     // 日本→中国の線が中国国内の動きに化けた（実データ2件で確認）。頭に国名がある側は、
     // その国で確定させる。頭に国名が無い「有形固定資産の取得先」だけが一般名に落ちる
-    const lead = worldLeadCountry(n, lib);
-    if (lead) return lead;
-    if (WORLD_PLACE_GENERIC.exact.some((g) => worldNormName(g) === k) || WORLD_PLACE_GENERIC.contains.some((g) => n.includes(g))) return 'SAME';
-    return '';
+    const lead = worldLeadCountryHow(n, lib);
+    if (lead.code) return { code: lead.code, how: lead.join === '・' ? 'dot' : 'lead' };
+    if (WORLD_PLACE_GENERIC.exact.some((g) => worldNormName(g) === k) || WORLD_PLACE_GENERIC.contains.some((g) => n.includes(g))) return { code: 'SAME', how: 'same' };
+    return { code: '', how: '' };
   }
-  // 「〜の」「〜向け」「〜産」「〜系」「〜国内」の前が、別名の表の国と丸ごと一致したときだけ、その国。
+  // 「〜の」「〜向け」「〜産」「〜系」「〜国内」「〜・」の前が、別名の表の国と丸ごと一致したときだけ、その国。
   // 長い方から試す（「米国産原油の輸入」は「米国産原油」が国でないので、次に「米国」を試す）。枠の記号には当てない
-  function worldLeadCountry(n, lib) {
+  function worldLeadCountryHow(n, lib) {
     for (let k = n.length - 1; k >= 1; k--) {
       const rest = n.slice(k);
-      if (!WORLD_PLACE_LEAD_JOINS.some((j) => rest.startsWith(j))) continue;
+      const join = WORLD_PLACE_LEAD_JOINS.find((j) => rest.startsWith(j));
+      if (!join) continue;
       const head = n.slice(0, k);
       const c = lib.byName.get(worldNormName(head)) || '';
-      if (c && worldIsCountry(c, lib)) return c;
+      if (c && worldIsCountry(c, lib)) return { code: c, join };
       // v20.20 第1段：頭が主体の名前でもよい（「TSMCの顧客」→ TSMC は台湾の主体なので台湾）
-      const a = worldFindIn(WORLD_STORES.actor, head);
-      if (a && a.country && worldIsCountry(a.country, lib)) return a.country;
+      const a = worldFindActorForPlace(head);
+      if (a && a.country && worldIsCountry(a.country, lib)) return { code: a.country, join };
     }
-    return '';
+    return { code: '', join: '' };
+  }
+  // v20.24：「・」で決めた名前の、後ろの部分にも国や主体の国が読めるか（「米国・日本の製油所」なら日本）。
+  // 先頭だけで描いたことを一覧の見出しに出すため
+  function worldDotOthers(name, lib) {
+    const parts = String(name || '').split('・').slice(1);
+    return parts.filter((p) => { const h = worldPlaceHow(p, lib); return ['actor', 'name', 'suffix', 'lead'].includes(h.how) && worldIsCountry(h.code, lib); });
   }
   function worldIsCountry(code, lib) { return !!code && !WORLD_MAP_SLOTS.includes(code) && code !== 'SAME' && lib.nameOf.has(code); }
   // 動きの両端。一般名は、もう片方が国なら同じ国（言い切れないとき＝もう片方が枠や場所不明のときは場所不明）
-  function worldFlowPlaces(f, lib) {
-    let a = worldPlaceOfName(f.from, lib), b = worldPlaceOfName(f.to, lib);
+  function worldFlowPlaces(f, lib) { return worldFlowPlacesHow(f, lib).places; }
+  // v20.24：両端の決め方も返す（「・」で決めた・一般名で推し量った動きを、地図の下に件数で出すため）
+  function worldFlowPlacesHow(f, lib) {
+    const ha = worldPlaceHow(f.from, lib), hb = worldPlaceHow(f.to, lib);
+    let a = ha.code, b = hb.code;
     if (a === 'SAME') a = worldIsCountry(b, lib) ? b : '';
     if (b === 'SAME') b = worldIsCountry(a, lib) ? a : '';
     const ok = (c) => worldIsCountry(c, lib) || WORLD_MAP_SLOTS.includes(c);
-    return [ok(a) ? a : '', ok(b) ? b : ''];
+    const pa = ok(a) ? a : '', pb = ok(b) ? b : '';
+    return { places: [pa, pb], how: [pa ? ha.how : '', pb ? hb.how : ''] };
   }
   // 直近90日の動きを、国をまたぐ線・枠への線・国内・場所不明に分ける（v19.15 のまとめ方を先に当てる）
   function worldMapModel(lib, from) {
     const rows = worldMergeFlows(worldLiveEvents()
       .filter((e) => e.flow && e.eventDate >= from && !worldIsLowConf(e))
       .sort((a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0)));
-    const m = { lines: [], domestic: new Map(), unknown: [], all: rows };
+    const m = { lines: [], domestic: new Map(), unknown: [], all: rows, dotRows: [], sameRows: [] };
     rows.forEach((r) => {
-      const [a, b] = worldFlowPlaces(r.flow, lib);
+      const ph = worldFlowPlacesHow(r.flow, lib);
+      const [a, b] = ph.places;
       r.places = [a, b];
+      r.placeHow = ph.how;   // v20.24
+      if (ph.how.includes('dot')) m.dotRows.push(r);
+      if (ph.how.includes('same')) m.sameRows.push(r);
       if (!a || !b) { m.unknown.push(r); return; }
       if (a === b && worldIsCountry(a, lib)) { if (!m.domestic.has(a)) m.domestic.set(a, []); m.domestic.get(a).push(r); return; }
       m.lines.push(r);
@@ -21485,6 +21539,24 @@
       b.addEventListener('click', () => worldOpenFlowRows(model.unknown, '場所不明の動き（直近' + WORLD_MAP_DAYS + '日）'));
       unk.appendChild(b);
     }
+    // v20.24：名前の読み方で場所を決めた・推し量った動き。0件でも押せない形で出す（黙って決めない）。
+    // 場所不明と同じく地域では絞らない（いつも全体の数）
+    const countBtn = (label, rows, title) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'linkLikeBtn';
+      b.textContent = label + ' ' + rows.length + '件';
+      b.disabled = !rows.length;
+      if (rows.length) b.addEventListener('click', () => worldOpenFlowRows(rows, title));
+      unk.appendChild(b);
+    };
+    const dotRows = model0.dotRows || [], sameRows = model0.sameRows || [];
+    const others = [];
+    dotRows.forEach((r) => [r.flow.from, r.flow.to].forEach((n) => {
+      if (String(n || '').includes('・') && worldDotOthers(n, lib).length && !others.includes(n)) others.push(n);
+    }));
+    countBtn('「・」の前で場所を決めた相手', dotRows, '「・」の前で場所を決めた相手（直近' + WORLD_MAP_DAYS + '日）'
+      + (others.length ? '。うち' + others.length + '件は「・」の後にもほかの国・主体が並んでいる（先頭で描いた）：' + others.join('、') : ''));
+    countBtn('相手の国をもう片方から推し量った動き', sameRows, '相手の国をもう片方から推し量った動き（直近' + WORLD_MAP_DAYS + '日）');
   }
   // v20.20 第3段：市場の網。枠「市場」には、本物の市場（国債・為替・株式・石油・金）と、
   // 相手が分からないときの受け皿（買い手・株主・投資家）が混ざって入っている。
@@ -22075,7 +22147,18 @@
     text.textContent = c.country ? c.country : '…';
     worldLoadMapLib().then((lib) => {
       if (worldState.conceptId !== c.id) return;
-      if (c.country) { text.textContent = worldPlaceLabel(c.country, lib) + (c.countrySetAt ? '' : '（取り込みで入った）'); return; }
+      if (c.country) {
+        text.textContent = worldPlaceLabel(c.country, lib) + (c.countrySetAt ? '' : '（取り込みで入った）');
+        // v20.24：アプリの表で入れた国は推定。手で直すと日時が変わるので印は消える
+        const app = WORLD_APP_ACTORS.find((x) => x.id === c.id);
+        if (app && c.country === app.country && c.countrySetAt === WORLD_APP_ACTOR_SET_AT) {
+          const k = document.createElement('span'); k.className = 'guessBadge'; k.textContent = '推定';
+          text.appendChild(document.createTextNode('　'));
+          text.appendChild(k);
+          text.appendChild(document.createTextNode('アプリの表で入れた国'));
+        }
+        return;
+      }
       const guess = worldPlaceOfName(c.name, lib);
       text.textContent = (guess && guess !== 'SAME') ? worldPlaceLabel(guess, lib) + '（名前から）' : 'まだ分からない（地図では場所不明）';
     }).catch(() => { text.textContent = c.country || 'まだ分からない'; });
