@@ -1296,6 +1296,8 @@
   .worldGuideBody { margin-top: 4px; }
   .worldGuideBody .rowLabel { margin-top: 8px; }
   .worldConfWhy { margin-top: 8px; }
+  .wmMiniSunk { margin: 2px 0 0; }   /* v20.27 */
+  .wmActorMulti { color: var(--guess); }
   #worldMapUnknown { display: flex; flex-wrap: wrap; gap: 0 12px; }   /* v20.24 場所不明・「・」で決めた・推し量った */
   #worldMapUnknown .linkLikeBtn:disabled { opacity: 0.4; text-decoration: none; cursor: default; }
   .guessBadge {
@@ -3012,7 +3014,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.26';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.27';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -14806,7 +14808,8 @@
     ['mideast', '中東', [[25, 12], [63, 42]]], ['asia', 'アジア', [[60, -12], [150, 55]]],
   ];
   // 後ろの決まった言葉。外した残りが別名の表と丸ごと一致したときだけ、その国（「イスラエル政府」→ イスラエル）
-  const WORLD_PLACE_SUFFIX  = ['人民銀行', '準備銀行', '中央銀行', '政府', '政権', '財務省', '議会', '国防省'];
+  // v20.27：「国の呼び名＋軍」だけを読む（外した残りが国の呼び名と丸ごと一致したときだけ。「国連軍」「多国籍軍」は当たらない）
+  const WORLD_PLACE_SUFFIX  = ['人民銀行', '準備銀行', '中央銀行', '政府', '政権', '財務省', '議会', '国防省', '海軍', '空軍', '陸軍', '軍'];
   // 一般名：もう片方と同じ国にいると言い切れる相手。国内に寄せる。「買い手」「購入者」は入れない（市場の枠）
   // v20.20 第1段：相手が「〜の取得先」「〜の供給元」のように、誰かは分からないが
   // もう片方と同じ国にいると言い切れる言い方を足す（場所不明の最大の原因だった）
@@ -17386,6 +17389,7 @@
       // v20：地図で使う国
       '  - country：その主体の国の3文字コード（日本は JPN、米国は USA、中国は CHN）。市場は MKT、国際機関は INT、\n' +
       '    EU や国の集まりは REG。分からなければ空。\n' +
+      '    国が2つ以上にまたがる集まり（インドと中国の製油業者など）は1つの主体にせず、国ごとに分ける。\n' +   // v20.27
       // v19.9：集まりとしての主体。富裕層の札で主語が空になるのを防ぐ
       '  - group（集まり）：富裕層・家計・海外投資家のように、組織ではない集まりを主体にしてよい。\n' +
       '    立てる条件は、出典にその集まりの数字（人数・金額・割合）が書かれていること。\n' +
@@ -17480,6 +17484,8 @@
       '  市場なら「為替市場」「石油市場」のように書く。国の定まらない相手（「世界の海運会社」）に国名を付け足さない。\n' +
       // v20.24：「PIF・シルバーレイク・アフィニティ」のように複数社を1つの名前にすると、先頭の社でしか場所が読めない
       '  買い手・出し手が複数の会社のときは、主導する1社を from に書き、ほかの会社は detail に書く。\n' +
+      // v20.27：国が2つ以上並ぶ名前は、地図では1つの国に決めない（場所不明）
+      '  1つの相手に国を並べない（「米国・日本の製油所」と書かない）。国が2つ以上なら、動きを国ごとに分けて書く。\n' +
       '  what は何をしたか。\n' +
       '  amount は出典の書き方のまま（「15兆円」「1.4億ドル」）。goods・people では空でよい。\n' +
       '  span：その金額が期間の累計・合計なら、その期間（「2022年以降」「2026年度」）。\n' +
@@ -17538,6 +17544,8 @@
       '- confidence：この札の確かさを 1〜' + WORLD_CONF_MAX + ' の整数で。\n' +
       '  10＝一次資料の本文で、数字・日付・主体まで確かめた。7＝一次資料だが一部を確かめきれていない。\n' +
       '  4＝報道だけ。1＝噂・未確認。\n' +
+      // v20.27：「まだ起きていない」は確かさではない（確度3で沈むと、約束の絞りに出るはずの札が地図から消えた）
+      '  交渉・打診・約束の段階であることは confidence で表さない（出典の確かさだけで付ける）。まだ実体が動いていないなら pledge を true にする。\n' +
       '- confidenceWhy：confidence が' + WORLD_CONF_WHY_BELOW + '以下なら、理由を1行。' + (WORLD_CONF_WHY_BELOW + 1) + '以上なら空。\n\n' +
       '■ 並べ方\n' +
       '重要だと思う順に並べる。上から読まれる。\n\n' +
@@ -18170,7 +18178,8 @@
       '  - pledgeOnly：「約束する」だけで実体が動かない予告なら true。実際に金や物が動くはずなら false。\n' +
       '- confidence：**下げるときだけ**書く。読んだ結果「これは確かでない」と分かったとき。\n' +
       '  - **上げてはいけません**（出典を開いていないので、確かさを上げる根拠がありません）。\n' +
-      '  - 下げたときは confidenceWhy に理由を必ず書く。下げないなら両方とも省く。\n\n' +
+      '  - 下げたときは confidenceWhy に理由を必ず書く。下げないなら両方とも省く。\n' +
+      '  - まだ起きていない（交渉・打診・約束の段階）ことを理由に下げない。それは確かさではない。\n\n' +   // v20.27
       '■ 札（' + cards.length + '枚）\n' +
       (cards.length ? cards.map((e) => {
         const acts = e.actors.map((a) => '  主体：' + a.name + '｜した：' + a.did + (a.said ? '｜述べた：' + a.said : '｜述べた：（無し）')
@@ -20012,7 +20021,7 @@
     const idxMonths = Object.keys((wd.index && wd.index.months) || {});
     const loadedN = idxMonths.filter((m) => wd.loaded.has(m)).length;
     const mNote = document.createElement('p'); mNote.className = 'fieldNote';
-    mNote.textContent = '読み込んでいる月：' + loadedN + ' か月（記録のある月は全部で ' + idxMonths.length + ' か月）。件数と一覧はこの月の分です。地図は直近' + WORLD_MAP_DAYS + '日なので、数が合わないことがあります。';
+    mNote.textContent = '読み込んでいる月：' + loadedN + ' か月（記録のある月は全部で ' + idxMonths.length + ' か月）。件数と一覧はこの月の分です。地図は直近' + WORLD_MAP_DAYS + '日なので、数が合わないことがあります。一覧は確度3以下の札も出します（地図は外しています）。';
     body.appendChild(mNote);
     const groups = worldMoneyGroups(q, use);
     if (!groups.length) {
@@ -20096,6 +20105,11 @@
       ['国をもう片方と同じとみなした動き', [WORLD_LIST_NOTES.same + '。', '当てる言葉（' + generic.length + '語）：' + generic.join('・')]],
       [WORLD_FOREIGN_LABEL, [WORLD_LIST_NOTES.foreign + '。「〜保有者」への支払いが対象。',
         '当てる言葉：' + WORLD_PLACE_FOREIGN_WORDS.join('・') + '。ドルの言葉で、もう片方が米国なら当てない（米国の自国の通貨なので）。']],
+      ['国が2つ以上並ぶ相手', [WORLD_LIST_NOTES.multi + '。区切りは問わない。',
+        '国の呼び名は日本語の2字以上だけで数える（米・独・仏・豪の1字は「独立」「豪雨」などに当たるので数えない）。だから「日米」「米中」は拾えない。',
+        '主体の国を手で決めてあれば、その国を使う。']],
+      ['枠の名前に国も並ぶ相手', [WORLD_LIST_NOTES.slotCountry + '。「欧州の同盟国とカナダ」のように、「と」「・」「、」の後ろに国がある。枠のまま描く。']],
+      ['確度3以下で外した動き', [WORLD_LIST_NOTES.sunk + '。確度3以下の動きは、地図・小さな地図・国の網・世界の画面のお金に描かない。お金の一覧には出す。']],
       ['線の太さ', ['ドル換算の5段（地図の左下の見本のとおり）。換算できないものは点線。']],
     ];
   }
@@ -20107,7 +20121,7 @@
         '区別なし＝どちらの言葉も無い。実績という意味ではない。']],
       ['期間', ['期間＝生成が書いた、その額が何の期間の分か。無ければ「期間なし」（使い道で絞ったときだけ出す）。']],
       ['使い道が決まらなかった候補', [WORLD_LIST_NOTES.candidate + '。', '手がかりの言葉：' + WORLD_USE_CANDIDATE_LIST.join('・') + '（何の支払いかと、受け取る側の名前だけを見る）']],
-      ['読み込んでいる月', ['件数と一覧は、端末に読み込んでいる月の分。地図は直近' + WORLD_MAP_DAYS + '日なので、数が合わないことがある。']],
+      ['読み込んでいる月', ['件数と一覧は、端末に読み込んでいる月の分。地図は直近' + WORLD_MAP_DAYS + '日なので、数が合わないことがある。', '一覧は確度3以下の札も出します（地図は外しています）。']],
     ];
   }
   function worldSortEntries(list, sort) {
@@ -20622,6 +20636,7 @@
     const chains = groups.filter((c) => c.rows.length >= 2);
     const collapsed = groups.filter((c) => c.rows.length < 2).flatMap((c) => c.rows);
     if (!all.length && !chains.length && !collapsed.length) return;
+    { const p = document.createElement('p'); p.className = 'fieldNote'; p.textContent = '確度3以下の動きは外しています（一覧には出ます）'; body.appendChild(p); }   // v20.27
     if (chains.length) {
       const head = document.createElement('div');
       head.className = 'worldSectionHead';
@@ -20798,6 +20813,24 @@
   // 名前 → 国コード／枠（MKT・INT・REG）／'SAME'（一般名。もう片方の国）／''（場所不明）。
   // 当て方の順は仕様書 1.2：主体の国 → 別名の表と丸ごと一致 → 後ろの言葉を外して丸ごと一致 → 一般名 → 枠
   function worldPlaceOfName(name, lib) { return worldPlaceHow(name, lib).code; }
+  // v20.27：名前に入っている国の呼び名（日本語の2字以上だけ。長い呼び名から当て、当てた所は消す＝「インドネシア」を「インド」と数えない）。
+  // 1字の呼び名（米・独・仏・豪）は「独立」「豪雨」などに当たるので数えない。英字の呼び名も英単語の一部に当たるので数えない
+  function worldCountriesIn(name, lib) {
+    if (!lib._countryAliases) {
+      const al = [];
+      lib.byName.forEach((code, key) => { if (key.length >= 2 && worldIsCountry(code, lib) && !/^[a-z0-9.\s]+$/.test(key)) al.push([key, code]); });
+      al.sort((x, y) => y[0].length - x[0].length);
+      lib._countryAliases = al;
+    }
+    let rest = worldNormName(name);
+    const found = [];
+    lib._countryAliases.forEach(([k, c]) => { if (rest.includes(k)) { found.push(c); rest = rest.split(k).join('□'); } });
+    return [...new Set(found)];
+  }
+  // v20.27：枠に入った名前を「と」「・」「、」で区切り、2つ目以降が国の呼び名そのもの（＋後ろの決まった言葉）なら、その国（「欧州の同盟国とカナダ」のカナダ）
+  function worldSlotTrailingCountries(name, lib) {
+    return String(name || '').split(/[と・、]/).slice(1).filter((p) => { const h = worldPlaceHow(p, lib); return ['name', 'suffix'].includes(h.how) && worldIsCountry(h.code, lib); });
+  }
   // v20.24：場所の主体を引く。札の「GM」を主体「GM（ゼネラルモーターズ）」に当てる（括弧の前か中と丸ごと一致）
   function worldFindActorForPlace(name) {
     const a = worldFindIn(WORLD_STORES.actor, name);
@@ -20814,6 +20847,8 @@
     const n = String(name || '').trim();
     if (!n) return { code: '', how: '' };
     const a = worldFindActorForPlace(n);
+    // v20.27：名前に国の呼び名が2つ以上なら、1つの国に決めつけない（主体の国を手で決めたときだけは主体の国）
+    if (!(a && a.country && a.countrySetAt) && worldCountriesIn(n, lib).length >= 2) return { code: '', how: 'multi' };
     if (a && a.country) return { code: a.country, how: 'actor' };
     const names = [n].concat(a ? [a.name].concat(a.aka || []) : []);
     const hit = (x) => lib.byName.get(worldNormName(x)) || '';
@@ -20845,7 +20880,9 @@
       const join = WORLD_PLACE_LEAD_JOINS.find((j) => rest.startsWith(j));
       if (!join) continue;
       const head = n.slice(0, k);
-      const c = lib.byName.get(worldNormName(head)) || '';
+      let c = lib.byName.get(worldNormName(head)) || '';
+      // v20.27：前の部分にも後ろの決まった言葉を外して当てる（「ロシア軍・軍需産業」の前「ロシア軍」）
+      if (!c) for (const suf of WORLD_PLACE_SUFFIX) { if (head.length > suf.length && head.endsWith(suf)) { c = lib.byName.get(worldNormName(head.slice(0, -suf.length))) || ''; if (c) break; } }
       if (c && worldIsCountry(c, lib)) return { code: c, join };
       // v20.20 第1段：頭が主体の名前でもよい（「TSMCの顧客」→ TSMC は台湾の主体なので台湾）
       const a = worldFindActorForPlace(head);
@@ -20870,7 +20907,8 @@
     if (b === 'SAME') b = worldIsCountry(a, lib) ? a : '';
     const ok = (c) => worldIsCountry(c, lib) || WORLD_MAP_SLOTS.includes(c);
     const pa = ok(a) ? a : '', pb = ok(b) ? b : '';
-    return { places: [pa, pb], how: [pa ? ha.how : '', pb ? hb.how : ''] };
+    // v20.27：国が2つ以上で決めなかった側は、場所が空でも how に 'multi' を残す（地図の下に件数で出すため）
+    return { places: [pa, pb], how: [pa ? ha.how : (ha.how === 'multi' ? 'multi' : ''), pb ? hb.how : (hb.how === 'multi' ? 'multi' : '')] };
   }
   // v20.25：一般名で「もう片方の国」に寄せた「〜保有者」の側が、外貨建てなら市場の枠へ。
   // ドル建て・ドル債で、もう片方が米国なら当てない（米国にとってドルは自国の通貨）
@@ -20891,7 +20929,12 @@
     const rows = worldMergeFlows(worldLiveEvents()
       .filter((e) => e.flow && e.eventDate >= from && !worldIsLowConf(e))
       .sort((a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0)));
-    const m = { lines: [], domestic: new Map(), unknown: [], all: rows, dotRows: [], sameRows: [], foreignRows: [] };
+    const m = { lines: [], domestic: new Map(), unknown: [], all: rows, dotRows: [], sameRows: [], foreignRows: [], multiRows: [], slotCountryRows: [], sunkRows: [] };
+    // v20.27：確度3以下で外した動き（同じ期間。同じ動きは1行にまとめる）。場所も読んでおく（小さな地図は国をまたぐ線だけを数える）
+    m.sunkRows = worldMergeFlows(worldLiveEvents()
+      .filter((e) => e.flow && e.eventDate >= from && worldIsLowConf(e))
+      .sort((a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0)));
+    m.sunkRows.forEach((r) => { const ph = worldFlowPlacesHow(r.flow, lib); worldApplyForeignHolder(r, ph); r.places = ph.places; r.placeHow = ph.how; });
     rows.forEach((r) => {
       const ph = worldFlowPlacesHow(r.flow, lib);
       worldApplyForeignHolder(r, ph);   // v20.25
@@ -20901,6 +20944,8 @@
       if (ph.how.includes('dot')) m.dotRows.push(r);
       if (ph.how.includes('same')) m.sameRows.push(r);
       if (ph.how.includes('foreign')) m.foreignRows.push(r);
+      if (ph.how.includes('multi')) m.multiRows.push(r);   // v20.27
+      if ([r.flow.from, r.flow.to].some((n, i) => ph.how[i] === 'slot' && worldSlotTrailingCountries(n, lib).length)) m.slotCountryRows.push(r);
       if (!a || !b) { m.unknown.push(r); return; }
       if (a === b && worldIsCountry(a, lib)) { if (!m.domestic.has(a)) m.domestic.set(a, []); m.domestic.get(a).push(r); return; }
       m.lines.push(r);
@@ -21435,6 +21480,9 @@
     foreign: '保有者への支払いに外貨建て・ドル債などとあるもの',
     selfUnknown: '自分に使う金のうち、どちらかの端の国が分からないもの',
     candidate: '使い道に当たらないが、取得・設備などの言葉があるもの',
+    multi: '国が2つ以上並ぶので、1つに決めなかったもの',   // v20.27
+    slotCountry: '地域などの枠に入れたが、名前に別の国も並ぶもの',
+    sunk: '確度3以下なので、地図に描かなかったもの',
   };
   function worldCountBtnEl({ label, count, selected, onClick, loading }) {
     const b = document.createElement('button');
@@ -21812,6 +21860,10 @@
       + (others.length ? '。うち' + others.length + '件は「・」の後にもほかの国・主体が並んでいる（先頭で描いた）：' + others.join('、') : ''), WORLD_LIST_NOTES.dot);
     countBtn('国をもう片方と同じとみなした動き', sameRows, '国をもう片方と同じとみなした動き（直近' + WORLD_MAP_DAYS + '日）', WORLD_LIST_NOTES.same);
     countBtn(WORLD_FOREIGN_LABEL, model0.foreignRows || [], WORLD_FOREIGN_LABEL + '（直近' + WORLD_MAP_DAYS + '日）', WORLD_LIST_NOTES.foreign);   // v20.25
+    // v20.27
+    countBtn('国が2つ以上並ぶ相手', model0.multiRows || [], '国が2つ以上並ぶ相手（直近' + WORLD_MAP_DAYS + '日）', WORLD_LIST_NOTES.multi);
+    countBtn('枠の名前に国も並ぶ相手', model0.slotCountryRows || [], '枠の名前に国も並ぶ相手（直近' + WORLD_MAP_DAYS + '日）', WORLD_LIST_NOTES.slotCountry);
+    countBtn('確度3以下で外した動き', model0.sunkRows || [], '確度3以下で外した動き（直近' + WORLD_MAP_DAYS + '日）', WORLD_LIST_NOTES.sunk);
     // v20.26：数字の見方（地図）
     const guide = document.getElementById('worldMapGuide');
     if (guide) { guide.innerHTML = ''; guide.appendChild(worldGuideEl('map', worldMapGuideSections())); }
@@ -22072,6 +22124,16 @@
       [p1, p2].forEach((p) => worldSvg('circle', { cx: p[0].toFixed(1), cy: p[1].toFixed(1), r: 2.5, class: 'wmDot' }, svg));
     });
     const t = worldSvg('text', { x: 4, y: H - 4, class: 'wmMiniText' }, svg);
+    // v20.27：確度3以下で外した国をまたぐ線を、SVG の外のふつうの行に出す（SVG の文字は折り返せないため）。押すと大きな地図（一覧はそこから）
+    {
+      const sunkCross = (model.sunkRows || []).filter((r) => r.places && r.places.every((c) => worldIsCountry(c, lib)) && r.places[0] !== r.places[1]);
+      if (sunkCross.length) {
+        const p = document.createElement('p');
+        p.className = 'fieldNote wmMiniSunk';
+        p.textContent = '確度3以下で外した線 ' + sunkCross.length + '本（押すと大きな地図で一覧）';
+        box.appendChild(p);
+      }
+    }
     t.textContent = (cross.length ? '直近' + WORLD_MINI_DAYS + '日：国をまたぐ線 ' + cross.length + '本' : '直近' + WORLD_MINI_DAYS + '日は国をまたぐ動きがありません') + '　押すと大きな地図（' + WORLD_MAP_DAYS + '日）';
   }
   // ---- v20.4 M4：国の網 ------------------------------------------------------
@@ -22407,6 +22469,13 @@
       if (worldState.conceptId !== c.id) return;
       if (c.country) {
         text.textContent = worldPlaceLabel(c.country, lib) + (c.countrySetAt ? '' : '（取り込みで入った）');
+        // v20.27：名前に国が2つ以上で、国を手で決めていない主体は、地図ではこの国を使わない
+        const multi = c.countrySetAt ? [] : worldCountriesIn(c.name, lib);
+        if (multi.length >= 2) {
+          const note = document.createElement('span'); note.className = 'wmActorMulti';
+          note.textContent = '　名前に国が2つ以上（' + multi.map((x) => worldPlaceShort(x, lib)).join('・') + '）。取り込みで入った国は、地図では使っていません';
+          text.appendChild(note);
+        }
         // v20.24：アプリの表で入れた国は推定。手で直すと日時が変わるので印は消える
         const app = WORLD_APP_ACTORS.find((x) => x.id === c.id);
         if (app && c.country === app.country && c.countrySetAt === WORLD_APP_ACTOR_SET_AT) {
