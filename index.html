@@ -1203,6 +1203,9 @@
   /* v20.20 第4段：約束（まだ実体が動いていない）。破線は累計で使っているので、薄さと白抜きの矢印で分ける。
      累計かつ約束のときは「薄い破線」になり、どちらの意味も残る */
   .worldMapBox .wmL.pledge { opacity: 0.4; }
+  /* v20.30 第3段：根（主体の国の点から真下。先は⊥。いつも実線） */
+  .worldMapBox .wmRoot { fill: none; stroke: var(--accent); opacity: 0.85; stroke-linecap: butt; }
+  .worldMapBox .wmRoot.pledge { opacity: 0.4; }
   .worldMapBox .wmArrowHeadOpen { fill: none; stroke: var(--accent); stroke-width: 1.4; opacity: 0.6; }
   .worldMapBox .wmArrowHead { fill: var(--accent); }
   .worldMapBox .wmHit { fill: none; stroke: transparent; stroke-width: 14; pointer-events: stroke; cursor: pointer; }
@@ -3015,7 +3018,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.29.1';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.30';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -14823,6 +14826,10 @@
   const WORLD_MAP_DAYS           = 90;   // 大きな地図に描く期間
   const WORLD_MAP_TAP_PX         = 22;   // 点を押したとみなす距離（画面の px）
   const WORLD_MAP_PICK_LINES     = 8;    // v20.3.2 「この辺りの線」に並べる本数。超えたら「ほかN本を一覧で見る」
+  // v20.30 第3段：根。やめるときは WORLD_ROOTS_ON を false にするだけ（件数・説明・押す判定・網は全部これを見て分かれる）。
+  // 長さはいつも同じ（端末・日・拡大・地域の図で変えない。長さが違うと額が違うと読まれるため）。触れる国はその画面で出さない
+  const WORLD_ROOTS_ON = true;
+  const WORLD_ROOT_LEN = 9;            // 点の中心から⊥まで（px）
   const WORLD_MAP_LINES_PER_PAIR = 5;    // 同じ国の組に描く線の上限。6本目からは「ほか◯本」
   const WORLD_MAP_ZOOM_MAX       = 8;    // v20.1 指でつまむ拡大の上限（1倍＝寄せた地域の全体）
   const WORLD_MAP_TAP_MOVE_PX    = 6;    // これ以上指が動いたら、押したとは見なさない（地図を動かしたつもりで札が開くのを防ぐ）
@@ -20156,7 +20163,12 @@
       ['枠の名前に国も並ぶ相手', [WORLD_LIST_NOTES.slotCountry + '。「欧州の同盟国とカナダ」のように、「と」「・」「、」の後ろに国がある。枠のまま描く。']],
       ['確度3以下で外した動き', [WORLD_LIST_NOTES.sunk + '。確度3以下の動きは、地図・小さな地図・国の網・世界の画面のお金に描かない。お金の一覧には出す。']],
       ['線の太さ', ['ドル換算の5段（地図の左下の見本のとおり）。換算できないものは点線。']],
-    ];
+    ].concat(WORLD_ROOTS_ON ? [['根（自分に使う）', [
+      '「自分に使う」を押すと、主体の国の点から下へ根が伸びる。根は、主体が自分の側に積んだ金（' + WORLD_USE_KINDS.map((k) => k.name).join('・') + '）。',
+      '根の位置は持ち主の国で、使った場所ではない（海外工場の設備も持ち主の国に描く）。',
+      '相手が別の国にある金は、自分に使う金でも横の線のまま（国の外へ出ている分）。',
+      '額は根の太さで、根の長さはどの国も同じ（' + WORLD_ROOT_LEN + 'px）。1つの国の根は1本で、太さはその国の一番大きい1本の段（足さない）。',
+      'ほかの国の点に触れる根は、その図では出さず、地図の下に「〇〇の図で見られる根」と出す。約束の金の根は薄い。']]] : []);
   }
   function worldMoneyGuideSections() {
     return [
@@ -20996,7 +21008,7 @@
     const rows = worldMergeFlows(worldLiveEvents()
       .filter((e) => e.flow && e.eventDate >= from && !worldIsLowConf(e))
       .sort((a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0)));
-    const m = { lines: [], domestic: new Map(), unknown: [], all: rows, dotRows: [], sameRows: [], foreignRows: [], multiRows: [], slotCountryRows: [], sunkRows: [] };
+    const m = { lines: [], domestic: new Map(), unknown: [], rootUnknown: [], all: rows, dotRows: [], sameRows: [], foreignRows: [], multiRows: [], slotCountryRows: [], sunkRows: [] };
     // v20.27：確度3以下で外した動き（同じ期間。同じ動きは1行にまとめる）。場所も読んでおく（小さな地図は国をまたぐ線だけを数える）
     m.sunkRows = worldMergeFlows(worldLiveEvents()
       .filter((e) => e.flow && e.eventDate >= from && worldIsLowConf(e))
@@ -21013,7 +21025,7 @@
       if (ph.how.includes('foreign')) m.foreignRows.push(r);
       if (ph.how.includes('multi')) m.multiRows.push(r);   // v20.27
       if ([r.flow.from, r.flow.to].some((n, i) => ph.how[i] === 'slot' && worldSlotTrailingCountries(n, lib).length)) m.slotCountryRows.push(r);
-      if (!a || !b) { m.unknown.push(r); return; }
+      if (!a || !b) { m.unknown.push(r); if (a && worldIsCountry(a, lib)) m.rootUnknown.push(r); return; }   // v20.30：主体の国が分かる場所不明（根にできる）
       if (a === b && worldIsCountry(a, lib)) { if (!m.domestic.has(a)) m.domestic.set(a, []); m.domestic.get(a).push(r); return; }
       m.lines.push(r);
     });
@@ -21447,7 +21459,8 @@
     const keep = (r) => r.places.some((c) => worldInRegion(c, lib, box));
     const domestic = new Map();
     model.domestic.forEach((rows, c) => { if (worldInRegion(c, lib, box)) domestic.set(c, rows); });
-    return { lines: model.lines.filter(keep), domestic, unknown: model.unknown, all: model.all };
+    const rootUnknown = (model.rootUnknown || []).filter((r) => worldInRegion(r.places[0], lib, box));   // v20.30：根は主体の国の地域で数える
+    return { lines: model.lines.filter(keep), domestic, unknown: model.unknown, rootUnknown, all: model.all };
   }
   // v20.20 第4段：何が動いたかで分ける。人は2本しかないので独立させず、物と一緒にする（押しても空振りになるため）。
   // 武器・穀物はいまのデータに1件も無いので作らない。物の1本目は原油・石油（物13本のうち9本）
@@ -21503,7 +21516,7 @@
     ['goods', '物・人', (r) => (r.flow.kind || 'money') !== 'money', '物か人が動いたもの（お金以外）'],
     ['oil', '原油・石油', (r) => worldFlowItem(r) === '原油・石油', '物のうち原油・石油製品が動いたもの'],
     ['pledge', '約束', (r) => worldFlowIsPledge(r), 'まだ動いていない約束の金（配分・表明など）'],
-    ['self', '自分に使う', (r) => !!worldUseOf(r), () => worldSelfUseLine()],   // v20.25
+    ['self', '自分に使う', (r) => !!worldUseOf(r), () => (WORLD_ROOTS_ON ? '根＝自分の側に積んだ金、線＝行き先が別の国' : worldSelfUseLine())],   // v20.25・v20.30
   ];
   function worldKindLine(key) { const d = worldKindDef(key); return typeof d[3] === 'function' ? d[3]() : (d[3] || ''); }
   // v20.26：地域の説明は地域の名前から作る（地域を足しても文を書き足さない）
@@ -21518,9 +21531,26 @@
     el.hidden = !text;
   }
   function worldKindDef(key) { return WORLD_MAP_KINDS.find((k) => k[0] === key) || WORLD_MAP_KINDS[0]; }
+  // v20.30 第3段：自分に使う金を、根（相手が別の国でないもの）と横の線（相手が別の国）に分ける。
+  // 根＝国内・枠への線・場所不明で主体の国が分かるもの。横の線＝両端が別の国。根は主体の国（places[0]）に描く
+  function worldSelfSplit(model) {
+    const self = (r) => !!worldUseOf(r);
+    const cross = model.lines.filter((r) => self(r) && r.places.every((c) => !WORLD_MAP_SLOTS.includes(c)));
+    const roots = [];
+    model.domestic.forEach((rows) => rows.forEach((r) => { if (self(r)) roots.push(r); }));
+    model.lines.forEach((r) => { if (self(r) && r.places.some((c) => WORLD_MAP_SLOTS.includes(c)) && !WORLD_MAP_SLOTS.includes(r.places[0])) roots.push(r); });
+    (model.rootUnknown || []).forEach((r) => { if (self(r)) roots.push(r); });
+    return { cross, roots };
+  }
   function worldFilterModelByKind(model, kind) {
     const def = worldKindDef(kind);
     if (!def[2]) return model;
+    if (kind === 'self' && WORLD_ROOTS_ON) {
+      const sp = worldSelfSplit(model);
+      const domestic = new Map();
+      model.domestic.forEach((rows, c) => { const kept = rows.filter(def[2]); if (kept.length) domestic.set(c, kept); });
+      return { lines: sp.cross, domestic, unknown: model.unknown, rootUnknown: model.rootUnknown, all: model.all, roots: sp.roots };
+    }
     const keep = def[2];
     const domestic = new Map();
     model.domestic.forEach((rows, c) => { const kept = rows.filter(keep); if (kept.length) domestic.set(c, kept); });
@@ -21529,6 +21559,7 @@
   // 種類ごとの本数（いま選んでいる地域で数える）。押す前に何本あるか見えるようにするため
   function worldKindCount(model, key) {
     const def = worldKindDef(key);
+    if (key === 'self' && WORLD_ROOTS_ON) { const sp = worldSelfSplit(model); return sp.cross.length + sp.roots.length; }   // v20.30：押したら描かれる根＋線
     let n = 0;
     const add = (rows) => rows.forEach((r) => { if (!def[2] || def[2](r)) n++; });
     add(model.lines);
@@ -21546,6 +21577,8 @@
     same: '株主・取得先などを、もう片方と同じ国にしたもの',
     foreign: '保有者への支払いに外貨建て・ドル債などとあるもの',
     selfUnknown: '自分に使う金のうち、どちらかの端の国が分からないもの',
+    rootOnly: '相手の場所は分からず、主体の国に描いたもの',   // v20.30
+    selfNoPlace: '自分に使う金のうち、主体の国も分からないもの',   // v20.30
     candidate: '使い道に当たらないが、取得・設備などの言葉があるもの',
     multi: '国が2つ以上並ぶので、1つに決めなかったもの',   // v20.27
     slotCountry: '地域などの枠に入れたが、名前に別の国も並ぶもの',
@@ -21637,6 +21670,10 @@
     const involved = new Set();
     model.lines.forEach((r) => r.places.forEach((c) => { if (worldIsCountry(c, lib)) involved.add(c); }));
     model.domestic.forEach((_, c) => involved.add(c));
+    // v20.30：根の国（主体の国）。1つの国に根は1本
+    const rootGroups = new Map();
+    (model.roots || []).forEach((r) => { const c = r.places[0]; if (!worldIsCountry(c, lib)) return; if (!rootGroups.has(c)) rootGroups.set(c, []); rootGroups.get(c).push(r); involved.add(c); });
+    let rootHidden = null;   // 拡大していないときに、点に触れて出さなかった国
     lib.features.forEach((f) => worldSvg('path', { d: path(f) || '', class: 'wmC' + (involved.has(f.a3) ? ' on' : '') }, land));
     // 場所の無い相手の置き場：地図の下の3つの枠（拡大しても動かない）。中に入っている相手の名前を出し、押すとその枠が絡む札の一覧
     const slotW = (W - 16) / 3, slotXY = {};
@@ -21717,6 +21754,31 @@
           t.textContent = 'ほか' + (rows.length - shown.length) + '本';
         }
       });
+      // v20.30 第3段：根。点の下に描く（点が根の上に来る）。触れるかは、この画面に描く点で測る
+      if (rootGroups.size) {
+        const L = WORLD_ROOT_LEN;
+        const shownDots = [];
+        involved.forEach((c) => { const p = ptOf(c); if (p && p[1] >= -4 && p[1] <= H + 4 && p[0] >= -4 && p[0] <= W + 4) shownDots.push({ c, p }); });
+        const segD = (px, py, ax, ay, bx, by) => { const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy || 1; let t = ((px - ax) * dx + (py - ay) * dy) / l2; t = Math.max(0, Math.min(1, t)); return Math.hypot(px - (ax + t * dx), py - (ay + t * dy)); };
+        const hidden = [];
+        rootGroups.forEach((rows, c) => {
+          const p = ptOf(c);
+          if (!p || p[1] < -4 || p[1] > H + 4 || p[0] < -4 || p[0] > W + 4) return;
+          const w = Math.max(...rows.map((r) => { const u = usdOfRow(r); return u ? worldUsdWidth(u.value) : 1.2; }));
+          const x = p[0], y = p[1], half = (w + 4) / 2;
+          // 触れる：点の半径3.5＋縁0.5 に、縦棒は太さの半分・⊥の横棒は1.5pxの半分を足した距離より近い
+          const touch = shownDots.some((d) => d.c !== c && (segD(d.p[0], d.p[1], x, y + 4, x, y + L) < 4 + w / 2 || segD(d.p[0], d.p[1], x - half, y + L, x + half, y + L) < 4 + 0.75));
+          if (touch) { hidden.push({ c, rows }); return; }
+          const pledge = rows.every((r) => worldFlowIsPledge(r));
+          const cls = 'wmRoot' + (pledge ? ' pledge' : '');
+          const stem = worldSvg('path', { d: 'M' + x.toFixed(1) + ',' + (y + 3.5).toFixed(1) + ' L' + x.toFixed(1) + ',' + (y + L).toFixed(1), class: cls }, overlay);
+          stem.style.strokeWidth = w + 'px';
+          const bar = worldSvg('path', { d: 'M' + (x - half).toFixed(1) + ',' + (y + L).toFixed(1) + ' L' + (x + half).toFixed(1) + ',' + (y + L).toFixed(1), class: cls }, overlay);
+          bar.style.strokeWidth = '1.5px';
+          lineHits.push({ r: rows[0], rows, root: true, a: c, b: c, p1: [x, y + 3.5], c: [x, y + (3.5 + L) / 2], p2: [x, y + L], w: W, h: H });
+        });
+        if (view.k <= 1.001) rootHidden = hidden;
+      }
       // 国の点。押せるのは、動きが絡む国だけ
       dots = [];
       involved.forEach((c) => {
@@ -21841,12 +21903,13 @@
       const nearDots = py <= H ? dots.map((d) => ({ ...d, dd: Math.hypot(d.p[0] - px, d.p[1] - py) * sx }))
         .filter((d) => d.dd <= WORLD_MAP_TAP_PX).sort((x, y) => x.dd - y.dd) : [];
       const nearLines = worldMapNearLines(px, py, sx, lineHits, WORLD_MAP_TAP_PX);
-      const lineTitle = (L) => worldPlaceLabel(L.a, lib) + ' → ' + worldPlaceLabel(L.b, lib);
+      const lineTitle = (L) => (L.root ? worldPlaceLabel(L.a, lib) + 'の根（' + L.rows.length + '本・自分に使う金・直近' + WORLD_MAP_DAYS + '日）' : worldPlaceLabel(L.a, lib) + ' → ' + worldPlaceLabel(L.b, lib));   // v20.30
+      const lineRows = (L) => L.rows || [L.r];
       if (!nearDots.length && !nearLines.length) { chooser.hidden = true; return; }
       if (nearDots.length + nearLines.length === 1) {
         chooser.hidden = true;
         if (nearDots.length) worldOpenCountryNet(nearDots[0].c);
-        else worldOpenFlowRows([nearLines[0].r], lineTitle(nearLines[0]));
+        else worldOpenFlowRows(lineRows(nearLines[0]), lineTitle(nearLines[0]));
         return;
       }
       const here = placeAt(px, py, sx);
@@ -21864,8 +21927,8 @@
       nearLines.slice(0, max).forEach((L) => {
         const b = document.createElement('button');
         b.type = 'button'; b.className = 'wmPickLine';
-        b.textContent = worldMapPickLabel(L.r);
-        b.addEventListener('click', () => worldOpenFlowRows([L.r], lineTitle(L)));
+        b.textContent = L.root ? worldPlaceLabel(L.a, lib) + 'の根（' + L.rows.length + '本）' : worldMapPickLabel(L.r);   // v20.30
+        b.addEventListener('click', () => worldOpenFlowRows(lineRows(L), lineTitle(L)));
         chooser.appendChild(b);
       });
       if (nearLines.length > max) {
@@ -21873,7 +21936,7 @@
         m.type = 'button'; m.className = 'linkLikeBtn wmPickMore';
         m.textContent = 'ほか' + (nearLines.length - max) + '本を一覧で見る';
         // 近くの線の札をまとめて開く（一覧に並べた分も含めて全部）
-        m.addEventListener('click', () => worldOpenFlowRows(nearLines.map((L) => L.r), 'この辺りの線' + hereText));
+        m.addEventListener('click', () => worldOpenFlowRows(nearLines.flatMap((L) => lineRows(L)), 'この辺りの線' + hereText));
         chooser.appendChild(m);
       }
       chooser.hidden = false;
@@ -21886,7 +21949,26 @@
     st.textContent = '直近' + WORLD_MAP_DAYS + '日：国をまたぐ線 ' + (model.lines.length - toSlot) + '本・枠への線 ' + toSlot + '本・国内 ' + dom + '件'
       + '。二本指で拡大・縮小、拡大中は指でなぞって動かせます。線や国の点、下の枠を押すと、その動きを出します。近くに2つ以上あるときは、地図の下の一覧から選べます。';
     // v20.25：「自分に使う」を選んでいるとき、場所不明で描けない本数を出す（ボタンの数と全部の数が合わない理由）
-    if ((worldState.mapKind || 'all') === 'self') {
+    if ((worldState.mapKind || 'all') === 'self' && WORLD_ROOTS_ON) {
+      // v20.30 第3段：根と線の本数、根だけで描いたもの、出さなかった根、主体の国も分からないもの
+      const wrap = document.createElement('span'); wrap.className = 'wmRootStatus';
+      const line = (parts) => { const p = document.createElement('span'); p.style.display = 'block'; parts.forEach((x) => p.appendChild(typeof x === 'string' ? document.createTextNode(x) : x)); wrap.appendChild(p); };
+      const linkBtn = (text, onClick) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'linkLikeBtn wmRootLink'; b.textContent = text; b.addEventListener('click', onClick); return b; };
+      const roots = model.roots || [];
+      const countries = new Set(roots.map((r) => r.places[0]).filter((c) => worldIsCountry(c, lib)));
+      line(['自分に使う ' + (roots.length + model.lines.length) + '本：根 ' + roots.length + '本（' + countries.size + 'か国）・相手が別の国の線 ' + model.lines.length + '本']);
+      const rootOnly = roots.filter((r) => (model.rootUnknown || []).includes(r));
+      if (rootOnly.length) line(['相手の場所が分からず、主体の国に根だけ描いたもの ', linkBtn(rootOnly.length + '本', () => worldOpenFlowRows(rootOnly, '相手の場所が分からず、主体の国に根だけ描いたもの（直近' + WORLD_MAP_DAYS + '日）', 'map', WORLD_LIST_NOTES.rootOnly))]);
+      (rootHidden || []).forEach(({ c, rows }) => {
+        const ll = lib.anchors.get(c);
+        const reg2 = WORLD_MAP_REGIONS.find((x) => x[2] && x[0] !== region && ll && ll[0] >= x[2][0][0] && ll[0] <= x[2][1][0] && ll[1] >= x[2][0][1] && ll[1] <= x[2][1][1]);
+        const text = (reg2 ? reg2[1] + 'の図で見られる根' : 'ほかの点に触れて出していない根') + ' ' + rows.length + '本（' + worldPlaceLabel(c, lib) + '）';
+        line([linkBtn(text, () => { if (reg2) { worldState.mapRegion = reg2[0]; renderWorldMap(); } else worldOpenFlowRows(rows, worldPlaceLabel(c, lib) + 'の根（直近' + WORLD_MAP_DAYS + '日）', 'map'); })]);
+      });
+      const noPlace = model0.unknown.filter((r) => !!worldUseOf(r) && !(model0.rootUnknown || []).includes(r));
+      if (noPlace.length) line(['主体の国も分からず描けないもの ', linkBtn(noPlace.length + '本', () => worldOpenFlowRows(noPlace, '自分に使う金のうち、主体の国も分からないもの（直近' + WORLD_MAP_DAYS + '日）', 'map', WORLD_LIST_NOTES.selfNoPlace))]);
+      st.appendChild(wrap);
+    } else if ((worldState.mapKind || 'all') === 'self') {
       const selfAll = model0.all.filter((r) => !!worldUseOf(r));
       const selfUnknown = model0.unknown.filter((r) => !!worldUseOf(r));
       if (selfUnknown.length) {
@@ -22420,24 +22502,27 @@
     const defs = worldSvg('defs', {}, svg);
     const mk = worldSvg('marker', { id: 'wnArrowMk', viewBox: '0 0 10 10', refX: '9', refY: '5', markerUnits: 'userSpaceOnUse', markerWidth: '9', markerHeight: '9', orient: 'auto-start-reverse' }, defs);
     worldSvg('path', { d: 'M0,0 L10,5 L0,10 z', class: 'wnArrowHead' }, mk);
+    // v20.30 第3段：自分に使う金の矢印の先は⊥（地図の根と同じ印）。国の中の矢印だけ
+    const mkTee = worldSvg('marker', { id: 'wnTeeMk', viewBox: '0 0 10 10', refX: '8', refY: '5', markerUnits: 'userSpaceOnUse', markerWidth: '10', markerHeight: '10', orient: 'auto' }, defs);
+    worldSvg('rect', { x: '7', y: '0', width: '2', height: '10', class: 'wnArrowHead' }, mkTee);
     const view = worldState.netView || { k: 1, tx: 0, ty: 0, moved: false };
     worldState.netView = view;
     const title = (r) => (r.flow.from || '？') + ' → ' + (r.flow.to || '？');
     // 矢印：端を点・札の手前で止め、同じ組は少しずつずらす
     const pairCount = new Map();
-    const drawArrow = (p1, p2, r, trim1, trim2) => {
+    const drawArrow = (p1, p2, r, trim1, trim2, tee) => {
       const k = [Math.round(p1.x), Math.round(p1.y), Math.round(p2.x), Math.round(p2.y)].join(',');
       const i = pairCount.get(k) || 0; pairCount.set(k, i + 1);
       const { a, m, b } = worldNetArrowPath(p1, p2, trim1, trim2, i);
       const d = 'M' + a.x.toFixed(1) + ',' + a.y.toFixed(1) + ' Q' + m.x.toFixed(1) + ',' + m.y.toFixed(1) + ' ' + b.x.toFixed(1) + ',' + b.y.toFixed(1);
       const stl = worldNetRowStyle(r);
-      const at = { d, class: stl.cls, 'marker-end': 'url(#wnArrowMk)' };
+      const at = { d, class: stl.cls + (tee ? ' tee' : ''), 'marker-end': tee ? 'url(#wnTeeMk)' : 'url(#wnArrowMk)' };
       if (stl.width) at.style = 'stroke-width:' + stl.width + 'px';
       worldSvg('path', at, svg);
       const hit = worldSvg('path', { d, class: 'wnHit', 'data-net': 'arrow' }, svg);
       hit.addEventListener('click', (e) => { e.stopPropagation(); if (view.moved) return; worldOpenFlowRows([r], title(r), 'net'); });
     };
-    net.inner.forEach((x) => { if (x.from === x.to) return; drawArrow(L.pos.get(x.from), L.pos.get(x.to), x.r, 10, 12); });
+    net.inner.forEach((x) => { if (x.from === x.to) return; drawArrow(L.pos.get(x.from), L.pos.get(x.to), x.r, 10, 12, WORLD_ROOTS_ON && !!worldUseOf(x.r)); });
     net.outs.forEach((o) => {
       const op = L.opos.get(o.key);
       o.rows.forEach((r, i) => {
