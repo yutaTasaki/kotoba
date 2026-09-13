@@ -3028,7 +3028,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.34';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.35';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -14962,7 +14962,11 @@
   const WORLD_READ_QUOTA = {
     miss: 3,     // 予告が外れた札（B-2 で入る。いまは常に0枚）
     reread: 5,   // 朝の浅い読みを書き直す札　← 何回か流して調整する
+    cut: 5,      // v20.35：推定が60字で途中で切れていた札（v20.32 まで保存のときに切っていた）
   };
+  // v20.35：切れた推定の見分け方。v20.32 までは推定を60字で切って保存していたので、ちょうど60字の推定を切れたものとみなす
+  // （60字目が句点のものも拾う。完全な文か、1文目の後が切られたのかが測れないため）
+  const WORLD_CUT_READ_LEN = 60;
   // v15 お金：残高は flow に入れない（from も to も無い flow は「流れ」ではない）。
   // 残高は地層の levels に入れる。器はもともとある。
   const WORLD_FLOW_STRATA_MAX  = 2;     // 1つの flow が動かす地層の数
@@ -15408,6 +15412,9 @@
     const was = worldStr(a.readWas, WORLD_ACTOR_READ_MAX, '前の読み');
     if (was) rec.readWas = was;
     if (a.readBy === 'yomu') rec.readBy = 'yomu';
+    // v20.35：60字で途中で切れていた推定。書き直すときに消さずにここへ移す（前の読みは朝の読みのまま）
+    const cut = worldStr(a.readCut, WORLD_ACTOR_READ_MAX, '途中で切れていた読み');
+    if (cut) rec.readCut = cut;
     return rec;
   }
   // v20.18 第2段：朝が返した read は捨てる。読むのは別の回で、朝が浅い読みで場所を埋めない
@@ -15619,6 +15626,7 @@
     // （述べた理由と同じなら read は正直に空になるので、それを未読と見なすと永久に出続ける）
     if (typeof e.readAt === 'string' && e.readAt) out.readAt = e.readAt;
     if (typeof e.rereadAt === 'string' && e.rereadAt) out.rereadAt = e.rereadAt;   // v20.18 第2段
+    if (typeof e.cutFixAt === 'string' && e.cutFixAt) out.cutFixAt = e.cutFixAt;   // v20.35：切れた推定の枠で読んだ印
     if (typeof e.zure === 'string' && e.zure.trim()) out.zure = worldStr(e.zure, 200);
     if (e.viaAsk) out.viaAsk = String(e.viaAsk);   // v14: どの問いから掘り当てたか
     // v20.2：初期投入の札（地域のキー）。未読にも「今日読んだ札」にも数えない
@@ -18212,15 +18220,40 @@
       .filter((e) => e.missAt && (!e.rereadAt || e.rereadAt < e.missAt))
       .sort((a, b) => (a.missAt > b.missAt ? -1 : 1));
   }
+  // v20.35：推定のどれかがちょうど60字で、まだこの枠で読んでいない札。
+  // 予告の元になっている札を先に（期限が近い順）、そのあとは新しい札から
+  function worldIsCutRead(a) { return !!a && typeof a.read === 'string' && a.read.length === WORLD_CUT_READ_LEN; }
+  function worldHasCutRead(e) { return !e.cutFixAt && e.actors.some(worldIsCutRead); }
+  function worldCutReadCards() {
+    const due = new Map();   // 札の id → 待っている予告のいちばん近い期限
+    worldForecasts().forEach((f) => {
+      if (!f.fromEventId || f.foldedAt) return;
+      const d = f.due || '9999-12-31';
+      if (!due.has(f.fromEventId) || d < due.get(f.fromEventId)) due.set(f.fromEventId, d);
+    });
+    return worldLiveEvents()
+      .filter(worldHasCutRead)
+      .sort((a, b) => {
+        const da = due.get(a.id), db = due.get(b.id);
+        if (da && !db) return -1;
+        if (!da && db) return 1;
+        if (da && db && da !== db) return da < db ? -1 : 1;
+        return a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0;
+      });
+  }
   // v20.23 B-1：種類ごとに枠を配る。足りない種類の枠は他へ回すので、枠を遊ばせない。
   // 前は「未読が優先、余りに書き直し」だったため、未読75枚で埋まって書き直しが回らなかった
   function worldReadPick() {
+    // v20.35：1枚の札が2つの種類に当たるときは、先の種類で数える（同じ札を2回載せない）
+    const seen = new Set();
+    const uniq = (list) => list.filter((e) => { if (seen.has(e.id)) return false; seen.add(e.id); return true; });
     const pools = [
-      ['miss', worldMissCards(), WORLD_READ_QUOTA.miss],
-      ['reread', worldRereadCards(), WORLD_READ_QUOTA.reread],
-      ['unread', worldUnreadCards(), Infinity],   // 未読は残り全部
+      ['miss', uniq(worldMissCards()), WORLD_READ_QUOTA.miss],
+      ['cut', uniq(worldCutReadCards()), WORLD_READ_QUOTA.cut],
+      ['reread', uniq(worldRereadCards()), WORLD_READ_QUOTA.reread],
+      ['unread', uniq(worldUnreadCards()), Infinity],   // 未読は残り全部
     ];
-    const taken = { miss: [], reread: [], unread: [] };
+    const taken = { miss: [], cut: [], reread: [], unread: [] };
     let left = WORLD_READ_MAX;
     // 1周目：種類ごとの枠まで取る
     pools.forEach(([key, list, quota]) => {
@@ -18228,16 +18261,16 @@
       taken[key] = list.slice(0, n);
       left -= n;
     });
-    // 2周目：余った枠を、まだ残っている札に回す（未読 → 浅い読み → 外れた札の順）
-    ['unread', 'reread', 'miss'].forEach((key) => {
+    // 2周目：余った枠を、まだ残っている札に回す（未読 → 浅い読み → 切れた推定 → 外れた札の順）
+    ['unread', 'reread', 'cut', 'miss'].forEach((key) => {
       if (left <= 0) return;
       const list = pools.find((p) => p[0] === key)[1];
       const more = list.slice(taken[key].length, taken[key].length + left);
       taken[key] = taken[key].concat(more);
       left -= more.length;
     });
-    const cards = taken.miss.concat(taken.reread, taken.unread);
-    return { cards, mix: { miss: taken.miss.length, reread: taken.reread.length, unread: taken.unread.length } };
+    const cards = taken.miss.concat(taken.cut, taken.reread, taken.unread);
+    return { cards, mix: { miss: taken.miss.length, cut: taken.cut.length, reread: taken.reread.length, unread: taken.unread.length } };
   }
   function worldReadTargets() { return worldReadPick().cards; }
   // つながる札（同じ概念に触れている札）を id と fact だけ添える。本文は渡さない
@@ -18278,6 +18311,8 @@
       '    書き直してよい。そのときだけ rewrite を true にする。**元の文はこちらで残すので消えません**。\n' +
       '  - 読みとして十分なら、その主体を出力に入れない（触らない）。\n' +
       '  - 「朝が書いたもの」は浅いことが多い。「読む回が書いたもの」は原則そのままにする。\n' +
+      '  - **「60字で途中で切れています」と書いてある読みは、書いた係に関係なく、必ず書き直す（rewrite を true）。**\n' +
+      '    前の読みの続きを想像で足すのではなく、札の文章から読み直して、句点で終わる文にする。\n' +
       '- zure：said と did がずれている札は、そのずれの中身を1文で書く。ずれていなければ空。\n' +
       '  「支援すると言いながら金が動いていない」「減らすと言いながら増えている」のような食い違い。\n' +
       '- fork：3か月ほどで決着する分かれ目を1つ。思いつかなければ null。\n' +
@@ -18307,7 +18342,8 @@
       '■ 札（' + cards.length + '枚）\n' +
       (cards.length ? cards.map((e) => {
         const acts = e.actors.map((a) => '  主体：' + a.name + '｜した：' + a.did + (a.said ? '｜述べた：' + a.said : '｜述べた：（無し）')
-          + (a.read ? '\n    いまの読み（' + (a.readBy === 'yomu' ? '読む回' : '朝') + 'が書いたもの）：' + a.read : '')).join('\n');
+          + (a.read ? '\n    いまの読み（' + (a.readBy === 'yomu' ? '読む回' : '朝') + 'が書いたもの）：' + a.read : '')
+          + (!e.cutFixAt && worldIsCutRead(a) ? '\n    ※ この読みは保存のときに60字で途中で切れています。rewrite を true にして書き直してください。' : '')).join('\n');
         const fl = e.flow ? '  お金：' + (e.flow.from || '？') + '→' + (e.flow.to || '？') + '　' + (e.flow.what || '') + (e.flow.amount ? '　' + e.flow.amount : '') + (e.flow.span ? '（' + e.flow.span + 'の累計）' : '') : '';
         const linked = worldReadLinkedLines(e);
         return '[' + e.id + ']　' + e.eventDate + (e.confidence ? '　確度' + e.confidence : '') + '\n' +
@@ -18427,12 +18463,16 @@
     const ids = new Set([...Object.keys(reads || {}), ...Object.keys(zures || {}), ...Object.keys(forks || {}), ...Object.keys(reasons || {}), ...Object.keys(confs || {})]);
     // v20.23 B-1：読んだ札の内訳。**変える前に決める**（取り込みが readAt を押すと、
     // 未読と書き直しの区別が消えてしまう）
-    out.mix = { miss: 0, reread: 0, unread: 0 };
+    out.mix = { miss: 0, cut: 0, reread: 0, unread: 0 };
+    out.cutFixed = 0; out.fcReread = 0;   // v20.35
+    let fcTouched = false;
     ids.forEach((id) => {
       const ev = byId(id);
       if (!ev) { out.unknown++; return; }
       let changed = false;
+      const wasCut = worldHasCutRead(ev);   // v20.35：変える前に決める
       if (ev.missAt && (!ev.rereadAt || ev.rereadAt < ev.missAt)) out.mix.miss++;
+      else if (wasCut) out.mix.cut++;
       else if (ev.readAt) out.mix.reread++;
       else out.mix.unread++;
       // read：主体ごと。名前で引き当て、空いているものだけ埋める
@@ -18449,6 +18489,21 @@
         if (rec.read) {
           // v20.18 第2段：書き直しは rewrite を明示したときだけ。前の文は readWas に必ず残す
           if (r.rewrite !== true || worldNormName(text) === worldNormName(rec.read)) { out.kept++; return; }
+          // v20.35：60字で切れていた推定は「途中で切れていた読み」へ移す（前の読みは朝の読みのまま残す）
+          if (wasCut && worldIsCutRead(rec)) {
+            const old = rec.read;
+            if (!rec.readCut) rec.readCut = old;
+            rec.read = text; rec.readBy = 'yomu';
+            out.cutFixed++; changed = true;
+            // 予告の元の推定が、切れた文の写しのままなら一度だけ入れ直す。
+            // 入れ直すと切れた文と違う文になるので、二度目は起きない（印は要らない）
+            worldForecasts().forEach((fc) => {
+              if (fc.fromEventId === ev.id && worldNormName(fc.actor) === name && fc.fromRead === old) {
+                fc.fromRead = text; fc.updatedAt = nowIso(); out.fcReread++; fcTouched = true;
+              }
+            });
+            return;
+          }
           if (!rec.readWas) rec.readWas = rec.read;   // 最初の文だけを残す（書き直しを重ねても消えない）
           rec.read = text; rec.readBy = 'yomu';
           out.rewritten++; changed = true;
@@ -18479,6 +18534,7 @@
       // 読んだ印。空振りでも押す（材料が足りない札を毎回出し続けないため）
       if (!ev.readAt) { ev.readAt = nowIso(); changed = true; }
       else if (!ev.rereadAt) { ev.rereadAt = nowIso(); changed = true; }   // v20.18：書き直しを一度当てた印
+      if (wasCut) { ev.cutFixAt = nowIso(); changed = true; }   // v20.35：空振りでも押す（同じ札を二度選ばない）
       if (changed) { ev.updatedAt = nowIso(); touched.add(monthOfDate(ev.eventDate)); }
     });
     // v20.21 予告 第1段：思惑の証拠になる「次の行動」を入れる。足すだけ。
@@ -18509,7 +18565,7 @@
       out.fcAdded++;
     });
     out.fcBadDueSamples = fcBadDueSamples;
-    if (out.fcAdded) worldSaveForecasts();
+    if (out.fcAdded || fcTouched) worldSaveForecasts();
     // 見返り：この回で鎖（お金の動きのつながり）が何本になったか
     try { out.chains = worldMoneyChains().length; } catch (e) { out.chains = 0; }
     if (touched.size) touched.forEach((m) => worldMonthChanged(m));
@@ -19164,6 +19220,12 @@
           const w = document.createElement('div'); w.className = 'waWas';
           const k = document.createElement('span'); k.className = 'waKey'; k.textContent = '前の読み';
           w.appendChild(k); w.appendChild(document.createTextNode(rec.readWas));
+          open.appendChild(w);
+        }
+        if (rec.readCut) {   // v20.35：60字で途中で切れていた読み。書き直した後も消さずに残す
+          const w = document.createElement('div'); w.className = 'waWas';
+          const k = document.createElement('span'); k.className = 'waKey'; k.textContent = '途中で切れていた読み';
+          w.appendChild(k); w.appendChild(document.createTextNode(rec.readCut));
           open.appendChild(w);
         }
         if (!rec.read) {   // v20.18 第2段：朝は思惑を書かない。空欄が放置に見えないようにする
@@ -23147,14 +23209,16 @@
     const n = worldUnreadCards().length;
     const t = worldReadTargets().length;
     const rr = worldRereadCards().length;   // v20.18：朝が書いた浅い読みが残っている札
+    const cutN = worldCutReadCards().length;   // v20.35：途中で切れた推定が残っている札
     const pick = worldReadPick();           // v20.23 B-1：この回に何が何枚回るか
     const mixTxt = [
       pick.mix.miss ? '外れた札' + pick.mix.miss : '',
+      pick.mix.cut ? '切れた推定' + pick.mix.cut : '',
       pick.mix.reread ? '浅い読み' + pick.mix.reread : '',
       pick.mix.unread ? '未読' + pick.mix.unread : '',
     ].filter(Boolean).join('・');
-    el.textContent = (n || rr || pick.cards.length)
-      ? 'まだ読んでいない札が' + n + '枚' + (rr ? '、朝の浅い読みが残っている札が' + rr + '枚' : '') +
+    el.textContent = (n || rr || cutN || pick.cards.length)
+      ? 'まだ読んでいない札が' + n + '枚' + (rr ? '、朝の浅い読みが残っている札が' + rr + '枚' : '') + (cutN ? '、途中で切れた推定が残っている札が' + cutN + '枚' : '') +
         '。1回で' + WORLD_READ_MAX + '枚まで読ませます（この回は' + t + '枚' + (mixTxt ? '：' + mixTxt : '') + '）。新しく探させず、思惑・ずれ・分かれ目だけを書かせます。'
       : 'いまは読む札がありません。取り込んだ札に主体が付くと、ここに溜まります。';
     const btn = document.getElementById('btnWorldReadPrompt');
@@ -23162,6 +23226,10 @@
   }
   function renderWorldImport() {
     paintWorldReadNote();   // v20.17 第1段
+    // v20.35：切れた推定・予告の元の札は古い月にもある。読む枠は読み込んだ月からしか選べないので、
+    // 索引にある月を全部読み込んでから数え直す（コピーのボタンは押したその場でコピーするため、ここで先に読む）
+    const needAll = Object.keys((wd.index && wd.index.months) || {}).filter((m) => !wd.loaded.has(m));
+    if (needAll.length) ensureWorldMonths(needAll).then(() => { if (nav.screen === 'world' && worldState.view === 'import') paintWorldReadNote(); });
     renderWorldSeedList();   // v20.2
     renderWorldOutside();   // v19.11
     document.getElementById('worldImportStatus').textContent = worldState.lastResult;
@@ -24600,10 +24668,13 @@
     let msg = res.readCards + '枚に思惑が入りました（' + res.readFilled + '人ぶん）。';
     if (res.forks) msg += '　分かれ目が' + res.forks + '件立ちました。';
     if (res.rewritten) msg += '　朝の浅い読みを書き直した' + res.rewritten + '人ぶん（前の文は札に残しています）。';
+    if (res.cutFixed) msg += '　途中で切れていた推定を書き直した' + res.cutFixed + '人ぶん（切れた文は札に残しています）。';
+    if (res.fcReread) msg += '　予告の元の推定を入れ直した' + res.fcReread + '本。';
     // v20.23 B-1：何が回ったかを必ず出す。見えないと、また「作ったのに動いていない」に戻る
     if (res.mix) {
       const parts = [];
       if (res.mix.miss) parts.push('外れた札' + res.mix.miss);
+      if (res.mix.cut) parts.push('切れた推定' + res.mix.cut);
       if (res.mix.reread) parts.push('浅い読み' + res.mix.reread);
       if (res.mix.unread) parts.push('未読' + res.mix.unread);
       if (parts.length) msg += '　読んだ内訳：' + parts.join('・') + '。';
