@@ -3021,7 +3021,18 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.32';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.33';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
+  // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
+  // （1つにまとめると関係ない欄の上限が一緒に変わる）
+  const CUT_MAX = {
+    read: 300,       // 推定・前の読み・予告の元の推定。安全弁（指示の目安は120字以内）
+    did: 300,        // した事。安全弁（指示の目安は20〜60字）
+    said: 60,        // 述べた
+    postAsk: 60,     // 投稿の説明：「説明を作る」の生成への指示
+    postSave: 200,   // 投稿の説明：言葉に保存する上限
+    postReply: 80,   // 投稿の説明：「説明を作る」の返事の上限
+  };
   const GITHUB_PATH = 'data.json';
 
   // --- auto-update: same rationale as walk10000 (GitHub Pages caching +
@@ -3226,7 +3237,7 @@
       links: [...linksById.values()],
       rejectedLinks: Array.isArray(n.rejectedLinks) ? [...new Set(n.rejectedLinks.filter(Boolean).map(String))] : [],
       autoLinkedAt: n.autoLinkedAt || null,
-      postLine: typeof n.postLine === 'string' ? n.postLine.trim().slice(0, 200) : '',   // v20.11：投稿に載せる短い説明（読む人向け。一度作って持ち回す）
+      postLine: typeof n.postLine === 'string' ? n.postLine.trim().slice(0, CUT_MAX.postSave) : '',   // v20.11：投稿に載せる短い説明（読む人向け。一度作って持ち回す）
       createdAt: n.createdAt || nowIso(),
       updatedAt: n.updatedAt || n.createdAt || nowIso(),
     };
@@ -5398,7 +5409,7 @@
   const LAST_API_CALL_KEY = 'kotoba_lastApiCall';   // v20.15：診断用の控え（この端末だけ。同期しない）
   const USAGE_DAY_KEY     = 'kotoba_usageDays';     // v20.15：日ごとの概算額（同上）
   const DEFAULT_MORNING_QUOTE_HEADING = '今日の言葉';
-  const POST_EXPLAIN_MAX = 60;   // v20.11：投稿に載せる説明の字数。名言は原文のまま、縮めるのは説明だけ
+  const POST_EXPLAIN_MAX = CUT_MAX.postAsk;   // v20.11：投稿に載せる説明の字数。名言は原文のまま、縮めるのは説明だけ
   const LAST_AUTO_LINK_ERROR_KEY = 'kotoba_lastAutoLinkError';
   const USAGE_BUDGET_KEY = 'kotoba_usageBudgetUsd';
   const DEFAULT_USAGE_BUDGET_USD = 2.00;
@@ -6900,7 +6911,7 @@
     const json = await aiFetch({ model, max_tokens: 300, system, messages: [{ role: 'user', content: user }] });
     recordApiUsage('postline', json.usage);
     const out = (json.content || []).map((b) => b.text || '').join('').trim().replace(/^[「『]/, '').replace(/[」』]$/, '');
-    return shortenAtPause(out, POST_EXPLAIN_MAX + 20);
+    return shortenAtPause(out, CUT_MAX.postReply);
   }
   async function makeNotePostLine(note, opts) {
     opts = opts || {};
@@ -14797,9 +14808,9 @@
   const WORLD_ACTORS_PER_EVENT = 2;     // 1札の主語の数
   const WORLD_KNOWN_ACTORS_MAX = 60;    // プロンプトに差し込む既知アクターの上限
   const WORLD_ACTOR_MIN_LEN    = 3;     // 「片方が片方を含む」を使う最短の長さ
-  const WORLD_ACTOR_DID_MAX    = 40;
-  const WORLD_ACTOR_SAID_MAX   = 60;
-  const WORLD_ACTOR_READ_MAX   = 60;
+  const WORLD_ACTOR_DID_MAX    = CUT_MAX.did;    // v20.33：40→300（上の表）
+  const WORLD_ACTOR_SAID_MAX   = CUT_MAX.said;
+  const WORLD_ACTOR_READ_MAX   = CUT_MAX.read;   // v20.33：60→300
   // v19.9：group＝集まりとしての主体（富裕層・家計・海外投資家）。出典にその集まりの数字があるときだけ立てる
   const WORLD_ACTOR_KINDS      = ['state', 'cb', 'intl', 'industry', 'person', 'group'];
   const WORLD_ACTOR_KIND_LABEL = { state: '政府', cb: '中銀', intl: '国際機関', industry: '企業・業界', person: '人物', group: '集まり', '': 'その他' };
@@ -15328,6 +15339,21 @@
       else list.push({ label, max, worst: len, n: 1, at });
       localStorage.setItem('kotoba_truncations', JSON.stringify(list.slice(-20)));
     } catch (e) {}
+    // v20.33：この起動の中で切った数（取り込みの前後の差で、結果の文に1行出す）
+    const tally = recordWorldTruncation.tally || (recordWorldTruncation.tally = {});
+    tally[label] = (tally[label] || 0) + 1;
+  }
+  function worldCutSnap() { return Object.assign({}, recordWorldTruncation.tally || {}); }
+  // 取り込みの前に撮った数と比べて、切った欄を「※ 〜を N件 短くしました」の文にする
+  function worldCutNote(snap) {
+    const now = recordWorldTruncation.tally || {};
+    const d = (k) => (now[k] || 0) - ((snap && snap[k]) || 0);
+    const out = [];
+    const nRead = d('推定') + d('前の読み') + d('予告の元の推定');
+    if (nRead > 0) out.push('※ 推定を ' + nRead + '件 短くしました（' + CUT_MAX.read + '字を超えていたため）。');
+    if (d('した事') > 0) out.push('※ した事を ' + d('した事') + '件 短くしました（' + CUT_MAX.did + '字を超えていたため）。');
+    if (d('述べた') > 0) out.push('※ 述べたを ' + d('述べた') + '件 短くしました（' + CUT_MAX.said + '字）。');
+    return out.length ? '　' + out.join('　') : '';
   }
   function worldTruncationLines() {
     try {
@@ -15362,15 +15388,15 @@
   // なぞって推定に化かす道を、プロンプトが守られなくても塞ぐ）。
   function normalizeWorldActorRec(a) {
     if (!a || typeof a !== 'object') return null;
-    const name = worldStr(a.name, 80), did = worldStr(a.did, WORLD_ACTOR_DID_MAX);
+    const name = worldStr(a.name, 80), did = worldStr(a.did, WORLD_ACTOR_DID_MAX, 'した事');
     if (!name || !did) return null;
-    const said = worldStr(a.said, WORLD_ACTOR_SAID_MAX);
-    let read = worldStr(a.read, WORLD_ACTOR_READ_MAX);
+    const said = worldStr(a.said, WORLD_ACTOR_SAID_MAX, '述べた');
+    let read = worldStr(a.read, WORLD_ACTOR_READ_MAX, '推定');
     if (read && said && worldNormName(read) === worldNormName(said)) read = '';
     const rec = { name, did, said, read };
     // v20.18 第2段：書き直す前の文は消さずに残す。readBy は「読む回が書いた読み」の印。
     // 印が無い read は朝が書いたもの（第2段より前の札）。これで移行処理なしに見分けられる
-    const was = worldStr(a.readWas, WORLD_ACTOR_READ_MAX);
+    const was = worldStr(a.readWas, WORLD_ACTOR_READ_MAX, '前の読み');
     if (was) rec.readWas = was;
     if (a.readBy === 'yomu') rec.readBy = 'yomu';
     return rec;
@@ -15845,7 +15871,7 @@
       pledgeOnly: (f.pledgeOnly === true || f.pledgeOnly === 1) ? 1 : 0,
       fromEventId: worldStr(f.fromEventId, 40),
       // 元の思惑は写して持つ。札側の read が後で書き直されても、予告の根拠は残る
-      fromRead: worldStr(f.fromRead, WORLD_ACTOR_READ_MAX),
+      fromRead: worldStr(f.fromRead, WORLD_ACTOR_READ_MAX, '予告の元の推定'),
       state: WORLD_FC_STATES.includes(f.state) ? f.state : 'waiting',
       stateNote: worldStr(f.stateNote, 60),
       stateAt: typeof f.stateAt === 'string' ? f.stateAt : '',
@@ -17465,7 +17491,8 @@
       '    アクターにならない。行動とは、決定・合意・介入・融資・買い入れ・制裁・提案・撤回など、\n' +
       '    何かを動かす意思の表れ。統計の札で動かした主体が特定できなければ、その札は返さない（選び方を見る）。\n' +
       '  - 2つに分けて書く。混ぜない。\n' +
-      '    did：出典に書かれた行動。数字・金額はここにだけ。20〜' + WORLD_ACTOR_DID_MAX + '字。\n' +
+      '    did：出典に書かれた行動。数字・金額はここにだけ。\n' +
+      '         1文。途中で止めない。目安は20〜60字（数字を削って短くしない）。\n' +
       '    said：出典が自ら述べた理由。言い換えず、引用に近く。出典に無ければ空。\n' +
       '  - 思惑（read）は書かない。集めた札をあとでまとめて読む回に、別の係が書く。\n' +
       '    ここで先に書くと、読む側が書く場所が無くなる（空欄しか埋められないため）。\n' +
@@ -17854,7 +17881,7 @@
       '主体が実際にやったこと。一次ソースの出典が付くものだけ。0件でよい。\n' +
       '  actor：上の主体のどれかの名前。\n' +
       '  fact：何をしたか。1文・' + WORLD_FACT_MAX + '字以内。数字か固有名詞を含む。\n' +
-      '  did：その主体の行動として20〜' + WORLD_ACTOR_DID_MAX + '字。数字・金額はここに。\n' +
+      '  did：その主体の行動として1文。途中で止めない。目安は20〜60字（数字を削って短くしない）。数字・金額はここに。\n' +
       '  said：出典が自ら述べた理由。無ければ空。\n' +
       '  read：読んだ思惑。said と同じ内容なら空。\n' +
       '  eventDate：出典に書かれた発表日または発生日（YYYY-MM-DD）。未来にしない。\n' +
@@ -18232,6 +18259,7 @@
       '- あなたがするのは、その裏で働いている力を読むことだけです。\n\n' +
       '■ それぞれの札に書くこと\n' +
       '- read：主体ごとの思惑。推定であることを前提に書く。\n' +
+      '  - 2文以内。文の途中で止めず、必ず句点（。）で終える。目安は120字以内。\n' +
       '  - 述べた理由（said）と同じ内容なら空にする。なぞって推定に化かさない。\n' +
       '  - **同じ主体が何枚にも出てきます。同じ主体には違う読みを書いてください**（同じ文を繰り返さない）。\n' +
       '  - 損を承知でやっているなら、何を犠牲にしたかを書く（儲かることをするのは当たり前で、思惑は読めない）。\n' +
@@ -18328,7 +18356,8 @@
       '  - 統計・論文・報告書の公表そのものを行動としない。公表した機関は、それだけではアクターにならない。\n' +
       '    行動とは、決定・合意・介入・融資・買い入れ・制裁・提案・撤回など、何かを動かす意思の表れ。\n' +
       '    統計の札で動かした主体が特定できなければ、actors は空でよい。\n' +
-      '  - did：fact か detail に書かれた行動だけ。20〜' + WORLD_ACTOR_DID_MAX + '字。数字・金額はここにだけ。\n' +
+      '  - did：fact か detail に書かれた行動だけ。数字・金額はここにだけ。\n' +
+      '        1文。途中で止めない。目安は20〜60字（数字を削って短くしない）。\n' +
       '        why の文章から行動を作らない。\n' +
       '  - said：why か detail に、その主体が「述べた」「説明した」「表明した」「掲げた」と\n' +
       '        分かる形で書かれているときだけ。無ければ空。\n' +
@@ -18403,7 +18432,7 @@
       list.forEach((r) => {
         if (!r || typeof r !== 'object') return;
         const name = worldNormName(worldStr(r.name, 80));
-        const text = worldStr(r.read, WORLD_ACTOR_READ_MAX);
+        const text = worldStr(r.read, WORLD_ACTOR_READ_MAX, '推定');
         if (!name || !text) return;
         const rec = ev.actors.find((a) => worldNormName(a.name) === name);
         if (!rec) return;
@@ -23556,8 +23585,9 @@
     toggleHomeExpand('world');
   });
   document.getElementById('btnWorldCardsBack').addEventListener('click', () => {
-    const toNet = worldState.cards && worldState.cards.from === 'net';   // v20.4
-    worldState.cards = null; worldState.view = toNet ? 'net' : 'main'; renderWorld();
+    const from = worldState.cards && worldState.cards.from;   // v20.4
+    // v20.33：地図から開いた一覧は地図へ（上の「← 戻る」と同じ行き先にそろえる）
+    worldState.cards = null; worldState.view = from === 'net' ? 'net' : from === 'map' ? 'map' : 'main'; renderWorld();
   });
   // v20.22 第2段A：予告の画面
   document.getElementById('btnWorldForecast').addEventListener('click', () => worldOpenForecast('world'));
@@ -24217,6 +24247,7 @@
     const box = document.getElementById('worldImportPaste');
     const status = document.getElementById('worldImportStatus');
     status.textContent = '取り込み中…';
+    const cutSnap = worldCutSnap();   // v20.33
     const res = await worldImportJson(box.value);
     if (res.error) { status.textContent = res.error; worldState.lastResult = res.error; return; }
     // v20.2：初期投入の JSON では、朝の「今日の取り込み」の日付を進めない（必ず見るものを見ていないため）
@@ -24273,6 +24304,7 @@
     if (res.old) msg += '　※ 90日より古い出来事が ' + res.old + '件あります。';
     if (unread > WORLD_QUEUE_WARN) msg += '　未読が ' + unread + '件です。読む速さより入れる速さが上回っています。';
     if (res.added && res.linked) msg += '　過去の札と ' + res.linked + '本つながりました。';
+    msg += worldCutNote(cutSnap);   // v20.33：切ったら必ず1行
     if (res.added) box.value = '';
     worldState.candidates = res.candidates;
     worldState.outside = res.outsideSources || [];   // v19.11
@@ -24289,6 +24321,7 @@
   document.getElementById('btnWorldRetroImport').addEventListener('click', () => {
     const box = document.getElementById('worldRetroPaste');
     const st = document.getElementById('worldRetroStatus');
+    const cutSnap = worldCutSnap();   // v20.33
     const res = worldImportRetroJson(box.value);
     if (res.error) { st.textContent = res.error; return; }
     // 主語だけ／地層の値だけ、どちらか片方の JSON も来る。0件の行を先頭に出さない
@@ -24302,6 +24335,7 @@
     if (res.levelsUnknown) msg += '　※ 一覧に無い地層の値 ' + res.levelsUnknown + '件を落としました。';
     if (res.skipped) msg += '　既に主語が付いていた ' + res.skipped + '件はそのまま。';
     if (res.unknown) msg += '　端末に無い札 ' + res.unknown + '件は無視。';
+    msg += worldCutNote(cutSnap);   // v20.33：切ったら必ず1行
     if (res.filled || res.withFlow || res.levelsFilled) box.value = '';
     st.textContent = msg.trim();
     worldState.candidates = res.candidates;
@@ -24345,6 +24379,7 @@
     const st = document.getElementById('worldAskImportStatus');
     if (!text) { st.textContent = '知りたいことを書いてください。'; return; }
     st.textContent = '取り込み中…';
+    const cutSnap = worldCutSnap();   // v20.33
     const res = await worldImportAskJson(box.value, worldState.askId, text);
     if (res.error) { st.textContent = res.error; worldState.askResult = res.error; return; }
     const r = res.rejected;
@@ -24360,6 +24395,7 @@
     if (drops.length) msg += '　' + drops.join('／') + ' を落としました。';
     if (res.missing) msg += '　※ 端末に無い札 ' + res.missing + '件は無視しました。';
     if (!res.run.actors.length) msg += '　主体は挙がりませんでした（材料が足りない、で正常です）。';
+    msg += worldCutNote(cutSnap);   // v20.33：切ったら必ず1行
     box.value = '';
     worldState.askId = res.askId;
     worldState.askOpenId = res.askId;
@@ -24515,6 +24551,7 @@
     const box = document.getElementById('worldReadPaste');
     const st = document.getElementById('worldReadStatus');
     const before = (() => { try { return worldMoneyChains().length; } catch (e) { return 0; } })();
+    const cutSnap = worldCutSnap();   // v20.33
     const res = worldImportReadJson(box.value);
     if (res.error) { st.textContent = res.error; return; }
     // 見返りを数字で返す（読んだあとに何が増えたかが見える）
@@ -24543,6 +24580,7 @@
     if (res.unknown) msg += '　※ 端末に無い札' + res.unknown + '件は無視。';
     const gained = Math.max(0, res.chains - before);
     if (gained) msg += '　鎖が' + gained + '本つながりました（いま' + res.chains + '本）。';
+    msg += worldCutNote(cutSnap);   // v20.33：切ったら必ず1行
     if (res.readCards || res.forks) box.value = '';
     st.textContent = msg;
     paintWorldReadNote();
