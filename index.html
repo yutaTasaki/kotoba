@@ -3046,7 +3046,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.40';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.41';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -4068,9 +4068,25 @@
 
   async function ghGetFile(token) {
     const got = await ghGetContents(GITHUB_REPO, GITHUB_PATH, token);
-    if (got.text === null) return { data: null, sha: null };
-    return { data: normalizeData(JSON.parse(got.text)), sha: got.sha };
+    if (got.text === null) return { data: null, sha: null, text: null };
+    return { data: normalizeData(JSON.parse(got.text)), sha: got.sha, text: got.text };
   }
+
+  // v20.41：これから書く文字列が、GitHub にある文字列と「一番上の日時（updatedAt）」を除いて
+  // 1文字も違わなければ書かない。読み込んで整えた形ではなく文字列そのものを比べるので、
+  // 違いがあれば必ず書く側に倒れる（書き漏らさない）。実測で data.json の77%・training.json の89%・
+  // 散歩の97%が、この「変わらない書き込み」だった
+  function ghSameAsRemote(nextObj, remoteText) {
+    if (typeof remoteText !== 'string' || !nextObj) return false;
+    let obj = nextObj;
+    if (Object.prototype.hasOwnProperty.call(nextObj, 'updatedAt')) {
+      let at;
+      try { at = JSON.parse(remoteText).updatedAt; } catch (e) { return false; }
+      obj = Object.assign({}, nextObj, { updatedAt: at });   // 並び順は変わらない（上書きは元の位置のまま）
+    }
+    return JSON.stringify(obj, null, 2) === remoteText;
+  }
+  let ghSkippedWrites = 0;   // この起動で書かずに済んだ回数（確かめ用）
 
   async function ghPutFile(token, newData, sha) {
     const body = {
@@ -4177,8 +4193,11 @@
   // Push data (already merged with the latest remote fetch). On a 409 (someone
   // else wrote in between), refetch + remerge + retry exactly once, then give
   // up and let the caller's catch report the error.
-  async function pushWithConflictRetry(token, knownSha) {
+  // v20.41：remoteText を渡したときは、中身が同じなら書かない。ボタンの上書き（hardPushCurrentData）は渡さない
+  async function pushWithConflictRetry(token, knownSha, remoteText) {
+    const checkSame = remoteText !== undefined;
     try {
+      if (checkSame && ghSameAsRemote(dataForStorage(data), remoteText)) { ghSkippedWrites++; return; }
       await ghPutFile(token, data, knownSha);
     } catch (e) {
       if (e.status === 409) {
@@ -4187,6 +4206,7 @@
         persistLocal(data);
         backupData(data);
         refreshCurrentScreen();
+        if (checkSame && ghSameAsRemote(dataForStorage(data), remote2.text)) { ghSkippedWrites++; return; }
         await ghPutFile(token, data, remote2.sha);
       } else {
         throw e;
@@ -4222,7 +4242,7 @@
 
       const skipPush = localHadNoNotes && remote.data && remote.data.notes.length > 0;
       if (!skipPush) {
-        await pushWithConflictRetry(token, remote.sha);
+        await pushWithConflictRetry(token, remote.sha, remote.text);
         backupData(data);
       }
       if (notesSplit()) await notesSyncNow(token);
@@ -4310,8 +4330,8 @@
 
   async function ghGetWalkFile(token) {
     const got = await ghGetContents(GITHUB_REPO_WALK, GITHUB_PATH, token);
-    if (got.text === null) return { data: null, sha: null };
-    return { data: normalizeWalkData(JSON.parse(got.text)), sha: got.sha };
+    if (got.text === null) return { data: null, sha: null, text: null };
+    return { data: normalizeWalkData(JSON.parse(got.text)), sha: got.sha, text: got.text };
   }
 
   async function ghPutWalkFile(token, newData, sha) {
@@ -4357,7 +4377,8 @@
         backupWalkData(walkData);
         refreshCurrentScreen();
       } else {
-        await ghPutWalkFile(token, walkData, remote.sha);
+        if (ghSameAsRemote(walkData, remote.text)) ghSkippedWrites++;   // v20.41：同じなら書かない
+        else await ghPutWalkFile(token, walkData, remote.sha);
         backupWalkData(walkData);
       }
       localStorage.setItem(WALK_LAST_SYNC_KEY, nowIso());
@@ -9408,8 +9429,8 @@
   // sync (same shape as the notes sync; its own file, training.json, in the same repo)
   async function ghGetTrainingFile(token) {
     const got = await ghGetContents(GITHUB_REPO, TRAINING_PATH, token);
-    if (got.text === null) return { data: null, sha: null };
-    return { data: normalizeTrainingData(JSON.parse(got.text)), sha: got.sha };
+    if (got.text === null) return { data: null, sha: null, text: null };
+    return { data: normalizeTrainingData(JSON.parse(got.text)), sha: got.sha, text: got.text };
   }
   async function ghPutTrainingFile(token, newData, sha) {
     const body = { message: `training: ${newData.days.length} days`, content: utf8ToBase64(JSON.stringify(newData, null, 2)) };
@@ -9440,13 +9461,17 @@
       refreshCurrentScreen();
       const skipPush = localHadNoDays && remote.data && remote.data.days.length > 0;
       if (!skipPush) {
-        try { await ghPutTrainingFile(token, trainingData, remote.sha); }
+        try {
+          if (ghSameAsRemote(trainingData, remote.text)) ghSkippedWrites++;   // v20.41：同じなら書かない
+          else await ghPutTrainingFile(token, trainingData, remote.sha);
+        }
         catch (e) {
           if (e.status !== 409) throw e;
           const r2 = await ghGetTrainingFile(token);
           trainingData = mergeTrainingData(trainingData, r2.data || trainingDefaultData());
           persistTrainingLocal(trainingData);
-          await ghPutTrainingFile(token, trainingData, r2.sha);
+          if (ghSameAsRemote(trainingData, r2.text)) ghSkippedWrites++;
+          else await ghPutTrainingFile(token, trainingData, r2.sha);
         }
       }
       localStorage.setItem(TRAINING_LAST_SYNC_KEY, nowIso());
