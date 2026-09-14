@@ -3028,7 +3028,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.36';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.37';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -15890,7 +15890,9 @@
       if (!['americas', 'europe', 'mideast_africa', 'asia_pacific'].includes(k) || !v || !isDateStr(v.at)) return;
       out.seeds[k] = { at: v.at, n: Math.max(1, Math.floor(Number(v.n) || 1)) };
     });
-    ['concepts', 'terms', 'strata', 'actors', 'asks', 'sources'].forEach((k) => {
+    // v20.37：forecasts を並びに足した。前は予告の更新日時を捨てていたので、どの端末もほかの端末の予告を取りに行かず、
+    // 番号がぶつかって予告が上書きされた（2026-09-14 に3本消えた）
+    ['concepts', 'terms', 'strata', 'actors', 'asks', 'sources', 'forecasts'].forEach((k) => {
       const v = raw[k];
       if (v && typeof v === 'object') out[k] = { updatedAt: typeof v.updatedAt === 'string' ? v.updatedAt : '', count: Number(v.count) || 0 };
     });
@@ -16378,7 +16380,7 @@
       const x = (a.seeds || {})[k], y = (b.seeds || {})[k];
       out.seeds[k] = { at: [x && x.at, y && y.at].filter(Boolean).sort().pop(), n: Math.max((x && x.n) || 0, (y && y.n) || 0) };
     });
-    ['concepts', 'terms', 'strata', 'actors', 'asks', 'sources'].forEach((k) => { out[k] = (a[k].updatedAt >= b[k].updatedAt) ? a[k] : b[k]; });
+    ['concepts', 'terms', 'strata', 'actors', 'asks', 'sources', 'forecasts'].forEach((k) => { out[k] = (a[k].updatedAt >= b[k].updatedAt) ? a[k] : b[k]; });   // v20.37：forecasts も
     out.updatedAt = a.updatedAt > b.updatedAt ? a.updatedAt : b.updatedAt;
     return out;
   }
@@ -16612,7 +16614,10 @@
       const strataChanged = remoteIndex.strata.updatedAt > (wd.index.strata.updatedAt || '');
       const actorsChanged = remoteIndex.actors.updatedAt > (wd.index.actors.updatedAt || '');
       const asksChanged = remoteIndex.asks.updatedAt > (wd.index.asks.updatedAt || '');
-      const forecastsChanged = (remoteIndex.forecasts || {}).updatedAt > ((wd.index.forecasts || {}).updatedAt || '');   // v20.21
+      // v20.21（v20.37 直し）：索引に予告の更新日時が無いとき（v20.36 までの端末が索引を書いた後）は、
+      // 取りに行かないと見落とすので、毎回取りに行く
+      const remoteFcAt = (remoteIndex.forecasts || {}).updatedAt || '';
+      const forecastsChanged = !remoteFcAt || remoteFcAt > ((wd.index.forecasts || {}).updatedAt || '');
       const sourcesChanged = remoteIndex.sources.updatedAt > (wd.index.sources.updatedAt || '');
       const months = new Set([...liveWorldMonths(), ...wd.dirty, ...worldBootMonths(remoteIndex)]);
       wd.loaded.forEach((m) => { const r = remoteIndex.months[m]; if (r && r.updatedAt !== (wd.stamps[m] || '')) months.add(m); });
@@ -17886,11 +17891,14 @@
   // ---- v20.21 予告 第1段 ------------------------------------------------------
   function worldForecasts() { return wd.forecasts.forecasts; }
   function worldSaveForecasts() { wd.forecastsDirty = true; persistWorldForecasts(); scheduleSync(); }
+  // v20.37：番号に乱数を足す。端末にある予告だけを見て「空いている一番小さい数」を使うと、
+  // 同期の前に2つの端末で作ったとき同じ番号になり、合わせるときに片方が消える
   function worldGenForecastId() {
     const t = todayStr().replace(/-/g, '');
     const taken = new Set(worldForecasts().map((f) => f.id));
-    let n = 1; while (taken.has('fc_' + t + '_' + n)) n++;
-    return 'fc_' + t + '_' + n;
+    let id;
+    do { id = 'fc_' + t + '_' + Math.random().toString(36).slice(2, 10); } while (taken.has(id) || id.length < 20);
+    return id;
   }
   // 待っている予告（期限の近い順）。畳んだものは外す
   function worldWaitingForecasts() {
