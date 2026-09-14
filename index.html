@@ -3046,7 +3046,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.39';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.40';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -7372,7 +7372,7 @@
     // v20.21 予告 第1段：待っている予告はホームの一番上に置く（並び替えの本体は第4段）。
     // 0本のときは renderHomeForecastRow が自分で隠すので、ここでは並びにだけ積む
     renderHomeForecastRow();
-    if (worldWaitingForecasts().length) order.unshift('homeForecastRow');
+    if (worldWaitingForecasts().length || worldOverdueForecasts().length) order.unshift('homeForecastRow');   // v20.40：聞き直しだけの日も出す
 
     const stepsContainer = document.getElementById('homeStepsContainer');
     order.forEach((id) => {
@@ -16093,6 +16093,7 @@
   const WORLD_FC_MISREAD_LABEL = { yes: '読み違い', no: '読みは合っていた', unknown: '分からない' };
   const WORLD_FC_NOTE_MAX   = 80;     // 生成が書く根拠1行
   const WORLD_FC_UNV_FOLD   = 3;      // 「確かめられない」がこの回数で畳む
+  const WORLD_FC_RECHECK_DAYS = 7;    // v20.40：確かめられない・押していない見立てを、この日数で答え合わせに載せ直す
   const WORLD_FC_FOLD_HINT  = 5;      // 畳んだ本数がこれを超えたら、印の立て方を見直す1行を出す
   const WORLD_FC_RATE_MIN   = 10;     // 当たり＋外れがこの件数に届くまで、割合を出さず件数だけ
   // 数字で確かめられる地層（実測：政府債務総額403点・DFA 上位0.1% 147点・下半分147点）。
@@ -16143,6 +16144,8 @@
       misread: WORLD_FC_MISREADS.includes(f.misread) ? f.misread : '',
       misreadAt: typeof f.misreadAt === 'string' ? f.misreadAt : '',
       unverifiableCount: Math.max(0, Math.floor(Number(f.unverifiableCount) || 0)),
+      // v20.40：「確かめられない」を数えた日時。押した日時（stateAt）は他の結果を押しても変わるので別に持つ
+      unverifiableAt: typeof f.unverifiableAt === 'string' ? f.unverifiableAt : '',
       foldedAt: typeof f.foldedAt === 'string' ? f.foldedAt : '',
       createdAt: f.createdAt || nowIso(),
       updatedAt: f.updatedAt || f.createdAt || nowIso(),
@@ -18030,14 +18033,37 @@
     do { id = 'fc_' + t + '_' + Math.random().toString(36).slice(2, 10); } while (taken.has(id) || id.length < 20);
     return id;
   }
-  // 待っている予告（期限の近い順）。畳んだものは外す
+  // まだ押していない予告（期限の近い順）。畳んだものは外す
   function worldWaitingForecasts() {
     return worldForecasts().filter((f) => f.state === 'waiting' && !f.foldedAt).sort((a, b) => (a.due > b.due ? 1 : a.due < b.due ? -1 : 0));
   }
-  // v20.22 第2段A：期限が来たもの（古い順）。押せるのはこれだけ
+  // v20.40：予告1本の時期を1つの決まりで決める。画面・件数・答え合わせは全部これを使い、期限を直接比べない
+  // （前は2か所で別々に比べていて、片方だけ直すと期限当日の予告が画面から消えるところだった）
+  //   before 待っている（期限前・押せない）／dueday 期限当日（押せる・答え合わせは翌日から）
+  //   overdue 期限が来た（押せる・載る）／recheck 確かめられないを数えた日から7日（押せる・載る）
+  //   done 押したもの（押し直せる）／folded 畳んだもの
+  function worldFcUnvBaseDate(f) {   // 確かめられないを数えた日（無い予告は押した日時で代わりに数える）
+    return localDateOfIso(f.unverifiableAt || f.stateAt || '') || '';
+  }
+  function worldFcPhase(f, today) {
+    const t = today || todayStr();
+    if (f.foldedAt) return 'folded';
+    if (f.state === 'waiting') return f.due > t ? 'before' : f.due === t ? 'dueday' : 'overdue';
+    if (f.state === 'unverifiable') {
+      const b = worldFcUnvBaseDate(f);
+      if (b && addDays(b, WORLD_FC_RECHECK_DAYS) <= t) return 'recheck';
+    }
+    return 'done';
+  }
+  function worldFcByPhase(phase, today) {
+    const t = today || todayStr();
+    return worldForecasts().filter((f) => worldFcPhase(f, t) === phase).sort((a, b) => (a.due > b.due ? 1 : a.due < b.due ? -1 : 0));
+  }
+  // 押せる予告（期限当日・期限が来た・もう一度確かめる時期）。ホームと世界の画面の「期限が来たもの」はこれ
   function worldOverdueForecasts(today) {
     const t = today || todayStr();
-    return worldWaitingForecasts().filter((f) => f.due <= t);
+    return worldForecasts().filter((f) => ['dueday', 'overdue', 'recheck'].includes(worldFcPhase(f, t)))
+      .sort((a, b) => (a.due > b.due ? 1 : a.due < b.due ? -1 : 0));
   }
   function worldFoldedForecasts() { return worldForecasts().filter((f) => f.foldedAt); }
   // 当たり率。分母は「当たり＋外れ」だけ（確かめられない・まだ・畳んだものは入れない）
@@ -18055,12 +18081,27 @@
   // 0本のときは空文字を返す（「ありません」の節を出さない。長くなるだけ）
   // v20.39：答え合わせに載せる予告。見立てがまだ無いものを期限の古い順に。全部に見立てが付いていたら聞き直し
   // （見立てが付いても押すまでは期限切れのままなので、分けないと同じ予告ばかり載る）
-  function worldVerifyPick() {
-    const overdue = worldOverdueForecasts();
-    const fresh = overdue.filter((f) => !f.verdictSuggest);
-    if (fresh.length) return { list: fresh.slice(0, WORLD_FC_VERIFY_BATCH), rest: Math.max(0, fresh.length - WORLD_FC_VERIFY_BATCH), again: false, overdue: overdue.length };
-    const old = overdue.slice().sort((a, b) => (a.verdictAt < b.verdictAt ? -1 : a.verdictAt > b.verdictAt ? 1 : 0));
-    return { list: old.slice(0, WORLD_FC_VERIFY_BATCH), rest: Math.max(0, old.length - WORLD_FC_VERIFY_BATCH), again: true, overdue: overdue.length };
+  // v20.40：7日の決まりに一本化した。並びは (1) 期限が来て見立てがまだ (2) もう一度確かめる時期で、7日たった後の見立てがまだ
+  // (3) 期限が来て見立てから7日たった（押していない見立ての聞き直し） (4) もう一度確かめる時期で、取り込み直した見立てから7日。
+  // 期限当日・待っている・見立てから7日たっていない予告は載せない
+  function worldVerifyPick(today) {
+    const t = today || todayStr();
+    const vDate = (f) => localDateOfIso(f.verdictAt || '') || '';
+    const stale = (f) => !!f.verdictAt && addDays(vDate(f), WORLD_FC_RECHECK_DAYS) <= t;
+    const overdue = worldFcByPhase('overdue', t);
+    const recheck = worldFcByPhase('recheck', t);
+    const dueday = worldFcByPhase('dueday', t);
+    const recheckStart = (f) => addDays(worldFcUnvBaseDate(f), WORLD_FC_RECHECK_DAYS);   // 載り直した日
+    const byVerdict = (a, b) => (a.verdictAt < b.verdictAt ? -1 : a.verdictAt > b.verdictAt ? 1 : 0);
+    const g1 = overdue.filter((f) => !f.verdictSuggest);
+    const g2 = recheck.filter((f) => !f.verdictAt || vDate(f) < recheckStart(f))
+      .sort((a, b) => (worldFcUnvBaseDate(a) < worldFcUnvBaseDate(b) ? -1 : 1));
+    const g3 = overdue.filter((f) => f.verdictSuggest && stale(f)).sort(byVerdict);
+    const g4 = recheck.filter((f) => f.verdictAt && vDate(f) >= recheckStart(f) && stale(f)).sort(byVerdict);
+    const all = g1.concat(g2, g3, g4);
+    const list = all.slice(0, WORLD_FC_VERIFY_BATCH);
+    return { list, rest: Math.max(0, all.length - list.length), overdue: overdue.length, recheck: recheck.length, dueday: dueday.length,
+      waitingSuggest: overdue.length + recheck.length - all.length };
   }
   // v20.39：答え合わせのプロンプト。押したときに組み立てる（作り置きしない）。通信は要らない
   function worldVerifyPromptText(pick) {
@@ -18083,7 +18124,11 @@
         return '[' + f.id + ']　' + f.actor + 'が「' + f.what + '」（' + (WORLD_FC_VERB_LABEL[f.verb] || f.verb) + (f.pledgeOnly ? '・約束だけ' : '') + '）\n' +
           '  期限 ' + f.due + ' ／ 当たりの印：' + (f.sign || '（印なし）') + '\n' +
           '  元の推定：' + (f.fromRead || '（無し）') + '\n' +
-          '  元の札：' + (e ? e.eventDate + ' ' + e.fact + (e.source ? '（' + e.source + '）' : '') : '（端末に読み込まれていない）') + '\n';
+          '  元の札：' + (e ? e.eventDate + ' ' + e.fact + (e.source ? '（' + e.source + '）' : '') : '（端末に読み込まれていない）') + '\n' +
+          // v20.40：聞き直しの予告には、前の答え合わせを1行
+          (f.state === 'unverifiable'
+            ? '  前の答え合わせ：確かめられない' + (f.verdictReason ? '（' + WORLD_FC_REASON_LABEL[f.verdictReason] + '）' : f.verdictFact ? '（' + WORLD_FC_FACT_LABEL[f.verdictFact] + '）' : '') + ' ' + worldFcUnvBaseDate(f) + '。今日あらためて確かめる。\n'
+            : (f.verdictSuggest ? '  前の答え合わせ：' + WORLD_FC_STATE_LABEL[f.verdictSuggest] + '（' + (localDateOfIso(f.verdictAt) || '') + '）。今日あらためて確かめる。\n' : ''));
       }).join('') + '\n' +
       '■ 出力形式\n' +
       '{"verify":[\n' +
@@ -18105,13 +18150,15 @@
     const parsed = shootParseJson(raw);
     const items = parsed ? (Array.isArray(parsed) ? parsed : Array.isArray(parsed.verify) ? parsed.verify : null) : null;
     if (!items) return { error: 'JSON として読めませんでした。{"verify":[...]} の形で貼ってください。' };
-    const out = { added: 0, replaced: 0, noUrlKept: 0, unknown: 0, already: 0, badVerdict: 0, noUrl: 0, badCombo: 0 };
+    const out = { added: 0, replaced: 0, noUrlKept: 0, unknown: 0, already: 0, badVerdict: 0, noUrl: 0, badCombo: 0, before: 0 };
     const iso = nowIso();
     items.forEach((v) => {
       if (!v || typeof v !== 'object') { out.badVerdict++; return; }
       const fc = worldForecasts().find((x) => x.id === worldStr(v.id, 40));
       if (!fc) { out.unknown++; return; }
-      if (fc.state !== 'waiting' || fc.foldedAt) { out.already++; return; }   // 押した結果は機械が変えない
+      // v20.40：まだ押していない予告（期限当日から）と、確かめられない・畳んでいない予告（聞き直し）を受け付ける。結果は変えない
+      if (fc.foldedAt || (fc.state !== 'waiting' && fc.state !== 'unverifiable')) { out.already++; return; }
+      if (fc.state === 'waiting' && worldFcPhase(fc) === 'before') { out.before++; return; }
       const verdict = ['hit', 'miss', 'unverifiable'].includes(v.verdict) ? v.verdict : '';
       if (!verdict) { out.badVerdict++; return; }
       const rawUrl = typeof v.url === 'string' ? v.url.trim() : '';
@@ -18153,6 +18200,7 @@
     if (r.badVerdict) msg += '　※ 当たり／外れ／確かめられない のどれでもない ' + r.badVerdict + '本を取り込んでいません。';
     if (r.already) msg += '　※ すでに押してある予告 ' + r.already + '本は変えていません。';
     if (r.unknown) msg += '　※ 端末に無い予告 ' + r.unknown + '本は無視しました。';
+    if (r.before) msg += '　※ 期限前の予告 ' + r.before + '本は取り込んでいません。';   // v20.40
     return msg;
   }
   // 同じ主体・同じ動詞・同じ期限は入れない（読む回を2回流したときの二重を防ぐ）
@@ -22659,12 +22707,22 @@
   // 押したときだけ結果が変わる（取り込みでは変わらない）。
   // 押し直せるので「取り消し」は作らない。「確かめられない」は3回で畳む
   function worldPressForecast(f, verdict) {
+    const prevStateAt = f.state === 'unverifiable' ? f.stateAt : (f.unverifiableAt || '');   // v20.40
     f.state = verdict;
     f.stateAt = nowIso();
     f.updatedAt = f.stateAt;
     if (verdict === 'unverifiable') {
-      f.unverifiableCount = (f.unverifiableCount || 0) + 1;
-      if (f.unverifiableCount >= WORLD_FC_UNV_FOLD) f.foldedAt = f.stateAt;
+      // v20.40：確かめ直した後に押したときだけ数える（続けて押す・押し替えるだけでは増やさない）。
+      // 確かめ直した＝初めて／前に数えた後に見立てを取り込んだ／前に数えた日から7日たった
+      const prevAt = f.unverifiableAt || ((f.unverifiableCount || 0) > 0 ? prevStateAt : '');
+      const count = !(f.unverifiableCount || 0) || !prevAt
+        || (f.verdictAt && f.verdictAt > prevAt)
+        || addDays(localDateOfIso(prevAt) || todayStr(), WORLD_FC_RECHECK_DAYS) <= todayStr();
+      if (count) {
+        f.unverifiableCount = (f.unverifiableCount || 0) + 1;
+        f.unverifiableAt = f.stateAt;
+        if (f.unverifiableCount >= WORLD_FC_UNV_FOLD) f.foldedAt = f.stateAt;
+      }
     } else {
       f.foldedAt = '';   // 押し直して別の結果にしたら、畳みを解く
     }
@@ -22715,8 +22773,12 @@
     }
     if (f.state !== 'waiting') {
       const r = document.createElement('div'); r.className = 'wfResult';
+      // v20.40：確かめられないは回数と数えた日。畳んだものは最後の理由も
+      const why = f.verdictReason ? WORLD_FC_REASON_LABEL[f.verdictReason] : f.verdictFact ? WORLD_FC_FACT_LABEL[f.verdictFact] : '';
       r.textContent = '結果：' + WORLD_FC_STATE_LABEL[f.state]
-        + (f.unverifiableCount ? '（確かめられない ' + f.unverifiableCount + '回目）' : '');
+        + (f.foldedAt
+          ? '（' + f.unverifiableCount + '回で畳みました' + (why ? '・最後の理由：' + why : '') + '）'
+          : (f.unverifiableCount ? '（確かめられない ' + f.unverifiableCount + '回目' + (worldFcUnvBaseDate(f) ? '・' + worldFcUnvBaseDate(f).slice(5).replace('-', '/') : '') + '）' : ''));
       box.appendChild(r);
     }
     // 期限前は押せない（押しても何も起きないボタンを作らない）
@@ -22771,22 +22833,30 @@
     const box = document.getElementById('worldFcList');
     box.innerHTML = '';
     const today = todayStr();
-    const overdue = worldOverdueForecasts(today);
-    { // v20.39：期限が来た予告があるときだけ、答え合わせの塊を出す
+    const overdue = worldOverdueForecasts(today);   // 押せる予告（期限当日・期限が来た・もう一度確かめる時期）
+    { // v20.39：押せる予告があるときだけ、答え合わせの塊を出す（v20.40：時期の決まりで数える）
       const vb = document.getElementById('worldFcVerifyBox');
       vb.hidden = !overdue.length;
       if (overdue.length) {
-        const pick = worldVerifyPick();
-        document.getElementById('worldFcVerifyLabel').textContent = '答え合わせ（期限が来た予告 ' + overdue.length + '本' +
-          (pick.again ? '・全部に見立てが付いています。コピーすると聞き直します' : '・見立てがまだの ' + (pick.list.length + pick.rest) + '本') + '）';
+        const pick = worldVerifyPick(today);
+        const parts = [];
+        if (pick.overdue) parts.push('期限が来た ' + pick.overdue + '本');
+        if (pick.recheck) parts.push('もう一度確かめる ' + pick.recheck + '本');
+        if (pick.list.length + pick.rest) parts.push('いま載せる ' + (pick.list.length + pick.rest) + '本');
+        if (pick.waitingSuggest) parts.push('見立てから7日たっていない ' + pick.waitingSuggest + '本は後で');
+        if (pick.dueday) parts.push('期限当日 ' + pick.dueday + '本は明日から載ります');
+        document.getElementById('worldFcVerifyLabel').textContent = '答え合わせ（' + parts.join('・') + '）';
         // 元の札の月が読み込まれていなければ読んでから描き直す（プロンプトに元の札を載せるため）
         const need = [...new Set(overdue.map((f) => monthOfWorldId(f.fromEventId)).filter((m) => m && wd.index && wd.index.months[m] && !wd.loaded.has(m)))];
         if (need.length) ensureWorldMonths(need).then(() => { if (nav.screen === 'world' && worldState.view === 'forecast') renderWorldForecast(); });
       }
     }
-    const waiting = worldWaitingForecasts().filter((f) => f.due > today);
-    const done = worldForecasts().filter((f) => f.state !== 'waiting' && !f.foldedAt);
-    const folded = worldFoldedForecasts();
+    // v20.40：欄は全部時期の決まりから（期限を直接比べない）
+    const dueNow = worldFcByPhase('dueday', today).concat(worldFcByPhase('overdue', today)).sort((a, b) => (a.due > b.due ? 1 : a.due < b.due ? -1 : 0));
+    const recheck = worldFcByPhase('recheck', today);
+    const waiting = worldFcByPhase('before', today);
+    const done = worldFcByPhase('done', today);
+    const folded = worldFcByPhase('folded', today);
     const section = (label, list, pressable) => {
       if (!list.length) return;
       const h = document.createElement('p');
@@ -22795,7 +22865,8 @@
       box.appendChild(h);
       list.forEach((f) => box.appendChild(worldFcRowEl(f, pressable)));
     };
-    section('期限が来た（押して確定してください）', overdue, true);
+    section('期限が来た（押して確定してください）', dueNow, true);
+    section('もう一度確かめる時期（押して確定してください）', recheck, true);   // v20.40
     section('待っている', waiting, false);
     section('押したもの', done, true);     // 押し直せる
     section('畳んだもの', folded, false);
@@ -24056,11 +24127,15 @@
   document.getElementById('btnWorldFcVerifyCopy').addEventListener('click', () => {
     const st = document.getElementById('worldFcVerifyCopyStatus');
     const pick = worldVerifyPick();
-    if (!pick.list.length) { st.textContent = '期限が来た予告がありません。'; return; }
+    if (!pick.list.length) {
+      st.textContent = '今は答え合わせに載せる予告がありません。' + (pick.dueday ? '（期限当日の予告は明日から載ります）' : '') +
+        (pick.waitingSuggest ? '（見立てを取り込んだ予告は、' + WORLD_FC_RECHECK_DAYS + '日たつともう一度載ります）' : '');
+      return;
+    }
     const text = worldVerifyPromptText(pick);
     copyToClipboard(text).then((ok) => {
       st.textContent = ok
-        ? pick.list.length + '本ぶん' + (pick.again ? '（聞き直し）' : '') + 'をコピーしました（' + text.length.toLocaleString() + '字）。Claude のチャットに貼ってください。' +
+        ? pick.list.length + '本ぶんをコピーしました（' + text.length.toLocaleString() + '字）。Claude のチャットに貼ってください。' +
           (pick.rest ? '　ほか ' + pick.rest + '本は、取り込んだ後にもう一度コピーすると出ます。' : '')
         : 'コピーできませんでした。';
     });
