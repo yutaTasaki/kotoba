@@ -3081,7 +3081,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.43';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.44';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -15613,8 +15613,16 @@
       'そしてこの概念とセットで覚えるべき概念を2つまで挙げてください。\n' +
       '入門の説明の繰り返しは要りません。\n' },
   ];
-  function worldAskTail(ask) {
-    return '\n' + ask.body + '- ' + ask.max + '字以内で書く。\n' + WORLD_ASK_COMMON;
+  // v20.44：出典の url を、本文とは分けて最後にまとめて出させる（本文に並べると「やさしく説明」が読めなくなる）。
+  // 札と主体の依頼にだけ付ける。概念・用語の依頼は考え方の説明なので付けない
+  const WORLD_ASK_SOURCES =
+    '- 本文には url を書かない。\n' +
+    '- 最後に1行空けて「出典」とだけ書き、本文で使ったページを1行に1つ、「媒体名 日付 url」の形で並べる。\n' +
+    '  web 検索で実際に見たページだけ。見ていないページ・覚えている url を書かない。\n' +
+    '  出典の行は、上の字数にも「箇条書きを使わない」にも数えない。\n' +
+    '- この会話の続きで私が質問したときも、同じ形で最後に出典を並べる。\n';
+  function worldAskTail(ask, withSources) {
+    return '\n' + ask.body + '- ' + ask.max + '字以内で書く。\n' + WORLD_ASK_COMMON + (withSources ? WORLD_ASK_SOURCES : '');
   }
 
   // 一度も保存されていないときだけ入れる初期値。一度でも編集したら入れ直さない。
@@ -16543,7 +16551,8 @@
   function normalizeDigItem(x) {
     if (!x || typeof x !== 'object') return null;
     const o = { kind: DIG_KINDS.includes(x.kind) ? x.kind : '', text: typeof x.text === 'string' ? x.text : '' };
-    ['kindRaw', 'actor', 'date', 'dateRaw', 'source', 'url', 'urlRaw'].forEach((k) => { if (typeof x[k] === 'string' && x[k]) o[k] = x[k]; });
+    ['kindRaw', 'actor', 'date', 'dateRaw', 'source', 'url', 'urlRaw', 'urlBy', 'urlCheckedAt', 'urlChecked', 'cardId', 'cardAt', 'rel'].forEach((k) => { if (typeof x[k] === 'string' && x[k]) o[k] = x[k]; });   // v20.44：第2段の欄も残す
+    if (Array.isArray(x.urlFailed)) { const f = x.urlFailed.filter((u) => u && typeof u.url === 'string' && typeof u.at === 'string').map((u) => ({ url: u.url, at: u.at })); if (f.length) o.urlFailed = f; }
     if (x.flow && typeof x.flow === 'object') {
       const f = {};
       ['from', 'to', 'what', 'amount'].forEach((k) => { if (typeof x.flow[k] === 'string' && x.flow[k]) f[k] = x.flow[k]; });
@@ -16617,7 +16626,8 @@
     });
   }
   // 端末で書き換える。書いた月は同期で送る
-  function digMutate(fn) {
+  // v20.44：opts.sync === false なら同期を起こさない（聞いた記録。次の同期にまとめて送る。端末には今保存する）
+  function digMutate(fn, opts) {
     const m = todayStr().slice(0, 7);
     const doc = wdig.docs.get(m) || emptyDigDoc(m);
     fn(doc);
@@ -16626,7 +16636,7 @@
     wdig.dirty.add(m);
     wdig.byEvent = null;
     persistDigDoc(m); persistDigMeta();
-    scheduleSync();
+    if (!opts || opts.sync !== false) scheduleSync();
   }
   function digTakenIds() {
     const taken = new Set();
@@ -16639,7 +16649,7 @@
     try {
       const at = nowIso();
       const rec = { id: digNewId('ak'), target, targetId: String(targetId || ''), key: String(key || ''), at, createdAt: at, updatedAt: at };
-      digMutate((doc) => doc.asked.push(rec));
+      digMutate((doc) => doc.asked.push(rec), { sync: false });   // v20.44：1回押すたびに2コミットにしない
     } catch (e) { recordFeatureError('聞いた記録', e); }
   }
   function worldDigAll() {
@@ -16743,15 +16753,15 @@
       '  said：誰かが自分で述べた理由や方針。\n' +
       '  read：推測・解釈。私の推測も、あなたの推測もここ。\n' +
       '- 迷ったら read にする。事実として書かない。\n' +
-      '- url は、この会話で開いて確かめたページのものだけ。確かめていなければ空にする。作らない。\n' +
+      '- url は、この会話の中で出典として示されたものを書く（あなたが開いて確かめていなくてもよい）。\n' +
+      '  示されていなければ空にする。会話に出ていない url を作らない・思い出して足さない。\n' +
+      '- 下の「札に元から書いてあったこと」に書かれていることは書かない。この会話で新しく分かったことだけを書く。\n' +
+      '  言い換えただけのもの、札の出典をそのまま使ったものも書かない。\n' +
       '- 日付・数字は、出典に書かれていたものだけ。\n' +
       '- お金・物が動いた did には flow を書く。amount は出典の書き方のまま。換算しない。\n' +
       '- text は1件1文。目安は20〜80字。\n' +
       '- JSON のみ。ほかの文章を返さない。\n\n' +
-      '■ 札\n' +
-      '番号：' + ev.id + '\n' +
-      '日付：' + ev.eventDate + '\n' +
-      '何が起きたか：' + ev.fact + '\n\n' +
+      worldDigCardBlock(ev) + '\n' +
       '■ 出力形式\n' +
       '{"eventId":"' + ev.id + '",\n' +
       ' "question":"私が何を気にして調べたか（1〜2文）",\n' +
@@ -16765,6 +16775,19 @@
       '※ 上の例の中身（A社・B社・C省・D国・金額）は架空です。形だけを使ってください。eventId はこの札の番号のまま書いてください。\n' +
       'お金・物が動いていない did は "flow": null\n' +
       'まだ分からないことが無ければ "open": []';
+  }
+  // v20.44：まとめの依頼文に並べる「札に元から書いてあったこと」。会話を「やさしく説明」以外から始めたときも比べられるように
+  function worldDigCardBlock(ev) {
+    const lines = ['■ 札に元から書いてあったこと', '番号：' + ev.id, '日付：' + ev.eventDate, '何が起きたか：' + ev.fact];
+    if (ev.why) lines.push('なぜ今動いたか：' + ev.why);
+    if (ev.actors.length) {
+      lines.push('動かした側：');
+      ev.actors.forEach((a) => lines.push('- ' + a.name + '：' + a.did + (a.said ? '／述べた理由「' + a.said + '」' : '') + (a.read ? '／推定「' + a.read + '」' : '')));
+    }
+    if (ev.flow) lines.push('お金の動き：' + worldFlowLine(ev.flow));
+    if (ev.detail) lines.push('詳細：' + ev.detail);
+    if (ev.source || ev.url) lines.push('出典：' + [ev.source, ev.url].filter(Boolean).join(' '));
+    return lines.join('\n') + '\n';
   }
   // url：http(s) で始まり、ホストに「.」があるものだけ。無ければ、ドメインらしい形のときだけ https を付ける
   function digUrl(raw) {
@@ -16802,7 +16825,7 @@
       const source = digStr(x.source, DIG_MAX.source); if (source.t) o.source = source.t; if (source.cut) { o.cut = 1; c.cut++; }
       if (x.date != null && String(x.date).trim()) { if (isDateStr(String(x.date).trim())) o.date = String(x.date).trim(); else { o.dateRaw = String(x.date).slice(0, 40); c.badDate++; } }
       const u = digUrl(x.url);
-      if (u.url) o.url = u.url;
+      if (u.url) { o.url = u.url; o.urlBy = 'chat'; }   // v20.44：チャットが示した（まだ人が開いていない）
       if (u.urlRaw) { o.urlRaw = u.urlRaw; c.badUrl++; }
       if (x.flow && typeof x.flow === 'object') {
         const f = {};
@@ -20490,6 +20513,10 @@
             a.href = x.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
             a.textContent = k === 'read' ? '参考' : 'url';
             const w = document.createElement('span'); w.className = 'digMeta'; w.appendChild(a); it.appendChild(w);
+            // v20.44：人が開いて確かめたかを分ける
+            const st = document.createElement('span'); st.className = 'digNoSrc';
+            st.textContent = x.urlCheckedAt ? '開いて確かめた ' + worldDigDay(x.urlCheckedAt).slice(5).replace('-', '/') : (x.urlBy === 'chat' ? 'チャットが示した（まだ開いていない）' : '');
+            if (st.textContent) it.appendChild(st);
           } else if (k !== 'read') {
             const n = document.createElement('span'); n.className = 'digNoSrc'; n.textContent = '出典なし'; it.appendChild(n);
           }
@@ -20625,7 +20652,7 @@
       ? '\n【この件が乗っている、長く動かない量】\n' + worldStrataOf(ev).map((s) => '- ' + s.name + '：' + s.line + (worldStratumLevel(s) ? '（いま ' + worldStratumLine(s) + '）' : '')).join('\n') + '\n'
       : '';
     const tail = ask
-      ? worldAskTail(ask)
+      ? worldAskTail(ask, true)   // v20.44：出典を最後にまとめる
       : '\nこの件について、私が見落としている力学を教えてください。\n私は既に上の前提は理解しています。';
     return '【出来事】' + ev.eventDate + '\n' + ev.fact + '\n\n'
       + '【なぜ今動いたか】\n' + (ev.why || '（なし）') + '\n\n'
@@ -20852,7 +20879,7 @@
           + (rec && rec.said ? '\n    述べた理由「' + rec.said + '」' : '')
           + (rec && rec.read ? '\n    推定（読む回が付けたもの）「' + rec.read + '」' : '')).join('\n')
         : '（読み込んでいる月にはありません）') + '\n'
-      + (ask ? worldAskTail(ask) : '');
+      + (ask ? worldAskTail(ask, true) : '');   // v20.44：主体の依頼も出典を最後にまとめる
   }
   function worldConceptCopyText(c, ask) {
     const isTerm = worldStoreOf(c).key === 'term';
