@@ -1121,6 +1121,12 @@
   .wfNote { color: var(--text); border-left: 2px dashed var(--guess); padding-left: 8px; }
   .wfEvidence { color: var(--text-faint); }
   .wfResult { color: var(--accent); }
+  /* v20.39 答え合わせの事実・根拠 */
+  .wfFact, .wfUrl, .wfSignUse, .wfActual, .wfReason { font-size: 12px; line-height: 1.7; margin-top: 2px; color: var(--text-dim); overflow-wrap: anywhere; }
+  .wfUrl a { color: var(--accent); }
+  .wfGuess .guessBadge { margin-left: 6px; margin-right: 0; }
+  .wfMisread { margin-top: 4px; font-size: 12px; color: var(--text-dim); }
+  .wfMisread .tagFilterBtn { font-size: 12px; }
   .wfBtns { margin-top: 6px; }
   .wfSection { margin: 14px 0 0; }
   /* v20.21 予告 第1段：待っている予告。第1段では押せない（答え合わせは第2段） */
@@ -2442,6 +2448,15 @@
       </div>
       <p class="fieldNote" id="worldFcRate"></p>
       <p class="fieldNote" id="worldFcFoldHint" hidden></p>
+      <!-- v20.39：答え合わせ。押したときにプロンプトを組み立てる。取り込んでも結果は変わらない（押すのは人） -->
+      <div class="field" id="worldFcVerifyBox" hidden>
+        <span class="fieldLabel" id="worldFcVerifyLabel">答え合わせ</span>
+        <button type="button" id="btnWorldFcVerifyCopy" class="secondaryBtn">答え合わせのプロンプトをコピー</button>
+        <p class="fieldNote" id="worldFcVerifyCopyStatus"></p>
+        <textarea id="worldFcVerifyPaste" rows="4" placeholder='{"verify":[...]} をここに貼る' autocomplete="off"></textarea>
+        <button type="button" id="btnWorldFcVerifyImport" class="secondaryBtn">答え合わせを取り込む</button>
+        <p class="fieldNote" id="worldFcVerifyStatus"></p>
+      </div>
       <div id="worldFcList"></div>
       <div class="field">
         <button type="button" id="btnWorldFcBack" class="secondaryBtn">世界に戻る</button>
@@ -3031,7 +3046,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.38';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.39';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -16066,7 +16081,16 @@
   const WORLD_FC_WHAT_MAX = 40;
   const WORLD_FC_SIGN_MAX = 60;
   // v20.22 第2段A：答え合わせ
-  const WORLD_FC_VERIFY_MAX = 5;      // 1回の朝に渡す期限切れの本数
+  // v20.39：答え合わせは予告の画面の専用プロンプトで聞く（朝の取り込む回から外した）
+  const WORLD_FC_VERIFY_BATCH = 10;    // 1回のコピーに載せる期限切れの本数
+  const WORLD_FC_FACTS   = ['late', 'opposite', 'none', 'short'];
+  const WORLD_FC_FACT_LABEL = { late: '期限の後に起きた', opposite: '逆の動きがあった', none: '動きが見当たらない', short: '動いたが数字が届かなかった' };
+  const WORLD_FC_REASONS = ['notyet', 'never'];
+  const WORLD_FC_REASON_LABEL = { notyet: 'まだ発表されていない', never: 'そもそも公表されない数字だった' };
+  const WORLD_FC_SIGNS   = ['sign', 'other', 'none'];
+  const WORLD_FC_SIGN_USE_LABEL = { sign: '印の調べ先で確かめた', other: '別の出典で確かめた', none: 'どこでも確かめられなかった' };
+  const WORLD_FC_MISREADS = ['yes', 'no', 'unknown'];
+  const WORLD_FC_MISREAD_LABEL = { yes: '読み違い', no: '読みは合っていた', unknown: '分からない' };
   const WORLD_FC_NOTE_MAX   = 80;     // 生成が書く根拠1行
   const WORLD_FC_UNV_FOLD   = 3;      // 「確かめられない」がこの回数で畳む
   const WORLD_FC_FOLD_HINT  = 5;      // 畳んだ本数がこれを超えたら、印の立て方を見直す1行を出す
@@ -16106,9 +16130,18 @@
       // v20.22 第2段A：生成が持ってきた材料。人が押す state とは別に持つ
       // （混ぜると「これは誰が決めたのか」が後から辿れなくなる）
       verdictSuggest: WORLD_FC_STATES.includes(f.verdictSuggest) && f.verdictSuggest !== 'waiting' ? f.verdictSuggest : '',
-      verdictNote: worldStr(f.verdictNote, WORLD_FC_NOTE_MAX),
+      verdictNote: worldStr(f.verdictNote, WORLD_FC_NOTE_MAX, '予告の根拠1行'),
       verdictAt: typeof f.verdictAt === 'string' ? f.verdictAt : '',
       evidence: normalizeWorldFcEvidence(f.evidence),
+      // v20.39：答え合わせで生成が持ってきた事実。結果（state）とは別。読み違いかどうかは人が選ぶ
+      verdictUrl: typeof f.verdictUrl === 'string' && /^https?:\/\//i.test(f.verdictUrl.trim()) ? f.verdictUrl.trim() : '',
+      verdictFact: WORLD_FC_FACTS.includes(f.verdictFact) ? f.verdictFact : '',
+      verdictReason: WORLD_FC_REASONS.includes(f.verdictReason) ? f.verdictReason : '',
+      verdictSign: WORLD_FC_SIGNS.includes(f.verdictSign) ? f.verdictSign : '',
+      verdictSignOther: worldStr(f.verdictSignOther, 40, '予告の別の出典'),
+      verdictActual: worldStr(f.verdictActual, 60, '予告の実際の数字'),
+      misread: WORLD_FC_MISREADS.includes(f.misread) ? f.misread : '',
+      misreadAt: typeof f.misreadAt === 'string' ? f.misreadAt : '',
       unverifiableCount: Math.max(0, Math.floor(Number(f.unverifiableCount) || 0)),
       foldedAt: typeof f.foldedAt === 'string' ? f.foldedAt : '',
       createdAt: f.createdAt || nowIso(),
@@ -17896,9 +17929,7 @@
       '- confidenceWhy：confidence が' + WORLD_CONF_WHY_BELOW + '以下なら、理由を1行。' + (WORLD_CONF_WHY_BELOW + 1) + '以上なら空。\n\n' +
       '■ 並べ方\n' +
       '重要だと思う順に並べる。上から読まれる。\n\n' +
-      // v20.22 第2段A：期限が来た予告の答え合わせ。0本のときは何も出ない。
-      // 既知の概念・アクターの羅列より前に置く（羅列は末尾に置く決まりで、規則を押しのけさせない）
-      worldForecastVerifySection() +
+      // v20.39：期限が来た予告の答え合わせは、予告の画面の専用プロンプトへ移した
       '■ 出力形式\n' +
       (seed ? '{"seed":"' + seed[0] + '",\n"events":[{\n' : '{"events":[{\n') +   // v20.2：初期投入の印
       '  "fact":"...",\n' +
@@ -17923,14 +17954,6 @@
         : '') + '}\n\n' +
       (boot ? '' : 'kind が "relation" のときの premise：\n' +
         '  {"kind":"relation","a":"既知の概念1","b":"既知の概念2","line":"..."}\n') +
-      // v20.22 第2段A：期限が来た予告があるときだけ、答え合わせの形を示す
-      (worldOverdueForecasts().length
-        ? '\n答え合わせ（上の「期限が来た予告」に1本ずつ）：\n' +
-          '"verify":[{"id":"fc_20260912_1","verdict":"hit","note":"そう判断した根拠を1行",\n' +
-          '           "evidence":{"stratumId":"st_us_debt_total","at":"2026-11-30","value":"38.9"}}]\n' +
-          '  verdict は hit（当たり）／miss（外れ）／unverifiable（確かめられない）のどれか。\n' +
-          '  evidence は数字で確かめられたときだけ。書けないなら省く（省いたら unverifiable）。\n\n'
-        : '') +
       'どの地層にも乗らないとき： "strata": []\n' +
       '動いたものが無い・書けないとき： "flow": null\n' +
       '前の動きの続きでないとき： "after": null\n' +
@@ -18030,15 +18053,107 @@
   }
   // v20.22 第2段A：朝のプロンプトに足す「期限が来た予告」の節。
   // 0本のときは空文字を返す（「ありません」の節を出さない。長くなるだけ）
-  function worldForecastVerifySection() {
-    const list = worldOverdueForecasts().slice(0, WORLD_FC_VERIFY_MAX);
-    if (!list.length) return '';
-    return '■ 期限が来た予告（答え合わせ）\n' +
-      'この' + list.length + '本について、当たり・外れ・確かめられない のどれかと、根拠を1行で返してください。\n' +
-      '- 確かめる数字や公表が見つからないときは unverifiable。**「まだ」に倒さない**。\n' +
-      '- 数字で確かめられたときだけ evidence を書く（書けないなら省く）。\n' +
-      list.map((f) => '[' + f.id + ']　' + f.actor + 'が「' + f.what + '」\n' +
-        '  期限 ' + f.due + ' ／ 当たりの印：' + (f.sign || '（印なし）')).join('\n') + '\n\n';
+  // v20.39：答え合わせに載せる予告。見立てがまだ無いものを期限の古い順に。全部に見立てが付いていたら聞き直し
+  // （見立てが付いても押すまでは期限切れのままなので、分けないと同じ予告ばかり載る）
+  function worldVerifyPick() {
+    const overdue = worldOverdueForecasts();
+    const fresh = overdue.filter((f) => !f.verdictSuggest);
+    if (fresh.length) return { list: fresh.slice(0, WORLD_FC_VERIFY_BATCH), rest: Math.max(0, fresh.length - WORLD_FC_VERIFY_BATCH), again: false, overdue: overdue.length };
+    const old = overdue.slice().sort((a, b) => (a.verdictAt < b.verdictAt ? -1 : a.verdictAt > b.verdictAt ? 1 : 0));
+    return { list: old.slice(0, WORLD_FC_VERIFY_BATCH), rest: Math.max(0, old.length - WORLD_FC_VERIFY_BATCH), again: true, overdue: overdue.length };
+  }
+  // v20.39：答え合わせのプロンプト。押したときに組み立てる（作り置きしない）。通信は要らない
+  function worldVerifyPromptText(pick) {
+    const list = (pick || worldVerifyPick()).list;
+    const byId = new Map(worldLiveEvents().map((e) => [e.id, e]));
+    return SHOOT_PROMPT_HEAD +
+      'あなたは、期限が来た「予告」について、実際に何が起きたかを一次ソースで確かめる係です。\n' +
+      '当たり外れを決めるのは本人です。あなたは確かめた事実と、その根拠のページを返します。\n' +
+      '今日は ' + todayStr() + ' です。\n\n' +
+      '■ 必ず守ること\n' +
+      '- web 検索を必ず使う。検索せずに書かない。\n' +
+      '- 当たり（hit）・外れ（miss）と書くときは、確かめに使ったページの url を必ず書く。url を書けないなら unverifiable にする。\n' +
+      '- 動きが見当たらないことを外れにするときは、動きがあれば載るはずのページ（当たりの印の発表一覧など）の url を書く。書けなければ unverifiable と fact:"none"。\n' +
+      '- 数字は、ページに書かれているものだけ。換算しない・合計しない。\n' +
+      '- 思惑が合っていたかは書かない（本人が決める）。起きたことだけを書く。\n' +
+      '- 下の予告すべてについて1つずつ返す。出力形式の例の中身は、形を示すための架空のもの。JSON のみ。\n\n' +
+      '■ 期限が来た予告（' + list.length + '本）\n' +
+      list.map((f) => {
+        const e = byId.get(f.fromEventId);
+        return '[' + f.id + ']　' + f.actor + 'が「' + f.what + '」（' + (WORLD_FC_VERB_LABEL[f.verb] || f.verb) + (f.pledgeOnly ? '・約束だけ' : '') + '）\n' +
+          '  期限 ' + f.due + ' ／ 当たりの印：' + (f.sign || '（印なし）') + '\n' +
+          '  元の推定：' + (f.fromRead || '（無し）') + '\n' +
+          '  元の札：' + (e ? e.eventDate + ' ' + e.fact + (e.source ? '（' + e.source + '）' : '') : '（端末に読み込まれていない）') + '\n';
+      }).join('') + '\n' +
+      '■ 出力形式\n' +
+      '{"verify":[\n' +
+      // 例の番号は架空のもの（本物の予告の番号を入れると、生成が例の中身をその予告の答えとして写すおそれがある）
+      ' {"id":"fc_20260101_000000","verdict":"miss","url":"https://...","fact":"late","factNote":"10月2日に指定を発表（期限の2週間後）",\n' +
+      '  "reason":"","sign":"sign","signOther":"","actual":"指定は2行"}\n' +
+      ']}\n\n' +
+      '- verdict：hit（当たり）／miss（外れ）／unverifiable（確かめられない）\n' +
+      '- url：確かめに使ったページ。hit・miss では必須\n' +
+      '- fact（hit のときは空）：late 期限の後に起きた／opposite 逆の動きがあった／none 動きが見当たらない／short 動いたが数字が届かなかった。miss では必須。unverifiable では空か none\n' +
+      '- factNote：起きたこと（または確かめられなかった事情）を1行（いつ・何が）。' + WORLD_FC_NOTE_MAX + '字まで\n' +
+      '- reason（unverifiable で fact が空のときは必須）：notyet まだ発表されていない／never そもそも公表されない数字だった\n' +
+      '- sign：sign 当たりの印の調べ先で確かめた／other 別の出典で確かめた（signOther に名前）／none どこでも確かめられなかった\n' +
+      '- actual：予告に数字があるとき、実際の数字を文字のまま（「14.8トン」）。無ければ空\n';
+  }
+  // v20.39：答え合わせの取り込み。**結果（state）は絶対に触らない**。当たり・外れは url 必須。
+  // 取り込めなかったものは理由ごとに数える（黙って捨てない）
+  function worldImportVerifyJson(raw) {
+    const parsed = shootParseJson(raw);
+    const items = parsed ? (Array.isArray(parsed) ? parsed : Array.isArray(parsed.verify) ? parsed.verify : null) : null;
+    if (!items) return { error: 'JSON として読めませんでした。{"verify":[...]} の形で貼ってください。' };
+    const out = { added: 0, replaced: 0, noUrlKept: 0, unknown: 0, already: 0, badVerdict: 0, noUrl: 0, badCombo: 0 };
+    const iso = nowIso();
+    items.forEach((v) => {
+      if (!v || typeof v !== 'object') { out.badVerdict++; return; }
+      const fc = worldForecasts().find((x) => x.id === worldStr(v.id, 40));
+      if (!fc) { out.unknown++; return; }
+      if (fc.state !== 'waiting' || fc.foldedAt) { out.already++; return; }   // 押した結果は機械が変えない
+      const verdict = ['hit', 'miss', 'unverifiable'].includes(v.verdict) ? v.verdict : '';
+      if (!verdict) { out.badVerdict++; return; }
+      const rawUrl = typeof v.url === 'string' ? v.url.trim() : '';
+      const url = /^https?:\/\/[^\s/]+\.[^\s]+/i.test(rawUrl) ? rawUrl : '';
+      if (verdict !== 'unverifiable' && !url) { out.noUrl++; return; }
+      const factRaw = typeof v.fact === 'string' ? v.fact.trim() : '';
+      const reasonRaw = typeof v.reason === 'string' ? v.reason.trim() : '';
+      const fact = WORLD_FC_FACTS.includes(factRaw) ? factRaw : (factRaw ? null : '');
+      const reason = WORLD_FC_REASONS.includes(reasonRaw) ? reasonRaw : (reasonRaw ? null : '');
+      let ok = fact !== null && reason !== null;
+      if (ok && verdict === 'hit') ok = !fact && !reason;
+      if (ok && verdict === 'miss') ok = !!fact && !reason;
+      if (ok && verdict === 'unverifiable') ok = (fact === '' || fact === 'none') && (fact === 'none' || !!reason);
+      if (!ok) { out.badCombo++; return; }
+      if (fc.verdictSuggest) out.replaced++;
+      fc.verdictSuggest = verdict;
+      fc.verdictNote = worldStr(v.factNote || v.note, WORLD_FC_NOTE_MAX, '予告の根拠1行');
+      fc.verdictAt = iso;
+      fc.verdictUrl = url;
+      fc.verdictFact = fact;
+      fc.verdictReason = reason;
+      fc.verdictSign = WORLD_FC_SIGNS.includes(v.sign) ? v.sign : '';
+      fc.verdictSignOther = fc.verdictSign === 'other' ? worldStr(v.signOther, 40, '予告の別の出典') : '';
+      fc.verdictActual = worldStr(v.actual, 60, '予告の実際の数字');
+      fc.evidence = null;   // 地層の数字は答え合わせでは聞かない。前の見立ての数字を残すと、今の見立てと混ざる
+      fc.updatedAt = iso;
+      if (!url) out.noUrlKept++;
+      out.added++;
+    });
+    if (out.added) worldSaveForecasts();
+    return out;
+  }
+  function worldVerifyResultText(r) {
+    let msg = r.added ? '答え合わせの候補が' + r.added + '本つきました。見て、押して確定してください。' : '取り込んだ答え合わせはありません。';
+    if (r.noUrlKept) msg += '　うち url なし（確かめられない）' + r.noUrlKept + '本には「URLなし」の印を付けました。';
+    if (r.replaced) msg += '　前の見立てを置き換えた' + r.replaced + '本。';
+    if (r.noUrl) msg += '　※ url が無い当たり・外れ ' + r.noUrl + '本を取り込んでいません。';
+    if (r.badCombo) msg += '　※ 事実の種類・理由が合わない ' + r.badCombo + '本を取り込んでいません。';
+    if (r.badVerdict) msg += '　※ 当たり／外れ／確かめられない のどれでもない ' + r.badVerdict + '本を取り込んでいません。';
+    if (r.already) msg += '　※ すでに押してある予告 ' + r.already + '本は変えていません。';
+    if (r.unknown) msg += '　※ 端末に無い予告 ' + r.unknown + '本は無視しました。';
+    return msg;
   }
   // 同じ主体・同じ動詞・同じ期限は入れない（読む回を2回流したときの二重を防ぐ）
   function worldForecastDup(f) {
@@ -18925,31 +19040,9 @@
     });
     await ensureWorldMonths([...months]);
 
-    // v20.22 第2段A：答え合わせの材料を入れる。**state は絶対に触らない**。
-    // ここで state を動かすと、見た目は「人が押している」のに中身は機械判定になる。
-    // 入れるのは生成の見立て・根拠・数字・判定日時だけで、結果は人が押して初めて変わる
+    // v20.39：答え合わせは予告の画面から取り込む。ここに来た verify は取り込まず、数だけ返す（黙って捨てない）
     const vIn = Array.isArray(parsed && parsed.verify) ? parsed.verify : [];
-    const vOut = { added: 0, unknown: 0, already: 0, badVerdict: 0 };
-    if (vIn.length) {
-      const iso = nowIso();
-      vIn.forEach((v) => {
-        if (!v || typeof v !== 'object') return;
-        const f = worldForecasts().find((x) => x.id === worldStr(v.id, 40));
-        if (!f) { vOut.unknown++; return; }
-        if (f.state !== 'waiting' || f.foldedAt) { vOut.already++; return; }   // 既に押したものは上書きしない
-        const verdict = ['hit', 'miss', 'unverifiable'].includes(v.verdict) ? v.verdict : '';
-        if (!verdict) { vOut.badVerdict++; return; }
-        f.verdictSuggest = verdict;
-        f.verdictNote = worldStr(v.note, WORLD_FC_NOTE_MAX);
-        f.verdictAt = iso;
-        // 読み取った日時は端末が入れる（生成に書かせると、生成が名乗った時刻になる）
-        const ev = normalizeWorldFcEvidence(v.evidence);
-        f.evidence = ev ? { ...ev, readAt: iso } : null;
-        f.updatedAt = iso;
-        vOut.added++;
-      });
-      if (vOut.added) worldSaveForecasts();
-    }
+    const vOut = { added: 0, unknown: 0, already: 0, badVerdict: 0, ignored: vIn.length };
     const taken = new Set(worldEvents.map((e) => e.id));
     wd.tombs.forEach((mm) => mm.forEach((_, id) => taken.add(id)));
     const batchId = 'wb_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -22598,12 +22691,21 @@
     if (f.verdictSuggest) {
       const g = document.createElement('div'); g.className = 'wfGuess';
       g.textContent = '生成の見立て：' + WORLD_FC_STATE_LABEL[f.verdictSuggest];
+      // v20.39：url の無い見立ては推定と同じ印（事実と推定を分ける）
+      if (!f.verdictUrl) { const b = document.createElement('span'); b.className = 'guessBadge'; b.textContent = 'URLなし'; g.appendChild(b); }
       box.appendChild(g);
-    }
-    if (f.verdictNote) {
-      const n = document.createElement('div'); n.className = 'wfNote';
-      n.textContent = f.verdictNote;
-      box.appendChild(n);
+      const line = (cls, text) => { const d = document.createElement('div'); d.className = cls; d.textContent = text; box.appendChild(d); return d; };
+      if (f.verdictNote) line('wfNote', f.verdictNote);   // 生成が書いた根拠1行（見立てのすぐ下に置く）
+      if (f.verdictFact) line('wfFact', '事実：' + WORLD_FC_FACT_LABEL[f.verdictFact]);
+      if (f.verdictReason) line('wfReason', '確かめられなかった理由：' + WORLD_FC_REASON_LABEL[f.verdictReason]);
+      if (f.verdictUrl) {
+        const d = line('wfUrl', '根拠：');
+        const a = document.createElement('a'); a.href = f.verdictUrl; a.target = '_blank'; a.rel = 'noopener noreferrer';
+        a.textContent = f.verdictUrl.replace(/^https?:\/\//i, '').slice(0, 60) + (f.verdictUrl.replace(/^https?:\/\//i, '').length > 60 ? '…' : '');
+        d.appendChild(a);
+      }
+      if (f.verdictSign) line('wfSignUse', '印で確かめたか：' + WORLD_FC_SIGN_USE_LABEL[f.verdictSign] + (f.verdictSign === 'other' && f.verdictSignOther ? '（' + f.verdictSignOther + '）' : ''));
+      if (f.verdictActual) line('wfActual', '実際の数字：' + f.verdictActual);
     }
     if (f.evidence) {
       const e = document.createElement('div'); e.className = 'wfEvidence';
@@ -22630,6 +22732,25 @@
         row.appendChild(b);
       });
       box.appendChild(row);
+      // v20.39：外れを押したら、思惑の読み違いかを人が選ぶ（生成には決めさせない）。もう一度押すと外す
+      if (f.state === 'miss') {
+        const m = document.createElement('div'); m.className = 'wfMisread';
+        m.appendChild(document.createTextNode('思惑の読み違いか：'));
+        const mr = document.createElement('div'); mr.className = 'tagFilterRow';
+        WORLD_FC_MISREADS.forEach((k) => {
+          const b = document.createElement('button'); b.type = 'button';
+          b.className = 'tagFilterBtn' + (f.misread === k ? ' selected' : '');
+          b.textContent = WORLD_FC_MISREAD_LABEL[k];
+          b.addEventListener('click', () => {
+            f.misread = f.misread === k ? '' : k;
+            f.misreadAt = nowIso(); f.updatedAt = f.misreadAt;
+            worldSaveForecasts(); renderWorldForecast();
+          });
+          mr.appendChild(b);
+        });
+        m.appendChild(mr);
+        box.appendChild(m);
+      }
     }
     return box;
   }
@@ -22651,6 +22772,18 @@
     box.innerHTML = '';
     const today = todayStr();
     const overdue = worldOverdueForecasts(today);
+    { // v20.39：期限が来た予告があるときだけ、答え合わせの塊を出す
+      const vb = document.getElementById('worldFcVerifyBox');
+      vb.hidden = !overdue.length;
+      if (overdue.length) {
+        const pick = worldVerifyPick();
+        document.getElementById('worldFcVerifyLabel').textContent = '答え合わせ（期限が来た予告 ' + overdue.length + '本' +
+          (pick.again ? '・全部に見立てが付いています。コピーすると聞き直します' : '・見立てがまだの ' + (pick.list.length + pick.rest) + '本') + '）';
+        // 元の札の月が読み込まれていなければ読んでから描き直す（プロンプトに元の札を載せるため）
+        const need = [...new Set(overdue.map((f) => monthOfWorldId(f.fromEventId)).filter((m) => m && wd.index && wd.index.months[m] && !wd.loaded.has(m)))];
+        if (need.length) ensureWorldMonths(need).then(() => { if (nav.screen === 'world' && worldState.view === 'forecast') renderWorldForecast(); });
+      }
+    }
     const waiting = worldWaitingForecasts().filter((f) => f.due > today);
     const done = worldForecasts().filter((f) => f.state !== 'waiting' && !f.foldedAt);
     const folded = worldFoldedForecasts();
@@ -23919,6 +24052,28 @@
   // v20.22 第2段A：予告の画面
   document.getElementById('btnWorldForecast').addEventListener('click', () => worldOpenForecast('world'));
   document.getElementById('btnWorldFcBack').addEventListener('click', worldForecastBack);
+  // v20.39：答え合わせ。押したその場で組み立ててコピーする（通信しないので iPhone でもそのままコピーできる）
+  document.getElementById('btnWorldFcVerifyCopy').addEventListener('click', () => {
+    const st = document.getElementById('worldFcVerifyCopyStatus');
+    const pick = worldVerifyPick();
+    if (!pick.list.length) { st.textContent = '期限が来た予告がありません。'; return; }
+    const text = worldVerifyPromptText(pick);
+    copyToClipboard(text).then((ok) => {
+      st.textContent = ok
+        ? pick.list.length + '本ぶん' + (pick.again ? '（聞き直し）' : '') + 'をコピーしました（' + text.length.toLocaleString() + '字）。Claude のチャットに貼ってください。' +
+          (pick.rest ? '　ほか ' + pick.rest + '本は、取り込んだ後にもう一度コピーすると出ます。' : '')
+        : 'コピーできませんでした。';
+    });
+  });
+  document.getElementById('btnWorldFcVerifyImport').addEventListener('click', () => {
+    const box = document.getElementById('worldFcVerifyPaste');
+    const st = document.getElementById('worldFcVerifyStatus');
+    const res = worldImportVerifyJson(box.value);
+    if (res.error) { st.textContent = res.error; return; }
+    if (res.added) box.value = '';
+    renderWorldForecast();
+    st.textContent = worldVerifyResultText(res);
+  });
   // v20.4 M4：網の画面
   document.getElementById('btnWorldNetBack').addEventListener('click', () => { worldState.view = 'map'; renderWorld(); });
   document.getElementById('btnWorldNetList').addEventListener('click', () => {
@@ -24600,6 +24755,7 @@
       if (v.unknown) msg += '　※ 端末に無い予告' + v.unknown + '本は無視しました。';
       if (v.already) msg += '　※ すでに押してある予告' + v.already + '本は変えていません。';
       if (v.badVerdict) msg += '　※ 当たり／外れ／確かめられない のどれでもない判定' + v.badVerdict + '本を落としました。';
+      if (v.ignored) msg += '　※ 答え合わせ ' + v.ignored + '本は取り込んでいません（世界タブの「予告」の画面から取り込んでください）。';   // v20.39
     }
     if (res.added) msg += '　地層に乗った ' + res.onStrata + '件。';   // v19.5（v20.18：分かれ目は読む回へ移した）
     if (res.added) msg += '　動かした側つき ' + res.withActors + '件／全 ' + res.added + '件。思惑と分かれ目は、このあと「読む」で書きます。';
