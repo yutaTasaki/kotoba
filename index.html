@@ -3046,7 +3046,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.41';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.42';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -4290,9 +4290,16 @@
   }
 
   // --- Walk data (v3: ported from walk10000, same shape/repo) --------------
-  // Structure is byte-for-byte what walk10000 itself reads/writes
-  // ({startDate, walkedDates, dailyStats, bestStreakOverride?}) so the old
-  // app keeps working untouched against the same walk10000-data repo.
+  // {startDate, walkedDates, dailyStats, bestStreakOverride?, fieldAt}
+  // v20.42：walk10000 アプリはもう使っていないので、合わせ方を「日ごと・欄ごとに新しい方」にした。
+  // 欄をいつ変えたかは fieldAt に持つ（fieldAt.days[日付][欄] = 日時）。欄は次の組で1つ：
+  //   walked … 散歩した印（walkedDates に入っているか）と recordedAt
+  //   wakeMood・afterMood … それぞれ1つ
+  //   stats … steps・distanceM・statsSavedAt（1回の保存で一緒に書く）
+  //   ほかの欄 … 欄の名前ごとに1つ
+  // 消したときも日時を残す（無い、という値が新しい）。日時が無い古いデータどうしは
+  // 「有る方」を採り、両方有って違えば、どちらの端末でも同じ答えになる決まり（文字列の大きい方）で採る。
+  // 全部削除・読み込みは fieldAt.resetAt を立て、それより前の相手の欄を捨てる。
   const WALK_STORAGE_KEY = 'kotoba_walkData';
   const WALK_BACKUP_KEY = 'kotoba_walkData_backup';
   const WALK_LAST_SYNC_KEY = 'kotoba_walkLastSyncAt';
@@ -4303,7 +4310,100 @@
   function normalizeWalkData(parsed) {
     if (!parsed || typeof parsed !== 'object' || !parsed.startDate || !Array.isArray(parsed.walkedDates)) return null;
     if (!parsed.dailyStats || typeof parsed.dailyStats !== 'object') parsed.dailyStats = {};
+    if (!parsed.fieldAt || typeof parsed.fieldAt !== 'object') parsed.fieldAt = { days: {} };   // v20.42
+    if (!parsed.fieldAt.days || typeof parsed.fieldAt.days !== 'object') parsed.fieldAt.days = {};
     return parsed;
+  }
+
+  // ---- v20.42 散歩の合わせ方 ----
+  const WALK_STATS_FIELDS = ['steps', 'distanceM', 'statsSavedAt'];
+  const WALK_FIELD_ORDER = ['wakeMood', 'recordedAt', 'afterMood', 'steps', 'distanceM', 'statsSavedAt'];
+  function walkGroupOf(field) {
+    if (field === 'recordedAt') return 'walked';
+    if (WALK_STATS_FIELDS.includes(field)) return 'stats';
+    return field;
+  }
+  // 1日のうち、ある組の値を取り出す（無ければ null）。walked は印と recordedAt
+  function walkGroupValue(d, day, group) {
+    const st = d.dailyStats[day] || {};
+    if (group === 'walked') {
+      if (!d.walkedDates.includes(day)) return null;
+      return st.recordedAt !== undefined ? { walked: 1, recordedAt: st.recordedAt } : { walked: 1 };
+    }
+    const fields = group === 'stats' ? WALK_STATS_FIELDS : [group];
+    const out = {}; let any = false;
+    fields.forEach((f) => { if (st[f] !== undefined) { out[f] = st[f]; any = true; } });
+    return any ? out : null;
+  }
+  function walkStamp(d, day, group) {
+    if (!d.fieldAt || typeof d.fieldAt !== 'object') d.fieldAt = { days: {} };
+    if (!d.fieldAt.days) d.fieldAt.days = {};
+    d.fieldAt.days[day] = Object.assign({}, d.fieldAt.days[day], { [group]: nowIso() });
+  }
+  // 2つの候補から1つ選ぶ。at が新しい方。同じなら、有る方。両方有れば欄ごとに足し合わせ、
+  // 同じ欄で値が違うときだけ文字列の大きい方（どちらの端末で合わせても同じ答えになる）
+  function walkPick(x, y) {
+    if (x.at !== y.at) return x.at > y.at ? x : y;
+    if (!x.value !== !y.value) return x.value ? x : y;
+    if (!x.value) return x;
+    const v = {};
+    new Set([...Object.keys(x.value), ...Object.keys(y.value)]).forEach((k) => {
+      if (!(k in y.value)) v[k] = x.value[k];
+      else if (!(k in x.value)) v[k] = y.value[k];
+      else v[k] = JSON.stringify(x.value[k]) >= JSON.stringify(y.value[k]) ? x.value[k] : y.value[k];
+    });
+    return { at: x.at, value: v };
+  }
+  function mergeWalkData(a, b) {
+    if (!b) b = { startDate: a.startDate, walkedDates: [], dailyStats: {}, fieldAt: { days: {} } };
+    const fa = a.fieldAt || { days: {} }, fb = b.fieldAt || { days: {} };
+    const ra = fa.resetAt || '', rb = fb.resetAt || '';
+    const reset = ra > rb ? ra : rb;
+    // 相手より古い全部削除をした側の、全部削除より前の欄は捨てる
+    const alive = (side, at) => (side === 'a' ? ra : rb) >= reset || at >= reset;
+    const out = { startDate: '', walkedDates: [], dailyStats: {} };
+    const outAt = { days: {} };
+    if (reset) outAt.resetAt = reset;
+    // 開始日：新しい方。日時が同じなら早い日付（何も入れていない端末は今日の日付を持っているため）
+    let sa = { at: fa.startDate || '', value: a.startDate }, sb = { at: fb.startDate || '', value: b.startDate };
+    if (!alive('a', sa.at) && alive('b', sb.at)) sa = sb;
+    if (!alive('b', sb.at) && alive('a', sa.at)) sb = sa;
+    let sw = sa.at !== sb.at ? (sa.at > sb.at ? sa : sb) : (String(sa.value) <= String(sb.value) ? sa : sb);
+    out.startDate = sw.value; if (sw.at) outAt.startDate = sw.at;
+    // 最長記録の手直し：新しい方。同じなら大きい方
+    let ba = { at: fa.bestStreakOverride || '', value: a.bestStreakOverride }, bb = { at: fb.bestStreakOverride || '', value: b.bestStreakOverride };
+    if (!alive('a', ba.at)) ba = { at: '', value: undefined };
+    if (!alive('b', bb.at)) bb = { at: '', value: undefined };
+    const bw = ba.at !== bb.at ? (ba.at > bb.at ? ba : bb) : ((Number(ba.value) || 0) >= (Number(bb.value) || 0) ? ba : bb);
+    if (bw.value !== undefined && bw.value !== null) out.bestStreakOverride = bw.value;
+    if (bw.at) outAt.bestStreakOverride = bw.at;
+    // 日ごと・組ごと
+    const days = new Set([...a.walkedDates, ...b.walkedDates, ...Object.keys(a.dailyStats), ...Object.keys(b.dailyStats), ...Object.keys(fa.days || {}), ...Object.keys(fb.days || {})]);
+    [...days].sort().forEach((day) => {
+      const groups = new Set(['walked']);
+      [a, b].forEach((d) => Object.keys(d.dailyStats[day] || {}).forEach((f) => groups.add(walkGroupOf(f))));
+      [fa, fb].forEach((f) => Object.keys((f.days || {})[day] || {}).forEach((g) => groups.add(g)));
+      const st = {}; const dayAt = {};
+      [...groups].sort().forEach((g) => {
+        let x = { at: ((fa.days || {})[day] || {})[g] || '', value: walkGroupValue(a, day, g) };
+        let y = { at: ((fb.days || {})[day] || {})[g] || '', value: walkGroupValue(b, day, g) };
+        if (!alive('a', x.at)) x = { at: '', value: null };
+        if (!alive('b', y.at)) y = { at: '', value: null };
+        const w = walkPick(x, y);
+        if (w.at) dayAt[g] = w.at;
+        if (!w.value) return;
+        if (g === 'walked') { out.walkedDates.push(day); if (w.value.recordedAt !== undefined) st.recordedAt = w.value.recordedAt; }
+        else Object.assign(st, w.value);
+      });
+      const keys = Object.keys(st).sort((p, q) => {
+        const ip = WALK_FIELD_ORDER.indexOf(p), iq = WALK_FIELD_ORDER.indexOf(q);
+        return (ip < 0 ? 99 : ip) - (iq < 0 ? 99 : iq) || (p < q ? -1 : p > q ? 1 : 0);
+      });
+      if (keys.length) { out.dailyStats[day] = {}; keys.forEach((k) => { out.dailyStats[day][k] = st[k]; }); }
+      if (Object.keys(dayAt).length) outAt.days[day] = dayAt;
+    });
+    out.fieldAt = outAt;
+    return out;
   }
 
   function loadWalkData() {
@@ -4357,10 +4457,7 @@
   }
 
   let walkSyncInFlight = false;
-  // Same "pull if remote has strictly more walked days, else push" rule
-  // walk10000 itself uses - keeping the exact same rule (rather than a
-  // per-day merge) means the two apps can be pointed at the same repo during
-  // the transition period without disagreeing about what "ahead" means.
+  // v20.42：walk10000 と同じ「歩いた日数が多い方を採る」決まりをやめ、日ごと・欄ごとに合わせる（mergeWalkData）
   async function walkSyncNow() {
     const token = getGhToken();
     if (!token) { setWalkSyncStatus('off'); return; }
@@ -4369,28 +4466,44 @@
     if (!navigator.onLine) { setWalkSyncStatus('offline'); return; }
     walkSyncInFlight = true;
     setWalkSyncStatus('syncing');
+    const firstSync = !localStorage.getItem(WALK_LAST_SYNC_KEY);   // v20.42：初めて同期できたら画面を描き直す
+    const pendingAtStart = walkPendingChangeCount;
+    let synced = false;
     try {
+      // v20.42：日ごと・欄ごとに新しい方を採って合わせ、GitHub と違えば書く
       const remote = await ghGetWalkFile(token);
-      if (remote.data && remote.data.walkedDates.length > walkData.walkedDates.length) {
-        walkData = remote.data;
+      const adopt = (merged) => {
+        const changed = JSON.stringify(merged) !== JSON.stringify(walkData);
+        walkData = merged;
         persistWalkLocal(walkData);
-        backupWalkData(walkData);
-        refreshCurrentScreen();
-      } else {
+        if (changed) refreshCurrentScreen();
+      };
+      adopt(mergeWalkData(walkData, remote.data));
+      try {
         if (ghSameAsRemote(walkData, remote.text)) ghSkippedWrites++;   // v20.41：同じなら書かない
         else await ghPutWalkFile(token, walkData, remote.sha);
-        backupWalkData(walkData);
+      } catch (e) {
+        if (e.status !== 409) throw e;
+        const r2 = await ghGetWalkFile(token);
+        adopt(mergeWalkData(walkData, r2.data));
+        if (ghSameAsRemote(walkData, r2.text)) ghSkippedWrites++;
+        else await ghPutWalkFile(token, walkData, r2.sha);
       }
+      backupWalkData(walkData);
       localStorage.setItem(WALK_LAST_SYNC_KEY, nowIso());
-      walkPendingChangeCount = 0;
+      // v20.42：同期の途中で押した分は残して、もう一度送る（前は0に戻して、次のきっかけまで送らなかった）
+      walkPendingChangeCount = Math.max(0, walkPendingChangeCount - pendingAtStart);
       clearSyncError(WALK_LAST_SYNC_ERROR_KEY);
       setWalkSyncStatus('synced');
+      synced = true;
+      if (firstSync) refreshCurrentScreen();
     } catch (e) {
       recordSyncError(WALK_LAST_SYNC_ERROR_KEY, repoErrorMessage('散歩データ（walk10000-data）', e));
       setWalkSyncStatus('error');
     } finally {
       walkSyncInFlight = false;
     }
+    if (synced && walkPendingChangeCount > 0) scheduleWalkSync();
   }
 
   // For explicit user-confirmed overwrites (import, delete-all): push
@@ -4698,6 +4811,7 @@
     const entry = Object.assign({}, walkData.dailyStats[dateStr]);
     entry[field] = level;
     walkData.dailyStats[dateStr] = entry;
+    walkStamp(walkData, dateStr, walkGroupOf(field));   // v20.42
     saveWalkData(walkData);
   }
 
@@ -4711,6 +4825,7 @@
     if (distanceM !== '' && distanceM != null && !Number.isNaN(distanceM)) entry.distanceM = distanceM; else delete entry.distanceM;
     entry.statsSavedAt = new Date().toISOString();
     walkData.dailyStats[dateStr] = entry;
+    walkStamp(walkData, dateStr, 'stats');   // v20.42
     saveWalkData(walkData);
   }
 
@@ -4720,6 +4835,7 @@
       const entry = Object.assign({}, walkData.dailyStats[dateStr]);
       entry.recordedAt = new Date().toISOString();
       walkData.dailyStats[dateStr] = entry;
+      walkStamp(walkData, dateStr, 'walked');   // v20.42
       saveWalkData(walkData);
     }
   }
@@ -11600,11 +11716,16 @@
   }
 
   async function deleteWalkDayRecord(dateStr) {
+    // v20.42：消した組ごとに日時を残す（無い、が新しい値になる）。上書きではなく合わせて送る
+    // （上書きすると、別の端末で入れた別の日の記録まで消える）
+    const groups = new Set(['walked']);
+    Object.keys(walkData.dailyStats[dateStr] || {}).forEach((f) => groups.add(walkGroupOf(f)));
+    groups.forEach((g) => walkStamp(walkData, dateStr, g));
     walkData.walkedDates = walkData.walkedDates.filter((d) => d !== dateStr);
     delete walkData.dailyStats[dateStr];
     persistWalkLocal(walkData);
     walkPendingChangeCount++;
-    await walkForcePush();
+    await walkSyncNow();
   }
 
   const editWakeMoodButtons = buildMoodRow(document.getElementById('editWakeMoodRow'), (m) => {
@@ -13217,6 +13338,8 @@
     const v = document.getElementById('walkStartDateInput').value;
     if (!v) return;
     walkData.startDate = v;
+    if (!walkData.fieldAt) walkData.fieldAt = { days: {} };
+    walkData.fieldAt.startDate = nowIso();   // v20.42
     saveWalkData(walkData);
     alert('開始日を保存しました');
   });
@@ -13229,10 +13352,12 @@
     }
     const dates = [];
     for (let i = 0; i < count; i++) dates.push(addDays(walkData.startDate, i));
+    // v20.42：前の印と新しい印の両方に日時を押す（外した日は「無い」が新しくなる）。合わせて送る
+    new Set([...walkData.walkedDates, ...dates]).forEach((d) => walkStamp(walkData, d, 'walked'));
     walkData.walkedDates = dates;
     persistWalkLocal(walkData);
     walkPendingChangeCount++;
-    await walkForcePush();
+    await walkSyncNow();
     alert('登録しました');
   });
 
@@ -13240,6 +13365,8 @@
     const v = parseInt(document.getElementById('walkBestStreakInput').value, 10);
     if (!Number.isFinite(v) || v < 0) { alert('正しい日数を入力してください'); return; }
     walkData.bestStreakOverride = v;
+    if (!walkData.fieldAt) walkData.fieldAt = { days: {} };
+    walkData.fieldAt.bestStreakOverride = nowIso();   // v20.42
     saveWalkData(walkData);
     document.getElementById('walkBestStreakInput').value = computeWalkDerived().longest;
     alert('保存しました');
@@ -13264,6 +13391,7 @@
     if (!confirm('散歩データを全て削除します。よろしいですか？')) return;
     if (!confirm('本当に削除しますか？この操作は取り消せません（GitHub同期がオンの場合、バックアップ側も空になります）。')) return;
     walkData = walkDefaultData();
+    walkData.fieldAt = { resetAt: nowIso(), startDate: nowIso(), days: {} };   // v20.42：これより前の記録は、別の端末から戻ってこない
     persistWalkLocal(walkData);
     walkPendingChangeCount++;
     await walkForcePush();
@@ -13294,6 +13422,7 @@
       if (!parsed) throw new Error('invalid shape');
       if (!confirm('現在の散歩データを、読み込んだ内容で上書きします。よろしいですか？')) return;
       walkData = parsed;
+      walkData.fieldAt = Object.assign({}, walkData.fieldAt, { resetAt: nowIso() });   // v20.42：読み込んだ内容より前の記録を戻さない
       persistWalkLocal(walkData);
       await walkForcePush();
       openSettings();
