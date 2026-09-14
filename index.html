@@ -1110,6 +1110,27 @@
   /* v20.22 第2段A：世界タブの予告への入口。期限が来ているときだけ色を変える */
   #btnWorldForecast { display: block; width: 100%; text-align: left; margin: 0 0 10px; }
   #btnWorldForecast.hasDue { color: var(--accent); font-weight: 700; }
+  /* v20.43 自分で調べたこと */
+  #btnWorldDig { display: block; width: 100%; text-align: left; margin: -4px 0 10px; }
+  .worldRow .wDug { font-size: 10px; color: var(--text); white-space: nowrap; margin-left: 4px; }
+  .worldDigRow { margin-top: 8px; }
+  .worldDigRow textarea { width: 100%; }
+  .worldDigSec { margin-top: 12px; }
+  .digHead { display: block; width: 100%; text-align: left; background: none; border: 0; border-top: 1px solid var(--border); padding: 6px 0; margin: 0; font: inherit; color: var(--text); cursor: pointer; }
+  .digHead .digDate { font-size: 11px; color: var(--text-faint); margin-right: 8px; white-space: nowrap; }
+  .digHead .digQ { font-size: 13px; line-height: 1.5; }
+  .digBody { padding: 2px 0 8px; }
+  .digGroup { font-size: 11px; color: var(--text-faint); margin: 8px 0 2px; }
+  .digItem { font-size: 13px; line-height: 1.6; margin: 2px 0; }
+  .digItem.digRead { border-left: 2px dashed var(--guess); padding-left: 8px; }
+  .digMeta { font-size: 11px; color: var(--text-faint); margin-left: 4px; }
+  .digMeta a { color: var(--text-dim); word-break: break-all; }
+  .digFlag { font-size: 11px; color: var(--danger); margin-left: 4px; }
+  .digNoSrc { font-size: 11px; color: var(--text-dim); margin-left: 4px; }
+  .worldDigListRow { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: baseline; width: 100%; text-align: left; background: none; border: 0; border-top: 1px solid var(--border); padding: 7px 0; margin: 0; font: inherit; color: var(--text); cursor: pointer; }
+  .worldDigListRow .wdDate { font-size: 11px; color: var(--text-faint); white-space: nowrap; }
+  .worldDigListRow .wdFact { font-size: 13px; line-height: 1.5; }
+  .worldDigListRow .wdQ { grid-column: 2; font-size: 12px; color: var(--text-dim); line-height: 1.5; }
   /* v20.22 第2段A：予告の画面。根拠はボタンより上に置く（押す前に読ませる） */
   .wfRow { border-top: 1px solid var(--border); padding: 10px 0; }
   .wfRow.done { opacity: 0.75; }
@@ -2404,6 +2425,8 @@
 
       <!-- v20.22 第2段A：予告への入口。0本でも出す（出さないと最初の1本が入るまで辿り着けない） -->
       <button type="button" id="btnWorldForecast" class="linkLikeBtn">予告 ▸</button>
+      <!-- v20.43：自分で調べて札に戻したもの。1件も無いときは出さない -->
+      <button type="button" id="btnWorldDig" class="linkLikeBtn" hidden>調べたこと ▸</button>
 
       <!-- v20.5 M5：直近7日の小さな地図。押すと大きな地図（90日） -->
       <div id="worldMiniMap" class="worldMapBox worldMiniMap" role="button" aria-label="直近7日のお金の流れ。押すと大きな地図"></div>
@@ -2460,6 +2483,18 @@
       <div id="worldFcList"></div>
       <div class="field">
         <button type="button" id="btnWorldFcBack" class="secondaryBtn">世界に戻る</button>
+      </div>
+    </div>
+
+    <!-- v20.43：自分で調べたことの一覧（戻した新しい順）。押すと元の札を開く -->
+    <div class="editorBody" id="worldDigView" hidden>
+      <div class="worldSectionHead">
+        <h3 style="margin:0;" id="worldDigTitle">調べたこと</h3>
+      </div>
+      <p class="fieldNote">自分で調べて札に戻したもの（新しい順）。押すと元の札を開きます。</p>
+      <div id="worldDigList"></div>
+      <div class="field">
+        <button type="button" id="btnWorldDigBack" class="secondaryBtn">世界に戻る</button>
       </div>
     </div>
 
@@ -3046,7 +3081,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.42';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.43';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -3432,7 +3467,9 @@
   bootKV.medDocs = {};
   try { (await kvGetAllPrefix('meditation:')).forEach((v, k) => { bootKV.medDocs[k.slice(11)] = v; }); } catch (e) {}
   // v10 世界: 全月は読まない。今月・先月と、索引が「未読が残っている」と言う月だけ。
-  for (const k of ['worldIndex', 'worldDirty', 'worldStamps', 'worldConcepts', 'worldTerms', 'worldStrata', 'worldActors', 'worldAsks', 'worldSources', 'worldForecasts']) { try { bootKV[k] = await kvGet(k); } catch (e) { bootKV[k] = null; } }
+  for (const k of ['worldIndex', 'worldDirty', 'worldStamps', 'worldConcepts', 'worldTerms', 'worldStrata', 'worldActors', 'worldAsks', 'worldSources', 'worldForecasts', 'worldDigIndex', 'worldDigDirty', 'worldDigStamps']) { try { bootKV[k] = await kvGet(k); } catch (e) { bootKV[k] = null; } }
+  bootKV.worldDigDocs = {};   // v20.43 自分で調べたこと：全部の月を読む（1件1〜3KB の見込み。大きくなったら月ごとに読む形に直す）
+  try { (await kvGetAllPrefix('worldDig:')).forEach((v, k) => { bootKV.worldDigDocs[k.slice(9)] = v; }); } catch (e) {}
   bootKV.worldDocs = {};
   {
     let wix = null;
@@ -3846,12 +3883,13 @@
   // 同じものを2台で直しただけなら作った日時は同じなので出ない。最初から入っている固定の番号（ac_boj など）は見ない
   function idCollisionCheck(kind, x, y, keep) {
     if (!x || !y || !keep || !x.createdAt || !y.createdAt || x.createdAt === y.createdAt) return;
-    if (!/^(?:n|j|d|w|wc|wt|ac|q)_\d{8}_\d+$|^fc_\d{8}_[0-9a-z]+$/.test(String(x.id))) return;
+    if (!/^(?:n|j|d|w|wc|wt|ac|q|ak|dg)_\d{8}_\d+$|^fc_\d{8}_[0-9a-z]+$/.test(String(x.id))) return;   // v20.43：ak・dg
     recordIdCollision(kind, keep, keep === x ? y : x);
   }
   function idCollisionHead(kind, o) {
     const t = kind === 'event' ? o.fact : kind === 'forecast' ? (o.actor || '') + '：' + (o.what || '')
-      : (kind === 'concept' || kind === 'term' || kind === 'actor') ? o.name : o.text;
+      : (kind === 'concept' || kind === 'term' || kind === 'actor') ? o.name
+      : kind === 'dig' ? o.question : kind === 'asked' ? (o.target || '') + ' ' + (o.key || '') : o.text;   // v20.43
     return String(t || (kind === 'journal' ? o.kind || '' : '')).replace(/\s+/g, ' ').slice(0, 40);
   }
   // 鍵は直書き（後ろで宣言する const は、起動時の読み込みの方が早いと使えない）
@@ -7058,7 +7096,7 @@
   const LAST_SCREEN_KEY = 'kotoba_lastScreen';
   const LAST_SCREEN_MAX_AGE_MS = 4 * 3600 * 1000;
   const LAST_SCREEN_OK = new Set(['list', 'records', 'training', 'meditation', 'shoot', 'world', 'settings']);
-  const LAST_WORLD_VIEW_OK = new Set(['main', 'map', 'import', 'actors', 'tidy', 'ask']);   // 一時的な中身に頼る表示（札の一覧・概念・地層・国の網）は戻さない
+  const LAST_WORLD_VIEW_OK = new Set(['main', 'map', 'import', 'actors', 'tidy', 'ask', 'dig']);   // 一時的な中身に頼る表示（札の一覧・概念・地層・国の網）は戻さない
   function rememberScreen() {
     try {
       if (!LAST_SCREEN_OK.has(nav.screen)) { localStorage.removeItem(LAST_SCREEN_KEY); return; }
@@ -15417,6 +15455,14 @@
   const WORLD_FORECASTS_PATH = 'world/forecasts.json';   // v20.21 予告 第1段（月割りしない）
   const WORLD_SOURCES_PATH  = 'world/sources.json';
   const worldMonthPath = (m) => 'world/' + m + '.json';
+  // v20.43 自分で調べたこと。世界の索引（world/index.json）には何も足さない
+  // （古い版の端末が世界の索引を書くと、知らない欄を落とすため。9/14 に予告の日時で起きた）
+  const WORLD_DIG_INDEX_PATH = 'world/dig/index.json';
+  const worldDigMonthPath = (m) => 'world/dig/' + m + '.json';
+  // 字数・件数の安全弁。切ったら印を付ける（黙って切らない）。件数は超えても落とさず、1行出すだけ
+  const DIG_MAX = { question: 200, text: 300, actor: 80, source: 120, flowPart: 200, found: 50, open: 10, openText: 200 };
+  const DIG_KINDS = ['did', 'said', 'read'];
+  const DIG_KIND_LABEL = { did: '事実', said: '述べた理由', read: '推定', '': '種類なし' };
 
   // 一度も保存されていないときだけ入れる初期値。levels は空のまま登録する（v20.8：DFA の2つだけは WORLD_DFA_SEED の実際の値を入れる）
   // （推測の数字を入れると、この機能の信頼が最初から壊れる）。
@@ -16467,6 +16513,341 @@
     wd.tombs.get(m).set(id, nowIso());
     worldMonthChanged(m);
   }
+  // ---- v20.43 自分で調べたこと（world/dig/）---------------------------------
+  // 月は「押した・戻した日の月」。札の日付の月ではない（古い月のファイルが後から書き換わらない）
+  const wdig = { index: { version: 1, updatedAt: '', months: {} }, docs: new Map(), dirty: new Set(), stamps: {}, busy: false, byEvent: null };
+  function emptyDigIndex() { return { version: 1, updatedAt: '', months: {} }; }
+  function normalizeDigIndex(raw) {
+    const out = emptyDigIndex();
+    if (!raw || typeof raw !== 'object') return out;
+    out.updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : '';
+    Object.entries(raw.months || {}).forEach(([m, v]) => {
+      if (/^\d{4}-\d{2}$/.test(m) && v && typeof v === 'object') out.months[m] = { updatedAt: typeof v.updatedAt === 'string' ? v.updatedAt : '', count: Number(v.count) || 0 };
+    });
+    return out;
+  }
+  function emptyDigDoc(m) { return { version: 1, month: m, updatedAt: '', asked: [], digs: [], deletedIds: [] }; }
+  function digStr(v, max) {
+    const t = typeof v === 'string' ? v.trim() : (typeof v === 'number' ? String(v) : '');
+    return t.length > max ? { t: t.slice(0, max), cut: true } : { t, cut: false };
+  }
+  function normalizeDigAsked(a) {
+    if (!a || typeof a !== 'object' || !a.id || !a.at) return null;
+    return {
+      id: String(a.id), target: ['event', 'concept', 'term', 'actor'].includes(a.target) ? a.target : 'event',
+      targetId: String(a.targetId || ''), key: String(a.key || '').slice(0, 20), at: String(a.at),
+      createdAt: String(a.createdAt || a.at), updatedAt: String(a.updatedAt || a.at),
+    };
+  }
+  // 保存してある1件を整える（取り込みで作った形をそのまま通す。字数はここでは切らない）
+  function normalizeDigItem(x) {
+    if (!x || typeof x !== 'object') return null;
+    const o = { kind: DIG_KINDS.includes(x.kind) ? x.kind : '', text: typeof x.text === 'string' ? x.text : '' };
+    ['kindRaw', 'actor', 'date', 'dateRaw', 'source', 'url', 'urlRaw'].forEach((k) => { if (typeof x[k] === 'string' && x[k]) o[k] = x[k]; });
+    if (x.flow && typeof x.flow === 'object') {
+      const f = {};
+      ['from', 'to', 'what', 'amount'].forEach((k) => { if (typeof x.flow[k] === 'string' && x.flow[k]) f[k] = x.flow[k]; });
+      if (Object.keys(f).length) o.flow = f;
+    }
+    if (x.cut) o.cut = 1;
+    return o;
+  }
+  function normalizeDig(d) {
+    if (!d || typeof d !== 'object' || !d.id || !d.eventId || !d.at) return null;
+    const out = {
+      id: String(d.id), eventId: String(d.eventId), at: String(d.at),
+      createdAt: String(d.createdAt || d.at), updatedAt: String(d.updatedAt || d.at),
+      question: typeof d.question === 'string' ? d.question : '',
+      found: (Array.isArray(d.found) ? d.found : []).map(normalizeDigItem).filter(Boolean),
+      open: (Array.isArray(d.open) ? d.open : []).filter((x) => typeof x === 'string' && x),
+    };
+    if (d.questionCut) out.questionCut = 1;
+    return out;
+  }
+  function normalizeDigDoc(raw, m) {
+    const out = emptyDigDoc(m);
+    if (!raw || typeof raw !== 'object') return out;
+    out.updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : '';
+    out.asked = (Array.isArray(raw.asked) ? raw.asked : []).map(normalizeDigAsked).filter(Boolean);
+    out.digs = (Array.isArray(raw.digs) ? raw.digs : []).map(normalizeDig).filter(Boolean);
+    out.deletedIds = (Array.isArray(raw.deletedIds) ? raw.deletedIds : []).filter((t) => t && t.id && t.deletedAt).map((t) => ({ id: String(t.id), deletedAt: String(t.deletedAt) }));
+    return out;
+  }
+  // id ごとに足し合わせる。同じ id は updatedAt の新しい方。消した印が新しければ消したまま
+  function mergeDigDocs(a, b, m) {
+    const out = emptyDigDoc(m);
+    const tombs = new Map();
+    [...a.deletedIds, ...b.deletedIds].forEach((t) => { const c = tombs.get(t.id); if (!c || t.deletedAt > c) tombs.set(t.id, t.deletedAt); });
+    const pick = (xs, ys, kind) => {
+      const mA = new Map(xs.map((x) => [x.id, x])), mB = new Map(ys.map((x) => [x.id, x]));
+      const res = [];
+      new Set([...mA.keys(), ...mB.keys()]).forEach((id) => {
+        const x = mA.get(id), y = mB.get(id);
+        const w = (x && y) ? (x.updatedAt >= y.updatedAt ? x : y) : (x || y);
+        if (x && y) idCollisionCheck(kind, x, y, w);
+        const t = tombs.get(id);
+        if (t && t >= w.updatedAt) return;
+        res.push(w);
+      });
+      return res.sort((p, q) => (p.at < q.at ? -1 : p.at > q.at ? 1 : p.id < q.id ? -1 : p.id > q.id ? 1 : 0));
+    };
+    out.asked = pick(a.asked, b.asked, 'asked');
+    out.digs = pick(a.digs, b.digs, 'dig');
+    const alive = new Set([...out.asked, ...out.digs].map((x) => x.id));
+    out.deletedIds = [...tombs.entries()].filter(([id]) => !alive.has(id)).map(([id, deletedAt]) => ({ id, deletedAt })).sort((p, q) => (p.id < q.id ? -1 : 1));
+    out.updatedAt = a.updatedAt > b.updatedAt ? a.updatedAt : b.updatedAt;
+    return out;
+  }
+  function digSignature(doc) {
+    return [...doc.asked, ...doc.digs].map((x) => x.id + ':' + x.updatedAt).sort().join('|') + '#' + doc.deletedIds.map((t) => t.id + ':' + t.deletedAt).sort().join('|');
+  }
+  function persistDigDoc(m) { return kvSet('worldDig:' + m, JSON.stringify(wdig.docs.get(m) || emptyDigDoc(m))).catch(() => { recordSyncError(LAST_SYNC_ERROR_KEY, '端末に保存できませんでした（調べたこと）'); renderSyncBar(); }); }
+  function persistDigMeta() {
+    kvSet('worldDigIndex', JSON.stringify(wdig.index)).catch(() => {});
+    kvSet('worldDigDirty', JSON.stringify([...wdig.dirty])).catch(() => {});
+    kvSet('worldDigStamps', JSON.stringify(wdig.stamps)).catch(() => {});
+  }
+  function digBoot() {
+    try { wdig.index = normalizeDigIndex(JSON.parse(bootKV.worldDigIndex || 'null')); } catch (e) { wdig.index = emptyDigIndex(); }
+    try { JSON.parse(bootKV.worldDigDirty || '[]').forEach((m) => wdig.dirty.add(m)); } catch (e) {}
+    try { wdig.stamps = JSON.parse(bootKV.worldDigStamps || '{}') || {}; } catch (e) { wdig.stamps = {}; }
+    Object.entries(bootKV.worldDigDocs || {}).forEach(([m, raw]) => {
+      if (!/^\d{4}-\d{2}$/.test(m)) return;
+      try { wdig.docs.set(m, normalizeDigDoc(JSON.parse(raw), m)); } catch (e) {}
+    });
+  }
+  // 端末で書き換える。書いた月は同期で送る
+  function digMutate(fn) {
+    const m = todayStr().slice(0, 7);
+    const doc = wdig.docs.get(m) || emptyDigDoc(m);
+    fn(doc);
+    doc.updatedAt = nowIso();
+    wdig.docs.set(m, doc);
+    wdig.dirty.add(m);
+    wdig.byEvent = null;
+    persistDigDoc(m); persistDigMeta();
+    scheduleSync();
+  }
+  function digTakenIds() {
+    const taken = new Set();
+    wdig.docs.forEach((doc) => { [...doc.asked, ...doc.digs].forEach((x) => taken.add(x.id)); doc.deletedIds.forEach((t) => taken.add(t.id)); });
+    return taken;
+  }
+  function digNewId(prefix) { return newIdWith(prefix + '_' + todayStr().replace(/-/g, '') + '_', digTakenIds()); }
+  // ［Claude に聞く］の依頼を押してコピーできたとき
+  function worldDigRecordAsk(target, targetId, key) {
+    try {
+      const at = nowIso();
+      const rec = { id: digNewId('ak'), target, targetId: String(targetId || ''), key: String(key || ''), at, createdAt: at, updatedAt: at };
+      digMutate((doc) => doc.asked.push(rec));
+    } catch (e) { recordFeatureError('聞いた記録', e); }
+  }
+  function worldDigAll() {
+    const out = [];
+    wdig.docs.forEach((doc) => doc.digs.forEach((d) => out.push(d)));
+    return out.sort((p, q) => (p.at > q.at ? -1 : p.at < q.at ? 1 : 0));
+  }
+  function worldDigsFor(eventId) {
+    if (!wdig.byEvent) {
+      wdig.byEvent = new Map();
+      worldDigAll().forEach((d) => { if (!wdig.byEvent.has(d.eventId)) wdig.byEvent.set(d.eventId, []); wdig.byEvent.get(d.eventId).push(d); });
+    }
+    return wdig.byEvent.get(eventId) || [];
+  }
+  function worldDigDelete(id) {
+    const at = nowIso();
+    wdig.docs.forEach((doc, m) => {
+      const had = doc.digs.some((d) => d.id === id);
+      if (!had) return;
+      doc.digs = doc.digs.filter((d) => d.id !== id);
+      doc.deletedIds = doc.deletedIds.filter((t) => t.id !== id).concat([{ id, deletedAt: at }]);
+      doc.updatedAt = at;
+      wdig.dirty.add(m);
+      persistDigDoc(m);
+    });
+    wdig.byEvent = null;
+    persistDigMeta();
+    scheduleSync();
+  }
+  async function syncWorldDigMonth(token, m, attempt) {
+    const remote = await ghGetContents(GITHUB_REPO, worldDigMonthPath(m), token);
+    let rdoc = emptyDigDoc(m);
+    try { if (remote.text) rdoc = normalizeDigDoc(JSON.parse(remote.text), m); } catch (e) {}
+    const local = wdig.docs.get(m) || emptyDigDoc(m);
+    const merged = mergeDigDocs(local, rdoc, m);
+    const isEmpty = !merged.asked.length && !merged.digs.length && !merged.deletedIds.length;
+    const wrote = (!remote.text && !isEmpty) || (!!remote.text && digSignature(rdoc) !== digSignature(merged));
+    if (wrote) {
+      merged.updatedAt = nowIso();
+      try { await ghPutJson(worldDigMonthPath(m), merged, remote.sha, 'world dig ' + m + ': ' + merged.digs.length + ' digs, ' + merged.asked.length + ' asked'); }
+      catch (e) { if (e.status === 409 && !attempt) return syncWorldDigMonth(token, m, 1); throw e; }
+    }
+    // 送っている間に端末で足された分を落とさない（今の端末の中身ともう一度合わせる）
+    const now = wdig.docs.get(m) || emptyDigDoc(m);
+    const fin = mergeDigDocs(now, merged, m);
+    wdig.docs.set(m, fin);
+    if (digSignature(fin) === digSignature(merged)) wdig.dirty.delete(m);
+    wdig.byEvent = null;
+    await persistDigDoc(m);
+    // 描き直すのは、ほかの端末から新しい記録が来たときだけ（自分で書いた分を送っただけなら描き直さない。開いている札が閉じるため）
+    return { wrote, pulledIn: digSignature(merged) !== digSignature(local), count: fin.digs.length + fin.asked.length };
+  }
+  async function syncWorldDig(token) {
+    if (wdig.busy) return;
+    wdig.busy = true;
+    try {
+      const ri = await ghGetContents(GITHUB_REPO, WORLD_DIG_INDEX_PATH, token);
+      let rix = emptyDigIndex();
+      try { if (ri.text) rix = normalizeDigIndex(JSON.parse(ri.text)); } catch (e) {}
+      const months = new Set([...wdig.dirty]);
+      Object.entries(rix.months).forEach(([m, row]) => { if (row.updatedAt !== (wdig.stamps[m] || '') || !wdig.docs.has(m)) months.add(m); });
+      const index = emptyDigIndex();
+      new Set([...Object.keys(wdig.index.months), ...Object.keys(rix.months)]).forEach((m) => {
+        const x = wdig.index.months[m], y = rix.months[m];
+        index.months[m] = (x && y) ? (y.updatedAt > x.updatedAt ? y : x) : (x || y);
+      });
+      let pulled = false;
+      for (const m of [...months].sort()) {
+        const r = await syncWorldDigMonth(token, m);
+        if (r.wrote || !rix.months[m]) index.months[m] = { updatedAt: nowIso(), count: r.count };
+        else index.months[m] = rix.months[m];
+        wdig.stamps[m] = index.months[m].updatedAt;
+        if (r.pulledIn) pulled = true;
+      }
+      const sig = (ix) => JSON.stringify(Object.keys(ix.months).sort().map((m) => [m, ix.months[m].updatedAt]));
+      index.updatedAt = rix.updatedAt;
+      if (sig(index) !== sig(rix)) {
+        index.updatedAt = nowIso();
+        try { await ghPutJson(WORLD_DIG_INDEX_PATH, index, ri.sha, 'world dig index'); }
+        catch (e) {
+          if (e.status !== 409) throw e;
+          const ri2 = await ghGetContents(GITHUB_REPO, WORLD_DIG_INDEX_PATH, token);
+          let r2 = emptyDigIndex(); try { if (ri2.text) r2 = normalizeDigIndex(JSON.parse(ri2.text)); } catch (e2) {}
+          Object.entries(r2.months).forEach(([m, row]) => { const x = index.months[m]; if (!x || row.updatedAt > x.updatedAt) index.months[m] = row; });
+          await ghPutJson(WORLD_DIG_INDEX_PATH, index, ri2.sha, 'world dig index');
+        }
+      }
+      wdig.index = index;
+      persistDigMeta();
+      if (pulled) refreshCurrentScreen();
+    } finally { wdig.busy = false; }
+  }
+
+  // まとめ方の依頼文（調べていたチャットの続きに貼る。役の説明は付けない）
+  function worldDigPromptText(ev) {
+    return 'ここまでの会話で分かったことを、アプリに戻すためにまとめてください。\n\n' +
+      '■ 必ず守ること\n' +
+      '- この会話で出てきた内容だけを書く。新しく調べて足さない。\n' +
+      '- 分かったことを1件ずつ、次の3つに分ける。\n' +
+      '  did：誰かが実際にやったこと（出来事・数字）。\n' +
+      '  said：誰かが自分で述べた理由や方針。\n' +
+      '  read：推測・解釈。私の推測も、あなたの推測もここ。\n' +
+      '- 迷ったら read にする。事実として書かない。\n' +
+      '- url は、この会話で開いて確かめたページのものだけ。確かめていなければ空にする。作らない。\n' +
+      '- 日付・数字は、出典に書かれていたものだけ。\n' +
+      '- お金・物が動いた did には flow を書く。amount は出典の書き方のまま。換算しない。\n' +
+      '- text は1件1文。目安は20〜80字。\n' +
+      '- JSON のみ。ほかの文章を返さない。\n\n' +
+      '■ 札\n' +
+      '番号：' + ev.id + '\n' +
+      '日付：' + ev.eventDate + '\n' +
+      '何が起きたか：' + ev.fact + '\n\n' +
+      '■ 出力形式\n' +
+      '{"eventId":"' + ev.id + '",\n' +
+      ' "question":"私が何を気にして調べたか（1〜2文）",\n' +
+      ' "found":[\n' +
+      '  {"kind":"did","actor":"A社","text":"何をしたか（1文）","date":"YYYY-MM-DD","source":"媒体名と日付","url":"https://...",\n' +
+      '   "flow":{"from":"A社","to":"B社","what":"融資","amount":"100億ドル"}},\n' +
+      '  {"kind":"said","actor":"C省","text":"述べた理由（1文）","date":"","source":"...","url":""},\n' +
+      '  {"kind":"read","actor":"D国","text":"推測（1文）"}\n' +
+      ' ],\n' +
+      ' "open":["まだ分からないこと（1文）"]}\n\n' +
+      '※ 上の例の中身（A社・B社・C省・D国・金額）は架空です。形だけを使ってください。eventId はこの札の番号のまま書いてください。\n' +
+      'お金・物が動いていない did は "flow": null\n' +
+      'まだ分からないことが無ければ "open": []';
+  }
+  // url：http(s) で始まり、ホストに「.」があるものだけ。無ければ、ドメインらしい形のときだけ https を付ける
+  function digUrl(raw) {
+    const t = typeof raw === 'string' ? raw.trim() : '';
+    if (!t) return { url: '' };
+    if (/^https?:\/\/[^\s\/?#]+\.[^\s\/?#]+(?:[\/?#]\S*)?$/i.test(t)) return { url: t };
+    if (/^[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:[\/?#]\S*)?$/i.test(t)) return { url: 'https://' + t };
+    return { url: '', urlRaw: t.slice(0, 300) };
+  }
+  function digContentKey(eventId, question, found, open) {
+    return JSON.stringify([eventId, question, found.map((x) => [x.kind, x.actor || '', x.text]), open]);
+  }
+  // 貼った JSON を戻した記録にする。札・線・プロンプトには入れない（記録のファイルにだけ残す）
+  function worldImportDigJson(ev, raw) {
+    const parsed = shootParseJson(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { error: 'JSON として読めませんでした。{"eventId":"...","question":"...","found":[...]} の形で貼ってください。' };
+    }
+    const eid = typeof parsed.eventId === 'string' ? parsed.eventId.trim() : '';
+    if (eid && eid !== ev.id) return { error: '別の札（' + eid + '）のまとめです。その札を開いて貼ってください。この札の番号は ' + ev.id + ' です。' };
+    const c = { did: 0, said: 0, read: 0, none: 0, noSrc: 0, cut: 0, badUrl: 0, badDate: 0, unreadable: 0, over: 0, openOver: 0 };
+    const q = digStr(parsed.question, DIG_MAX.question);
+    if (q.cut) c.cut++;
+    const foundIn = Array.isArray(parsed.found) ? parsed.found : [];
+    const found = [];
+    foundIn.forEach((x) => {
+      if (typeof x === 'string') x = { text: x };
+      if (!x || typeof x !== 'object') { c.unreadable++; return; }
+      const text = digStr(x.text, DIG_MAX.text);
+      if (!text.t) { c.unreadable++; return; }
+      const o = { kind: DIG_KINDS.includes(x.kind) ? x.kind : '', text: text.t };
+      if (!o.kind && x.kind != null && String(x.kind).trim()) o.kindRaw = String(x.kind).slice(0, 20);
+      if (text.cut) { o.cut = 1; c.cut++; }
+      const actor = digStr(x.actor, DIG_MAX.actor); if (actor.t) o.actor = actor.t; if (actor.cut) { o.cut = 1; c.cut++; }
+      const source = digStr(x.source, DIG_MAX.source); if (source.t) o.source = source.t; if (source.cut) { o.cut = 1; c.cut++; }
+      if (x.date != null && String(x.date).trim()) { if (isDateStr(String(x.date).trim())) o.date = String(x.date).trim(); else { o.dateRaw = String(x.date).slice(0, 40); c.badDate++; } }
+      const u = digUrl(x.url);
+      if (u.url) o.url = u.url;
+      if (u.urlRaw) { o.urlRaw = u.urlRaw; c.badUrl++; }
+      if (x.flow && typeof x.flow === 'object') {
+        const f = {};
+        ['from', 'to', 'what', 'amount'].forEach((k) => { const v = digStr(x.flow[k], DIG_MAX.flowPart); if (v.t) f[k] = v.t; if (v.cut) { o.cut = 1; c.cut++; } });
+        if (Object.keys(f).length) o.flow = f;
+      }
+      c[o.kind || 'none']++;
+      if (o.kind !== 'read' && !o.url) c.noSrc++;
+      found.push(o);
+    });
+    const open = (Array.isArray(parsed.open) ? parsed.open : []).map((x) => { const v = digStr(x, DIG_MAX.openText); if (v.cut) c.cut++; return v.t; }).filter(Boolean);
+    if (!found.length && !q.t && !open.length) return { error: 'まとめに中身がありませんでした（found・question・open が空です）。' };
+    if (found.length > DIG_MAX.found) c.over = found.length;
+    if (open.length > DIG_MAX.open) c.openOver = open.length;
+    const key = digContentKey(ev.id, q.t, found, open);
+    const same = worldDigsFor(ev.id).find((d) => digContentKey(d.eventId, d.question, d.found, d.open) === key);
+    if (same) return { error: 'このまとめはもう入っています（' + worldDigDay(same.at) + ' に戻したもの）。' };
+    const at = nowIso();
+    const dig = { id: digNewId('dg'), eventId: ev.id, at, createdAt: at, updatedAt: at, question: q.t, found, open };
+    if (q.cut) dig.questionCut = 1;
+    digMutate((doc) => doc.digs.push(dig));
+    return { dig, c };
+  }
+  function worldDigResultText(res) {
+    const c = res.c;
+    const parts = ['事実 ' + c.did, '述べた理由 ' + c.said, '推定 ' + c.read];
+    if (c.none) parts.push('種類なし ' + c.none);
+    let t = '取り込みました：' + parts.join('・');
+    const notes = [];
+    if (c.noSrc) notes.push('出典なし ' + c.noSrc + '件');
+    if (c.badUrl) notes.push('url の形が正しくない ' + c.badUrl + '件（出典なしにしました）');
+    if (c.badDate) notes.push('日付の形が正しくない ' + c.badDate + '件（元の文字を残しました）');
+    if (c.cut) notes.push('長くて切った欄 ' + c.cut + 'か所');
+    if (c.unreadable) notes.push('文が無くて読めなかった件 ' + c.unreadable + '件');
+    if (c.over) notes.push('分かったことが ' + c.over + '件と多かった（全部残しました）');
+    if (c.openOver) notes.push('まだ分からないことが ' + c.openOver + '件と多かった（全部残しました）');
+    if (notes.length) t += '（' + notes.join('・') + '）';
+    return t;
+  }
+  function worldDigDay(iso) {
+    const d = new Date(iso);
+    if (isNaN(d)) return String(iso || '').slice(0, 10);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
   function worldBoot() {
     try { wd.index = normalizeWorldIndex(JSON.parse(bootKV.worldIndex || 'null')); } catch (e) { wd.index = emptyWorldIndex(); }
     try { JSON.parse(bootKV.worldDirty || '[]').forEach((m) => wd.dirty.add(m)); } catch (e) {}
@@ -16478,6 +16859,7 @@
     try { wd.asks = normalizeWorldAsksDoc(JSON.parse(bootKV.worldAsks || 'null')); } catch (e) { wd.asks = emptyWorldAsksDoc(); }
     try { wd.forecasts = normalizeWorldForecastsDoc(JSON.parse(bootKV.worldForecasts || 'null')); } catch (e) { wd.forecasts = emptyWorldForecastsDoc(); }   // v20.21
     try { wd.sources = normalizeWorldSourcesDoc(JSON.parse(bootKV.worldSources || 'null')); } catch (e) { wd.sources = emptyWorldSourcesDoc(); }
+    digBoot();   // v20.43
     worldEvents = [];
     Object.entries(bootKV.worldDocs || {}).forEach(([m, raw]) => {
       let doc = null;
@@ -16928,6 +17310,7 @@
       await syncWorldActors(token, actorsChanged);
       await syncWorldAsks(token, asksChanged);
       await syncWorldForecasts(token, forecastsChanged);   // v20.21 予告 第1段
+      await syncWorldDig(token);   // v20.43 自分で調べたこと
       await syncWorldSources(token, sourcesChanged);
       try { await syncWorldFigures(token); } catch (e) { worldFigLastCheck = 0; }   // v20.6 段階B
       const sig = (ix) => JSON.stringify([ix.epoch || 0, Object.keys(ix.months).sort().map((m) => [m, ix.months[m].updatedAt, ix.months[m].unread]), ix.concepts.updatedAt, ix.terms.updatedAt, ix.strata.updatedAt, ix.actors.updatedAt, ix.asks.updatedAt, ix.sources.updatedAt, (ix.forecasts || {}).updatedAt || '', Object.keys(ix.due).sort(), Object.keys(ix.pulls || {}).sort().map((k) => [k, ix.pulls[k]]), Object.keys(ix.seeds || {}).sort().map((k) => [k, ix.seeds[k].at, ix.seeds[k].n])]);
@@ -19640,6 +20023,13 @@
         t.textContent = tagText + (n >= 2 ? ' ' + n : '');
         right.appendChild(t);
       }
+      // v20.43：自分で調べて戻した札。回数は出さない（開くと見える）
+      if (worldDigsFor(ev.id).length) {
+        const g = document.createElement('span');
+        g.className = 'wDug';
+        g.textContent = '調べた';
+        right.appendChild(g);
+      }
       // v19.3 確度。右端に小さく。低いものは点線の枠で目立たせる（琥珀の推定バッジとは別の印）
       if (ev.confidence) {
         const c = document.createElement('span');
@@ -19665,6 +20055,8 @@
 
     wrap.appendChild(row);
     wrap.appendChild(detail);
+    // v20.43：同期のあと画面を描き直しても、開いていた札は開いたまま（取り込んだ結果が1秒後に閉じて見えなくなるため）
+    if (worldState.openId === ev.id) { renderWorldDetail(detail, ev, paintRight); detail.hidden = false; }
     return wrap;
   }
 
@@ -19982,9 +20374,22 @@
         e.stopPropagation();
         const ok = await copyToClipboard(worldEventCopyText(ev, ask));
         copyNote.textContent = ok ? '「' + ask.label + '」をコピーしました。Claude のチャットに貼ってください。' : 'コピーできませんでした。';
+        if (ok) worldDigRecordAsk('event', ev.id, ask.key);   // v20.43 聞いた記録
       });
       askRow.appendChild(b);
     });
+
+    // v20.43：調べたことを戻す。まとめ方をコピー → 調べていたチャットの続きに貼る → 返ってきた JSON をここに貼る
+    const digRow = worldDigRowEl(ev, () => { renderWorldDetail(box, ev, paintRight); repaint(); });
+    const digBtn = document.createElement('button');
+    digBtn.type = 'button'; digBtn.className = 'tagFilterBtn' + (worldState.digOpenId === ev.id ? ' selected' : ''); digBtn.textContent = '調べたことを戻す';
+    digBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      digRow.hidden = !digRow.hidden;
+      digBtn.classList.toggle('selected', !digRow.hidden);
+      worldState.digOpenId = digRow.hidden ? '' : ev.id;
+    });
+    btns.appendChild(digBtn);
 
     const hideBtn = document.createElement('button');
     hideBtn.type = 'button'; hideBtn.className = 'tagFilterBtn'; hideBtn.textContent = '非表示';
@@ -19999,8 +20404,10 @@
 
     box.appendChild(btns);
     box.appendChild(askRow);
+    box.appendChild(digRow);   // v20.43
     box.appendChild(copyNote);
     box.appendChild(deep);
+    { const sec = worldDigSectionEl(ev, () => { renderWorldDetail(box, ev, paintRight); repaint(); }); if (sec) box.appendChild(sec); }   // v20.43
 
     // 分かれ目の1行。v19.5 段階2 から予測の枠（3択・一言・期限）は出さない（prediction のデータは残す）
     if (ev.fork) {
@@ -20009,6 +20416,134 @@
       forkEl.textContent = '分かれ目：' + ev.fork.text;
       box.appendChild(forkEl);
     }
+  }
+
+  // ---- v20.43 札の画面：戻す欄と「自分で調べたこと」 ----
+  // 貼った文章は、取り込むまで札ごとにメモリに持つ（チャットから戻る間に同期が画面を描き直しても消えない）
+  function worldDigRowEl(ev, rerender) {
+    const row = document.createElement('div');
+    row.className = 'worldDigRow';
+    row.hidden = worldState.digOpenId !== ev.id;
+    row.addEventListener('click', (e) => e.stopPropagation());
+    const copy = document.createElement('button');
+    copy.type = 'button'; copy.className = 'secondaryBtn'; copy.textContent = 'まとめ方をコピー';
+    const copySt = document.createElement('p'); copySt.className = 'fieldNote';
+    copySt.textContent = '調べていたチャットの続きに貼ってください。返ってきた JSON を下に貼ります。';
+    copy.addEventListener('click', async () => {
+      const ok = await copyToClipboard(worldDigPromptText(ev));
+      copySt.textContent = ok ? 'コピーしました。調べていたチャットの続きに貼ってください。' : 'コピーできませんでした。';
+    });
+    const ta = document.createElement('textarea');
+    ta.rows = 4; ta.autocomplete = 'off'; ta.placeholder = '{"eventId":"' + ev.id + '", ...} をここに貼る';
+    ta.value = (worldState.digDrafts || {})[ev.id] || '';
+    ta.addEventListener('input', () => { worldState.digDrafts = worldState.digDrafts || {}; worldState.digDrafts[ev.id] = ta.value; });
+    const imp = document.createElement('button');
+    imp.type = 'button'; imp.className = 'secondaryBtn'; imp.textContent = 'この札に取り込む';   // 画面上の「取り込む」（取り込む画面へ移る）と分ける
+    const st = document.createElement('p'); st.className = 'fieldNote';
+    st.textContent = (worldState.digStatus || {})[ev.id] || '';
+    imp.addEventListener('click', () => {
+      const res = worldImportDigJson(ev, ta.value);
+      worldState.digStatus = worldState.digStatus || {};
+      if (res.error) { st.textContent = res.error; worldState.digStatus[ev.id] = res.error; return; }
+      worldState.digStatus[ev.id] = worldDigResultText(res);
+      if (worldState.digDrafts) delete worldState.digDrafts[ev.id];
+      rerender();
+    });
+    row.appendChild(copy); row.appendChild(copySt); row.appendChild(ta); row.appendChild(imp); row.appendChild(st);
+    return row;
+  }
+  function worldDigSectionEl(ev, rerender) {
+    const digs = worldDigsFor(ev.id);
+    if (!digs.length) return null;
+    const sec = document.createElement('div');
+    sec.className = 'worldDigSec';
+    sec.addEventListener('click', (e) => e.stopPropagation());
+    const lab = document.createElement('div');
+    lab.className = 'rowLabel';
+    lab.textContent = '自分で調べたこと（' + digs.length + '回）';
+    sec.appendChild(lab);
+    digs.forEach((d, i) => {
+      const head = document.createElement('button');
+      head.type = 'button'; head.className = 'digHead';
+      const dt = document.createElement('span'); dt.className = 'digDate'; dt.textContent = worldDigDay(d.at);
+      const qq = document.createElement('span'); qq.className = 'digQ'; qq.textContent = d.question || '（問いは書かれていません）';
+      head.appendChild(dt); head.appendChild(qq);
+      if (d.questionCut) { const f = document.createElement('span'); f.className = 'digFlag'; f.textContent = '（' + DIG_MAX.question + '字で切りました）'; head.appendChild(f); }
+      const body = document.createElement('div');
+      body.className = 'digBody';
+      body.hidden = i > 0;
+      head.addEventListener('click', () => { body.hidden = !body.hidden; });
+      ['did', 'said', 'read', ''].forEach((k) => {
+        const items = d.found.filter((x) => x.kind === k);
+        if (!items.length) return;
+        const g = document.createElement('div'); g.className = 'digGroup'; g.textContent = DIG_KIND_LABEL[k];
+        body.appendChild(g);
+        items.forEach((x) => {
+          const it = document.createElement('div');
+          it.className = 'digItem' + (k === 'read' ? ' digRead' : '');
+          if (k === 'read') { const b = document.createElement('span'); b.className = 'guessBadge'; b.textContent = '推定'; it.appendChild(b); }
+          it.appendChild(document.createTextNode((x.actor ? x.actor + '：' : '') + x.text));
+          const meta = [x.source, x.date].filter(Boolean).join(' ');
+          if (meta) { const m = document.createElement('span'); m.className = 'digMeta'; m.textContent = '（' + meta + '）'; it.appendChild(m); }
+          if (x.url) {
+            const a = document.createElement('a');
+            a.href = x.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+            a.textContent = k === 'read' ? '参考' : 'url';
+            const w = document.createElement('span'); w.className = 'digMeta'; w.appendChild(a); it.appendChild(w);
+          } else if (k !== 'read') {
+            const n = document.createElement('span'); n.className = 'digNoSrc'; n.textContent = '出典なし'; it.appendChild(n);
+          }
+          if (x.flow) { const f = document.createElement('span'); f.className = 'digMeta'; f.textContent = '［' + [x.flow.from || '？', '→', x.flow.to || '？', x.flow.what || '', x.flow.amount || ''].join(' ').trim() + '］'; it.appendChild(f); }
+          const flags = [];
+          if (x.kindRaw) flags.push('書かれていた種類：' + x.kindRaw);
+          if (x.urlRaw) flags.push('url の形が正しくないので出典なし：' + x.urlRaw);
+          if (x.dateRaw) flags.push('日付の形が正しくない：' + x.dateRaw);
+          if (x.cut) flags.push('長くて切りました');
+          if (flags.length) { const f = document.createElement('span'); f.className = 'digFlag'; f.textContent = '（' + flags.join('・') + '）'; it.appendChild(f); }
+          body.appendChild(it);
+        });
+      });
+      if (d.open.length) {
+        const g = document.createElement('div'); g.className = 'digGroup'; g.textContent = 'まだ分からないこと';
+        body.appendChild(g);
+        d.open.forEach((t) => { const it = document.createElement('div'); it.className = 'digItem'; it.textContent = t; body.appendChild(it); });
+      }
+      const del = document.createElement('button');
+      del.type = 'button'; del.className = 'linkLikeBtn'; del.textContent = 'この記録を消す';
+      del.addEventListener('click', () => {
+        if (!confirm('この記録を消します。消した印は残り、ほかの端末からも戻ってきません。よろしいですか？')) return;
+        worldDigDelete(d.id);
+        rerender();
+      });
+      body.appendChild(del);
+      sec.appendChild(head);
+      sec.appendChild(body);
+    });
+    return sec;
+  }
+  function renderWorldDig() {
+    const all = worldDigAll();
+    document.getElementById('worldDigTitle').textContent = '調べたこと（' + all.length + '）';
+    const box = document.getElementById('worldDigList');
+    box.innerHTML = '';
+    if (!all.length) { const p = document.createElement('p'); p.className = 'emptyMsg'; p.textContent = 'まだありません。札の［調べたことを戻す］から入ります。'; box.appendChild(p); return; }
+    const need = [...new Set(all.map((d) => monthOfWorldId(d.eventId)).filter((m) => m && wd.index && wd.index.months[m] && !wd.loaded.has(m)))];
+    if (need.length) ensureWorldMonths(need).then(() => { if (nav.screen === 'world' && worldState.view === 'dig') renderWorldDig(); });
+    all.forEach((d) => {
+      const ev = worldLiveEvents().find((e) => e.id === d.eventId);
+      const row = document.createElement('button');
+      row.type = 'button'; row.className = 'worldDigListRow';
+      const dt = document.createElement('span'); dt.className = 'wdDate'; dt.textContent = worldDigDay(d.at);
+      const f = document.createElement('span'); f.className = 'wdFact'; f.textContent = ev ? ev.fact : '（札 ' + d.eventId + ' は端末にありません）';
+      const q = document.createElement('span'); q.className = 'wdQ'; q.textContent = (d.question || '（問いは書かれていません）') + '　分かったこと ' + d.found.length + '件';
+      row.appendChild(dt); row.appendChild(f); row.appendChild(q);
+      row.addEventListener('click', async () => {
+        const m = monthOfWorldId(d.eventId);
+        if (m && !wd.loaded.has(m)) await ensureWorldMonths([m]);
+        openWorldCards({ title: '調べた札', ids: [d.eventId], openId: d.eventId, from: 'dig' });
+      });
+      box.appendChild(row);
+    });
   }
 
   // 出来事の url のドメインから、登録してあるソースの「立場」を引く
@@ -20499,6 +21034,7 @@
     document.getElementById('worldMapView').hidden = worldState.view !== 'map';   // v20
     document.getElementById('worldNetView').hidden = worldState.view !== 'net';   // v20.4
     document.getElementById('worldForecastView').hidden = worldState.view !== 'forecast';   // v20.22 第2段A
+    document.getElementById('worldDigView').hidden = worldState.view !== 'dig';   // v20.43
     if (worldState.view === 'ask') renderWorldAsk();
     else if (worldState.view === 'main') renderWorldMain();
     else if (worldState.view === 'concept') renderWorldConcept();
@@ -20509,6 +21045,7 @@
     else if (worldState.view === 'map') renderWorldMap();   // v20
     else if (worldState.view === 'net') renderWorldNet();   // v20.4
     else if (worldState.view === 'forecast') renderWorldForecast();   // v20.22 第2段A
+    else if (worldState.view === 'dig') renderWorldDig();   // v20.43
     else renderWorldImport();
   }
   // v18 A-1: 今日の単位は「札」ではなく「主体」。readDate はそのまま残す
@@ -20601,6 +21138,12 @@
         ? '予告 ・ 期限が来たもの ' + over + '本 ▸'
         : (wait ? '予告 ・ 待っている ' + wait + '本 ▸' : '予告 ▸');
       btn.classList.toggle('hasDue', !!over);
+    }
+    { // v20.43：自分で調べたこと。1件も無いときは出さない
+      const n = worldDigAll().length;
+      const b = document.getElementById('btnWorldDig');
+      b.hidden = !n;
+      if (n) b.textContent = '調べたこと ' + n + '件 ▸';
     }
 
     // 今日の地層。出来事があってもなくても出る（変化がないものを毎日見せる）
@@ -23526,7 +24069,8 @@
       const wrap = body.querySelector('[data-event-id="' + id + '"]');
       if (wrap) {
         const row = wrap.querySelector('.worldRow');
-        if (row) row.click();
+        const det = wrap.querySelector('.worldDetail');
+        if (row && det && det.hidden) row.click();   // v20.43：もう開いていれば押さない（押すと閉じる）
         try { wrap.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e) {}
       }
     }
@@ -23668,6 +24212,7 @@
       b.addEventListener('click', async () => {
         const ok = await copyToClipboard(worldConceptCopyText(c, ask));
         document.getElementById('worldConceptStatus').textContent = ok ? '「' + ask.label + '」をコピーしました。' : 'コピーできませんでした。';
+        if (ok) worldDigRecordAsk(isActor ? 'actor' : isTerm ? 'term' : 'concept', c.id, ask.key);   // v20.43 聞いた記録
       });
       askRow.appendChild(b);
     });
@@ -24256,6 +24801,7 @@
     // v20.4：網から開いた一覧・主体の詳細は網へ、網は地図へ戻る
     if (worldState.view === 'cards' && worldState.cards && worldState.cards.from === 'net') { worldState.view = 'net'; worldState.cards = null; renderWorld(); return; }
     if (worldState.view === 'concept' && worldState.entryFrom === 'net') { worldState.view = 'net'; renderWorld(); return; }
+    if (worldState.view === 'cards' && worldState.cards && worldState.cards.from === 'dig') { worldState.view = 'dig'; worldState.cards = null; renderWorld(); return; }   // v20.43
     if (worldState.view === 'net') { worldState.view = 'map'; renderWorld(); return; }
     if (worldState.view !== 'main') {
       worldState.view = 'main'; worldState.strataAll = false; worldState.cards = null;
@@ -24272,10 +24818,12 @@
   document.getElementById('btnWorldCardsBack').addEventListener('click', () => {
     const from = worldState.cards && worldState.cards.from;   // v20.4
     // v20.33：地図から開いた一覧は地図へ（上の「← 戻る」と同じ行き先にそろえる）
-    worldState.cards = null; worldState.view = from === 'net' ? 'net' : from === 'map' ? 'map' : 'main'; renderWorld();
+    worldState.cards = null; worldState.view = from === 'net' ? 'net' : from === 'map' ? 'map' : from === 'dig' ? 'dig' : 'main'; renderWorld();   // v20.43：調べたことから開いた札は一覧へ
   });
   // v20.22 第2段A：予告の画面
   document.getElementById('btnWorldForecast').addEventListener('click', () => worldOpenForecast('world'));
+  document.getElementById('btnWorldDig').addEventListener('click', () => { worldState.view = 'dig'; renderWorld(); });   // v20.43
+  document.getElementById('btnWorldDigBack').addEventListener('click', () => { worldState.view = 'main'; renderWorld(); });
   document.getElementById('btnWorldFcBack').addEventListener('click', worldForecastBack);
   // v20.39：答え合わせ。押したその場で組み立ててコピーする（通信しないので iPhone でもそのままコピーできる）
   document.getElementById('btnWorldFcVerifyCopy').addEventListener('click', () => {
