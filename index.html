@@ -2581,6 +2581,9 @@
         <textarea id="worldImportPaste" rows="4" placeholder='{"events":[...]} をここに貼る' autocomplete="off"></textarea>
         <button type="button" id="btnWorldImport" class="secondaryBtn">取り込む</button>
         <p class="fieldNote" id="worldImportStatus"></p>
+        <!-- v20.48 重複 段1：同じなので入れなかった出来事（今の取り込み・最近14日） -->
+        <div id="worldImportSame"></div>
+        <div id="worldSameRecent" hidden></div>
         <!-- v19.11：よく使う出典の外。押すと「必ず見るもの」に昇格する。すでにあるものは出ない -->
         <div id="worldOutsideList"></div>
         <button type="button" id="btnWorldImportShow" class="tagFilterBtn" hidden>入れた札を見る</button>
@@ -3122,7 +3125,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.47';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.48';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -3924,13 +3927,13 @@
   // 同じものを2台で直しただけなら作った日時は同じなので出ない。最初から入っている固定の番号（ac_boj など）は見ない
   function idCollisionCheck(kind, x, y, keep) {
     if (!x || !y || !keep || !x.createdAt || !y.createdAt || x.createdAt === y.createdAt) return;
-    if (!/^(?:n|j|d|w|wc|wt|ac|q|ak|dg|pk)_\d{8}_\d+$|^fc_\d{8}_[0-9a-z]+$/.test(String(x.id))) return;   // v20.43：ak・dg
+    if (!/^(?:n|j|d|w|wc|wt|ac|q|ak|dg|pk|im)_\d{8}_\d+$|^fc_\d{8}_[0-9a-z]+$/.test(String(x.id))) return;   // v20.43：ak・dg
     recordIdCollision(kind, keep, keep === x ? y : x);
   }
   function idCollisionHead(kind, o) {
     const t = kind === 'event' ? o.fact : kind === 'forecast' ? (o.actor || '') + '：' + (o.what || '')
       : (kind === 'concept' || kind === 'term' || kind === 'actor') ? o.name
-      : kind === 'dig' ? o.question : kind === 'pick' ? '今日見るべき件 ' + (o.date || '') :kind === 'asked' ? (o.target || '') + ' ' + (o.key || '') : o.text;   // v20.43
+      : kind === 'dig' ? o.question : kind === 'pick' ? '今日見るべき件 ' + (o.date || '') : kind === 'import' ? '取り込みの記録 ' + (o.date || '') :kind === 'asked' ? (o.target || '') + ' ' + (o.key || '') : o.text;   // v20.43
     return String(t || (kind === 'journal' ? o.kind || '' : '')).replace(/\s+/g, ' ').slice(0, 40);
   }
   // 鍵は直書き（後ろで宣言する const は、起動時の読み込みの方が早いと使えない）
@@ -15511,6 +15514,12 @@
   const WORLD_TODAY_WHY_ASK = 60;     // プロンプトで頼む字数
   const WORLD_TODAY_WHY_MAX = 120;    // 安全弁。超えたら切って印
   const WORLD_TODAY_SHOW_DAYS = 7;    // 今日の取り込みが無い日に、何日前の分まで出すか
+  // v20.48 重複 段1：すでにある札の一覧と same・follows。日数・件数はここだけで変える
+  const WORLD_KNOWN_CARDS_DAYS = 14;  // 取り込んだ日（札を作った日）が今日を含めて直近何日の札を渡すか
+  const WORLD_KNOWN_CARDS_MAX = 100;  // 渡す上限（新しい順。外れたらコピーの文に件数を出す）
+  const WORLD_SAME_WHY_ASK = 40;      // same の理由をプロンプトで頼む字数
+  const WORLD_SAME_WHY_MAX = 120;     // 安全弁。超えたら切って印
+  const WORLD_SAME_MANY = 50;         // これを超えたら結果に「多かった」（落とさない）
   // v20.45：月まで（YYYY-MM）も正しい日付。日が分からないのは普通のこと
   function digIsMonth(t) { return typeof t === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(t); }
   function worldMonthLabel(ym) { const m = /^(\d{4})-(\d{2})$/.exec(ym || ''); return m ? m[1] + '年' + Number(m[2]) + '月' : String(ym || ''); }
@@ -16594,7 +16603,12 @@
     });
     return out;
   }
-  function emptyDigDoc(m) { return { version: 1, month: m, updatedAt: '', asked: [], digs: [], picks: [], deletedIds: [] }; }
+  function emptyDigDoc(m) { return { version: 1, month: m, updatedAt: '', asked: [], digs: [], picks: [], imports: [], deletedIds: [] }; }
+  // v20.48：この版が知っている欄。ほかの欄のうち「id を持つ記録の並び」は、落とさず持って書き戻す（次の版で欄を足しても消さない）
+  const DIG_DOC_KNOWN = ['version', 'month', 'updatedAt', 'asked', 'digs', 'picks', 'imports', 'deletedIds'];
+  function digExtraKeys(doc) { return Object.keys(doc || {}).filter((k) => !DIG_DOC_KNOWN.includes(k) && Array.isArray(doc[k])); }
+  // 記録の並びを全部（消した印を除く）
+  function digAllRecords(doc) { return [...doc.asked, ...doc.digs, ...(doc.picks || []), ...(doc.imports || []), ...digExtraKeys(doc).flatMap((k) => doc[k])]; }
   function digStr(v, max) {
     const t = typeof v === 'string' ? v.trim() : (typeof v === 'number' ? String(v) : '');
     return t.length > max ? { t: t.slice(0, max), cut: true } : { t, cut: false };
@@ -16669,6 +16683,27 @@
     };
     return out;
   }
+  // v20.48 重複 段1：取り込みの記録（same＝同じなので札にしなかった出来事、follows＝続きの札）
+  function normalizeWorldImport(p) {
+    if (!p || typeof p !== 'object' || !p.id || !p.at || !isDateStr(p.date)) return null;
+    const str = (x, keys) => { const o = {}; keys.forEach((k) => { if (typeof x[k] === 'string' && x[k]) o[k] = x[k]; }); return o; };
+    return {
+      id: String(p.id), date: p.date, at: String(p.at),
+      createdAt: String(p.createdAt || p.at), updatedAt: String(p.updatedAt || p.at),
+      batchId: typeof p.batchId === 'string' ? p.batchId : '',
+      sameReported: !!p.sameReported,
+      same: (Array.isArray(p.same) ? p.same : []).filter((x) => x && typeof x === 'object').map((x) => {
+        const o = str(x, ['id', 'cardId', 'fact', 'why', 'url', 'urlRaw', 'gone', 'notSameAt', 'cardMadeId', 'cardAt', 'urlChecked', 'urlCheckedAt']);
+        if (x.cardBy && typeof x.cardBy === 'object') { const v = {}; Object.entries(x.cardBy).forEach(([k, vv]) => { if (typeof vv === 'string') v[k] = vv; }); o.cardBy = v; }
+        if (Array.isArray(x.urlFailed)) { const fl = x.urlFailed.filter((u) => u && typeof u.url === 'string' && typeof u.at === 'string').map((u) => ({ url: u.url, at: u.at })); if (fl.length) o.urlFailed = fl; }
+        if (x.factCut) o.factCut = 1;
+        if (x.whyCut) o.whyCut = 1;
+        return o;
+      }),
+      follows: (Array.isArray(p.follows) ? p.follows : []).filter((x) => x && typeof x.cardId === 'string' && typeof x.follows === 'string').map((x) => ({ cardId: x.cardId, follows: x.follows })),
+      followsMissing: Math.max(0, Math.floor(Number(p.followsMissing) || 0)),
+    };
+  }
   // v20.46：記録の中の1件。数なら分かったこと（found）、"c0" のような形なら札の候補（cards）
   function digItemAt(dg, idx) {
     if (!dg) return null;
@@ -16682,6 +16717,11 @@
     out.asked = (Array.isArray(raw.asked) ? raw.asked : []).map(normalizeDigAsked).filter(Boolean);
     out.digs = (Array.isArray(raw.digs) ? raw.digs : []).map(normalizeDig).filter(Boolean);
     out.picks = (Array.isArray(raw.picks) ? raw.picks : []).map(normalizeWorldPick).filter(Boolean);   // v20.47
+    out.imports = (Array.isArray(raw.imports) ? raw.imports : []).map(normalizeWorldImport).filter(Boolean);   // v20.48
+    // v20.48：知らない欄。id と日時を持つ記録だけを、中身を確かめずにそのまま残す
+    Object.keys(raw).filter((k) => !DIG_DOC_KNOWN.includes(k) && Array.isArray(raw[k])).forEach((k) => {
+      out[k] = raw[k].filter((x) => x && typeof x === 'object' && x.id && (x.updatedAt || x.at)).map((x) => Object.assign({}, x, { id: String(x.id), updatedAt: String(x.updatedAt || x.at), at: String(x.at || x.updatedAt) }));
+    });
     out.deletedIds = (Array.isArray(raw.deletedIds) ? raw.deletedIds : []).filter((t) => t && t.id && t.deletedAt).map((t) => ({ id: String(t.id), deletedAt: String(t.deletedAt) }));
     return out;
   }
@@ -16706,13 +16746,15 @@
     out.asked = pick(a.asked, b.asked, 'asked');
     out.digs = pick(a.digs, b.digs, 'dig');
     out.picks = pick(a.picks || [], b.picks || [], 'pick');   // v20.47：書き換えない記録なので、どちらを採っても同じ
-    const alive = new Set([...out.asked, ...out.digs, ...out.picks].map((x) => x.id));
+    out.imports = pick(a.imports || [], b.imports || [], 'import');   // v20.48：［別の出来事だった］で更新日時が変わる
+    new Set([...digExtraKeys(a), ...digExtraKeys(b)]).forEach((k) => { out[k] = pick(a[k] || [], b[k] || [], k); });   // v20.48：知らない欄
+    const alive = new Set(digAllRecords(out).map((x) => x.id));
     out.deletedIds = [...tombs.entries()].filter(([id]) => !alive.has(id)).map(([id, deletedAt]) => ({ id, deletedAt })).sort((p, q) => (p.id < q.id ? -1 : 1));
     out.updatedAt = a.updatedAt > b.updatedAt ? a.updatedAt : b.updatedAt;
     return out;
   }
   function digSignature(doc) {
-    return [...doc.asked, ...doc.digs, ...(doc.picks || [])].map((x) => x.id + ':' + x.updatedAt).sort().join('|') + '#' + doc.deletedIds.map((t) => t.id + ':' + t.deletedAt).sort().join('|');
+    return digAllRecords(doc).map((x) => x.id + ':' + x.updatedAt).sort().join('|') + '#' + doc.deletedIds.map((t) => t.id + ':' + t.deletedAt).sort().join('|');
   }
   function persistDigDoc(m) { return kvSet('worldDig:' + m, JSON.stringify(wdig.docs.get(m) || emptyDigDoc(m))).catch(() => { recordSyncError(LAST_SYNC_ERROR_KEY, '端末に保存できませんでした（調べたこと）'); renderSyncBar(); }); }
   function persistDigMeta() {
@@ -16744,7 +16786,7 @@
   }
   function digTakenIds() {
     const taken = new Set();
-    wdig.docs.forEach((doc) => { [...doc.asked, ...doc.digs, ...(doc.picks || [])].forEach((x) => taken.add(x.id)); doc.deletedIds.forEach((t) => taken.add(t.id)); });
+    wdig.docs.forEach((doc) => { digAllRecords(doc).forEach((x) => taken.add(x.id)); doc.deletedIds.forEach((t) => taken.add(t.id)); });
     return taken;
   }
   function digNewId(prefix) { return newIdWith(prefix + '_' + todayStr().replace(/-/g, '') + '_', digTakenIds()); }
@@ -16789,7 +16831,7 @@
     try { if (remote.text) rdoc = normalizeDigDoc(JSON.parse(remote.text), m); } catch (e) {}
     const local = wdig.docs.get(m) || emptyDigDoc(m);
     const merged = mergeDigDocs(local, rdoc, m);
-    const isEmpty = !merged.asked.length && !merged.digs.length && !merged.picks.length && !merged.deletedIds.length;
+    const isEmpty = !digAllRecords(merged).length && !merged.deletedIds.length;
     const wrote = (!remote.text && !isEmpty) || (!!remote.text && digSignature(rdoc) !== digSignature(merged));
     if (wrote) {
       merged.updatedAt = nowIso();
@@ -18667,6 +18709,7 @@
       // v20.27：「まだ起きていない」は確かさではない（確度3で沈むと、約束の絞りに出るはずの札が地図から消えた）
       '  交渉・打診・約束の段階であることは confidence で表さない（出典の確かさだけで付ける）。まだ実体が動いていないなら pledge を true にする。\n' +
       '- confidenceWhy：confidence が' + WORLD_CONF_WHY_BELOW + '以下なら、理由を1行。' + (WORLD_CONF_WHY_BELOW + 1) + '以上なら空。\n\n' +
+      (seed ? '' : worldSamePromptPart()) +   // v20.48：初期投入には付けない
       '■ 並べ方\n' +
       '重要だと思う順に並べる。上から読まれる。\n\n' +
       (seed ? '' : worldTodayPromptPart()) +   // v20.47：初期投入には付けない
@@ -18689,8 +18732,9 @@
       '  "wants":"...",\n' +
       '  "srcCadence":"quarter",\n' +
       '  "confidence":8,\n' +
-      '  "confidenceWhy":""\n' +
-      '}]' + (seed ? '' : ',\n"today":[{"ref":"#1","type":"詰まり","why":"..."}]') + (daily.length || filings.length
+      '  "confidenceWhy":""' + (seed ? '' : ',\n  "follows":null') + '\n' +   // v20.48
+      '}]' + (seed ? '' : ',\n"same":[{"id":"w_...","fact":"...","why":"...","url":"https://..."}]') +   // v20.48
+      (seed ? '' : ',\n"today":[{"ref":"#1","type":"詰まり","why":"..."}]') + (daily.length || filings.length
         ? ',\n"checked":[\n' + daily.map((d) => d.label).concat(filings.map(worldSecLabel)).map((l) => '  {"source":"' + l + '","opened":true,"picked":0,"note":""}').join(',\n') + '\n]'
         : '') + '}\n\n' +
       (boot ? '' : 'kind が "relation" のときの premise：\n' +
@@ -18699,6 +18743,7 @@
       '動いたものが無い・書けないとき： "flow": null\n' +
       '前の動きの続きでないとき： "after": null\n' +
       (seed ? '' : '今日見るべきものが無いとき： "today": []\n') +   // v20.47
+      (seed ? '' : 'すでにある札と同じ出来事が無いとき： "same": []\nすでにある札の続きでないとき： "follows": null\n') +   // v20.48
       '全部追えたとき・全体の金額が無いとき： "total": "", "share": null\n' +
       'confidence が' + (WORLD_CONF_WHY_BELOW + 1) + '以上のとき： "confidenceWhy": ""\n' +
       (daily.length || filings.length ? '毎回必ず見るもの' + (filings.length ? '・決算' : '') + 'から札にしなかったとき： "checked" は省かず "picked": 0\n' : '') +
@@ -18715,7 +18760,42 @@
       '■ すでに知っているアクター（actors の name はここから探す。無ければ新しく書いてよい。name には先頭の名前だけを書き、［別名：…］は書かない。最大' + WORLD_KNOWN_ACTORS_MAX + '件）\n' +
       (knownActors.length ? knownActors.join(' / ') : '（まだありません）') + '\n\n' +
       '■ 最近のお金の動き（after はこの id から選ぶ。ここに無い id を書かない。ここにある動きを別の札として書き直さない。［物］［人］は物と人の動き）\n' +
-      (flowLines.length ? flowLines.join('\n') : '（まだありません）');
+      (flowLines.length ? flowLines.join('\n') : '（まだありません）') +
+      (seed ? '' : worldKnownCardsPart(flowLines));   // v20.48
+  }
+  // v20.48 重複 段1：すでにある札の一覧。取り込んだ日（札を作った日）が直近の札。非表示・初期投入・自分で作った札も含む。
+  // 「最近のお金の動き」に出ている札は重ねない。数字はプロンプトに入れた後の状態としてここに控え、コピーの文に出す
+  let worldKnownCardsLast = null;
+  function worldKnownCards(flowLines) {
+    const shown = new Set((flowLines || []).map((l) => l.split('　')[0]));
+    const from = addDays(todayStr(), -(WORLD_KNOWN_CARDS_DAYS - 1));
+    const all = worldEvents
+      .filter((e) => e.createdAt && formatDateStr(new Date(e.createdAt)) >= from && !shown.has(e.id))
+      .sort((a, b) => (a.createdAt > b.createdAt ? -1 : a.createdAt < b.createdAt ? 1 : (a.order || 0) - (b.order || 0)));
+    return { cards: all.slice(0, WORLD_KNOWN_CARDS_MAX), cut: Math.max(0, all.length - WORLD_KNOWN_CARDS_MAX) };
+  }
+  function worldKnownCardsPart(flowLines) {
+    const k = worldKnownCards(flowLines);
+    worldKnownCardsLast = { n: k.cards.length, cut: k.cut };
+    return '\n\n■ すでにある札（取り込んだ日が直近' + WORLD_KNOWN_CARDS_DAYS + '日の札。same・follows の id はここか「最近のお金の動き」から選ぶ）\n' +
+      (k.cards.length ? k.cards.map((e) => e.id + '　' + worldEvDateShort(e) + '　' + e.fact).join('\n') : '（まだありません）');
+  }
+  // v20.48：規則の節（朝の取り込みだけ）
+  function worldSamePromptPart() {
+    return '■ すでにある札との関係（same・follows）\n' +
+      '末尾の「すでにある札」「最近のお金の動き」は、もう札になっている出来事。\n' +
+      '見つけた出来事を札にする前に、ここと見比べる。\n' +
+      '- 同じ出来事なら、札にしない。"same" に1件ずつ書く。\n' +
+      '  同じ出来事＝同じ主体が同じ時に同じことをした。媒体・言い回し・単位が違うだけ、\n' +
+      '  または同じ発表から別の数字を取っただけで、新しい事実が無いもの。\n' +
+      '  - id：同じだと判断した札の番号（w_ で始まる。一覧にある番号だけ）\n' +
+      '  - fact：見つけた出来事を1行（札の fact と同じ書き方）\n' +
+      '  - why：なぜ同じと判断したかを1行（' + WORLD_SAME_WHY_ASK + '字以内）\n' +
+      '  - url：見つけた出来事の出典ページ（分かれば）\n' +
+      '- 続きなら、新しい札にして、その札の "follows" に続きの元の札の番号を書く。\n' +
+      '  続き＝同じ話で、新しい事実（新しい日付の動き・新しい数字・新しい主体）があるもの。\n' +
+      '  迷ったら続きにする（新しい事実を捨てない）。\n' +
+      '- どちらでもなければ "follows": null。\n\n';
   }
   // 名前＋主要な別名（引き当てのため）。lastUsedAt 順
   function worldKnownActorLines() {
@@ -19809,6 +19889,43 @@
     });
     return c;
   }
+  // v20.48 重複 段1：取り込みの記録を作る。same は札にしない（何も落とさず、番号が無くても1件として残す）。
+  // follows は端末にある札（非表示も含む）を指していれば組にし、見つからなければ数える（札は作ってある）
+  async function worldRecordImport(parsed, pendingFollows, added, batchId) {
+    const obj = (parsed && !Array.isArray(parsed)) ? parsed : {};
+    const sameReported = Array.isArray(obj.same);
+    if (!sameReported && !pendingFollows.length) return null;
+    const sameIn = sameReported ? obj.same : [];
+    const ids = sameIn.map((x) => (x && typeof x === 'object' && typeof x.id === 'string') ? x.id.trim() : '').concat(pendingFollows.map((p) => p.raw));
+    const months = [...new Set(ids.map((id) => monthOfWorldId(id)).filter(Boolean))];
+    if (months.length) await ensureWorldMonths(months);
+    const addedIds = new Set(added.map((e) => e.id));
+    const known = (id) => WORLD_EVENT_ID_RE.test(id) && !addedIds.has(id) && worldEvents.some((e) => e.id === id);
+    const at = nowIso();
+    const rec = { id: digNewId('im'), date: todayStr(), at, createdAt: at, updatedAt: at, batchId, sameReported, same: [], follows: [], followsMissing: 0 };
+    sameIn.forEach((x) => {
+      const t = (x && typeof x === 'object') ? x : { fact: typeof x === 'string' ? x : '' };
+      const o = {};
+      const id = (typeof t.id === 'string' || typeof t.id === 'number') ? String(t.id).trim() : '';
+      if (id) o.id = id;
+      if (id && known(id)) o.cardId = id;
+      else o.gone = id ? '番号が無い' : '番号が書かれていない';
+      const fa = digStr(t.fact, WORLD_FACT_MAX); if (fa.t) o.fact = fa.t; if (fa.cut) o.factCut = 1;
+      const wy = digStr(t.why, WORLD_SAME_WHY_MAX); if (wy.t) o.why = wy.t; if (wy.cut) o.whyCut = 1;
+      const rawUrl = typeof t.url === 'string' ? t.url.trim() : '';
+      const u = digUrl(rawUrl);
+      if (u.url) o.url = u.url; else if (rawUrl) o.urlRaw = rawUrl.slice(0, 300);
+      rec.same.push(o);
+    });
+    pendingFollows.forEach((p) => {
+      if (p.raw !== p.ev.id && known(p.raw)) rec.follows.push({ cardId: p.ev.id, follows: p.raw });
+      else rec.followsMissing++;
+    });
+    try { digMutate((doc) => { doc.imports = (doc.imports || []).concat([rec]); }); }
+    catch (e) { recordFeatureError('取り込みの記録', e); return null; }
+    wdig.follows = null;
+    return rec;
+  }
   // v20.47：今日見るべき件を記録する。#N は取り込んだ札の番号に直す。落ちた札を指していても、文と理由を残す（黙って捨てない）
   function worldRecordTodayPick(list, items, idAt, goneAt, batchId) {
     const at = nowIso();
@@ -19900,6 +20017,7 @@
     // v19 段階3：#N は「生成が返したそのままの並び」で数える。落とした札の番号は空のまま
     const idAt = [];
     const goneAt = [];   // v20.47：落とした札の理由（今日見るべき件が指していたときに残す）
+    const pendingFollows = [];   // v20.48：続きの元の札
     const pendingAfter = [];
 
     items.forEach((it, i) => {
@@ -19958,6 +20076,7 @@
       touchedMonths.add(monthOfDate(ev.eventDate));
       added.push(ev);
       idAt[i] = ev.id;
+      { const rawF = (typeof it.follows === 'string' || typeof it.follows === 'number') ? String(it.follows).trim() : ''; if (rawF && rawF !== 'null') pendingFollows.push({ ev, raw: rawF }); }   // v20.48
       const rawAfter = (it.flow && typeof it.flow === 'object' && it.flow.after != null) ? String(it.flow.after).trim() : '';
       if (ev.flow && rawAfter && rawAfter !== 'null') pendingAfter.push({ ev, raw: rawAfter, i });
       if (ev.eventDate < addDays(today, -WORLD_OLD_EVENT_DAYS)) old++;
@@ -20012,6 +20131,8 @@
     // v20.47：今日見るべき件。初期投入には付けない（「今日」の話ではない）。書かれていなければ記録しない
     const todayPick = (!seedRegion && parsed && !Array.isArray(parsed) && Array.isArray(parsed.today))
       ? worldRecordTodayPick(parsed.today, items, idAt, goneAt, batchId) : null;
+    // v20.48 重複 段1：same（札にしなかった出来事）と follows（続き）。初期投入には付けない
+    const importRec = seedRegion ? null : await worldRecordImport(parsed, pendingFollows, added, batchId);
 
     if (added.length) {
       worldSaveConcepts();
@@ -20038,6 +20159,7 @@
     return {
       verify: vOut,   // v20.22 第2段A
       todayPick,   // v20.47
+      importRec,   // v20.48
       added: added.length, rejected, old, forks, leans, droppedForks, onStrata, droppedStrata, unknownConcepts,
       createdConcepts, createdTerms, createdActors, batchId, linked, partnerIds: [...partnerIds],
       addedIds: added.map((e) => e.id),
@@ -20338,7 +20460,7 @@
       if (sf) {
         const origin = worldLiveEvents().find((e) => e.id === sf.originId);
         const p = document.createElement('div'); p.className = 'worldSelfLine';
-        p.appendChild(document.createTextNode('自分で調べて作った札（元の札：'));
+        p.appendChild(document.createTextNode(sf.fromSame ? '「同じ」とされたが別の出来事として作った札（比べた札：' : '自分で調べて作った札（元の札：'));   // v20.48
         const o = document.createElement('button'); o.type = 'button'; o.className = 'linkLikeBtn';
         o.textContent = origin ? worldEvDateShort(origin) + ' ' + origin.fact : sf.originId || '？';
         o.addEventListener('click', async (e2) => { e2.stopPropagation(); const m = monthOfWorldId(sf.originId); if (m && !wd.loaded.has(m)) await ensureWorldMonths([m]); openWorldEvent(sf.originId); });
@@ -20350,6 +20472,7 @@
         box.appendChild(q);
       }
     }
+    box.appendChild(worldFollowsEl(ev));   // v20.48：続きの印
     const termEntries = worldTermEntriesOf(ev);
     const usedTerms = new Set();   // 1語につき最初の1回だけ（why → detail の順に消費）
     const noteHost = document.createElement('div');
@@ -20923,6 +21046,25 @@
   // v20.45：戻した記録の1件を書き換える（札にした・url を確かめた）。記録全体の updatedAt を進める
   function worldDigUpdateItem(digId, idx, fn) {
     let hit = false;
+    // v20.48：取り込みの記録の same の1件（［別の出来事だった］から札を作るとき）。札を作る欄が使う名前に写して、書き戻す
+    if (String(digId).startsWith('im_')) {
+      wdig.docs.forEach((doc, m) => {
+        const rec = (doc.imports || []).find((x) => x.id === digId);
+        const sm = rec && rec.same[Number(idx)];
+        if (!sm) return;
+        const tmp = worldSameAsItem(sm);
+        fn(tmp);
+        if (tmp.cardId) { sm.cardMadeId = tmp.cardId; sm.cardAt = tmp.cardAt || nowIso(); }
+        if (tmp.cardBy) sm.cardBy = tmp.cardBy;
+        if (tmp.urlChecked) { sm.urlChecked = tmp.urlChecked; sm.urlCheckedAt = tmp.urlCheckedAt || nowIso(); } else { delete sm.urlChecked; delete sm.urlCheckedAt; }
+        if (tmp.urlFailed && tmp.urlFailed.length) sm.urlFailed = tmp.urlFailed;
+        rec.updatedAt = nowIso(); doc.updatedAt = rec.updatedAt;
+        wdig.dirty.add(m); persistDigDoc(m); hit = true;
+      });
+      persistDigMeta();
+      if (hit) scheduleSync();
+      return hit;
+    }
     wdig.docs.forEach((doc, m) => {
       const dg = doc.digs.find((x) => x.id === digId);
       const it = digItemAt(dg, idx);   // v20.46：候補（"c0"）にも
@@ -21086,7 +21228,7 @@
       box.appendChild(r);
       if (x.urlFailed && x.urlFailed.length) { const n = document.createElement('div'); n.className = 'fudaNote'; n.textContent = '開けなかった url：' + x.urlFailed.map((f) => f.url).join('、'); box.appendChild(n); }
     }
-    {
+    if (!String(d.id).startsWith('im_')) {   // v20.48：same から作る札には「元の札」が無い
       const r = document.createElement('div'); r.className = 'fudaRow';
       const l = document.createElement('label'); l.textContent = '元の札と'; r.appendChild(l);
       [['before', 'この動きの前'], ['after', 'この動きの後'], ['', 'どちらでもない']].forEach(([v, t]) => {
@@ -21166,6 +21308,10 @@
     if (!e) return null;
     const hit = worldDigByCard(e.id);
     if (hit) return { digId: hit.dig.id, originId: hit.dig.eventId, by: hit.item.cardBy || (e.self && e.self.by) || {}, datePrec: hit.item.datePrec || (e.self && e.self.datePrec) || 'day' };
+    if (e.self && String(e.self.digId || '').startsWith('im_')) {   // v20.48：「同じ」と判断されたが、別の出来事として作った札
+      const hit2 = worldSameAll().find((h) => h.rec.id === e.self.digId && h.item.cardMadeId === e.id);
+      return { digId: e.self.digId, originId: hit2 ? (hit2.item.cardId || hit2.item.id || '') : '', fromSame: true, by: (hit2 && hit2.item.cardBy) || e.self.by || {}, datePrec: e.self.datePrec || 'day' };
+    }
     if (e.self) { const dg = worldDigAll().find((x) => x.id === e.self.digId); return { digId: e.self.digId, originId: dg ? dg.eventId : '', by: e.self.by || {}, datePrec: e.self.datePrec || 'day' }; }
     return null;
   }
@@ -21174,6 +21320,187 @@
   function worldEvDateFull(e) { return worldEvIsMonthPrec(e) ? String(e.eventDate).slice(0, 7) + '（日は分からない）' : e.eventDate; }
   // 地図の期間：月までの札は、その月の最後の日で数える
   function worldEvInPeriod(e, from) { if (e.eventDate >= from) return true; return worldEvIsMonthPrec(e) && worldMonthEndDate(String(e.eventDate).slice(0, 7)) >= from; }
+
+  // ---- v20.48 重複 段1：same と follows の表示 ----
+  // 取り込みの記録を全部（新しい取り込みから）
+  function worldImportsAll() {
+    const out = [];
+    wdig.docs.forEach((doc) => (doc.imports || []).forEach((r) => out.push(r)));
+    return out.sort((p, q) => (p.at > q.at ? -1 : p.at < q.at ? 1 : 0));
+  }
+  function worldSameAll() {
+    const out = [];
+    worldImportsAll().forEach((rec) => rec.same.forEach((item, k) => out.push({ rec, item, k })));
+    return out;
+  }
+  // 札を作る欄が読む形（戻した記録の1件と同じ名前）
+  function worldSameAsItem(sm) {
+    const o = { kind: 'did', text: sm.fact || '', url: sm.url || '', urlBy: sm.url ? 'chat' : '', source: '', date: '' };
+    if (sm.urlRaw) o.urlRaw = sm.urlRaw;
+    if (sm.urlChecked) { o.urlChecked = sm.urlChecked; o.urlCheckedAt = sm.urlCheckedAt; }
+    if (sm.urlFailed) o.urlFailed = sm.urlFailed.slice();
+    if (sm.cardMadeId) o.cardId = sm.cardMadeId;
+    if (sm.cardBy) o.cardBy = sm.cardBy;
+    return o;
+  }
+  function worldSameAsDig(rec) { return { id: rec.id, eventId: '', found: rec.same.map(worldSameAsItem), cards: [] }; }
+  function worldFollowsOf(id) {
+    const prev = [], next = [];
+    worldImportsAll().forEach((r) => r.follows.forEach((x) => { if (x.cardId === id) prev.push(x.follows); if (x.follows === id) next.push(x.cardId); }));
+    return { prev: [...new Set(prev)], next: [...new Set(next)] };
+  }
+  async function worldOpenAnyEvent(id) { const m = monthOfWorldId(id); if (m && !wd.loaded.has(m)) await ensureWorldMonths([m]); openWorldEvent(id); }
+  function worldFollowsEl(ev) {
+    const box = document.createElement('div');
+    const { prev, next } = worldFollowsOf(ev.id);
+    const byId = (id) => worldEvents.find((e) => e.id === id);
+    prev.forEach((id) => {
+      const p = document.createElement('div'); p.className = 'worldSelfLine';
+      p.appendChild(document.createTextNode('続報の前の札：'));
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'linkLikeBtn';
+      const e = byId(id); b.textContent = (e ? worldEvDateShort(e) + ' ' + e.fact : id) + ' ▸';
+      b.addEventListener('click', (e2) => { e2.stopPropagation(); worldOpenAnyEvent(id); });
+      p.appendChild(b); box.appendChild(p);
+    });
+    if (next.length) {
+      const p = document.createElement('div'); p.className = 'worldSelfLine';
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'linkLikeBtn';
+      b.textContent = 'この後の続報 ' + next.length + '枚 ▸';
+      b.addEventListener('click', async (e2) => {
+        e2.stopPropagation();
+        const ms = [...new Set(next.map(monthOfWorldId).filter((m) => m && !wd.loaded.has(m)))];
+        if (ms.length) await ensureWorldMonths(ms);
+        openWorldCards({ title: '続報の札（' + next.length + '枚）', ids: next });
+      });
+      p.appendChild(b); box.appendChild(p);
+    }
+    return box;
+  }
+  // 結果の1行に足す文
+  function worldImportRecNote(rec) {
+    if (!rec) return '';
+    let t = '';
+    if (!rec.sameReported) t += '同じ出来事の報告なし（JSON に same がありません）。';
+    else {
+      t += rec.same.length ? '同じなので入れなかった ' + rec.same.length + '件（下の［▸］で中身が読めます）。' : '同じなので入れなかった：0件。';
+      const gone = rec.same.filter((x) => x.gone).length;
+      if (gone) t += '　うち ' + gone + '件は同じと判断した札が見つかりません。';
+      if (rec.same.length > WORLD_SAME_MANY) t += '　※ 同じなので入れなかった件が ' + rec.same.length + '件と多かった（全部残しました）。';
+      const cut = rec.same.filter((x) => x.factCut || x.whyCut).length;
+      if (cut) t += '　※ 長くて切った件 ' + cut + '件。';
+    }
+    if (rec.follows.length) t += '　続報として前の札を指した ' + rec.follows.length + '件。';
+    if (rec.followsMissing) t += '　続報の前の札が見つからなかった ' + rec.followsMissing + '件（札は作りました）。';
+    return t;
+  }
+  // 中身の1件
+  function worldSameItemEl(rec, k, rerender) {
+    const sm = rec.same[k];
+    const key = rec.id + '#' + k;
+    const box = document.createElement('div');
+    box.className = 'digCand sameItem';
+    const f = document.createElement('div'); f.className = 'dcFact';
+    f.textContent = '見つけた出来事：' + (sm.fact || '（何が起きたかが書かれていません）') + (sm.factCut ? '…（長いので切りました）' : '');
+    box.appendChild(f);
+    const l = document.createElement('div'); l.className = 'dcLine';
+    l.appendChild(document.createTextNode('同じと判断した札：'));
+    const target = sm.cardId ? worldEvents.find((e) => e.id === sm.cardId) : null;
+    if (sm.cardId) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'linkLikeBtn';
+      b.textContent = (target ? worldEvDateShort(target) + ' ' + target.fact : sm.cardId) + ' ▸';
+      b.addEventListener('click', (e) => { e.stopPropagation(); worldOpenAnyEvent(sm.cardId); });
+      l.appendChild(b);
+    } else {
+      l.appendChild(document.createTextNode((sm.id || '（番号が書かれていません）') + '（見つかりません）'));
+    }
+    box.appendChild(l);
+    const w = document.createElement('div'); w.className = 'dcWhy';
+    w.textContent = 'なぜ：' + (sm.why ? sm.why + (sm.whyCut ? '…（長いので切りました）' : '') : '（理由が書かれていません）');
+    box.appendChild(w);
+    const src = document.createElement('div'); src.className = 'dcSrc';
+    src.appendChild(document.createTextNode('出典：'));
+    if (sm.url) { const a = document.createElement('a'); a.href = sm.url; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = sm.url; src.appendChild(a); }
+    else src.appendChild(document.createTextNode('url がありません'));
+    if (sm.urlRaw) { const fl = document.createElement('span'); fl.className = 'digFlag'; fl.textContent = '（url の形が正しくない：' + sm.urlRaw + '）'; src.appendChild(fl); }
+    box.appendChild(src);
+    if (sm.cardMadeId) {
+      const go = document.createElement('button'); go.type = 'button'; go.className = 'linkLikeBtn'; go.textContent = '別の出来事として札にしました ▸';
+      go.addEventListener('click', (e) => { e.stopPropagation(); worldOpenAnyEvent(sm.cardMadeId); });
+      box.appendChild(go);
+    } else if (!sm.notSameAt) {
+      const btns = document.createElement('div'); btns.className = 'dcBtns';
+      const ng = document.createElement('button'); ng.type = 'button'; ng.className = 'tagFilterBtn'; ng.textContent = '別の出来事だった';
+      ng.addEventListener('click', (e) => {
+        e.stopPropagation();
+        worldSameUpdate(rec.id, k, (x) => { x.notSameAt = nowIso(); });
+        worldState.fudaOpen = key;
+        rerender();
+      });
+      btns.appendChild(ng); box.appendChild(btns);
+    } else {
+      const n = document.createElement('div'); n.className = 'fudaNote';
+      n.textContent = '別の出来事だったと記録しました（' + worldShortDate(formatDateStr(new Date(sm.notSameAt))) + '）。札にするには、下の欄で日付とお金の動きを入れ、url を開いて確かめてから押してください。';
+      box.appendChild(n);
+      if (worldState.fudaOpen !== key) {
+        const op = document.createElement('button'); op.type = 'button'; op.className = 'tagFilterBtn'; op.textContent = '札を作る欄を開く';
+        op.addEventListener('click', (e) => { e.stopPropagation(); worldState.fudaOpen = key; rerender(); });
+        box.appendChild(op);
+      } else {
+        box.appendChild(worldFudaFormEl(target || { id: '' }, worldSameAsDig(rec), k, rerender));
+      }
+      if (worldState.fudaStatus && worldState.fudaStatus[key] && worldState.fudaOpen !== key) { const s2 = document.createElement('div'); s2.className = 'fudaNote'; s2.textContent = worldState.fudaStatus[key]; box.appendChild(s2); }
+    }
+    return box;
+  }
+  // same の1件を書き換える（［別の出来事だった］の日時）。記録の updatedAt を進める
+  function worldSameUpdate(recId, k, fn) {
+    let hit = false;
+    wdig.docs.forEach((doc, m) => {
+      const rec = (doc.imports || []).find((x) => x.id === recId);
+      const sm = rec && rec.same[k];
+      if (!sm) return;
+      fn(sm);
+      rec.updatedAt = nowIso(); doc.updatedAt = rec.updatedAt;
+      wdig.dirty.add(m); persistDigDoc(m); hit = true;
+    });
+    persistDigMeta();
+    if (hit) scheduleSync();
+    return hit;
+  }
+  // 取り込む画面：今の取り込みの中身と、最近の中身
+  function renderWorldSameBoxes() {
+    const now = document.getElementById('worldImportSame');
+    const recent = document.getElementById('worldSameRecent');
+    if (!now || !recent) return;
+    const rerender = () => renderWorldSameBoxes();
+    now.innerHTML = '';
+    const last = worldState.lastImportRecId ? worldImportsAll().find((r) => r.id === worldState.lastImportRecId) : null;
+    if (last && last.same.length) {
+      const t = document.createElement('button'); t.type = 'button'; t.className = 'tagFilterBtn' + (worldState.sameOpen === 'now' ? ' selected' : '');
+      t.textContent = '同じなので入れなかった ' + last.same.length + '件 ' + (worldState.sameOpen === 'now' ? '▾' : '▸');
+      t.addEventListener('click', () => { worldState.sameOpen = worldState.sameOpen === 'now' ? '' : 'now'; rerender(); });
+      now.appendChild(t);
+      if (worldState.sameOpen === 'now') last.same.forEach((_, k) => now.appendChild(worldSameItemEl(last, k, rerender)));
+    }
+    recent.innerHTML = '';
+    const from = addDays(todayStr(), -(WORLD_KNOWN_CARDS_DAYS - 1));
+    const recs = worldImportsAll().filter((r) => r.date >= from && r.same.length);
+    const n = recs.reduce((a, r) => a + r.same.length, 0);
+    recent.hidden = !n;
+    if (!n) return;
+    const t = document.createElement('button'); t.type = 'button'; t.className = 'linkLikeBtn';
+    t.textContent = '最近、同じなので入れなかった出来事（' + WORLD_KNOWN_CARDS_DAYS + '日）' + n + '件 ' + (worldState.sameOpen === 'recent' ? '▾' : '▸');
+    t.addEventListener('click', () => { worldState.sameOpen = worldState.sameOpen === 'recent' ? '' : 'recent'; rerender(); });
+    recent.appendChild(t);
+    if (worldState.sameOpen !== 'recent') return;
+    recs.forEach((r) => {
+      const h = document.createElement('div'); h.className = 'fieldNote';
+      h.textContent = worldShortDate(r.date) + ' ' + worldTimeOf(r.at) + ' の取り込み（' + r.same.length + '件）';
+      recent.appendChild(h);
+      r.same.forEach((_, k) => recent.appendChild(worldSameItemEl(r, k, rerender)));
+    });
+  }
+  function worldTimeOf(iso) { const d = new Date(iso); return isNaN(d) ? '' : String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
 
   function renderWorldDig() {
     const all = worldDigAll();
@@ -25073,6 +25400,7 @@
     renderWorldSeedList();   // v20.2
     renderWorldOutside();   // v19.11
     document.getElementById('worldImportStatus').textContent = worldState.lastResult;
+    renderWorldSameBoxes();   // v20.48
     document.getElementById('worldRetroCount').textContent = '対象 ' + worldRetroTargets().length + '件（端末にある札のうち新しい順）';
     document.getElementById('btnWorldImportShow').hidden = !worldState.lastBatch;
     const field = document.getElementById('worldMergeField');
@@ -25616,7 +25944,7 @@
   // 概念120件・今日の数字1,200字のときの最大が約19,550字なので、その上に置く（思わぬ節が伸びたときだけ出る）
   // v20.8.1：20,000→23,000。決算5社（+1,728字）と DFA・WID・地層2つ（+725字）で最大が約22,000字になった。
   // 線は知らせるためのもので、守るべき限界ではない（会社数の上限は付けない。札が1日遅れるわりに400字しか減らないため）
-  const WORLD_PROMPT_WARN_LEN = 23000;
+  const WORLD_PROMPT_WARN_LEN = 30000;   // v20.48：すでにある札の一覧（約5,000字）を足したので 23000 → 30000
   const WORLD_FISCAL_API      = 'https://api.fiscaldata.treasury.gov/services/api/fiscal_service/';
   const WORLD_DTS_URL_DW      = 'https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/deposits-and-withdrawals-of-operating-cash';
   const WORLD_DTS_URL_OCB     = 'https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/operating-cash-balance';
@@ -26134,6 +26462,15 @@
     } catch (e) {}
     return textPromise.then((t) => copyToClipboard(t));
   }
+  // v20.48：すでにある札の一覧のために、取り込んだ日が直近の札が入っていそうな月（索引の更新日時が直近の月）を読み込む。
+  // 読み込めなかった月の名前を返す
+  async function worldEnsureKnownCardMonths() {
+    const from = addDays(todayStr(), -(WORLD_KNOWN_CARDS_DAYS - 1));
+    const months = Object.entries((wd.index && wd.index.months) || {})
+      .filter(([, v]) => v && v.updatedAt && formatDateStr(new Date(v.updatedAt)) >= from).map(([m]) => m);
+    await ensureWorldMonths(months);
+    return months.filter((m) => !wd.loaded.has(m));
+  }
   let worldFiguresBusy = false;
   // 世界の2つの入口（朝の「今日の取り込み」と「プロンプトをコピー」）が通る1本。数字が取れなくても必ずコピーする
   function worldCopyPromptWithFigures(opts, okLead, btn) {
@@ -26152,10 +26489,12 @@
       .catch((e) => ({ date: '', tga: null, debt: null, dts: null, reasons: [(e && e.message) || '理由不明'], stale: '', ms: 0 }));
     const filP = worldFetchFilings()
       .catch((e) => ({ list: [], reasons: [{ name: '決算', msg: (e && e.message) || '理由不明' }], checked: 0, ms: 0 }));
-    const textP = Promise.all([figP, filP])
+    let knownMissing = [];
+    const textP = Promise.all([figP, filP, worldEnsureKnownCardMonths().then((x) => { knownMissing = x; }, () => {})])
       .then(([fig, fil]) => {
         const fst = worldFilingsStatus(fil);
         fl.textContent = worldFiguresStatus(fig) + (fst ? '　' + fst : '');
+        worldKnownCardsLast = null;
         let text, used = fil.list;
         try { text = worldPromptText({ ...opts, figures: worldFiguresSection(fig), filings: fil.list }); }
         catch (e) { text = worldPromptText(opts); used = []; fl.textContent += '（節を作れなかったので、数字と決算なしにしました）'; }
@@ -26168,7 +26507,13 @@
         ? okLead + '（' + text.length.toLocaleString() + '字）。Claude のチャットに貼り、返ってきた JSON を下に貼ってください。'
         : 'コピーできませんでした。下の欄に出したので、選んでコピーしてください。';
       if (!ok) document.getElementById('worldImportPaste').value = text;
-      if (text.length > WORLD_PROMPT_WARN_LEN) fl.textContent += '　※ プロンプトが長くなっています（' + text.length.toLocaleString() + '字）。';
+      // v20.48：すでにある札を何件渡したか。上限で外れた札・読み込めなかった月は必ず出す
+      if (worldKnownCardsLast) {
+        const k = worldKnownCardsLast;
+        fl.textContent += '　すでにある札 ' + k.n + '件を渡しました' + (k.cut ? '（上限で外れた札 ' + k.cut + '件）' : '') + '。';
+      }
+      if (knownMissing.length) fl.textContent += '　※ 読み込めなかった月 ' + knownMissing.join('・') + '（その月の札は、すでにある札の一覧に入っていません）。';
+      if (text.length > WORLD_PROMPT_WARN_LEN) fl.textContent +='　※ プロンプトが長くなっています（' + text.length.toLocaleString() + '字）。';
       document.getElementById('worldImportPaste').scrollIntoView({ block: 'center' });
     }).finally(() => {
       worldFiguresBusy = false;
@@ -26244,6 +26589,9 @@
     let msg = (seedInfo ? '初期投入（' + seedInfo.label + '・' + seedInfo.n + '回目）：' : '') + res.added + '件を入れました。';
     if (drops.length) msg += '　' + drops.join('／') + ' を落としました。';
     if (res.todayPick) msg += '　' + worldTodayPickNote(res.todayPick);   // v20.47
+    if (res.importRec) msg += '　' + worldImportRecNote(res.importRec);   // v20.48
+    worldState.lastImportRecId = res.importRec ? res.importRec.id : '';
+    worldState.sameOpen = '';
     if (res.createdConcepts.length) msg += '　新しい概念 ' + res.createdConcepts.length + '件。';
     if (res.createdTerms.length) msg += '　新しい用語 ' + res.createdTerms.length + '件。';
     // v20.22 第2段A：答え合わせの材料。結果はまだ変わっていない（押して確定する）
