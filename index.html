@@ -1140,6 +1140,17 @@
   /* v20.46 札の候補・流れ */
   .digStory { font-size: 13px; line-height: 1.6; color: var(--text); margin: 6px 0 8px; }
   .digStory .digKey { color: var(--text-faint); font-size: 11px; margin-right: 4px; }
+  /* v20.47 今日見るべき件。型ごとに色を変えない（推定の黄・警告の赤と混ぜない） */
+  .worldTodayPick { margin: 0 0 10px; }
+  .worldTodayPick .tpHead { font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
+  .worldTodayPick .tpEmpty { font-size: 13px; color: var(--text-dim); }
+  .worldTodayPick .tpRow { display: block; width: 100%; text-align: left; background: none; color: var(--text); font: inherit; border: 1px solid var(--accent-dim); border-radius: 8px; padding: 7px 9px; margin: 0 0 6px; cursor: pointer; }
+  .worldTodayPick .tpRow.gone, .worldTodayPick .tpRow:disabled { cursor: default; border-style: dashed; color: var(--text); opacity: 1; }
+  .worldTodayPick .tpType { display: inline-block; font-size: 11px; color: var(--text-dim); border: 1px solid var(--text-faint); border-radius: 4px; padding: 0 4px; margin-right: 6px; vertical-align: 1px; }
+  .worldTodayPick .tpFact { font-size: 14px; line-height: 1.5; }
+  .worldTodayPick .gone .tpFact { color: var(--text-faint); }
+  .worldTodayPick .tpWhy { font-size: 12px; color: var(--text-dim); margin-top: 2px; line-height: 1.5; }
+  .worldTodayPick .tpNote { font-size: 12px; color: var(--text-faint); margin-top: 2px; }
   .digCand { border: 1px solid var(--accent-dim); border-radius: 8px; padding: 7px 9px; margin: 6px 0; }
   .digCand .dcFact { font-size: 14px; font-weight: 700; line-height: 1.5; }
   .digCand .dcLine { font-size: 12px; color: var(--text); margin-top: 2px; }
@@ -2450,6 +2461,9 @@
         <button type="button" id="btnWorldDropStale" class="tagFilterBtn">まとめて捨てる</button>
       </div>
 
+      <!-- v20.47：今日見るべき件（朝の取り込みでチャットが選んだ。提案であって判定ではない） -->
+      <div id="worldTodayPick" class="worldTodayPick" hidden></div>
+
       <!-- v20.22 第2段A：予告への入口。0本でも出す（出さないと最初の1本が入るまで辿り着けない） -->
       <button type="button" id="btnWorldForecast" class="linkLikeBtn">予告 ▸</button>
       <!-- v20.43：自分で調べて札に戻したもの。1件も無いときは出さない -->
@@ -3108,7 +3122,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.46';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.47';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -3910,13 +3924,13 @@
   // 同じものを2台で直しただけなら作った日時は同じなので出ない。最初から入っている固定の番号（ac_boj など）は見ない
   function idCollisionCheck(kind, x, y, keep) {
     if (!x || !y || !keep || !x.createdAt || !y.createdAt || x.createdAt === y.createdAt) return;
-    if (!/^(?:n|j|d|w|wc|wt|ac|q|ak|dg)_\d{8}_\d+$|^fc_\d{8}_[0-9a-z]+$/.test(String(x.id))) return;   // v20.43：ak・dg
+    if (!/^(?:n|j|d|w|wc|wt|ac|q|ak|dg|pk)_\d{8}_\d+$|^fc_\d{8}_[0-9a-z]+$/.test(String(x.id))) return;   // v20.43：ak・dg
     recordIdCollision(kind, keep, keep === x ? y : x);
   }
   function idCollisionHead(kind, o) {
     const t = kind === 'event' ? o.fact : kind === 'forecast' ? (o.actor || '') + '：' + (o.what || '')
       : (kind === 'concept' || kind === 'term' || kind === 'actor') ? o.name
-      : kind === 'dig' ? o.question : kind === 'asked' ? (o.target || '') + ' ' + (o.key || '') : o.text;   // v20.43
+      : kind === 'dig' ? o.question : kind === 'pick' ? '今日見るべき件 ' + (o.date || '') :kind === 'asked' ? (o.target || '') + ' ' + (o.key || '') : o.text;   // v20.43
     return String(t || (kind === 'journal' ? o.kind || '' : '')).replace(/\s+/g, ' ').slice(0, 40);
   }
   // 鍵は直書き（後ろで宣言する const は、起動時の読み込みの方が早いと使えない）
@@ -15490,6 +15504,13 @@
   const DIG_MAX = { question: 200, text: 300, actor: 80, source: 120, flowPart: 200, found: 50, open: 10, openText: 200, story: 600, why: 200 };
   const DIG_CARDS_ASK = 2;   // v20.46：札の候補を何件まで選ばせるか（超えて来ても落とさない）
   const DIG_KINDS = ['did', 'said', 'read'];
+  // v20.47 今日見るべき件。朝の取り込みでチャットが選ぶ（提案であって判定ではない）。記録は調べたことの月ファイルの picks
+  const WORLD_TODAY_ASK = 3;          // 何件まで選ばせるか（超えて来ても落とさない）
+  const WORLD_TODAY_TYPES = ['詰まり', '逃げ', '囲い込み', '無理', 'つぎ込み'];
+  const WORLD_TODAY_TYPE_MAX = 10;    // 5つに当たらないときの自分の言葉
+  const WORLD_TODAY_WHY_ASK = 60;     // プロンプトで頼む字数
+  const WORLD_TODAY_WHY_MAX = 120;    // 安全弁。超えたら切って印
+  const WORLD_TODAY_SHOW_DAYS = 7;    // 今日の取り込みが無い日に、何日前の分まで出すか
   // v20.45：月まで（YYYY-MM）も正しい日付。日が分からないのは普通のこと
   function digIsMonth(t) { return typeof t === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(t); }
   function worldMonthLabel(ym) { const m = /^(\d{4})-(\d{2})$/.exec(ym || ''); return m ? m[1] + '年' + Number(m[2]) + '月' : String(ym || ''); }
@@ -16573,7 +16594,7 @@
     });
     return out;
   }
-  function emptyDigDoc(m) { return { version: 1, month: m, updatedAt: '', asked: [], digs: [], deletedIds: [] }; }
+  function emptyDigDoc(m) { return { version: 1, month: m, updatedAt: '', asked: [], digs: [], picks: [], deletedIds: [] }; }
   function digStr(v, max) {
     const t = typeof v === 'string' ? v.trim() : (typeof v === 'number' ? String(v) : '');
     return t.length > max ? { t: t.slice(0, max), cut: true } : { t, cut: false };
@@ -16631,6 +16652,23 @@
     if (typeof x.why === 'string' && x.why) o.why = x.why;
     return o;
   }
+  // v20.47：今日見るべき件の記録。取り込みで作った形をそのまま通す
+  function normalizeWorldPick(p) {
+    if (!p || typeof p !== 'object' || !p.id || !p.at || !isDateStr(p.date)) return null;
+    const out = {
+      id: String(p.id), date: p.date, at: String(p.at),
+      createdAt: String(p.createdAt || p.at), updatedAt: String(p.updatedAt || p.at),
+      batchId: typeof p.batchId === 'string' ? p.batchId : '',
+      items: (Array.isArray(p.items) ? p.items : []).filter((x) => x && typeof x === 'object').map((x) => {
+        const o = {};
+        ['ref', 'cardId', 'fact', 'type', 'why', 'gone'].forEach((k) => { if (typeof x[k] === 'string' && x[k]) o[k] = x[k]; });
+        if (x.typeCut) o.typeCut = 1;
+        if (x.whyCut) o.whyCut = 1;
+        return o;
+      }),
+    };
+    return out;
+  }
   // v20.46：記録の中の1件。数なら分かったこと（found）、"c0" のような形なら札の候補（cards）
   function digItemAt(dg, idx) {
     if (!dg) return null;
@@ -16643,6 +16681,7 @@
     out.updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : '';
     out.asked = (Array.isArray(raw.asked) ? raw.asked : []).map(normalizeDigAsked).filter(Boolean);
     out.digs = (Array.isArray(raw.digs) ? raw.digs : []).map(normalizeDig).filter(Boolean);
+    out.picks = (Array.isArray(raw.picks) ? raw.picks : []).map(normalizeWorldPick).filter(Boolean);   // v20.47
     out.deletedIds = (Array.isArray(raw.deletedIds) ? raw.deletedIds : []).filter((t) => t && t.id && t.deletedAt).map((t) => ({ id: String(t.id), deletedAt: String(t.deletedAt) }));
     return out;
   }
@@ -16666,13 +16705,14 @@
     };
     out.asked = pick(a.asked, b.asked, 'asked');
     out.digs = pick(a.digs, b.digs, 'dig');
-    const alive = new Set([...out.asked, ...out.digs].map((x) => x.id));
+    out.picks = pick(a.picks || [], b.picks || [], 'pick');   // v20.47：書き換えない記録なので、どちらを採っても同じ
+    const alive = new Set([...out.asked, ...out.digs, ...out.picks].map((x) => x.id));
     out.deletedIds = [...tombs.entries()].filter(([id]) => !alive.has(id)).map(([id, deletedAt]) => ({ id, deletedAt })).sort((p, q) => (p.id < q.id ? -1 : 1));
     out.updatedAt = a.updatedAt > b.updatedAt ? a.updatedAt : b.updatedAt;
     return out;
   }
   function digSignature(doc) {
-    return [...doc.asked, ...doc.digs].map((x) => x.id + ':' + x.updatedAt).sort().join('|') + '#' + doc.deletedIds.map((t) => t.id + ':' + t.deletedAt).sort().join('|');
+    return [...doc.asked, ...doc.digs, ...(doc.picks || [])].map((x) => x.id + ':' + x.updatedAt).sort().join('|') + '#' + doc.deletedIds.map((t) => t.id + ':' + t.deletedAt).sort().join('|');
   }
   function persistDigDoc(m) { return kvSet('worldDig:' + m, JSON.stringify(wdig.docs.get(m) || emptyDigDoc(m))).catch(() => { recordSyncError(LAST_SYNC_ERROR_KEY, '端末に保存できませんでした（調べたこと）'); renderSyncBar(); }); }
   function persistDigMeta() {
@@ -16704,7 +16744,7 @@
   }
   function digTakenIds() {
     const taken = new Set();
-    wdig.docs.forEach((doc) => { [...doc.asked, ...doc.digs].forEach((x) => taken.add(x.id)); doc.deletedIds.forEach((t) => taken.add(t.id)); });
+    wdig.docs.forEach((doc) => { [...doc.asked, ...doc.digs, ...(doc.picks || [])].forEach((x) => taken.add(x.id)); doc.deletedIds.forEach((t) => taken.add(t.id)); });
     return taken;
   }
   function digNewId(prefix) { return newIdWith(prefix + '_' + todayStr().replace(/-/g, '') + '_', digTakenIds()); }
@@ -16749,7 +16789,7 @@
     try { if (remote.text) rdoc = normalizeDigDoc(JSON.parse(remote.text), m); } catch (e) {}
     const local = wdig.docs.get(m) || emptyDigDoc(m);
     const merged = mergeDigDocs(local, rdoc, m);
-    const isEmpty = !merged.asked.length && !merged.digs.length && !merged.deletedIds.length;
+    const isEmpty = !merged.asked.length && !merged.digs.length && !merged.picks.length && !merged.deletedIds.length;
     const wrote = (!remote.text && !isEmpty) || (!!remote.text && digSignature(rdoc) !== digSignature(merged));
     if (wrote) {
       merged.updatedAt = nowIso();
@@ -18329,6 +18369,21 @@
       '- actors の country を必ず書く（3文字コード。市場は MKT、国際機関は INT、EU や国の集まりは REG）。\n' +
       '- 返す JSON の一番上に "seed":"' + seed[0] + '" を書く（初期投入の印）。\n\n';
   }
+  // v20.47：今日見るべき件の節（朝の取り込みだけ）
+  function worldTodayPromptPart() {
+    return '■ 今日見るべき件（today）\n' +
+      'この JSON の出来事のうち、金融や世界情勢に詳しくない人が、今日まず見るべきものを 0〜' + WORLD_TODAY_ASK + '件選ぶ。\n' +
+      '見るべきものが無い日は空の配列にする。数を合わせるために選ばない。\n' +
+      '- ref：選んだ出来事の番号。"#番号"（events の上から1、2…と数える）。\n' +
+      '- type：なぜ見るべきかの型。次のどれか。\n' +
+      '    詰まり（運ぶ道・生産・在庫が詰まっている）\n' +
+      '    逃げ（危ないものから安全なものへお金が移っている）\n' +
+      '    囲い込み（国や陣営が、取引や供給網を分けている）\n' +
+      '    無理（借金・利上げ・介入など、お金の限界に近づいている）\n' +
+      '    つぎ込み（戦争や大きな投資に、先に大きくお金を張っている）\n' +
+      '  どれにも当たらなければ、' + WORLD_TODAY_TYPE_MAX + '字以内の自分の言葉で書く。\n' +
+      '- why：なぜ今日これを見るべきかを1文・' + WORLD_TODAY_WHY_ASK + '字以内。専門用語を使わない。\n\n';
+  }
   function worldPromptText(opts) {
     const seed = (opts && opts.seed) ? WORLD_SEED_REGIONS.find((x) => x[0] === opts.seed) || null : null;   // v20.2
     // v19.1 必ず見るもの。v19.4：今日の取り込みは期限の来たものだけ、いつもの「取り込む」は全部
@@ -18614,6 +18669,7 @@
       '- confidenceWhy：confidence が' + WORLD_CONF_WHY_BELOW + '以下なら、理由を1行。' + (WORLD_CONF_WHY_BELOW + 1) + '以上なら空。\n\n' +
       '■ 並べ方\n' +
       '重要だと思う順に並べる。上から読まれる。\n\n' +
+      (seed ? '' : worldTodayPromptPart()) +   // v20.47：初期投入には付けない
       // v20.39：期限が来た予告の答え合わせは、予告の画面の専用プロンプトへ移した
       '■ 出力形式\n' +
       (seed ? '{"seed":"' + seed[0] + '",\n"events":[{\n' : '{"events":[{\n') +   // v20.2：初期投入の印
@@ -18634,7 +18690,7 @@
       '  "srcCadence":"quarter",\n' +
       '  "confidence":8,\n' +
       '  "confidenceWhy":""\n' +
-      '}]' + (daily.length || filings.length
+      '}]' + (seed ? '' : ',\n"today":[{"ref":"#1","type":"詰まり","why":"..."}]') + (daily.length || filings.length
         ? ',\n"checked":[\n' + daily.map((d) => d.label).concat(filings.map(worldSecLabel)).map((l) => '  {"source":"' + l + '","opened":true,"picked":0,"note":""}').join(',\n') + '\n]'
         : '') + '}\n\n' +
       (boot ? '' : 'kind が "relation" のときの premise：\n' +
@@ -18642,6 +18698,7 @@
       'どの地層にも乗らないとき： "strata": []\n' +
       '動いたものが無い・書けないとき： "flow": null\n' +
       '前の動きの続きでないとき： "after": null\n' +
+      (seed ? '' : '今日見るべきものが無いとき： "today": []\n') +   // v20.47
       '全部追えたとき・全体の金額が無いとき： "total": "", "share": null\n' +
       'confidence が' + (WORLD_CONF_WHY_BELOW + 1) + '以上のとき： "confidenceWhy": ""\n' +
       (daily.length || filings.length ? '毎回必ず見るもの' + (filings.length ? '・決算' : '') + 'から札にしなかったとき： "checked" は省かず "picked": 0\n' : '') +
@@ -19752,6 +19809,57 @@
     });
     return c;
   }
+  // v20.47：今日見るべき件を記録する。#N は取り込んだ札の番号に直す。落ちた札を指していても、文と理由を残す（黙って捨てない）
+  function worldRecordTodayPick(list, items, idAt, goneAt, batchId) {
+    const at = nowIso();
+    const pick = { id: digNewId('pk'), date: todayStr(), at, createdAt: at, updatedAt: at, batchId, items: [] };
+    list.forEach((x) => {
+      const o = {};
+      const t = (x && typeof x === 'object') ? x : { ref: x };
+      o.ref = typeof t.ref === 'string' || typeof t.ref === 'number' ? String(t.ref).trim() : '';
+      const m = /^#?(\d+)$/.exec(o.ref);
+      const n = m ? Number(m[1]) - 1 : -1;
+      const src = (n >= 0 && n < items.length && items[n] && typeof items[n] === 'object') ? items[n] : null;
+      if (src && typeof src.fact === 'string' && src.fact.trim()) o.fact = worldStr(src.fact, WORLD_FACT_MAX);
+      if (!src) o.gone = '番号が無い';
+      else if (idAt[n]) o.cardId = idAt[n];
+      else o.gone = goneAt[n] || '取り込まれなかった';
+      const ty = digStr(t.type, WORLD_TODAY_TYPE_MAX);
+      if (ty.t) o.type = ty.t;
+      if (ty.cut) o.typeCut = 1;
+      const wy = digStr(t.why, WORLD_TODAY_WHY_MAX);
+      if (wy.t) o.why = wy.t;
+      if (wy.cut) o.whyCut = 1;
+      if (!o.ref) delete o.ref;
+      pick.items.push(o);
+    });
+    try { digMutate((doc) => { doc.picks = (doc.picks || []).concat([pick]); }); }
+    catch (e) { recordFeatureError('今日見るべき件', e); return null; }
+    return pick;
+  }
+  function worldTodayPickNote(p) {
+    const n = p.items.length;
+    if (!n) return '今日見るべき件：0件（チャットが選びませんでした）。';
+    let s = n > WORLD_TODAY_ASK ? '今日見るべき件が ' + n + '件と多かった（全部残しました）。' : '今日見るべき件：' + n + '件。';
+    const gone = p.items.filter((x) => x.gone);
+    if (gone.length) {
+      const why = [...new Set(gone.map((x) => x.gone))].join('・');
+      s += '　うち ' + gone.length + '件は札が取り込まれませんでした（' + why + '）。';
+    }
+    const cut = p.items.filter((x) => x.typeCut || x.whyCut).length;
+    if (cut) s += '　※ 型か理由が長くて切った件 ' + cut + '件。';
+    return s;
+  }
+  // v20.47：画面の一番上に出す記録。今日のうち一番新しい取り込みの分、無ければ7日以内の直近
+  function worldTodayPickToShow() {
+    const all = [];
+    wdig.docs.forEach((doc) => (doc.picks || []).forEach((p) => all.push(p)));
+    all.sort((p, q) => (p.at > q.at ? -1 : p.at < q.at ? 1 : 0));
+    const p = all[0];
+    if (!p) return null;
+    if (p.date < addDays(todayStr(), -WORLD_TODAY_SHOW_DAYS)) return null;
+    return p;
+  }
   async function worldImportJson(raw, viaAsk) {
     const parsed = shootParseJson(raw);
     const items = parsed ? (Array.isArray(parsed) ? parsed : Array.isArray(parsed.events) ? parsed.events : null) : null;
@@ -19791,17 +19899,18 @@
     const lv = { levelsFilled: 0, levelsDup: 0, levelsUnknown: 0 };   // v15
     // v19 段階3：#N は「生成が返したそのままの並び」で数える。落とした札の番号は空のまま
     const idAt = [];
+    const goneAt = [];   // v20.47：落とした札の理由（今日見るべき件が指していたときに残す）
     const pendingAfter = [];
 
     items.forEach((it, i) => {
-      if (!it || typeof it !== 'object') { rejected.fact++; return; }
+      if (!it || typeof it !== 'object') { rejected.fact++; goneAt[i] = '本文なし'; return; }
       const fact = worldStr(it.fact, WORLD_FACT_MAX);
-      if (!fact) { rejected.fact++; return; }
-      if (!isDateStr(it.eventDate)) { rejected.date++; return; }
-      if (it.eventDate > today) { rejected.future++; return; }
+      if (!fact) { rejected.fact++; goneAt[i] = '本文なし'; return; }
+      if (!isDateStr(it.eventDate)) { rejected.date++; goneAt[i] = '日付が不正'; return; }
+      if (it.eventDate > today) { rejected.future++; goneAt[i] = '未来の日付'; return; }
       const url = typeof it.url === 'string' ? (shootSafeUrl(it.url.trim()) || '') : '';
-      if (!url) { rejected.url++; return; }
-      if (worldDupOf({ fact, url }, it.eventDate, !!(it.self && it.self.datePrec === 'month'))) { rejected.dup++; return; }   // v20.45：月までの札は月の中を見る
+      if (!url) { rejected.url++; goneAt[i] = 'URL なし'; return; }
+      if (worldDupOf({ fact, url }, it.eventDate, !!(it.self && it.self.datePrec === 'month'))) { rejected.dup++; goneAt[i] = '重複'; return; }   // v20.45：月までの札は月の中を見る
       const ev = normalizeWorldEvent({
         id: worldGenEventId(it.eventDate, taken),
         eventDate: it.eventDate,
@@ -19821,7 +19930,7 @@
         prediction: null, batchId, order: i,
         createdAt: iso, updatedAt: iso,
       });
-      if (!ev) { rejected.date++; return; }
+      if (!ev) { rejected.date++; goneAt[i] = '日付が不正'; return; }
       // v15: flow が動かした地層も、札の strata と同じく一覧に無い id を落とす
       if (ev.flow) {
         const asked = ev.flow.strata.length;
@@ -19900,6 +20009,9 @@
 
     // v19 段階3：after を確かめる。お金の動きを持つ札を指していなければ空にする
     const afterStats = await worldResolveAfters(pendingAfter, idAt, added);
+    // v20.47：今日見るべき件。初期投入には付けない（「今日」の話ではない）。書かれていなければ記録しない
+    const todayPick = (!seedRegion && parsed && !Array.isArray(parsed) && Array.isArray(parsed.today))
+      ? worldRecordTodayPick(parsed.today, items, idAt, goneAt, batchId) : null;
 
     if (added.length) {
       worldSaveConcepts();
@@ -19925,6 +20037,7 @@
     }
     return {
       verify: vOut,   // v20.22 第2段A
+      todayPick,   // v20.47
       added: added.length, rejected, old, forks, leans, droppedForks, onStrata, droppedStrata, unknownConcepts,
       createdConcepts, createdTerms, createdActors, batchId, linked, partnerIds: [...partnerIds],
       addedIds: added.map((e) => e.id),
@@ -21662,8 +21775,71 @@
     });
     body.appendChild(box);
   }
+  // v20.47：今日見るべき件。押すと札を開く。落ちた札を指していた件は押せない
+  function renderWorldTodayPick(box) {
+    if (!box) return;
+    box.innerHTML = '';
+    const p = worldTodayPickToShow();
+    box.hidden = !p;
+    if (!p) return;
+    const isToday = p.date === todayStr();
+    const day = isToday ? '今日' : worldShortDate(p.date) + ' ';
+    const head = document.createElement('div');
+    head.className = 'tpHead';
+    head.textContent = '今日見るべき件（' + day + 'の取り込み・チャットが選んだ）';
+    box.appendChild(head);
+    if (!p.items.length) {
+      const e = document.createElement('div');
+      e.className = 'tpEmpty';
+      e.textContent = day + 'の取り込みでは、見るべき件は選ばれませんでした（材料が少ない日）';
+      box.appendChild(e);
+      return;
+    }
+    const live = new Map(worldLiveEvents().map((e) => [e.id, e]));
+    p.items.forEach((x) => {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'tpRow' + (x.gone ? ' gone' : '');
+      const f = document.createElement('div');
+      f.className = 'tpFact';
+      if (x.type) {
+        const t = document.createElement('span');
+        t.className = 'tpType';
+        t.textContent = x.type + (x.typeCut ? '…' : '');
+        f.appendChild(t);
+      }
+      const ev = x.cardId ? live.get(x.cardId) : null;
+      f.appendChild(document.createTextNode((ev && ev.fact) || x.fact || '（何が起きたかが書かれていません）'));
+      row.appendChild(f);
+      const w = document.createElement('div');
+      w.className = 'tpWhy';
+      w.textContent = 'なぜ：' + (x.why ? x.why + (x.whyCut ? '…（長いので切りました）' : '') : '（理由が書かれていません）');
+      row.appendChild(w);
+      if (x.gone) {
+        const n = document.createElement('div');
+        n.className = 'tpNote';
+        n.textContent = '（この札は取り込まれませんでした：' + x.gone + '）';
+        row.appendChild(n);
+        row.disabled = true;
+      } else {
+        row.addEventListener('click', async () => {
+          const mm = monthOfWorldId(x.cardId);
+          if (mm) await ensureWorldMonths([mm]);
+          if (worldLiveEvents().some((e) => e.id === x.cardId)) { openWorldEvent(x.cardId); return; }
+          if (!row.querySelector('.tpNote')) {
+            const n = document.createElement('div');
+            n.className = 'tpNote';
+            n.textContent = '（この札は見つかりません。捨てたか、まだ同期で届いていません）';
+            row.appendChild(n);
+          }
+        });
+      }
+      box.appendChild(row);
+    });
+  }
   function renderWorldMain() {
     renderWorldMiniMap();   // v20.5 M5
+    renderWorldTodayPick(document.getElementById('worldTodayPick'));   // v20.47
     const stale = worldStaleUnread();
     const bar = document.getElementById('worldStaleBar');
     bar.hidden = !stale.length;
@@ -26067,6 +26243,7 @@
     const unread = worldUnread().length;
     let msg = (seedInfo ? '初期投入（' + seedInfo.label + '・' + seedInfo.n + '回目）：' : '') + res.added + '件を入れました。';
     if (drops.length) msg += '　' + drops.join('／') + ' を落としました。';
+    if (res.todayPick) msg += '　' + worldTodayPickNote(res.todayPick);   // v20.47
     if (res.createdConcepts.length) msg += '　新しい概念 ' + res.createdConcepts.length + '件。';
     if (res.createdTerms.length) msg += '　新しい用語 ' + res.createdTerms.length + '件。';
     // v20.22 第2段A：答え合わせの材料。結果はまだ変わっていない（押して確定する）
