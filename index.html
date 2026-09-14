@@ -1126,6 +1126,20 @@
   .digMeta { font-size: 11px; color: var(--text-faint); margin-left: 4px; }
   .digMeta a { color: var(--text-dim); word-break: break-all; }
   .digFlag { font-size: 11px; color: var(--danger); margin-left: 4px; }
+  .digFaint { font-size: 11px; color: var(--text-faint); margin-left: 4px; }   /* v20.45：間違いではないもの（月まで以外の日付の書き方・書かれていた種類） */
+  .fudaForm { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin: 6px 0 10px; }
+  .fudaForm .fudaRow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 6px 0; }
+  .fudaForm .fudaRow label { font-size: 11px; color: var(--text-faint); min-width: 5em; }
+  .fudaForm .fudaRow input[type=text], .fudaForm .fudaRow input:not([type]) { flex: 1 1 10em; min-width: 0; }
+  .fudaForm .fudaBy { font-size: 10px; color: var(--text-faint); white-space: nowrap; }
+  .fudaForm .fudaBy.self { color: var(--text); font-weight: 700; }
+  .fudaForm .fudaNote { font-size: 11px; color: var(--text-dim); margin: 2px 0; }
+  .fudaForm .fudaStatus { font-size: 12px; color: var(--text-dim); margin-top: 6px; }
+  .fudaForm .fudaStatus.warn { color: var(--danger); }
+  .worldSelfLine { font-size: 12px; color: var(--text); margin: 0 0 6px; }
+  .worldSelfLine .linkLikeBtn { font-size: 12px; }
+  .worldSelfBy { font-size: 11px; color: var(--text-dim); margin: 0 0 8px; }
+  .worldRow .wSelf { font-size: 10px; color: var(--text); white-space: nowrap; margin-left: 4px; }
   .digNoSrc { font-size: 11px; color: var(--text-dim); margin-left: 4px; }
   .worldDigListRow { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: baseline; width: 100%; text-align: left; background: none; border: 0; border-top: 1px solid var(--border); padding: 7px 0; margin: 0; font: inherit; color: var(--text); cursor: pointer; }
   .worldDigListRow .wdDate { font-size: 11px; color: var(--text-faint); white-space: nowrap; }
@@ -3081,7 +3095,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.44';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.45';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -15462,6 +15476,11 @@
   // 字数・件数の安全弁。切ったら印を付ける（黙って切らない）。件数は超えても落とさず、1行出すだけ
   const DIG_MAX = { question: 200, text: 300, actor: 80, source: 120, flowPart: 200, found: 50, open: 10, openText: 200 };
   const DIG_KINDS = ['did', 'said', 'read'];
+  // v20.45：月まで（YYYY-MM）も正しい日付。日が分からないのは普通のこと
+  function digIsMonth(t) { return typeof t === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(t); }
+  function worldMonthLabel(ym) { const m = /^(\d{4})-(\d{2})$/.exec(ym || ''); return m ? m[1] + '年' + Number(m[2]) + '月' : String(ym || ''); }
+  function worldMonthEndDate(ym) { const m = /^(\d{4})-(\d{2})$/.exec(ym || ''); if (!m) return ''; const last = new Date(Number(m[1]), Number(m[2]), 0).getDate(); return ym + '-' + String(last).padStart(2, '0'); }
+  function digDateLabel(t) { return digIsMonth(t) ? worldMonthLabel(t) : t; }
   const DIG_KIND_LABEL = { did: '事実', said: '述べた理由', read: '推定', '': '種類なし' };
 
   // 一度も保存されていないときだけ入れる初期値。levels は空のまま登録する（v20.8：DFA の2つだけは WORLD_DFA_SEED の実際の値を入れる）
@@ -16067,6 +16086,12 @@
     if (e.usd) { const u = normalizeWorldUsd(e.usd); if (u) out.usd = u; }
     // v11 非表示：本文は月ファイルに残したまま、読み出しから外す
     if (e.hidden) { out.hidden = 1; out.hiddenAt = typeof e.hiddenAt === 'string' ? e.hiddenAt : ''; }
+    // v20.45：自分で調べて作った札。どの記録から、誰が入れた値か、日は分かるか（詳しいことは記録の側にも同じものがある）
+    if (e.self && typeof e.self === 'object' && typeof e.self.digId === 'string' && e.self.digId) {
+      const by = {};
+      if (e.self.by && typeof e.self.by === 'object') Object.entries(e.self.by).forEach(([k, v]) => { if (v === 'chat' || v === 'self') by[k] = v; });
+      out.self = { digId: e.self.digId, by, datePrec: e.self.datePrec === 'month' ? 'month' : 'day' };
+    }
     return out;
   }
   // 概念と用語は同じ形。ストアを引数で受け取れるように、正規化も共通にする。
@@ -16551,7 +16576,14 @@
   function normalizeDigItem(x) {
     if (!x || typeof x !== 'object') return null;
     const o = { kind: DIG_KINDS.includes(x.kind) ? x.kind : '', text: typeof x.text === 'string' ? x.text : '' };
-    ['kindRaw', 'actor', 'date', 'dateRaw', 'source', 'url', 'urlRaw', 'urlBy', 'urlCheckedAt', 'urlChecked', 'cardId', 'cardAt', 'rel'].forEach((k) => { if (typeof x[k] === 'string' && x[k]) o[k] = x[k]; });   // v20.44：第2段の欄も残す
+    ['kindRaw', 'actor', 'date', 'dateRaw', 'source', 'url', 'urlRaw', 'urlBy', 'urlCheckedAt', 'urlChecked', 'cardId', 'cardAt', 'rel', 'datePrec'].forEach((k) => { if (typeof x[k] === 'string' && x[k]) o[k] = x[k]; });   // v20.44：第2段の欄も残す
+    // v20.45：前の版が「形が正しくない」として元の文字の欄に移した月までの日付は、日付として扱う（文字は同じ）
+    if (!o.date && digIsMonth(o.dateRaw)) { o.date = o.dateRaw; delete o.dateRaw; }
+    ['cardBy', 'cardValues'].forEach((k) => {
+      if (!x[k] || typeof x[k] !== 'object') return;
+      const v = {}; Object.entries(x[k]).forEach(([kk, vv]) => { if (typeof vv === 'string') v[kk] = vv; });
+      o[k] = v;
+    });
     if (Array.isArray(x.urlFailed)) { const f = x.urlFailed.filter((u) => u && typeof u.url === 'string' && typeof u.at === 'string').map((u) => ({ url: u.url, at: u.at })); if (f.length) o.urlFailed = f; }
     if (x.flow && typeof x.flow === 'object') {
       const f = {};
@@ -16778,7 +16810,7 @@
   }
   // v20.44：まとめの依頼文に並べる「札に元から書いてあったこと」。会話を「やさしく説明」以外から始めたときも比べられるように
   function worldDigCardBlock(ev) {
-    const lines = ['■ 札に元から書いてあったこと', '番号：' + ev.id, '日付：' + ev.eventDate, '何が起きたか：' + ev.fact];
+    const lines = ['■ 札に元から書いてあったこと', '番号：' + ev.id, '日付：' + worldEvDateFull(ev), '何が起きたか：' + ev.fact];
     if (ev.why) lines.push('なぜ今動いたか：' + ev.why);
     if (ev.actors.length) {
       lines.push('動かした側：');
@@ -16823,7 +16855,7 @@
       if (text.cut) { o.cut = 1; c.cut++; }
       const actor = digStr(x.actor, DIG_MAX.actor); if (actor.t) o.actor = actor.t; if (actor.cut) { o.cut = 1; c.cut++; }
       const source = digStr(x.source, DIG_MAX.source); if (source.t) o.source = source.t; if (source.cut) { o.cut = 1; c.cut++; }
-      if (x.date != null && String(x.date).trim()) { if (isDateStr(String(x.date).trim())) o.date = String(x.date).trim(); else { o.dateRaw = String(x.date).slice(0, 40); c.badDate++; } }
+      if (x.date != null && String(x.date).trim()) { const dt = String(x.date).trim(); if (isDateStr(dt) || digIsMonth(dt)) o.date = dt; else { o.dateRaw = String(x.date).slice(0, 40); c.badDate++; } }   // v20.45：月までも日付
       const u = digUrl(x.url);
       if (u.url) { o.url = u.url; o.urlBy = 'chat'; }   // v20.44：チャットが示した（まだ人が開いていない）
       if (u.urlRaw) { o.urlRaw = u.urlRaw; c.badUrl++; }
@@ -16857,7 +16889,7 @@
     const notes = [];
     if (c.noSrc) notes.push('出典なし ' + c.noSrc + '件');
     if (c.badUrl) notes.push('url の形が正しくない ' + c.badUrl + '件（出典なしにしました）');
-    if (c.badDate) notes.push('日付の形が正しくない ' + c.badDate + '件（元の文字を残しました）');
+    if (c.badDate) notes.push('日付の書き方が年月日・年月でない ' + c.badDate + '件（書かれたまま残しました）');
     if (c.cut) notes.push('長くて切った欄 ' + c.cut + 'か所');
     if (c.unreadable) notes.push('文が無くて読めなかった件 ' + c.unreadable + '件');
     if (c.over) notes.push('分かったことが ' + c.over + '件と多かった（全部残しました）');
@@ -18191,7 +18223,7 @@
     return recent.filter(worldIsMoneyFlow).sort(byDate)
       .concat(recent.filter((e) => !worldIsMoneyFlow(e)).sort(byDate))
       .slice(0, WORLD_RECENT_FLOWS_MAX)
-      .map((e) => e.id + '　' + worldShortDate(e.eventDate) + '　' + WORLD_FLOW_KIND_MARK[e.flow.kind]
+      .map((e) => e.id + '　' + worldEvDateShort(e) + '　' + WORLD_FLOW_KIND_MARK[e.flow.kind]
         + (e.flow.from || '？') + '→' + (e.flow.to || '？') + '　' + (e.flow.what || '')
         + (e.flow.amount ? '　' + e.flow.amount : '') + (e.flow.span ? '（' + e.flow.span + 'の累計）' : ''));
   }
@@ -18684,7 +18716,7 @@
         return '[' + f.id + ']　' + f.actor + 'が「' + f.what + '」（' + (WORLD_FC_VERB_LABEL[f.verb] || f.verb) + (f.pledgeOnly ? '・約束だけ' : '') + '）\n' +
           '  期限 ' + f.due + ' ／ 当たりの印：' + (f.sign || '（印なし）') + '\n' +
           '  元の推定：' + (f.fromRead || '（無し）') + '\n' +
-          '  元の札：' + (e ? e.eventDate + ' ' + e.fact + (e.source ? '（' + e.source + '）' : '') : '（端末に読み込まれていない）') + '\n' +
+          '  元の札：' + (e ? worldEvDateFull(e) + ' ' + e.fact + (e.source ? '（' + e.source + '）' : '') : '（端末に読み込まれていない）') + '\n' +
           // v20.40：聞き直しの予告には、前の答え合わせを1行
           (f.state === 'unverifiable'
             ? '  前の答え合わせ：確かめられない' + (f.verdictReason ? '（' + WORLD_FC_REASON_LABEL[f.verdictReason] + '）' : f.verdictFact ? '（' + WORLD_FC_FACT_LABEL[f.verdictFact] + '）' : '') + ' ' + worldFcUnvBaseDate(f) + '。今日あらためて確かめる。\n'
@@ -19145,7 +19177,7 @@
   // v20.17：まだ読んでいない札。新しい順。readAt を押した札は二度と出ない
   function worldUnreadCards() {
     return worldLiveEvents()
-      .filter((e) => !e.readAt && e.actors.length)
+      .filter((e) => !e.readAt && e.actors.length && !worldEvSelf(e))   // v20.45：自分で作った札は読む回に入れない
       .sort((a, b) => (a.eventDate > b.eventDate ? -1 : 1));
   }
   // v20.18 第2段：readBy の無い read ＝ 朝が書いた浅い読み。一度当てた札は rereadAt で外す
@@ -19186,7 +19218,7 @@
   // 前は「未読が優先、余りに書き直し」だったため、未読75枚で埋まって書き直しが回らなかった
   function worldReadPick() {
     // v20.35：1枚の札が2つの種類に当たるときは、先の種類で数える（同じ札を2回載せない）
-    const seen = new Set();
+    const seen = new Set(worldLiveEvents().filter((e) => worldEvSelf(e)).map((e) => e.id));   // v20.45：自分で作った札はどの枠にも入れない
     const uniq = (list) => list.filter((e) => { if (seen.has(e.id)) return false; seen.add(e.id); return true; });
     const pools = [
       ['miss', uniq(worldMissCards()), WORLD_READ_QUOTA.miss],
@@ -19287,7 +19319,7 @@
           + (!e.cutFixAt && worldIsCutRead(a) ? '\n    ※ この読みは保存のときに60字で途中で切れています。rewrite を true にして書き直してください。' : '')).join('\n');
         const fl = e.flow ? '  お金：' + (e.flow.from || '？') + '→' + (e.flow.to || '？') + '　' + (e.flow.what || '') + (e.flow.amount ? '　' + e.flow.amount : '') + (e.flow.span ? '（' + e.flow.span + 'の累計）' : '') : '';
         const linked = worldReadLinkedLines(e);
-        return '[' + e.id + ']　' + e.eventDate + (e.confidence ? '　確度' + e.confidence : '') + '\n' +
+        return '[' + e.id + ']　' + worldEvDateFull(e) + (e.confidence ? '　確度' + e.confidence : '') + '\n' +
           'fact：' + e.fact + '\n' +
           'why：' + (e.why || '') + '\n' +
           'detail：' + (e.detail || '') + '\n' +
@@ -19574,10 +19606,13 @@
   // 消える経路が構造的に無い。
   // 非表示のものも見る。ここを絞ると、消した札が次の取り込みで戻ってきて
   // 非表示にした意味が消える。
-  function worldDupOf(item, eventDate) {
-    const lo = addDays(eventDate, -WORLD_DUP_WINDOW_DAYS), hi = addDays(eventDate, WORLD_DUP_WINDOW_DAYS);
+  function worldDupOf(item, eventDate, monthPrec) {
+    // v20.45：月までの札は、その月の1日〜最後の日（と前後の窓）を見る
+    const lo = addDays(eventDate, -WORLD_DUP_WINDOW_DAYS), hi = addDays(monthPrec ? worldMonthEndDate(eventDate.slice(0, 7)) : eventDate, WORLD_DUP_WINDOW_DAYS);
     return worldEvents.find((e) => {
-      if (e.eventDate < lo || e.eventDate > hi) return false;
+      // v20.45：すでにある札が月までなら、その月の中（と前後の窓）に入るかでも見る（朝の取り込みで日まである同じ出来事が来たとき）
+      const inE = worldEvIsMonthPrec(e) && eventDate >= addDays(e.eventDate, -WORLD_DUP_WINDOW_DAYS) && eventDate <= addDays(worldMonthEndDate(e.eventDate.slice(0, 7)), WORLD_DUP_WINDOW_DAYS);
+      if (!inE && (e.eventDate < lo || e.eventDate > hi)) return false;
       if (item.url && e.url && item.url === e.url) return true;
       return textSimilarity(item.fact, e.fact) >= WORLD_DUP_SIM;
     }) || null;
@@ -19676,11 +19711,12 @@
       if (it.eventDate > today) { rejected.future++; return; }
       const url = typeof it.url === 'string' ? (shootSafeUrl(it.url.trim()) || '') : '';
       if (!url) { rejected.url++; return; }
-      if (worldDupOf({ fact, url }, it.eventDate)) { rejected.dup++; return; }
+      if (worldDupOf({ fact, url }, it.eventDate, !!(it.self && it.self.datePrec === 'month'))) { rejected.dup++; return; }   // v20.45：月までの札は月の中を見る
       const ev = normalizeWorldEvent({
         id: worldGenEventId(it.eventDate, taken),
         eventDate: it.eventDate,
-        readDate: '',
+        readDate: (it.self && isDateStr(it.readDate)) ? it.readDate : '',   // v20.45：自分で作った札は、作った日に読んだ
+        self: it.self,   // v20.45
         field: WORLD_FIELDS.includes(it.field) ? it.field : (worldImportField || 'finance'),
         fact, why: it.why, premise: it.premise, detail: it.detail, source: it.source, url,
         wants: it.wants, confidence: it.confidence, confidenceWhy: it.confidenceWhy,   // v19.3
@@ -20001,7 +20037,7 @@
 
     const d = document.createElement('span');
     d.className = 'wDate';
-    d.textContent = worldShortDate(ev.eventDate);
+    d.textContent = worldEvDateShort(ev);
     row.appendChild(d);
 
     const f = document.createElement('span');
@@ -20046,6 +20082,13 @@
         t.textContent = tagText + (n >= 2 ? ' ' + n : '');
         right.appendChild(t);
       }
+      // v20.45：自分で調べて作った札
+      if (worldEvSelf(ev)) {
+        const g = document.createElement('span');
+        g.className = 'wSelf';
+        g.textContent = '自分で作った';
+        right.appendChild(g);
+      }
       // v20.43：自分で調べて戻した札。回数は出さない（開くと見える）
       if (worldDigsFor(ev.id).length) {
         const g = document.createElement('span');
@@ -20086,6 +20129,24 @@
   function renderWorldDetail(box, ev, paintRight) {
     const repaint = paintRight || function () {};
     box.innerHTML = '';
+    // v20.45：自分で調べて作った札。どの札から・誰が入れた値か・日は分かるか
+    {
+      const sf = worldEvSelf(ev);
+      if (sf) {
+        const origin = worldLiveEvents().find((e) => e.id === sf.originId);
+        const p = document.createElement('div'); p.className = 'worldSelfLine';
+        p.appendChild(document.createTextNode('自分で調べて作った札（元の札：'));
+        const o = document.createElement('button'); o.type = 'button'; o.className = 'linkLikeBtn';
+        o.textContent = origin ? worldEvDateShort(origin) + ' ' + origin.fact : sf.originId || '？';
+        o.addEventListener('click', async (e2) => { e2.stopPropagation(); const m = monthOfWorldId(sf.originId); if (m && !wd.loaded.has(m)) await ensureWorldMonths([m]); openWorldEvent(sf.originId); });
+        p.appendChild(o); p.appendChild(document.createTextNode('）'));
+        box.appendChild(p);
+        const selfKeys = Object.keys(FUDA_FIELD_LABEL).filter((k) => sf.by[k] === 'self').map((k) => FUDA_FIELD_LABEL[k]);
+        const q = document.createElement('div'); q.className = 'worldSelfBy';
+        q.textContent = (selfKeys.length ? '自分で入れた値：' + selfKeys.join('・') : '値は全部チャットが書いたもの') + (sf.datePrec === 'month' ? '　日付：' + worldEvDateFull(ev) : '');
+        box.appendChild(q);
+      }
+    }
     const termEntries = worldTermEntriesOf(ev);
     const usedTerms = new Set();   // 1語につき最初の1回だけ（why → detail の順に消費）
     const noteHost = document.createElement('div');
@@ -20206,7 +20267,7 @@
         r.className = 'wpReunion';
         const prev = worldPrevEventOf(c, ev);
         r.textContent = n + '回目'
-          + (prev ? ' ・ 前は ' + worldShortDate(prev.eventDate) + '「' + prev.fact + '」' : '');
+          + (prev ? ' ・ 前は ' + worldEvDateShort(prev) + '「' + prev.fact + '」' : '');
         pre.appendChild(r);
       }
       if (c) {
@@ -20278,7 +20339,7 @@
         hits.slice(0, WORLD_LINKED_MAX).forEach((h) => {
           const r = document.createElement('button');
           r.type = 'button'; r.className = 'worldLinkedRow';
-          const d = document.createElement('span'); d.className = 'wlDate'; d.textContent = worldShortDate(h.event.eventDate);
+          const d = document.createElement('span'); d.className = 'wlDate'; d.textContent = worldEvDateShort(h.event);
           const f = document.createElement('span'); f.className = 'wlFact'; f.textContent = h.event.fact;
           const v = document.createElement('span'); v.className = 'wlVia'; v.textContent = h.via.slice(0, 2).join('・') + 'で';
           r.appendChild(d); r.appendChild(f); r.appendChild(v);
@@ -20322,7 +20383,10 @@
       p.className = 'worldMetaLine';
       const k = document.createElement('span'); k.className = 'wmKey';
       k.textContent = (WORLD_FLOW_KIND_LABEL[ev.flow.kind] || 'お金の動き') + '：';
-      p.appendChild(k); p.appendChild(document.createTextNode(WORLD_FLOW_KIND_MARK[ev.flow.kind] + worldFlowLine(ev.flow) + (worldUsdText(ev) ? ' ' + worldUsdText(ev) : '')));   // v20.3
+      // v20.45：自分で作った札は、自分で入れた欄を添える
+      const sfb = worldEvSelf(ev);
+      const selfFlow = sfb ? ['from', 'to', 'what', 'amount'].filter((kk) => sfb.by[kk] === 'self').map((kk) => FUDA_FIELD_LABEL[kk]) : [];
+      p.appendChild(k); p.appendChild(document.createTextNode(WORLD_FLOW_KIND_MARK[ev.flow.kind] + worldFlowLine(ev.flow) + (worldUsdText(ev) ? ' ' + worldUsdText(ev) : '') + (selfFlow.length ? '　（' + selfFlow.join('・') + '：自分で入力）' : '')));   // v20.3
       deep.appendChild(p);
     }
     if (ev.source) { const p = document.createElement('div'); p.textContent = ev.source; deep.appendChild(p); }
@@ -20494,8 +20558,10 @@
       if (d.questionCut) { const f = document.createElement('span'); f.className = 'digFlag'; f.textContent = '（' + DIG_MAX.question + '字で切りました）'; head.appendChild(f); }
       const body = document.createElement('div');
       body.className = 'digBody';
-      body.hidden = i > 0;
-      head.addEventListener('click', () => { body.hidden = !body.hidden; });
+      // v20.45：開け閉めを覚える（札にする欄で描き直しても閉じない）
+      worldState.digBodyOpen = worldState.digBodyOpen || {};
+      body.hidden = (d.id in worldState.digBodyOpen) ? !worldState.digBodyOpen[d.id] : i > 0;
+      head.addEventListener('click', () => { body.hidden = !body.hidden; worldState.digBodyOpen[d.id] = !body.hidden; });
       ['did', 'said', 'read', ''].forEach((k) => {
         const items = d.found.filter((x) => x.kind === k);
         if (!items.length) return;
@@ -20506,7 +20572,7 @@
           it.className = 'digItem' + (k === 'read' ? ' digRead' : '');
           if (k === 'read') { const b = document.createElement('span'); b.className = 'guessBadge'; b.textContent = '推定'; it.appendChild(b); }
           it.appendChild(document.createTextNode((x.actor ? x.actor + '：' : '') + x.text));
-          const meta = [x.source, x.date].filter(Boolean).join(' ');
+          const meta = [x.source, digDateLabel(x.date)].filter(Boolean).join(' ');   // v20.45：月までは「2026年2月」
           if (meta) { const m = document.createElement('span'); m.className = 'digMeta'; m.textContent = '（' + meta + '）'; it.appendChild(m); }
           if (x.url) {
             const a = document.createElement('a');
@@ -20521,13 +20587,33 @@
             const n = document.createElement('span'); n.className = 'digNoSrc'; n.textContent = '出典なし'; it.appendChild(n);
           }
           if (x.flow) { const f = document.createElement('span'); f.className = 'digMeta'; f.textContent = '［' + [x.flow.from || '？', '→', x.flow.to || '？', x.flow.what || '', x.flow.amount || ''].join(' ').trim() + '］'; it.appendChild(f); }
-          const flags = [];
-          if (x.kindRaw) flags.push('書かれていた種類：' + x.kindRaw);
+          // v20.45：赤い字は確かめが要るもの（url の形・切った）だけ。書き方の違いは薄い字で書かれたまま
+          const flags = [], faint = [];
+          if (x.kindRaw) faint.push('書かれていた種類：' + x.kindRaw);
           if (x.urlRaw) flags.push('url の形が正しくないので出典なし：' + x.urlRaw);
-          if (x.dateRaw) flags.push('日付の形が正しくない：' + x.dateRaw);
+          if (x.dateRaw) faint.push('日付の書き方：' + x.dateRaw);
           if (x.cut) flags.push('長くて切りました');
+          if (faint.length) { const f = document.createElement('span'); f.className = 'digFaint'; f.textContent = '（' + faint.join('・') + '）'; it.appendChild(f); }
           if (flags.length) { const f = document.createElement('span'); f.className = 'digFlag'; f.textContent = '（' + flags.join('・') + '）'; it.appendChild(f); }
           body.appendChild(it);
+          // v20.45：事実は札にできる（お金の動きは人が入れられる）
+          if (k === 'did') {
+            const idx = d.found.indexOf(x);
+            const key = d.id + '#' + idx;
+            if (x.cardId) {
+              const go = document.createElement('button');
+              go.type = 'button'; go.className = 'linkLikeBtn'; go.textContent = '札にした（押すと開く）';
+              go.addEventListener('click', async () => { const m = monthOfWorldId(x.cardId); if (m && !wd.loaded.has(m)) await ensureWorldMonths([m]); openWorldEvent(x.cardId); });
+              body.appendChild(go);
+              if (worldState.fudaStatus && worldState.fudaStatus[key]) { const n = document.createElement('div'); n.className = 'digFaint'; n.textContent = worldState.fudaStatus[key]; body.appendChild(n); }   // 作った直後の結果の1行
+            } else {
+              const mk = document.createElement('button');
+              mk.type = 'button'; mk.className = 'tagFilterBtn' + (worldState.fudaOpen === key ? ' selected' : ''); mk.textContent = '札にする';
+              mk.addEventListener('click', () => { worldState.fudaOpen = worldState.fudaOpen === key ? '' : key; rerender(); });
+              body.appendChild(mk);
+              if (worldState.fudaOpen === key) body.appendChild(worldFudaFormEl(ev, d, idx, rerender));
+            }
+          }
         });
       });
       if (d.open.length) {
@@ -20548,6 +20634,260 @@
     });
     return sec;
   }
+  // v20.45：戻した記録の1件を書き換える（札にした・url を確かめた）。記録全体の updatedAt を進める
+  function worldDigUpdateItem(digId, idx, fn) {
+    let hit = false;
+    wdig.docs.forEach((doc, m) => {
+      const dg = doc.digs.find((x) => x.id === digId);
+      if (!dg || !dg.found[idx]) return;
+      fn(dg.found[idx]);
+      dg.updatedAt = nowIso(); doc.updatedAt = dg.updatedAt;
+      wdig.dirty.add(m);
+      persistDigDoc(m);
+      hit = true;
+    });
+    wdig.byEvent = null;
+    persistDigMeta();
+    if (hit) scheduleSync();
+    return hit;
+  }
+  const FUDA_FIELD_LABEL = { fact: '何が起きたか', date: '日付', actor: '動かした側', from: '出す側', to: '受け取る側', what: '何', amount: '額', source: '出典', url: 'url' };
+  function worldFudaBase(x) {
+    const f = x.flow || {};
+    return { fact: x.text || '', date: x.date || '', actor: x.actor || '', from: f.from || '', to: f.to || '', what: f.what || '', amount: f.amount || '', source: x.source || '', url: (x.urlBy === 'chat' && x.url) ? x.url : '' };
+  }
+  // 誰が入れたか：札にする瞬間の値を、戻した記録の値と比べる（正しいかは判定しない）
+  function worldFudaBy(draft, base) {
+    const by = {};
+    Object.keys(FUDA_FIELD_LABEL).forEach((k) => {
+      const v = String(draft[k] || '').trim();
+      by[k] = !v ? '' : (base[k] && v === String(base[k]).trim()) ? 'chat' : 'self';
+    });
+    return by;
+  }
+  function worldFudaDraft(key, x) {
+    worldState.fudaDrafts = worldState.fudaDrafts || {};
+    if (!worldState.fudaDrafts[key]) {
+      const b = worldFudaBase(x);
+      worldState.fudaDrafts[key] = Object.assign({}, b, { url: x.url || '', dateMode: digIsMonth(b.date) ? 'month' : 'day', kind: 'money', rel: '', opened: '' });
+    }
+    return worldState.fudaDrafts[key];
+  }
+  function worldFudaCheck(draft, x) {
+    const today = todayStr();
+    const fact = String(draft.fact || '').trim();
+    if (!fact) return '何が起きたかを入れてください';
+    if (fact.length > WORLD_FACT_MAX) return '何が起きたかを' + WORLD_FACT_MAX + '字までにしてください（今 ' + fact.length + '字）';
+    const date = String(draft.date || '').trim();
+    if (draft.dateMode === 'month') {
+      if (!digIsMonth(date)) return '月までの日付は 2026-02 の形で入れてください';
+      if (date > today.slice(0, 7)) return '今月より後の日付では作れません';
+    } else {
+      if (!isDateStr(date)) return '日付を 2026-02-15 の形で入れてください（日が分からなければ「月まで」）';
+      if (date > today) return '今日より後の日付では作れません';
+    }
+    if (!String(draft.from || '').trim() && !String(draft.to || '').trim()) return 'お金の動きの出す側か受け取る側を入れてください（地図の線の元になります）';
+    const u = digUrl(draft.url).url;
+    if (!u) return 'url を貼ってください';
+    if (!(draft.checked === u || x.urlChecked === u)) return draft.opened === u ? '開いたページに書いてあったら［書いてあった］を押してください' : 'url を開いて確かめてください';
+    return '';
+  }
+  function worldFudaFormEl(ev, d, idx, rerender) {
+    const x = d.found[idx];
+    const key = d.id + '#' + idx;
+    const draft = worldFudaDraft(key, x);
+    const base = worldFudaBase(x);
+    const box = document.createElement('div');
+    box.className = 'fudaForm';
+    box.addEventListener('click', (e) => e.stopPropagation());
+    const byEls = {};
+    const status = document.createElement('div'); status.className = 'fudaStatus';
+    const mapNote = document.createElement('div'); mapNote.className = 'fudaNote';
+    const mkBtn = document.createElement('button'); mkBtn.type = 'button'; mkBtn.className = 'secondaryBtn'; mkBtn.textContent = '札を作る';
+    const openA = document.createElement('a'); openA.className = 'tagFilterBtn'; openA.textContent = 'url を開く'; openA.target = '_blank'; openA.rel = 'noopener noreferrer';
+    const okBtn = document.createElement('button'); okBtn.type = 'button'; okBtn.className = 'tagFilterBtn'; okBtn.textContent = '書いてあった';
+    const ngBtn = document.createElement('button'); ngBtn.type = 'button'; ngBtn.className = 'tagFilterBtn'; ngBtn.textContent = '開けなかった・書いてなかった';
+    const paint = () => {
+      const by = worldFudaBy(draft, base);
+      Object.entries(byEls).forEach(([k, el]) => { el.textContent = by[k] === 'chat' ? 'チャット' : by[k] === 'self' ? '自分で入力' : ''; el.className = 'fudaBy' + (by[k] === 'self' ? ' self' : ''); });
+      const u = digUrl(draft.url).url;
+      openA.hidden = !u; if (u) openA.href = u;
+      okBtn.disabled = !u || draft.opened !== u || draft.checked === u || x.urlChecked === u;
+      ngBtn.disabled = !u || draft.opened !== u;
+      const date = String(draft.date || '').trim();
+      const from = addDays(todayStr(), -WORLD_MAP_DAYS);
+      const endD = draft.dateMode === 'month' ? worldMonthEndDate(date) : (isDateStr(date) ? date : '');
+      mapNote.textContent = endD ? ('この日付だと地図（直近' + WORLD_MAP_DAYS + '日）に' + (endD >= from ? '出ます' : '出ません') + (draft.dateMode === 'month' ? '（月の最後の日で数えます）' : '')) : '';
+      const why = worldFudaCheck(draft, x);
+      mkBtn.disabled = !!why;
+      status.textContent = why || '札を作れます';
+      status.className = 'fudaStatus' + (why ? ' warn' : '');
+    };
+    const row = (label, k, opts) => {
+      const r = document.createElement('div'); r.className = 'fudaRow';
+      const l = document.createElement('label'); l.textContent = label; r.appendChild(l);
+      const inp = document.createElement('input'); inp.type = 'text'; inp.autocomplete = 'off'; inp.value = draft[k] || '';
+      if (opts && opts.placeholder) inp.placeholder = opts.placeholder;
+      inp.addEventListener('input', () => { draft[k] = inp.value; if (opts && opts.onInput) opts.onInput(inp); paint(); });
+      r.appendChild(inp);
+      if (opts && opts.after) r.appendChild(opts.after);
+      const b = document.createElement('span'); b.className = 'fudaBy'; byEls[k] = b; r.appendChild(b);
+      box.appendChild(r);
+      return inp;
+    };
+    const cnt = document.createElement('span'); cnt.className = 'fudaBy';
+    const paintCnt = (inp) => { cnt.textContent = String(inp.value || '').trim().length + '/' + WORLD_FACT_MAX; };
+    const factInp = row('何が起きたか', 'fact', { after: cnt, onInput: paintCnt });
+    paintCnt(factInp);
+    // 日付：年月日／月まで
+    {
+      const r = document.createElement('div'); r.className = 'fudaRow';
+      const l = document.createElement('label'); l.textContent = '日付'; r.appendChild(l);
+      const inp = document.createElement('input'); inp.type = 'text'; inp.autocomplete = 'off'; inp.value = draft.date || ''; inp.placeholder = draft.dateMode === 'month' ? '2026-02' : '2026-02-15';
+      inp.addEventListener('input', () => { draft.date = inp.value; paint(); });
+      r.appendChild(inp);
+      ['day', 'month'].forEach((mode) => {
+        const lb = document.createElement('label'); lb.style.minWidth = '0';
+        const rd = document.createElement('input'); rd.type = 'radio'; rd.name = 'fudaDate_' + key; rd.checked = draft.dateMode === mode;
+        rd.addEventListener('change', () => { draft.dateMode = mode; inp.placeholder = mode === 'month' ? '2026-02' : '2026-02-15'; paint(); });
+        lb.appendChild(rd); lb.appendChild(document.createTextNode(mode === 'month' ? '月まで（日は分からない）' : '年月日'));
+        r.appendChild(lb);
+      });
+      const b = document.createElement('span'); b.className = 'fudaBy'; byEls.date = b; r.appendChild(b);
+      box.appendChild(r);
+      box.appendChild(mapNote);
+    }
+    row('動かした側', 'actor');
+    { const n = document.createElement('div'); n.className = 'fudaNote'; n.textContent = 'お金の動き（地図の線の元。出す側か受け取る側を入れないと札を作れません）'; box.appendChild(n); }
+    {
+      const r = document.createElement('div'); r.className = 'fudaRow';
+      const l = document.createElement('label'); l.textContent = '種類'; r.appendChild(l);
+      const sel = document.createElement('select');
+      WORLD_FLOW_KINDS.forEach((k) => { const o = document.createElement('option'); o.value = k; o.textContent = WORLD_FLOW_KIND_LABEL[k]; sel.appendChild(o); });
+      sel.value = draft.kind || 'money';
+      sel.addEventListener('change', () => { draft.kind = sel.value; });
+      r.appendChild(sel);
+      box.appendChild(r);
+    }
+    row('出す側', 'from'); row('受け取る側', 'to'); row('何', 'what'); row('額', 'amount', { placeholder: '出典の書き方のまま' });
+    row('出典', 'source');
+    row('url', 'url', { onInput: () => { draft.opened = ''; draft.checked = ''; } });
+    {
+      const r = document.createElement('div'); r.className = 'fudaRow';
+      openA.addEventListener('click', () => { draft.opened = digUrl(draft.url).url; setTimeout(paint, 0); });
+      okBtn.addEventListener('click', () => {
+        const u = digUrl(draft.url).url;
+        if (!u || draft.opened !== u) return;
+        draft.checked = u;
+        worldDigUpdateItem(d.id, idx, (it) => { it.urlCheckedAt = nowIso(); it.urlChecked = u; });
+        paint();
+      });
+      ngBtn.addEventListener('click', () => {
+        const u = digUrl(draft.url).url;
+        if (!u) return;
+        worldDigUpdateItem(d.id, idx, (it) => { it.urlFailed = (it.urlFailed || []).concat([{ url: u, at: nowIso() }]); if (it.urlChecked === u) { delete it.urlChecked; delete it.urlCheckedAt; } });
+        draft.url = ''; draft.opened = ''; draft.checked = '';
+        worldState.fudaStatus = worldState.fudaStatus || {}; worldState.fudaStatus[key] = '開けなかった url を記録に残しました。別の url を貼ってください。';
+        rerender();
+      });
+      r.appendChild(openA); r.appendChild(okBtn); r.appendChild(ngBtn);
+      box.appendChild(r);
+      if (x.urlFailed && x.urlFailed.length) { const n = document.createElement('div'); n.className = 'fudaNote'; n.textContent = '開けなかった url：' + x.urlFailed.map((f) => f.url).join('、'); box.appendChild(n); }
+    }
+    {
+      const r = document.createElement('div'); r.className = 'fudaRow';
+      const l = document.createElement('label'); l.textContent = '元の札と'; r.appendChild(l);
+      [['before', 'この動きの前'], ['after', 'この動きの後'], ['', 'どちらでもない']].forEach(([v, t]) => {
+        const lb = document.createElement('label'); lb.style.minWidth = '0';
+        const rd = document.createElement('input'); rd.type = 'radio'; rd.name = 'fudaRel_' + key; rd.checked = (draft.rel || '') === v;
+        rd.addEventListener('change', () => { draft.rel = v; });
+        lb.appendChild(rd); lb.appendChild(document.createTextNode(t));
+        r.appendChild(lb);
+      });
+      box.appendChild(r);
+    }
+    {
+      const r = document.createElement('div'); r.className = 'fudaRow';
+      const back = document.createElement('button'); back.type = 'button'; back.className = 'linkLikeBtn'; back.textContent = 'チャットの値に戻す';
+      back.addEventListener('click', () => { delete worldState.fudaDrafts[key]; rerender(); });
+      r.appendChild(back); r.appendChild(mkBtn);
+      box.appendChild(r);
+    }
+    box.appendChild(status);
+    if (worldState.fudaStatus && worldState.fudaStatus[key]) { const n = document.createElement('div'); n.className = 'fudaNote'; n.textContent = worldState.fudaStatus[key]; box.appendChild(n); }
+    mkBtn.addEventListener('click', async () => {
+      if (worldFudaCheck(draft, x)) { paint(); return; }
+      mkBtn.disabled = true;
+      const res = await worldMakeFuda(ev, d, idx, draft, base);
+      worldState.fudaStatus = worldState.fudaStatus || {};
+      worldState.fudaStatus[key] = res.message;
+      if (res.ok) { delete worldState.fudaDrafts[key]; worldState.fudaOpen = ''; }
+      rerender();
+    });
+    paint();
+    return box;
+  }
+  // 札を作る：今の取り込みに1件だけ通す。元の札は書き換えない
+  async function worldMakeFuda(ev, d, idx, draft, base) {
+    const x = d.found[idx];
+    const mode = draft.dateMode === 'month' ? 'month' : 'day';
+    const date = String(draft.date).trim();
+    const eventDate = mode === 'month' ? date + '-01' : date;
+    const url = digUrl(draft.url).url;
+    const by = worldFudaBy(draft, base);
+    const val = (k) => String(draft[k] || '').trim();
+    const fact = val('fact');
+    const dup = worldDupOf({ fact, url }, eventDate, mode === 'month');
+    if (dup) return { ok: false, message: '似た札がもうあります：' + worldEvDateShort(dup) + ' ' + dup.fact + '（作りませんでした）' };
+    const item = {
+      fact, eventDate, url, source: val('source'),
+      actors: val('actor') ? [{ name: val('actor'), did: fact, said: '', read: '' }] : [],
+      flow: { from: val('from'), to: val('to'), what: val('what'), amount: val('amount'), kind: draft.kind || 'money' },
+      readDate: todayStr(),
+      self: { digId: d.id, by, datePrec: mode },
+    };
+    const before = JSON.stringify(ev);
+    const res = await worldImportJson(JSON.stringify({ events: [item] }));
+    if (res.error || !res.added) {
+      const r = (res && res.rejected) || {};
+      const why = res.error || (r.dup ? '似た札がもうあります' : r.future ? '日付が今日より後です' : r.date ? '日付が読めません' : r.url ? 'url が読めません' : r.fact ? '何が起きたかが空です' : '取り込めませんでした');
+      return { ok: false, message: why + '（作りませんでした）' };
+    }
+    const cardId = res.addedIds[0];
+    if (JSON.stringify(ev) !== before) recordFeatureError('札にする', new Error('元の札が変わった ' + ev.id));   // 起きないはず。起きたら設定に出す
+    worldDigUpdateItem(d.id, idx, (it) => {
+      it.cardId = cardId; it.cardAt = nowIso(); it.rel = draft.rel || ''; it.datePrec = mode;
+      it.cardBy = by;
+      it.cardValues = { fact, date, actor: val('actor'), from: val('from'), to: val('to'), what: val('what'), amount: val('amount'), source: val('source'), url };
+      if (!it.urlChecked || it.urlChecked !== url) { it.urlChecked = url; it.urlCheckedAt = nowIso(); }
+    });
+    const selfBy = Object.keys(FUDA_FIELD_LABEL).filter((k) => by[k] === 'self').map((k) => FUDA_FIELD_LABEL[k]);
+    return { ok: true, cardId, message: '札を作りました（' + worldEvDateShort(worldLiveEvents().find((e) => e.id === cardId) || { eventDate }) + '）。' + (selfBy.length ? '自分で入れた値：' + selfBy.join('・') : '値は全部チャットが書いたもの') };
+  }
+  // ---- v20.45 自分で作った札・月までの日付の表示 ----
+  function worldDigByCard(id) {
+    if (!id) return null;
+    if (!wdig.byCard || wdig.byCardStamp !== wdig.byEvent) {
+      worldDigsFor('');   // byEvent を作り直す
+      wdig.byCard = new Map();
+      worldDigAll().forEach((dg) => dg.found.forEach((it) => { if (it.cardId) wdig.byCard.set(it.cardId, { dig: dg, item: it }); }));
+      wdig.byCardStamp = wdig.byEvent;
+    }
+    return wdig.byCard.get(id) || null;
+  }
+  function worldEvSelf(e) {
+    if (!e) return null;
+    const hit = worldDigByCard(e.id);
+    if (hit) return { digId: hit.dig.id, originId: hit.dig.eventId, by: hit.item.cardBy || (e.self && e.self.by) || {}, datePrec: hit.item.datePrec || (e.self && e.self.datePrec) || 'day' };
+    if (e.self) { const dg = worldDigAll().find((x) => x.id === e.self.digId); return { digId: e.self.digId, originId: dg ? dg.eventId : '', by: e.self.by || {}, datePrec: e.self.datePrec || 'day' }; }
+    return null;
+  }
+  function worldEvIsMonthPrec(e) { const sf = e && (e.self || worldDigByCard(e.id)) ? worldEvSelf(e) : null; return !!(sf && sf.datePrec === 'month'); }
+  function worldEvDateShort(e) { return worldEvIsMonthPrec(e) ? worldMonthLabel(String(e.eventDate).slice(0, 7)) : worldShortDate(e.eventDate); }
+  function worldEvDateFull(e) { return worldEvIsMonthPrec(e) ? String(e.eventDate).slice(0, 7) + '（日は分からない）' : e.eventDate; }
+  // 地図の期間：月までの札は、その月の最後の日で数える
+  function worldEvInPeriod(e, from) { if (e.eventDate >= from) return true; return worldEvIsMonthPrec(e) && worldMonthEndDate(String(e.eventDate).slice(0, 7)) >= from; }
+
   function renderWorldDig() {
     const all = worldDigAll();
     document.getElementById('worldDigTitle').textContent = '調べたこと（' + all.length + '）';
@@ -20654,7 +20994,7 @@
     const tail = ask
       ? worldAskTail(ask, true)   // v20.44：出典を最後にまとめる
       : '\nこの件について、私が見落としている力学を教えてください。\n私は既に上の前提は理解しています。';
-    return '【出来事】' + ev.eventDate + '\n' + ev.fact + '\n\n'
+    return '【出来事】' + worldEvDateFull(ev) + '\n' + ev.fact + '\n\n'
       + '【なぜ今動いたか】\n' + (ev.why || '（なし）') + '\n\n'
       + pre + '\n'
       + worldActorsCopyBlock(ev)
@@ -20774,7 +21114,7 @@
       g.rows.forEach(({ event: e, peer }) => {
         const row = document.createElement('button');
         row.type = 'button'; row.className = 'worldMoneyRow';
-        const d = document.createElement('span'); d.className = 'wmDate'; d.textContent = worldShortDate(e.eventDate);
+        const d = document.createElement('span'); d.className = 'wmDate'; d.textContent = worldEvDateShort(e);
         const p = document.createElement('span'); p.className = 'wmPeer'; p.textContent = peer;
         const a = document.createElement('span'); a.className = 'wmAmount'; a.textContent = e.flow.amount || '（額なし）';
         const w = document.createElement('span'); w.className = 'wmWhat'; w.textContent = e.flow.what || e.fact;
@@ -20808,7 +21148,7 @@
     rows.forEach(({ event: e, rec, amount }) => {
       const row = document.createElement('button');
       row.type = 'button'; row.className = 'worldActorTl';
-      const d = document.createElement('span'); d.className = 'tlDate'; d.textContent = worldShortDate(e.eventDate);
+      const d = document.createElement('span'); d.className = 'tlDate'; d.textContent = worldEvDateShort(e);
       const did = document.createElement('span'); did.className = 'tlDid'; did.textContent = rec ? rec.did : e.fact;
       const am = document.createElement('span'); am.className = 'tlAmount'; am.textContent = amount;
       const car = document.createElement('span'); car.className = 'tlCaret'; car.textContent = '▸';
@@ -20875,7 +21215,7 @@
       + (c.stance ? '【ふだん欲しがるもの（私が書いたもの）】' + c.stance + '\n' : '')
       + '\n【この期間の動き（新しい順）】\n'
       + (rows.length ? rows.map(({ event: e, rec, amount }) =>
-          '- ' + e.eventDate + '　' + (rec ? rec.did : e.fact) + (amount ? '　' + amount : '')
+          '- ' + worldEvDateFull(e) + '　' + (rec ? rec.did : e.fact) + (amount ? '　' + amount : '')
           + (rec && rec.said ? '\n    述べた理由「' + rec.said + '」' : '')
           + (rec && rec.read ? '\n    推定（読む回が付けたもの）「' + rec.read + '」' : '')).join('\n')
         : '（読み込んでいる月にはありません）') + '\n'
@@ -20891,7 +21231,7 @@
       + (c.line || '（注がまだありません）') + '\n\n'
       + related
       + '【この' + (isTerm ? '用語' : '概念') + 'が出た出来事】\n'
-      + (events.length ? events.map((e) => '- ' + worldShortDate(e.eventDate) + ' ' + e.fact).join('\n') : '（読み込んでいる月にはありません）') + '\n\n'
+      + (events.length ? events.map((e) => '- ' + worldEvDateShort(e) + ' ' + e.fact).join('\n') : '（読み込んでいる月にはありません）') + '\n\n'
       + (ask ? worldAskTail(ask).replace(/^\n/, '') : 'この概念について、上の理解の次に来るものを教えてください。');
   }
 
@@ -21263,7 +21603,7 @@
     row.type = 'button'; row.className = 'worldMoneyRow';
     const add = (cls, text) => { const x = document.createElement('span'); x.className = cls; x.textContent = text; row.appendChild(x); return x; };
     if (detail) add('wmUse', worldUseOf(e) || '—');
-    add('wmDate', worldShortDate(e.eventDate));
+    add('wmDate', worldEvDateShort(e));
     add('wmAmount', e.flow.amount || '（額なし）');
     add('wmWhat', e.flow.what || e.fact);
     worldAppendUsd(row, e);   // v20.3
@@ -21722,7 +22062,7 @@
     flows.forEach((e) => {
       const row = document.createElement('button');
       row.type = 'button'; row.className = 'worldMoneyRow';
-      const d = document.createElement('span'); d.className = 'wmDate'; d.textContent = worldShortDate(e.eventDate);
+      const d = document.createElement('span'); d.className = 'wmDate'; d.textContent = worldEvDateShort(e);
       const n = document.createElement('span'); n.className = 'wmWhat'; n.textContent = (e.flow.from || '？') + ' → ' + (e.flow.to || '？');
       const a = document.createElement('span'); a.className = 'wmAmount'; a.textContent = e.flow.amount || '';
       const w = document.createElement('span'); w.className = 'wmWhat'; w.textContent = e.flow.what || '';
@@ -21816,7 +22156,7 @@
       return;
     }
     const ev = worldLiveEvents().find((e) => e.id === id);
-    openWorldCards({ title: (ev ? worldShortDate(ev.eventDate) + ' の札' : '札'), ids: [id], openId: id });
+    openWorldCards({ title: (ev ? worldEvDateShort(ev) + ' の札' : '札'), ids: [id], openId: id });
   }
   // from: 'board'（動いた主体から）／'tidy'（整理から）／'list'（探すなど）
   function openWorldEntry(id, from) {
@@ -21880,7 +22220,7 @@
   function worldMoneyBriefRowEl(e) {
     const row = document.createElement('button');
     row.type = 'button'; row.className = 'worldMoneyRow';
-    const d = document.createElement('span'); d.className = 'wmDate'; d.textContent = worldShortDate(e.eventDate);
+    const d = document.createElement('span'); d.className = 'wmDate'; d.textContent = worldEvDateShort(e);
     const p = document.createElement('span'); p.className = 'wmPeer';
     p.textContent = (e.flow.from || '？') + ' → ' + (e.flow.to || '？')
       + (e.flow.kind && e.flow.kind !== 'money' ? '　' + WORLD_FLOW_KIND_MARK[e.flow.kind] + (e.flow.what || '') : '');   // v20：鎖から回ってきた物・人
@@ -21913,11 +22253,14 @@
     const flows = worldLiveEvents().filter((e) => e.flow && !worldIsLowConf(e));
     const byId = new Map(flows.map((e) => [e.id, e]));
     const next = new Map();
-    flows.forEach((e) => {
-      if (!e.flow.after || !byId.has(e.flow.after)) return;
-      if (!next.has(e.flow.after)) next.set(e.flow.after, []);
-      next.get(e.flow.after).push(e.id);
-    });
+    const prev = new Map();   // v20.45：前は札の after（1つ）だけ。記録の前後を足すので並びにする
+    const link = (a, b) => { if (!byId.has(a) || !byId.has(b) || a === b) return; if (!next.has(a)) next.set(a, []); if (!next.get(a).includes(b)) next.get(a).push(b); if (!prev.has(b)) prev.set(b, []); if (!prev.get(b).includes(a)) prev.get(b).push(a); };
+    flows.forEach((e) => { if (e.flow.after) link(e.flow.after, e.id); });
+    worldDigAll().forEach((dg) => dg.found.forEach((it) => {   // 元の札は書き換えず、記録から読む
+      if (!it.cardId || !it.rel) return;
+      if (it.rel === 'before') link(it.cardId, dg.eventId);
+      else if (it.rel === 'after') link(dg.eventId, it.cardId);
+    }));
     const seen = new Set();
     const chains = [];
     flows.forEach((start) => {
@@ -21929,7 +22272,7 @@
         if (group.has(id) || depth > WORLD_CHAIN_DEPTH_MAX) continue;
         group.add(id);
         const e = byId.get(id);
-        if (e.flow.after && byId.has(e.flow.after)) walk.push([e.flow.after, depth + 1]);
+        (prev.get(id) || []).forEach((p) => walk.push([p, depth + 1]));   // v20.45（e は使わない）
         (next.get(id) || []).forEach((n) => walk.push([n, depth + 1]));
       }
       group.forEach((id) => seen.add(id));
@@ -21949,7 +22292,7 @@
   function worldChainRowEl(e) {
     const row = document.createElement('button');
     row.type = 'button'; row.className = 'worldMoneyRow';
-    const d = document.createElement('span'); d.className = 'wmDate'; d.textContent = worldShortDate(e.eventDate);
+    const d = document.createElement('span'); d.className = 'wmDate'; d.textContent = worldEvDateShort(e);
     const p = document.createElement('span'); p.className = 'wmPeer';
     // 物・人の動きは、鎖の中の一手としてだけ出す（［物］［人］の印つき）
     p.textContent = (e.flow.from || '？') + ' → ' + (e.flow.to || '？') + '　' + WORLD_FLOW_KIND_MARK[e.flow.kind] + (e.flow.what || '');
@@ -22269,12 +22612,12 @@
   // 直近90日の動きを、国をまたぐ線・枠への線・国内・場所不明に分ける（v19.15 のまとめ方を先に当てる）
   function worldMapModel(lib, from) {
     const rows = worldMergeFlows(worldLiveEvents()
-      .filter((e) => e.flow && e.eventDate >= from && !worldIsLowConf(e))
+      .filter((e) => e.flow && worldEvInPeriod(e, from) && !worldIsLowConf(e))   // v20.45：月までの札は月の最後の日で
       .sort((a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0)));
     const m = { lines: [], domestic: new Map(), unknown: [], rootUnknown: [], all: rows, dotRows: [], sameRows: [], foreignRows: [], multiRows: [], slotCountryRows: [], sunkRows: [] };
     // v20.27：確度3以下で外した動き（同じ期間。同じ動きは1行にまとめる）。場所も読んでおく（小さな地図は国をまたぐ線だけを数える）
     m.sunkRows = worldMergeFlows(worldLiveEvents()
-      .filter((e) => e.flow && e.eventDate >= from && worldIsLowConf(e))
+      .filter((e) => e.flow && worldEvInPeriod(e, from) && worldIsLowConf(e))
       .sort((a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0)));
     m.sunkRows.forEach((r) => { const ph = worldFlowPlacesHow(r.flow, lib); worldApplyForeignHolder(r, ph); r.places = ph.places; r.placeHow = ph.how; });
     rows.forEach((r) => {
@@ -22656,7 +22999,7 @@
     const usdTxt = u && u.cur !== 'USD' && !u.paren ? '（' + (u.per || '') + '約' + worldUsdShort(u.value) + 'ドル）' : '';
     const n = (r.cards || [r]).length;
     return (f.from || '？') + ' → ' + (f.to || '？') + '　' + kindMark + (f.amount || (kindMark ? (f.what || '') : '額なし')) + usdTxt
-      + '　' + worldShortDate(e.eventDate) + (n > 1 ? '（札' + n + '枚）' : '');
+      + '　' + worldEvDateShort(e) + (n > 1 ? '（札' + n + '枚）' : '');
   }
   function worldSvg(tag, attrs, parent) {
     const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
