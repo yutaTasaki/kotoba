@@ -1268,6 +1268,7 @@
   .worldRow .wTag.isStrong { color: var(--text-dim); border-color: var(--text-faint); }
   .worldPremise .wpReunion { font-size: 11px; color: var(--text-faint); margin-top: 6px; line-height: 1.6; }
   .worldConceptRow .linkLikeBtn { font-size: 11px; padding: 0; margin-left: 8px; }
+  .statRow .idCollisionCopy { font-size: 12px; padding: 0; margin-left: 8px; white-space: nowrap; }   /* v20.38 */
   /* 今日の共通点。無い日は出さないので、出たときだけ意味がある */
   .worldCommon {
     font-size: 12px; color: var(--text-dim); line-height: 1.6;
@@ -2008,6 +2009,8 @@
             <div class="statRow"><span>最後の API 呼び出し</span><span id="statLastApiCall"></span></div>
             <div class="statRow"><span>切り詰めた文</span><span id="statTruncations"></span></div>
             <div id="statTruncationList"></div>
+            <div class="statRow"><span>同じ番号でぶつかったもの</span><span id="statIdCollisions"></span></div>
+            <div id="statIdCollisionList"></div>
             <div class="statRow"><span>日ごと（この端末）</span><span id="statUsageDaysNote"></span></div>
             <div id="statUsageDays"></div>
             <div id="statUsagePerDevice"></div>
@@ -3028,7 +3031,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.37';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.38';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -3695,13 +3698,33 @@
 
   let data = loadData();
 
+  // v20.38：番号の後ろは数字6桁の乱数（100000〜999999）。頭の「種類_日付_」は今のまま
+  // （どの月・年のファイルに入れるかは頭で決めている）。前は端末にあるものだけを見て「空いている一番小さい数」を
+  // 使っていたので、同期の前に2台で作ると同じ番号になり、合わせるときに片方が消えた。
+  // 数字にしてあるのは、札の「お金の流れの続き」の確かめ（w_ 8桁 _ 数字）を古い版の端末でも通すため。
+  // 関数宣言なのは、起動時の読み込みより前に呼ばれても落ちないようにするため
+  function idRandomSuffix() {
+    try {
+      const buf = new Uint32Array(1);
+      crypto.getRandomValues(buf);
+      return String(100000 + (buf[0] % 900000));
+    } catch (e) {
+      return String(100000 + Math.floor(Math.random() * 900000));
+    }
+  }
+  function newIdWith(prefix, taken) {
+    const issued = newIdWith.issued || (newIdWith.issued = new Set());   // この起動で出した番号（一度に何件も作るとき用）
+    let id;
+    do { id = prefix + idRandomSuffix(); } while (taken.has(id) || issued.has(id));
+    issued.add(id);
+    return id;
+  }
   function generateId(notes) {
     const d = new Date();
     const prefix = `n_${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}_`;
     const existing = new Set([...notes, ...((typeof data !== 'undefined' && data && data.trash) || [])].map((n) => n.id)); // v3.5: never reuse a trashed id
-    let seq = 1;
-    while (existing.has(prefix + String(seq).padStart(3, '0'))) seq++;
-    return prefix + String(seq).padStart(3, '0');
+    ((typeof data !== 'undefined' && data && data.deletedIds) || []).forEach((t) => existing.add(t.id));   // v20.38：消した番号も使い直さない
+    return newIdWith(prefix, existing);
   }
 
   function findNote(id) { return data.notes.find((n) => n.id === id) || null; }
@@ -3803,6 +3826,64 @@
   // note the other device hasn't synced yet).
   // per-entry union: later updatedAt wins; a tombstone beats an entry only
   // if it is newer than that entry's last edit
+  // v20.38：同期で同じ番号のものが両方にあって、作った日時が違う＝別々に作られた2つが同じ番号になった。
+  // 残す方の決め方は変えない（更新日時の新しい方）。消える方を端末に控え、同期の1行と設定に出す。
+  // 同じものを2台で直しただけなら作った日時は同じなので出ない。最初から入っている固定の番号（ac_boj など）は見ない
+  function idCollisionCheck(kind, x, y, keep) {
+    if (!x || !y || !keep || !x.createdAt || !y.createdAt || x.createdAt === y.createdAt) return;
+    if (!/^(?:n|j|d|w|wc|wt|ac|q)_\d{8}_\d+$|^fc_\d{8}_[0-9a-z]+$/.test(String(x.id))) return;
+    recordIdCollision(kind, keep, keep === x ? y : x);
+  }
+  function idCollisionHead(kind, o) {
+    const t = kind === 'event' ? o.fact : kind === 'forecast' ? (o.actor || '') + '：' + (o.what || '')
+      : (kind === 'concept' || kind === 'term' || kind === 'actor') ? o.name : o.text;
+    return String(t || (kind === 'journal' ? o.kind || '' : '')).replace(/\s+/g, ' ').slice(0, 40);
+  }
+  // 鍵は直書き（後ろで宣言する const は、起動時の読み込みの方が早いと使えない）
+  function recordIdCollision(kind, keep, lost) {
+    try {
+      const raw = localStorage.getItem('kotoba_idCollisions');
+      const list = raw ? JSON.parse(raw) : [];
+      const sig = kind + '|' + lost.id + '|' + [keep.createdAt, lost.createdAt].sort().join('|');
+      if (list.some((x) => x && x.sig === sig)) return;   // 同じぶつかりは1回だけ
+      list.push({
+        sig, kind, id: String(lost.id), at: new Date().toISOString(), seen: false,
+        keep: { head: idCollisionHead(kind, keep), createdAt: keep.createdAt, updatedAt: keep.updatedAt || '' },
+        lost: JSON.parse(JSON.stringify(lost)),
+      });
+      let dropped = 0;
+      while (list.length > 50) { list.shift(); dropped++; }
+      if (dropped) localStorage.setItem('kotoba_idCollisionsDropped', String((Number(localStorage.getItem('kotoba_idCollisionsDropped')) || 0) + dropped));
+      localStorage.setItem('kotoba_idCollisions', JSON.stringify(list));
+    } catch (e) {}
+  }
+  function idCollisionList() {
+    try { const l = JSON.parse(localStorage.getItem('kotoba_idCollisions') || '[]'); return Array.isArray(l) ? l.filter(Boolean) : []; } catch (e) { return []; }
+  }
+  function idCollisionUnseen() { return idCollisionList().filter((x) => !x.seen).length; }
+  function markIdCollisionsSeen() {
+    const l = idCollisionList();
+    if (!l.some((x) => !x.seen)) return;
+    l.forEach((x) => { x.seen = true; });
+    try { localStorage.setItem('kotoba_idCollisions', JSON.stringify(l)); } catch (e) {}
+  }
+  const ID_COLLISION_KIND_LABEL = { note: '言葉', journal: '日誌', draft: '下書き', event: '札', concept: '概念', term: '用語', actor: '主体', ask: '聞いたこと', forecast: '予告' };
+  // 消えた方を、人が読める形にする（戻すのは人の手。最後に元の形も付ける）
+  function idCollisionCopyText(c) {
+    const o = c.lost || {};
+    const L = [];
+    const add = (k, v) => { if (v != null && v !== '' && !(Array.isArray(v) && !v.length)) L.push(k + '：' + (Array.isArray(v) ? v.join('、') : v)); };
+    L.push('【同じ番号でぶつかって消えた' + (ID_COLLISION_KIND_LABEL[c.kind] || c.kind) + '】' + c.id);
+    if (c.kind === 'note' || c.kind === 'draft') { add('言葉', o.text); add('出典', o.source); add('自分の言葉', o.myWords); add('タグ', o.tags); }
+    else if (c.kind === 'journal') { add('種類', o.kind); add('日付', o.date); add('文', o.text); add('選んだ言葉', (o.picks || []).map((p) => p.id)); add('まとめ', o.closing); }
+    else if (c.kind === 'event') { add('出来事の日付', o.eventDate); add('fact', o.fact); add('why', o.why); add('detail', o.detail); add('出典', o.source); add('URL', o.url); }
+    else if (c.kind === 'forecast') { add('主体', o.actor); add('何を', o.what); add('期限', o.due); add('印', o.sign); add('元の札', o.fromEventId); add('元の推定', o.fromRead); }
+    else if (c.kind === 'ask') { add('問い', o.text); }
+    else { add('名前', o.name); add('別名', o.aka); add('注', o.line); }
+    add('作った日時', o.createdAt);
+    L.push('', '（元の形）', JSON.stringify(o));
+    return L.join('\n');
+  }
   function mergeJournalSets(entriesA, deletedA, entriesB, deletedB) {
     const journalA = new Map(entriesA.map((j) => [j.id, j]));
     const journalB = new Map(entriesB.map((j) => [j.id, j]));
@@ -3812,7 +3893,7 @@
     new Set([...journalA.keys(), ...journalB.keys()]).forEach((id) => {
       const ja = journalA.get(id), jb = journalB.get(id);
       let winner;
-      if (ja && jb) winner = new Date(ja.updatedAt) >= new Date(jb.updatedAt) ? ja : jb;
+      if (ja && jb) { winner = new Date(ja.updatedAt) >= new Date(jb.updatedAt) ? ja : jb; idCollisionCheck('journal', ja, jb, winner); }   // v20.38
       else { const only = ja || jb; const tombstoneAt = ja ? jDelB.get(id) : jDelA.get(id); winner = (tombstoneAt && new Date(tombstoneAt) >= new Date(only.updatedAt)) ? null : only; }
       if (winner) merged.set(id, { ...winner, picks: (winner.picks || []).map((p) => ({ ...p })) });
     });
@@ -3831,7 +3912,7 @@
     new Set([...mA.keys(), ...mB.keys()]).forEach((id) => {
       const na = mA.get(id), nb = mB.get(id);
       let winner;
-      if (na && nb) winner = new Date(na.updatedAt) >= new Date(nb.updatedAt) ? na : nb;
+      if (na && nb) { winner = new Date(na.updatedAt) >= new Date(nb.updatedAt) ? na : nb; idCollisionCheck('note', na, nb, winner); }   // v20.38
       else { const only = na || nb; const tombstoneAt = na ? delB.get(id) : delA.get(id); winner = (tombstoneAt && new Date(tombstoneAt) >= new Date(only.updatedAt)) ? null : only; }
       if (winner) merged.set(id, { ...winner, tags: [...winner.tags], links: winner.links.map((l) => ({ ...l })), rejectedLinks: [...(winner.rejectedLinks || [])] });
     });
@@ -3879,6 +3960,7 @@
       let winner;
       if (da && db) {
         winner = new Date(da.updatedAt) >= new Date(db.updatedAt) ? da : db;
+        idCollisionCheck('draft', da, db, winner);   // v20.38
       } else {
         const only = da || db;
         const tombstoneAt = da ? dDelB.get(id) : dDelA.get(id);
@@ -4057,7 +4139,10 @@
     } else {
       text = pending > 1 ? `未同期（${pending}件）` : '未同期';
     }
-    syncBarEl.className = state + ((pending >= 2 && state !== 'synced' && state !== 'syncing') ? ' prominent' : '');
+    // v20.38：同期で同じ番号がぶつかったら、設定の記録を開くまで出す
+    const collided = state !== 'off' ? idCollisionUnseen() : 0;   // 同期していない端末ではぶつからない
+    if (collided) text += '　※ 同じ番号が2つありました。' + collided + '件（新しい方を残しました）';
+    syncBarEl.className = state + ((pending >= 2 && state !== 'synced' && state !== 'syncing') || collided ? ' prominent' : '');
     syncBarEl.textContent = text;
   }
 
@@ -4728,9 +4813,9 @@
     const d = new Date();
     const prefix = `j_${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}_`;
     const existing = new Set(data.journal.map((j) => j.id));
-    let seq = 1;
-    while (existing.has(prefix + String(seq).padStart(3, '0'))) seq++;
-    return prefix + String(seq).padStart(3, '0');
+    (data.deletedJournalIds || []).forEach((t) => existing.add(t.id));   // v20.38：消した番号も使い直さない
+    jm.tombs.forEach((mm) => mm.forEach((_, id) => existing.add(id)));
+    return newIdWith(prefix, existing);   // v20.38
   }
 
   function todaysMorningJournalEntry() {
@@ -5269,9 +5354,8 @@
     const d = new Date();
     const prefix = `d_${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}_`;
     const existing = new Set(data.drafts.map((x) => x.id));
-    let seq = 1;
-    while (existing.has(prefix + String(seq).padStart(3, '0'))) seq++;
-    return prefix + String(seq).padStart(3, '0');
+    (data.deletedDraftIds || []).forEach((t) => existing.add(t.id));   // v20.38：消した番号も使い直さない
+    return newIdWith(prefix, existing);   // v20.38
   }
 
   function deleteDraft(id) {
@@ -12848,14 +12932,35 @@
       g.addEventListener('toggle', () => {
         const now = groups.filter((x) => x.open).map((x) => x.dataset.group);
         try { localStorage.setItem(SETTINGS_OPEN_KEY, JSON.stringify(now)); } catch (e) {}
+        if (g.dataset.group === 'stats' && g.open) { try { paintIdCollisions(); paintSettingsSummaries(); } catch (e) {} }   // v20.38：開いたら見たことに
       });
     });
+  }
+  // v20.38：同期で同じ番号がぶつかった記録（端末ごと。同期しない）。統計の欄を開いているときに描いたら、見たことにする
+  function paintIdCollisions() {
+    const list = idCollisionList().slice().reverse();
+    const dropped = Number(localStorage.getItem('kotoba_idCollisionsDropped')) || 0;
+    document.getElementById('statIdCollisions').textContent = list.length ? list.length + '件' : 'ありません';
+    const box = document.getElementById('statIdCollisionList');
+    box.innerHTML = '';
+    const row = (t) => { const r = document.createElement('div'); r.className = 'statRow statTruncRow'; const a = document.createElement('span'); a.textContent = t; r.appendChild(a); box.appendChild(r); return r; };
+    if (dropped) row('※ 古い控え ' + dropped + '件を消しました（50件まで残します）');
+    list.forEach((c) => {
+      row((ID_COLLISION_KIND_LABEL[c.kind] || c.kind) + '　' + c.id + '　' + formatDateTime(c.at));
+      row('　残した方：「' + (c.keep.head || '') + '」（作った ' + formatDateTime(c.keep.createdAt) + '）');
+      const r = row('　消えた方：「' + idCollisionHead(c.kind, c.lost || {}) + '」（作った ' + formatDateTime((c.lost || {}).createdAt) + '）');
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'linkLikeBtn idCollisionCopy'; b.textContent = '消えた方をコピー';
+      b.addEventListener('click', () => { copyToClipboard(idCollisionCopyText(c)).then((ok) => { b.textContent = ok ? 'コピーしました' : 'コピーできませんでした'; }); });
+      r.appendChild(b);
+    });
+    const g = document.querySelector('#screen-settings .setGroup[data-group="stats"]');
+    if (list.length && g && g.open && !document.getElementById('screen-settings').hidden) { markIdCollisionsSeen(); renderSyncBar(); }
   }
   function paintSettingsSummaries() {
     const set = (id, t) => { const el = document.getElementById(id); if (el) el.textContent = t; };
     set('setSubSync', getGhToken() ? '設定済み' : 'トークン未設定');
     set('setSubApi', getClaudeApiKey() ? (getClaudeChatModel() + ' ・ 上限 $' + getUsageBudget().toFixed(2) + ' ・ ' + usageMonthLine()) : 'キー未設定');
-    set('setSubStats', usageMonthLine());   // v20.12：折りたたみを開かなくても今月の額が見える
+    set('setSubStats', usageMonthLine() + (idCollisionUnseen() ? ' ・ 同じ番号のぶつかり ' + idCollisionUnseen() + '件' : ''));   // v20.12（v20.38：ぶつかりも）
     set('setSubWords', data.notes.length + '件');
     set('setSubWalk', computeWalkDerived().n + '日');
     set('setSubWorld', 'ソース ' + worldSources().length + '件 ・ 版 ' + APP_BUILD);
@@ -12919,6 +13024,7 @@
       box.innerHTML = '';
       tr.forEach((t) => { const r = document.createElement('div'); r.className = 'statRow statTruncRow'; const a = document.createElement('span'); a.textContent = t; r.appendChild(a); box.appendChild(r); });
     }
+    paintIdCollisions();   // v20.38
     { // v20.15：日ごとの概算額。コンソールの日ごとの額と見比べるためのもの
       const lines = usageDayLines();
       document.getElementById('statUsageDaysNote').textContent = lines.length ? '新しい順に' + lines.length + '日' : 'まだありません';
@@ -16346,7 +16452,7 @@
     new Set([...mA.keys(), ...mB.keys()]).forEach((id) => {
       const x = mA.get(id), y = mB.get(id);
       let w;
-      if (x && y) w = new Date(x.updatedAt) >= new Date(y.updatedAt) ? x : y;
+      if (x && y) { w = new Date(x.updatedAt) >= new Date(y.updatedAt) ? x : y; idCollisionCheck('event', x, y, w); }   // v20.38
       else { const only = x || y; const tomb = x ? dB.get(id) : dA.get(id); w = (tomb && new Date(tomb) >= new Date(only.updatedAt)) ? null : only; }
       if (w) out.set(id, { ...w, premise: { ...w.premise }, prediction: { ...w.prediction, history: (w.prediction.history || []).map((h) => ({ ...h })) } });
     });
@@ -16392,6 +16498,7 @@
     new Set([...mA.keys(), ...mB.keys()]).forEach((id) => {
       const x = mA.get(id), y = mB.get(id);
       const w = (x && y) ? (new Date(x.updatedAt) >= new Date(y.updatedAt) ? x : y) : (x || y);
+      idCollisionCheck(field === 'terms' ? 'term' : field === 'actors' ? 'actor' : 'concept', x, y, w);   // v20.38
       const copy = { ...w, aka: [...w.aka], eventIds: [...w.eventIds] };
       if (w.links) copy.links = w.links.map((l) => ({ ...l, eventIds: [...l.eventIds] }));
       if (w.rejected) copy.rejected = [...w.rejected];
@@ -16416,6 +16523,7 @@
     new Set([...mA.keys(), ...mB.keys()]).forEach((id) => {
       const x = mA.get(id), y = mB.get(id);
       const w = (x && y) ? (new Date(x.updatedAt) >= new Date(y.updatedAt) ? x : y) : (x || y);
+      idCollisionCheck('ask', x, y, w);   // v20.38
       const runs = new Map();
       [...(y ? y.runs : []), ...(x ? x.runs : [])].forEach((r) => { if (!runs.has(r.at)) runs.set(r.at, r); });
       out.asks.push({ ...w, runs: [...runs.values()].sort((p, q) => (p.at > q.at ? 1 : -1)) });
@@ -16535,6 +16643,7 @@
       const x = mA.get(id), y = mB.get(id);
       if (!x || !y) { out.forecasts.push(x || y); return; }
       const base = (x.updatedAt >= y.updatedAt) ? x : y;
+      idCollisionCheck('forecast', x, y, base);   // v20.38
       const st = ((x.stateAt || '') >= (y.stateAt || '')) ? x : y;   // 結果だけは押した日時で決める
       out.forecasts.push({ ...base, state: st.state, stateNote: st.stateNote, stateAt: st.stateAt });
     });
@@ -16928,8 +17037,7 @@
   function worldGenIdIn(store) {
     const t = todayStr().replace(/-/g, '');
     const taken = new Set(store.list().map((c) => c.id));
-    let n = 1; while (taken.has(store.idPrefix + t + '_' + n)) n++;
-    return store.idPrefix + t + '_' + n;
+    return newIdWith(store.idPrefix + t + '_', taken);   // v20.38
   }
   function worldSaveConcepts() { wd.conceptsDirty = true; persistWorldConcepts(); scheduleSync(); }
   function worldSaveTerms() { wd.termsDirty = true; persistWorldTerms(); scheduleSync(); }
@@ -17885,8 +17993,7 @@
   function worldGenAskId() {
     const t = todayStr().replace(/-/g, '');
     const taken = new Set(wd.asks.asks.map((a) => a.id));
-    let n = 1; while (taken.has('q_' + t + '_' + n)) n++;
-    return 'q_' + t + '_' + n;
+    return newIdWith('q_' + t + '_', taken);   // v20.38
   }
   // ---- v20.21 予告 第1段 ------------------------------------------------------
   function worldForecasts() { return wd.forecasts.forecasts; }
@@ -18754,10 +18861,9 @@
   }
   function worldGenEventId(eventDate, taken) {
     const base = 'w_' + eventDate.replace(/-/g, '') + '_';
-    let n = 1;
-    while (taken.has(base + n)) n++;
-    taken.add(base + n);
-    return base + n;
+    const id = newIdWith(base, taken);   // v20.38（taken には消した印も入っている）
+    taken.add(id);
+    return id;
   }
   // v19 段階3：after（どの動きの続きか）を確かめる。
   //  "#N"  … 同じ JSON の N 番目（1から。落とす前の並び）。自分より前だけ。
