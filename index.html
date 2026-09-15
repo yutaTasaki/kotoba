@@ -1169,6 +1169,17 @@
   .worldDigListRow .wdDate { font-size: 11px; color: var(--text-faint); white-space: nowrap; }
   .worldDigListRow .wdFact { font-size: 13px; line-height: 1.5; }
   .worldDigListRow .wdQ { grid-column: 2; font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+  /* v20.50 幹 */
+  .worldDigListRow.mikiRow { display: block; }
+  .mikiRow .mkName { display: block; font-size: 14px; line-height: 1.5; }
+  .mikiRow .mkLine { display: block; font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+  .mikiRow .mkMeta { display: block; font-size: 11px; color: var(--text-faint); }
+  .mikiPlanCard { border: 1px solid var(--border); border-radius: 8px; padding: 8px; margin: 0 0 8px; }
+  .mikiPlanCard input { display: block; width: 100%; box-sizing: border-box; margin: 0 0 4px; }
+  .mikiPlanCard.mikiPlanOff { opacity: 0.45; }
+  .mikiCompare { font-size: 13px; line-height: 1.6; color: var(--text); margin: 8px 0; }
+  .mikiLinks { margin: 0 0 6px; }
+  .mikiLinks .linkLikeBtn { display: block; text-align: left; }
   /* v20.22 第2段A：予告の画面。根拠はボタンより上に置く（押す前に読ませる） */
   .wfRow { border-top: 1px solid var(--border); padding: 10px 0; }
   .wfRow.done { opacity: 0.75; }
@@ -1988,6 +1999,12 @@
             <p class="fieldNote" id="worldEpochLine"></p>
             <button id="btnAppReloadFresh" class="linkLikeBtn">最新の版を読み込む</button>
           </div>
+          <!-- v20.50 幹 段1：幹を立てる（割り直し）。中身は開いたときに組み立てる -->
+          <div class="field" id="worldMikiSplitField">
+            <span class="fieldLabel">幹を立てる（割り直し）</span>
+            <p class="fieldNote">幹＝いま進んでいる話（10本ほど）。段A で幹を決め、段B で札を2回割らせて、2回とも同じ幹だけを付けます。割り当てを1枚ずつ直す場所はありません。</p>
+            <div id="worldMikiSplit"></div>
+          </div>
           <div class="field">
             <span class="fieldLabel">ソース</span>
             <p class="fieldNote">生成プロンプトに差し込む出所。「一次」は出来事・日付・数字の出所、「解釈」は why を書くための補助。周期を付けたソースが「必ず見るもの」になり、期限の来た日に朝の「今日の取り込み」に入ります。</p>
@@ -2461,6 +2478,9 @@
         <button type="button" id="btnWorldDropStale" class="tagFilterBtn">まとめて捨てる</button>
       </div>
 
+      <!-- v20.50 幹 段1：幹の一覧への入口（幹が無いうちは「幹を立てる」） -->
+      <button type="button" id="btnWorldMiki" class="linkLikeBtn" hidden></button>
+
       <!-- v20.47：今日見るべき件（朝の取り込みでチャットが選んだ。提案であって判定ではない） -->
       <div id="worldTodayPick" class="worldTodayPick" hidden></div>
 
@@ -2524,6 +2544,17 @@
       <div id="worldFcList"></div>
       <div class="field">
         <button type="button" id="btnWorldFcBack" class="secondaryBtn">世界に戻る</button>
+      </div>
+    </div>
+
+    <!-- v20.50 幹 段1：幹の一覧と、幹1本の画面 -->
+    <div class="editorBody" id="worldMikiView" hidden>
+      <div class="worldSectionHead">
+        <h3 style="margin:0;" id="worldMikiTitle">幹</h3>
+      </div>
+      <div id="worldMikiBody"></div>
+      <div class="field">
+        <button type="button" id="btnWorldMikiBack" class="secondaryBtn">戻る</button>
       </div>
     </div>
 
@@ -3125,7 +3156,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.49';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.50';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -19458,9 +19489,13 @@
       const d = f.due || '9999-12-31';
       if (!due.has(f.fromEventId) || d < due.get(f.fromEventId)) due.set(f.fromEventId, d);
     });
+    const mk = worldMikiState();   // v20.50 幹 段1
+    const rank = (e) => (mk.centerSet.has(e.id) ? 0 : (mk.cardMiki.get(e.id) || []).length ? 1 : 2);
     return worldLiveEvents()
       .filter(worldHasCutRead)
       .sort((a, b) => {
+        const ra = rank(a), rb = rank(b);
+        if (ra !== rb) return ra - rb;
         const da = due.get(a.id), db = due.get(b.id);
         if (da && !db) return -1;
         if (!da && db) return 1;
@@ -20501,6 +20536,7 @@
       }
     }
     box.appendChild(worldFollowsEl(ev));   // v20.48：続きの印
+    { const mk = worldMikiLinksEl(ev); if (mk) box.appendChild(mk); }   // v20.50：幹（最大2本）
     const termEntries = worldTermEntriesOf(ev);
     const usedTerms = new Set();   // 1語につき最初の1回だけ（why → detail の順に消費）
     const noteHost = document.createElement('div');
@@ -21377,6 +21413,624 @@
     worldImportsAll().forEach((r) => r.follows.forEach((x) => { if (x.cardId === id) prev.push(x.follows); if (x.follows === id) next.push(x.cardId); }));
     return { prev: [...new Set(prev)], next: [...new Set(next)] };
   }
+  // ---- 幹（v20.50 段1）--------------------------------------------------------
+  // 幹＝いま進んでいる話。枝＝幹にぶら下がる札。記録は調べたことの月ファイルの miki に、一度書いたら変えない形で足す
+  // （札・索引・主体には書かない。古い版が知らない欄を落とすため）。今の姿は記録を日時の順にたどって組み立てる
+  const WORLD_MIKI_KEY          = 'miki';
+  const WORLD_MIKI_NAME_MAX     = 24;
+  const WORLD_MIKI_LINE_MAX     = 60;
+  const WORLD_MIKI_FACT_MAX     = 40;
+  const WORLD_MIKI_CENTER_MAX   = 5;    // 中心の札（切れた推定を先に直す・段3の最初の答え）
+  const WORLD_MIKI_STRATA_MAX   = 3;
+  const WORLD_MIKI_PER_CARD     = 2;    // 1枚の札がぶら下がる幹の数
+  const WORLD_MIKI_BRANCH_SHOW  = 10;   // 幹の画面に並べる枝
+  const WORLD_MIKI_ACTORS_SHOW  = 5;
+  const WORLD_MIKI_DRAFT_KEY    = 'kotoba_mikiSplitDraft';   // 割り直しの途中（端末ごと。決める前の案と2回分の返事）
+  // 段A に参考として渡す幹（2026-09-14 の評価で1人が読んだ根 A〜J。そのまま使わせない）
+  const WORLD_MIKI_REF = [
+    ['中東の戦争でホルムズ・紅海が詰まる', '通れない分を輸入国と船主が払い、迂回路と一部の産油国が得る'],
+    ['エネルギー高で中央銀行が利上げ側へ', '物価を抑える代わりに、借りている家計・企業・政府が利払いを払う'],
+    ['政府の借金が膨らみ、国債の買い手が細る', '買い手が減るぶん金利が上がり、納税者と既存の債券の持ち手が払う'],
+    ['制裁の武器化とドルを避ける動き', '制裁する側が相手と第三国の銀行に払わせ、ドルの外の決済と金が得る'],
+    ['米国の関税で供給網と資本が組み替わる', '輸入する企業と消費者が払い、移転先の国と保護された産業が得る'],
+    ['米国が引き、欧州・同盟国が戦費と防衛費を埋める', '欧州の納税者と共同債務が払い、防衛産業が得る'],
+    ['AI への先行投資', '設備を建てる企業が先に払い、半導体・電力・土地の持ち手が得る'],
+    ['外貨の足りない国の資金繰り', '貸し手の条件を国の家計が払い、IMF と債権国が影響力を得る'],
+    ['円安と日本の通貨防衛', '輸入物価を家計が払い、外貨準備を使って政府が時間を買う'],
+    ['資産の値上がりが持つ人に偏る', '持たない人が家賃と物価で払い、資産を持つ人が得る'],
+  ];
+
+  function worldMikiRecs() {
+    const out = [];
+    wdig.docs.forEach((doc) => (Array.isArray(doc[WORLD_MIKI_KEY]) ? doc[WORLD_MIKI_KEY] : []).forEach((r) => { if (r && typeof r === 'object' && r.id && r.type) out.push(r); }));
+    return out.sort((p, q) => (p.at < q.at ? -1 : p.at > q.at ? 1 : p.id < q.id ? -1 : p.id > q.id ? 1 : 0));
+  }
+  // 今の姿。記録の数と最後の id が変わらなければ作り直さない
+  function worldMikiState() {
+    const recs = worldMikiRecs();
+    const sig = recs.length + ':' + (recs.length ? recs[recs.length - 1].id + recs[recs.length - 1].at : '');
+    if (worldMikiState.cache && worldMikiState.cache.sig === sig) return worldMikiState.cache;
+    const byId = new Map();
+    const cardMiki = new Map();   // 札 → 幹の番号（最後の attach）
+    const cardAttach = new Map();
+    const sameGroups = [];
+    let lastSplit = null;
+    recs.forEach((r) => {
+      if (r.type === 'open') {
+        if (!r.miki || byId.has(r.miki)) return;
+        byId.set(r.miki, {
+          id: r.miki, name: worldStr(r.name, WORLD_MIKI_NAME_MAX), line: worldStr(r.line, WORLD_MIKI_LINE_MAX),
+          from: r.from || '', fromId: r.fromId || '', openedAt: r.at,
+          strata: (Array.isArray(r.strata) ? r.strata : []).map(String).slice(0, WORLD_MIKI_STRATA_MAX),
+          center: (Array.isArray(r.center) ? r.center : []).map(String).filter((x) => WORLD_EVENT_ID_RE.test(x)).slice(0, WORLD_MIKI_CENTER_MAX),
+          closed: false,
+        });
+      } else if (r.type === 'rename') {
+        const t = byId.get(r.miki);
+        if (!t) return;
+        if (r.name) t.name = worldStr(r.name, WORLD_MIKI_NAME_MAX);
+        if (typeof r.line === 'string' && r.line) t.line = worldStr(r.line, WORLD_MIKI_LINE_MAX);
+        if (r.closed === true) t.closed = true;
+      } else if (r.type === 'attach') {
+        if (!WORLD_EVENT_ID_RE.test(String(r.card || ''))) return;
+        cardMiki.set(r.card, (Array.isArray(r.miki) ? r.miki : []).map(String).slice(0, WORLD_MIKI_PER_CARD));
+        cardAttach.set(r.card, r);
+      } else if (r.type === 'sameGroup') {
+        if (Array.isArray(r.cards) && r.cards.length > 1) sameGroups.push(r.cards.map(String));
+      } else if (r.type === 'split') {
+        lastSplit = r;
+      }
+    });
+    const trunks = [...byId.values()].filter((t) => !t.closed);
+    const open = new Set(trunks.map((t) => t.id));
+    trunks.forEach((t) => { t.cards = []; });
+    cardMiki.forEach((ids, card) => {
+      const live = ids.filter((id) => open.has(id));
+      cardMiki.set(card, live);
+      live.forEach((id) => byId.get(id).cards.push(card));
+    });
+    trunks.forEach((t) => {
+      // 新しい枝＝枝の出来事の日付でいちばん新しいもの（札番号に日付が入っている。割り直しは全部同じ日に付くので、付けた日では並ばない）
+      t.newest = t.cards.map((c) => c.slice(2, 10)).sort().pop() || '';
+    });
+    trunks.sort((p, q) => (p.newest > q.newest ? -1 : p.newest < q.newest ? 1 : q.cards.length - p.cards.length));
+    const nameCount = new Map();
+    trunks.forEach((t) => nameCount.set(t.name, (nameCount.get(t.name) || 0) + 1));
+    const centerSet = new Set();
+    trunks.forEach((t) => t.center.forEach((c) => centerSet.add(c)));
+    const out = { sig, trunks, byId, cardMiki, cardAttach, sameGroups, lastSplit, centerSet, dupNames: [...nameCount.entries()].filter(([, n]) => n > 1).map(([k]) => k) };
+    worldMikiState.cache = out;
+    return out;
+  }
+  function worldMikiTrunk(id) { const t = worldMikiState().byId.get(id); return t && !t.closed ? t : null; }
+  function worldMikiNewRecId() { return digNewId('mkr'); }
+  function worldMikiNewTrunkId(taken) { return newIdWith('mk_' + todayStr().replace(/-/g, '') + '_', taken); }
+  // 記録を足す（1回の digMutate にまとめる）
+  function worldMikiAddRecs(recs) {
+    if (!recs.length) return;
+    digMutate((doc) => { doc[WORLD_MIKI_KEY] = (Array.isArray(doc[WORLD_MIKI_KEY]) ? doc[WORLD_MIKI_KEY] : []).concat(recs); });
+    worldMikiState.cache = null;
+  }
+  function worldMikiRec(type, fields) {
+    const at = nowIso();
+    return Object.assign({ id: worldMikiNewRecId(), type, at, createdAt: at, updatedAt: at, by: 'hito' }, fields);
+  }
+  function worldMikiCenterCutNote() {
+    const mk = worldMikiState();
+    if (!mk.centerSet.size) return '';
+    const n = worldLiveEvents().filter((e) => mk.centerSet.has(e.id) && worldHasCutRead(e)).length;
+    return '（うち中心の札 ' + n + '枚）';
+  }
+
+  // ---- 割り直しの途中（端末ごと）
+  function worldMikiDraft() {
+    if (worldMikiDraft.mem) return worldMikiDraft.mem;
+    let d = null;
+    try { d = JSON.parse(localStorage.getItem(WORLD_MIKI_DRAFT_KEY) || 'null'); } catch (e) { d = null; }
+    if (!d || typeof d !== 'object') d = {};
+    d.plan = Array.isArray(d.plan) ? d.plan : null;   // 段A の案（決める前）
+    d.recut = !!d.recut;                              // 切り方を直している（決めた幹を案として出している）
+    d.runs = (d.runs && typeof d.runs === 'object') ? d.runs : {};
+    d.cardIds = Array.isArray(d.cardIds) ? d.cardIds : [];
+    worldMikiDraft.mem = d;
+    return d;
+  }
+  function worldMikiDraftSave() { try { localStorage.setItem(WORLD_MIKI_DRAFT_KEY, JSON.stringify(worldMikiDraft())); } catch (e) {} }
+  function worldMikiDraftClear() { worldMikiDraft.mem = { plan: null, recut: false, runs: {}, cardIds: [] }; worldMikiDraftSave(); }
+
+  // 段A・段B に渡す札（非表示でない全部の札。日付の古い順）
+  function worldMikiSplitCards() {
+    return worldLiveEvents().slice().sort((a, b) => (a.eventDate < b.eventDate ? -1 : a.eventDate > b.eventDate ? 1 : a.id < b.id ? -1 : 1));
+  }
+  function worldMikiAllMonthsLoaded() { return !Object.keys((wd.index && wd.index.months) || {}).some((m) => !wd.loaded.has(m)); }
+  // JSON を取り出す（前後の文や ``` を許す）
+  function worldMikiParse(text) {
+    const t = String(text || '').trim();
+    if (!t) return { error: '貼る欄が空です。' };
+    const i = t.indexOf('{'), j = t.lastIndexOf('}');
+    if (i < 0 || j <= i) return { error: 'JSON が見つかりません。' };
+    try { return { obj: JSON.parse(t.slice(i, j + 1)) }; } catch (e) { return { error: 'JSON として読めませんでした（' + e.message + '）。' }; }
+  }
+
+  function worldMikiPlanPromptText() {
+    const cards = worldMikiSplitCards();
+    const strata = worldStrata().filter((s) => s.active !== 0).map((s) => s.id + '　' + s.name).join('\n');
+    return SHOOT_PROMPT_HEAD +
+      'あなたは、下に並ぶ出来事の札を読んで「幹」を立てる係です。新しい出来事を探しません。web 検索も使いません。\n\n' +
+      '■ 幹とは\n' +
+      '- いま進んでいる話。数ヶ月〜数年続く。\n' +
+      '- 1本の幹は「誰が得をし、誰が払うかが同じ話」。\n' +
+      '- 地名や主体が同じというだけでまとめない（同じ国でも、得る側と払う側が違えば別の幹）。\n' +
+      '- 1社・1国・1回きりの出来事は幹にしない。\n\n' +
+      '■ 書くこと\n' +
+      '- 幹を8〜12本。\n' +
+      '- name：幹の名前（' + WORLD_MIKI_NAME_MAX + '字以内。「〜が〜する」の形）。\n' +
+      '- line：誰が得をし、誰が払う話かが分かる1行（' + WORLD_MIKI_LINE_MAX + '字以内）。\n' +
+      '- why：なぜこれを1本の幹とみなしたか（80字以内）。\n' +
+      '- cards：その幹の中心になる札の番号を' + WORLD_MIKI_CENTER_MAX + '枚まで（下の札の番号だけ）。\n' +
+      '- strata：その幹で見る地層の id を0〜' + WORLD_MIKI_STRATA_MAX + '個（下の地層の一覧から）。\n' +
+      '- same：同じ出来事を別々に書いた札の組（2枚以上）。無ければ []。\n\n' +
+      '■ 参考の幹（前に1人が読んだもの。そのまま使わず、札から立て直してください）\n' +
+      WORLD_MIKI_REF.map(([n, l]) => '- ' + n + '　—　' + l).join('\n') + '\n\n' +
+      '■ 出力形式\n' +
+      '{"miki":[{"name":"...","line":"...","why":"...","cards":["w_20260910_2"],"strata":["st_..."]}],\n' +
+      ' "same":[["w_20260911_2","w_20260912_4"]]}\n' +
+      '- JSON のみ。\n\n' +
+      '■ 地層の一覧\n' + (strata || '（ありません）') + '\n\n' +
+      '■ 札（' + cards.length + '枚）\n' +
+      cards.map((e) => '[' + e.id + ']　' + e.eventDate + '　' + e.fact + '\n  なぜ：' + (e.why || '')).join('\n');
+  }
+  function worldMikiReadPlan(text) {
+    const p = worldMikiParse(text);
+    if (p.error) return p;
+    const arr = p.obj && Array.isArray(p.obj.miki) ? p.obj.miki : null;
+    if (!arr) return { error: 'JSON に miki がありません。' };
+    const live = new Set(worldLiveEvents().map((e) => e.id));
+    let unknownCards = 0, noName = 0;
+    const plan = [];
+    arr.forEach((x) => {
+      if (!x || typeof x !== 'object') return;
+      const name = worldStr(x.name, WORLD_MIKI_NAME_MAX);
+      if (!name) { noName++; }
+      const center = (Array.isArray(x.cards) ? x.cards : []).map(String).filter((c) => { if (live.has(c)) return true; unknownCards++; return false; }).slice(0, WORLD_MIKI_CENTER_MAX);
+      const strata = (Array.isArray(x.strata) ? x.strata : []).map(String).filter((s) => worldStratumById(s)).slice(0, WORLD_MIKI_STRATA_MAX);
+      plan.push({ name, line: worldStr(x.line, WORLD_MIKI_LINE_MAX), why: worldStr(x.why, 120), center, strata, take: !!name });
+    });
+    return { plan, unknownCards, noName, many: plan.length > 12, few: plan.length < 8 };
+  }
+
+  function worldMikiSplitPromptText(order, onlyIds) {
+    const trunks = worldMikiState().trunks;
+    let cards = worldMikiSplitCards();
+    if (onlyIds) { const s = new Set(onlyIds); cards = cards.filter((e) => s.has(e.id)); }
+    if (order === 'desc') cards = cards.slice().reverse();
+    return SHOOT_PROMPT_HEAD +
+      'あなたは、下に並ぶ出来事の札を「幹」に割り振る係です。新しい出来事を探しません。web 検索も使いません。\n\n' +
+      '■ 幹（miki の番号はここから選ぶ）\n' +
+      trunks.map((t) => t.id + '　' + t.name + '　—　' + t.line).join('\n') + '\n\n' +
+      '■ どの幹の枝か\n' +
+      '- 札ごとに、幹の番号を 0〜' + WORLD_MIKI_PER_CARD + '個、関係の強い順に書く。\n' +
+      '- 幹＝誰が得をし、誰が払うかが同じ話。地名や主体が同じというだけでは枝にしない。\n' +
+      '- どの幹にも入らなければ []。無理に入れない。\n' +
+      '- 3本目を付けたくなったら、その番号を more に1つだけ書く（assign には入れない）。\n' +
+      '- 同じ出来事を別々に書いた札の組（2枚以上）を same に書く。無ければ []。\n' +
+      '- **下の札は全部、assign に書く**（入らない札も [] で書く）。\n\n' +
+      '■ 出力形式\n' +
+      '{"assign":{"w_20260910_2":["' + (trunks[0] ? trunks[0].id : 'mk_…') + '"],"w_20260911_1":[]},\n' +
+      ' "more":{"w_20260910_2":"' + (trunks[1] ? trunks[1].id : 'mk_…') + '"},\n' +
+      ' "same":[["w_20260911_2","w_20260912_4"]]}\n' +
+      '- JSON のみ。\n\n' +
+      '■ 札（' + cards.length + '枚）\n' +
+      cards.map((e) => {
+        const f = e.flow ? '\n  お金：' + (e.flow.from || '？') + '→' + (e.flow.to || '？') : '';
+        const a = e.actors.length ? '\n  主体：' + e.actors.map((x) => x.name).join('・') : '';
+        return '[' + e.id + ']　' + e.eventDate + '　' + e.fact + '\n  なぜ：' + (e.why || '') + f + a;
+      }).join('\n');
+  }
+  // 段B の返事を1回分に足す（返事の無かった札だけをもう一度貼ったときも同じ回に足す）
+  function worldMikiReadRun(n, text) {
+    const p = worldMikiParse(text);
+    if (p.error) return p;
+    const o = p.obj || {};
+    if (!o.assign || typeof o.assign !== 'object' || Array.isArray(o.assign)) return { error: 'JSON に assign がありません。' };
+    const d = worldMikiDraft();
+    const asked = new Set(d.cardIds);
+    const open = new Set(worldMikiState().trunks.map((t) => t.id));
+    const run = d.runs[n] || { assign: {}, more: {}, same: [], order: n === 2 ? 'desc' : 'asc' };
+    let unknownCards = 0, unknownMiki = 0, over = 0, added = 0;
+    Object.entries(o.assign).forEach(([card, ids]) => {
+      if (!asked.has(card)) { unknownCards++; return; }
+      let list = (Array.isArray(ids) ? ids : []).map(String).filter((id) => { if (open.has(id)) return true; unknownMiki++; return false; });
+      list = [...new Set(list)];
+      if (list.length > WORLD_MIKI_PER_CARD) { over += list.length - WORLD_MIKI_PER_CARD; list = list.slice(0, WORLD_MIKI_PER_CARD); }
+      if (!(card in run.assign)) added++;
+      run.assign[card] = list;
+    });
+    if (o.more && typeof o.more === 'object') Object.entries(o.more).forEach(([card, id]) => { if (asked.has(card) && open.has(String(id))) run.more[card] = String(id); });
+    if (Array.isArray(o.same)) o.same.forEach((g) => { if (Array.isArray(g)) { const ids = [...new Set(g.map(String).filter((c) => asked.has(c)))].sort(); if (ids.length > 1) run.same.push(ids); } });
+    d.runs[n] = run;
+    worldMikiDraftSave();
+    return { added, unknownCards, unknownMiki, over, answered: Object.keys(run.assign).length, missing: d.cardIds.filter((c) => !(c in run.assign)) };
+  }
+  // 2回を比べる。共通の幹だけを付ける（1回目の順）。共通が無ければ幹0本
+  function worldMikiCompare() {
+    const d = worldMikiDraft();
+    const r1 = d.runs[1], r2 = d.runs[2];
+    if (!r1 || !r2) return null;
+    const mk = worldMikiState();
+    const name = (id) => { const t = mk.byId.get(id); return t ? t.name : id; };
+    const out = { same: 0, diffCommon: 0, diffNone: 0, pairs: new Map(), result: {}, more: 0, sameGroups: [] };
+    d.cardIds.forEach((card) => {
+      const a = r1.assign[card] || [], b = r2.assign[card] || [];
+      const common = a.filter((x) => b.includes(x));
+      out.result[card] = common;
+      const eq = a.length === b.length && common.length === a.length;
+      if (eq) { out.same++; return; }
+      if (common.length) out.diffCommon++; else out.diffNone++;
+      const x = a.filter((i) => !b.includes(i)), y = b.filter((i) => !a.includes(i));
+      const lx = x.length ? x.map(name).join('・') : '（幹なし）', ly = y.length ? y.map(name).join('・') : '（幹なし）';
+      const key = [lx, ly].sort().join(' ⇔ ');
+      if (!out.pairs.has(key)) out.pairs.set(key, []);
+      out.pairs.get(key).push(card);
+    });
+    out.more = Object.keys(r1.more || {}).length;
+    const g2 = new Set((r2.same || []).map((g) => g.join('|')));
+    const seen = new Set();
+    (r1.same || []).forEach((g) => { const k = g.join('|'); if (g2.has(k) && !seen.has(k)) { seen.add(k); out.sameGroups.push(g); } });
+    return out;
+  }
+  function worldMikiInsertSplit() {
+    const d = worldMikiDraft();
+    const cmp = worldMikiCompare();
+    if (!cmp) return { error: '2回分の返事がそろっていません。' };
+    const byCard = new Map(worldLiveEvents().map((e) => [e.id, e]));
+    const recs = [];
+    [1, 2].forEach((n) => recs.push(worldMikiRec('split', { by: 'split', run: n, order: d.runs[n].order, result: d.runs[n].assign, more: d.runs[n].more, same: d.runs[n].same })));
+    let attached = 0, none = 0;
+    d.cardIds.forEach((card) => {
+      const e = byCard.get(card);
+      const miki = cmp.result[card] || [];
+      if (miki.length) attached++; else none++;
+      recs.push(worldMikiRec('attach', { by: 'split', src: 'split', card, eventDate: e ? e.eventDate : '', fact: e ? worldStr(e.fact, WORLD_MIKI_FACT_MAX) : '', miki, more: (d.runs[1].more && d.runs[1].more[card]) || null }));
+    });
+    cmp.sameGroups.forEach((g) => recs.push(worldMikiRec('sameGroup', { by: 'split', cards: g })));
+    worldMikiAddRecs(recs);
+    worldMikiDraftClear();
+    return { attached, none, groups: cmp.sameGroups.length };
+  }
+  // 段A の案で幹を決める（新しく立てる）／切り方を直す（決めた幹の名前・1行を直す・外す・足す）
+  function worldMikiDecidePlan() {
+    const d = worldMikiDraft();
+    const plan = (d.plan || []).filter((x) => x.take && worldStr(x.name, WORLD_MIKI_NAME_MAX));
+    if (!plan.length) return { error: '採る幹がありません。' };
+    const mk = worldMikiState();
+    const taken = new Set(mk.byId.keys());
+    const recs = [];
+    let opened = 0, renamed = 0, closed = 0;
+    (d.plan || []).forEach((x) => {
+      const name = worldStr(x.name, WORLD_MIKI_NAME_MAX), line = worldStr(x.line, WORLD_MIKI_LINE_MAX);
+      if (x.miki && mk.byId.has(x.miki)) {
+        const t = mk.byId.get(x.miki);
+        if (!x.take || !name) { if (!t.closed) { recs.push(worldMikiRec('rename', { miki: x.miki, closed: true })); closed++; } return; }
+        if (name !== t.name || line !== t.line) { recs.push(worldMikiRec('rename', { miki: x.miki, name, line })); renamed++; }
+        return;
+      }
+      if (!x.take || !name) return;
+      const id = worldMikiNewTrunkId(taken); taken.add(id);
+      recs.push(worldMikiRec('open', { miki: id, name, line, from: 'split', fromId: '', strata: x.strata || [], center: x.center || [] }));
+      opened++;
+    });
+    worldMikiAddRecs(recs);
+    d.plan = null; d.recut = false; d.runs = {}; d.cardIds = [];
+    worldMikiDraftSave();
+    return { opened, renamed, closed };
+  }
+  function worldMikiStartRecut() {
+    const d = worldMikiDraft();
+    d.plan = worldMikiState().trunks.map((t) => ({ miki: t.id, name: t.name, line: t.line, why: '', center: t.center, strata: t.strata, take: true }));
+    d.recut = true; d.runs = {}; d.cardIds = [];
+    worldMikiDraftSave();
+  }
+
+  // ---- 設定 → 世界 の欄
+  function renderWorldMikiSplit() {
+    const box = document.getElementById('worldMikiSplit');
+    if (!box) return;
+    // 打っている最中の欄を描き直さない（打った文字と場所が消える）
+    if (box.contains(document.activeElement) && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName) && document.activeElement.dataset.mikiKeep) return;
+    box.innerHTML = '';
+    const d = worldMikiDraft();
+    const mk = worldMikiState();
+    const loaded = worldMikiAllMonthsLoaded();
+    const note = (t) => { const p = document.createElement('p'); p.className = 'fieldNote'; p.textContent = t; box.appendChild(p); return p; };
+    const btn = (t, cls, fn) => { const b = document.createElement('button'); b.type = 'button'; b.className = cls || 'secondaryBtn'; b.textContent = t; b.addEventListener('click', fn); box.appendChild(b); return b; };
+    const status = document.createElement('p'); status.className = 'fieldNote'; status.id = 'worldMikiSplitStatus';
+    if (worldMikiSplitCards.lastMsg) status.textContent = worldMikiSplitCards.lastMsg;
+    if (!loaded) note('札の月を読み込んでいます…（読み込み終わるまでコピーできません）');
+    if (mk.dupNames.length) note('※ 同じ名前の幹が2本あります：' + mk.dupNames.join('・'));
+
+    // 段A：案が無く、幹も無い → 段A のコピーと貼る欄
+    if (!d.plan && !mk.trunks.length) {
+      note('段A：幹を立てます。プロンプトをコピーして Claude に貼り、返ってきた JSON を下に貼ってください。');
+      const copy = btn('段A のプロンプトをコピー', 'secondaryBtn', () => {
+        copyToClipboard(worldMikiPlanPromptText()).then((ok) => { status.textContent = ok ? '札 ' + worldMikiSplitCards().length + '枚ぶんをコピーしました。' : 'コピーできませんでした。'; });
+      });
+      copy.disabled = !loaded || !worldLiveEvents().length;
+      const ta = document.createElement('textarea'); ta.rows = 4; ta.placeholder = '{"miki":[...]} をここに貼る'; ta.autocomplete = 'off'; ta.dataset.mikiKeep = '1'; ta.id = 'worldMikiPlanPaste';
+      box.appendChild(ta);
+      btn('幹の案を読む', 'secondaryBtn', () => {
+        const r = worldMikiReadPlan(ta.value);
+        if (r.error) { status.textContent = r.error; return; }
+        d.plan = r.plan; d.recut = false; worldMikiDraftSave();
+        worldMikiSplitCards.lastMsg = '案 ' + r.plan.length + '本を読みました。' + (r.few ? '　※ 8本より少ない案です。' : '') + (r.many ? '　※ 12本より多い案です。' : '') + (r.noName ? '　※ 名前の無い案 ' + r.noName + '本（外しています）。' : '') + (r.unknownCards ? '　※ 知らない札の番号 ' + r.unknownCards + '件を外しました。' : '');
+        renderWorldMikiSplit();
+      });
+      box.appendChild(status);
+      return;
+    }
+
+    // 案の画面（段A の案・切り方を直す）
+    if (d.plan) {
+      note(d.recut ? '切り方を直す：名前・1行を直す、外す、足す。決めると段B をやり直します（前の割り当ては、次に入れたときに置き換わります）。'
+        : '段A の案：名前と1行は直せます。採らない案は［外す］。決めると段B に進みます。決める前なら、案を貼り直せます。');
+      const byCard = new Map(worldLiveEvents().map((e) => [e.id, e]));
+      d.plan.forEach((x, i) => {
+        const card = document.createElement('div'); card.className = 'mikiPlanCard' + (x.take ? '' : ' mikiPlanOff');
+        const nm = document.createElement('input'); nm.type = 'text'; nm.value = x.name || ''; nm.placeholder = '幹の名前'; nm.maxLength = WORLD_MIKI_NAME_MAX; nm.autocomplete = 'off'; nm.dataset.mikiKeep = '1';
+        nm.addEventListener('input', () => { x.name = nm.value; worldMikiDraftSave(); paintDecide(); });
+        const ln = document.createElement('input'); ln.type = 'text'; ln.value = x.line || ''; ln.placeholder = '誰が得をし、誰が払う話か'; ln.maxLength = WORLD_MIKI_LINE_MAX; ln.autocomplete = 'off'; ln.dataset.mikiKeep = '1';
+        ln.addEventListener('input', () => { x.line = ln.value; worldMikiDraftSave(); });
+        card.appendChild(nm); card.appendChild(ln);
+        if (x.why) { const w = document.createElement('div'); w.className = 'fieldNote'; w.textContent = 'なぜ：' + x.why; card.appendChild(w); }
+        if (x.center && x.center.length) {
+          const c = document.createElement('details'); const s = document.createElement('summary'); s.textContent = '中心の札 ' + x.center.length + '枚'; c.appendChild(s);
+          x.center.forEach((id) => { const r = document.createElement('div'); r.className = 'fieldNote'; const e = byCard.get(id); r.textContent = (e ? worldEvDateShort(e) + ' ' + e.fact : id); c.appendChild(r); });
+          card.appendChild(c);
+        }
+        const tg = document.createElement('button'); tg.type = 'button'; tg.className = 'tagFilterBtn'; tg.textContent = x.take ? '外す' : '採る';
+        tg.addEventListener('click', () => { x.take = !x.take; worldMikiDraftSave(); renderWorldMikiSplit(); });
+        card.appendChild(tg);
+        box.appendChild(card);
+      });
+      if (d.recut) btn('＋ 幹を足す', 'linkLikeBtn', () => { d.plan.push({ name: '', line: '', why: '', center: [], strata: [], take: true }); worldMikiDraftSave(); renderWorldMikiSplit(); });
+      const decide = btn(d.recut ? 'この切り方で決める' : 'この幹で決める', 'secondaryBtn', () => {
+        decide.disabled = true;
+        const r = worldMikiDecidePlan();
+        if (r.error) { status.textContent = r.error; decide.disabled = false; return; }
+        worldMikiSplitCards.lastMsg = '幹を決めました（立てた ' + r.opened + '本' + (r.renamed ? '・直した ' + r.renamed + '本' : '') + (r.closed ? '・外した ' + r.closed + '本' : '') + '）。段B に進みます。';
+        renderWorldMikiSplit();
+      });
+      const paintDecide = () => { decide.disabled = !d.plan.some((x) => x.take && worldStr(x.name, WORLD_MIKI_NAME_MAX)); };
+      paintDecide();
+      if (!d.recut) btn('案を捨てて貼り直す', 'linkLikeBtn', () => { d.plan = null; worldMikiDraftSave(); worldMikiSplitCards.lastMsg = ''; renderWorldMikiSplit(); });
+      else btn('直すのをやめる', 'linkLikeBtn', () => { d.plan = null; d.recut = false; worldMikiDraftSave(); worldMikiSplitCards.lastMsg = ''; renderWorldMikiSplit(); });
+      box.appendChild(status);
+      return;
+    }
+
+    // 段B
+    const insertedAt = mk.lastSplit ? localDateOfIso(mk.lastSplit.at) : '';
+    note('幹 ' + mk.trunks.length + '本：' + mk.trunks.map((t) => t.name).join('／'));
+    // 切り方を直した（幹を立てた・直した）あとに段B を通していなければ、割り当て済みとは言わない
+    const recutAfter = !!mk.lastSplit && worldMikiRecs().some((r) => (r.type === 'open' || r.type === 'rename') && r.at > mk.lastSplit.at);
+    if (recutAfter && !d.runs[1]) note('切り方を直したあと、まだ段B を通していません。いまの割り当ては直す前の幹のままです（外した幹の枝は、どの幹にも付いていません）。');
+    else if (insertedAt && !d.runs[1]) note('割り当て済み（' + worldShortDate(insertedAt) + '）。やり直すときは、下の段B をもう一度通すか、切り方を直してください。');
+    else note('段B：札を2回割らせます。1回目と2回目は、別のチャットに貼ってください（2回目は札の並びを逆にしてあります）。');
+    [1, 2].forEach((n) => {
+      const run = d.runs[n];
+      const head = document.createElement('div'); head.className = 'rowLabel'; head.textContent = '段B ' + n + '回目' + (n === 2 ? '（並びを逆）' : ''); box.appendChild(head);
+      const copy = btn('段B ' + n + '回目のプロンプトをコピー', 'secondaryBtn', () => {
+        const cards = worldMikiSplitCards();
+        if (!d.cardIds.length) { d.cardIds = cards.map((e) => e.id); worldMikiDraftSave(); }
+        copyToClipboard(worldMikiSplitPromptText(n === 2 ? 'desc' : 'asc')).then((ok) => { status.textContent = ok ? n + '回目：札 ' + d.cardIds.length + '枚ぶんをコピーしました。' : 'コピーできませんでした。'; });
+      });
+      copy.disabled = !loaded || (n === 2 && !d.runs[1]);
+      const ta = document.createElement('textarea'); ta.rows = 3; ta.placeholder = '{"assign":{...}} をここに貼る'; ta.autocomplete = 'off'; ta.dataset.mikiKeep = '1';
+      box.appendChild(ta);
+      const read = btn('読む', 'secondaryBtn', () => {
+        if (!d.cardIds.length) { status.textContent = '先に ' + n + '回目のプロンプトをコピーしてください。'; return; }
+        const r = worldMikiReadRun(n, ta.value);
+        if (r.error) { status.textContent = r.error; return; }
+        worldMikiSplitCards.lastMsg = n + '回目：' + d.cardIds.length + '枚中 ' + r.answered + '枚に返事' + (r.missing.length ? '、' + r.missing.length + '枚は返事なし' : '') + '。' +
+          (r.unknownMiki ? '　※ 知らない幹の番号 ' + r.unknownMiki + '件は付けません。' : '') + (r.over ? '　※ 3本目以降 ' + r.over + '件は外しました。' : '') + (r.unknownCards ? '　※ 渡していない札 ' + r.unknownCards + '件は無視。' : '');
+        renderWorldMikiSplit();
+      });
+      read.disabled = n === 2 && !d.runs[1];
+      if (run) {
+        const missing = d.cardIds.filter((c) => !(c in run.assign));
+        note(n + '回目：' + d.cardIds.length + '枚中 ' + Object.keys(run.assign).length + '枚に返事' + (missing.length ? '、' + missing.length + '枚は返事なし' : ''));
+        if (missing.length) btn('返事の無かった札だけもう一度コピー', 'linkLikeBtn', () => {
+          copyToClipboard(worldMikiSplitPromptText(n === 2 ? 'desc' : 'asc', missing)).then((ok) => { status.textContent = ok ? missing.length + '枚ぶんをコピーしました。返事は同じ ' + n + '回目の欄に貼って［読む］を押してください。' : 'コピーできませんでした。'; });
+        });
+        btn(n + '回目をやり直す', 'linkLikeBtn', () => { delete d.runs[n]; if (n === 1) delete d.runs[2]; worldMikiDraftSave(); worldMikiSplitCards.lastMsg = ''; renderWorldMikiSplit(); });
+      }
+    });
+    const cmp = worldMikiCompare();
+    if (cmp) {
+      const r = document.createElement('div'); r.className = 'mikiCompare';
+      const line = (t) => { const p = document.createElement('div'); p.textContent = t; r.appendChild(p); };
+      line('2回とも同じ幹 ' + cmp.same + '枚');
+      line('食い違い ' + (cmp.diffCommon + cmp.diffNone) + '枚 → 共通の幹だけ付ける ' + cmp.diffCommon + '枚／共通が無く付けない ' + cmp.diffNone + '枚');
+      if (cmp.more) line('3本目を付けたかった ' + cmp.more + '枚（1回目）');
+      line('同じ出来事の組（2回とも同じ）' + cmp.sameGroups.length + '組');
+      const byCard = new Map(worldLiveEvents().map((e) => [e.id, e]));
+      [...cmp.pairs.entries()].sort((a, b) => b[1].length - a[1].length).forEach(([k, cards]) => {
+        const det = document.createElement('details'); const s = document.createElement('summary'); s.textContent = '揺れた幹の組：' + k + '　' + cards.length + '枚'; det.appendChild(s);
+        cards.forEach((c) => { const e = byCard.get(c); const p = document.createElement('div'); p.className = 'fieldNote'; p.textContent = e ? worldEvDateShort(e) + ' ' + e.fact : c; det.appendChild(p); });
+        r.appendChild(det);
+      });
+      box.appendChild(r);
+      const ins = btn('この割り当てで入れる', 'secondaryBtn', () => {
+        ins.disabled = true;
+        const res = worldMikiInsertSplit();
+        if (res.error) { status.textContent = res.error; ins.disabled = false; return; }
+        worldMikiSplitCards.lastMsg = '入れました：幹に付いた札 ' + res.attached + '枚・幹0本 ' + res.none + '枚・同じ出来事の組 ' + res.groups + '組。';
+        renderWorldMikiSplit();
+        paintWorldEpochLine();
+      });
+    }
+    btn('切り方を直す', 'linkLikeBtn', () => { worldMikiStartRecut(); worldMikiSplitCards.lastMsg = ''; renderWorldMikiSplit(); });
+    box.appendChild(status);
+  }
+  function worldMikiOpenSplitSettings() {
+    openSettings();
+    const g = document.querySelector('details.setGroup[data-group="world"]');
+    if (g) g.open = true;
+    const f = document.getElementById('worldMikiSplitField');
+    if (f) setTimeout(() => f.scrollIntoView({ block: 'start' }), 50);
+  }
+
+  // ---- 世界の画面の一番上の1行
+  function renderWorldMikiEntry(b) {
+    if (!b) return;
+    const mk = worldMikiState();
+    worldState.stratumFrom = '';   // 既定の画面に戻ったら、地層の戻り先を忘れる
+    b.hidden = false;
+    b.textContent = mk.trunks.length ? '幹 ' + mk.trunks.length + '本 ▸' : '幹を立てる ▸';
+  }
+  // ---- 札の画面：幹の行
+  function worldMikiLinksEl(ev) {
+    const ids = worldMikiState().cardMiki.get(ev.id) || [];
+    const ts = ids.map(worldMikiTrunk).filter(Boolean);
+    if (!ts.length) return null;
+    const box = document.createElement('div'); box.className = 'mikiLinks';
+    ts.forEach((t) => {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'linkLikeBtn';
+      b.textContent = '幹：' + t.name + ' ▸';
+      b.addEventListener('click', (e) => { e.stopPropagation(); worldOpenMiki(t.id); });
+      box.appendChild(b);
+    });
+    return box;
+  }
+  function worldOpenMiki(id) {
+    worldState.mikiId = id || '';
+    worldState.view = 'miki';
+    showScreen('world');
+    renderWorld();
+  }
+  // 戻る：幹の画面から開いたものは幹の画面へ
+  function worldMikiBackTarget() {
+    if (worldState.view === 'cards' && worldState.cards && worldState.cards.from === 'miki') { worldState.view = 'miki'; worldState.cards = null; renderWorld(); return true; }
+    if (worldState.view === 'concept' && worldState.entryFrom === 'miki') { worldState.view = 'miki'; worldState.entryFrom = ''; renderWorld(); return true; }
+    if (worldState.view === 'stratum' && worldState.stratumFrom === 'miki') { worldState.view = 'miki'; worldState.stratumFrom = ''; renderWorld(); return true; }
+    if (worldState.view === 'miki' && worldState.mikiId) { worldState.mikiId = ''; renderWorld(); return true; }
+    return false;
+  }
+
+  // ---- 幹の一覧と幹1本
+  function renderWorldMiki() {
+    const body = document.getElementById('worldMikiBody');
+    body.innerHTML = '';
+    const mk = worldMikiState();
+    const t = worldState.mikiId ? worldMikiTrunk(worldState.mikiId) : null;
+    if (!t) {
+      worldState.mikiId = '';
+      document.getElementById('worldMikiTitle').textContent = '幹（' + mk.trunks.length + '）';
+      if (mk.dupNames.length) { const p = document.createElement('p'); p.className = 'fieldNote'; p.textContent = '※ 同じ名前の幹が2本あります：' + mk.dupNames.join('・'); body.appendChild(p); }
+      if (!mk.trunks.length) {
+        const p = document.createElement('p'); p.className = 'emptyMsg'; p.textContent = 'まだ幹がありません。'; body.appendChild(p);
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'secondaryBtn'; b.textContent = '幹を立てる（設定）'; b.addEventListener('click', worldMikiOpenSplitSettings); body.appendChild(b);
+        return;
+      }
+      mk.trunks.forEach((x) => {
+        const row = document.createElement('button'); row.type = 'button'; row.className = 'worldDigListRow mikiRow';
+        const n = document.createElement('span'); n.className = 'mkName'; n.textContent = x.name;
+        const q = document.createElement('span'); q.className = 'mkMeta';
+        q.textContent = '枝 ' + x.cards.length + (x.newest ? '　新しい枝 ' + worldShortDate(x.newest.slice(0, 4) + '-' + x.newest.slice(4, 6) + '-' + x.newest.slice(6, 8)) : '') + '　答えはまだ';
+        const l = document.createElement('span'); l.className = 'mkLine'; l.textContent = x.line;
+        row.appendChild(n); row.appendChild(l); row.appendChild(q);
+        row.addEventListener('click', () => { worldState.mikiId = x.id; renderWorld(); });
+        body.appendChild(row);
+      });
+      return;
+    }
+    document.getElementById('worldMikiTitle').textContent = t.name;
+    const p = (cls, text) => { const el = document.createElement('p'); el.className = cls; el.textContent = text; body.appendChild(el); return el; };
+    p('fieldNote', t.line);
+    // 枝の月を読み込む（読み込んでいない月の札は、読み込み終わってから描き直す）
+    const need = [...new Set(t.cards.map(monthOfWorldId).filter((m) => m && wd.index && wd.index.months[m] && !wd.loaded.has(m)))];
+    if (need.length) ensureWorldMonths(need).then(() => { if (nav.screen === 'world' && worldState.view === 'miki' && worldState.mikiId === t.id) renderWorldMiki(); });
+    const byId = new Map(worldLiveEvents().map((e) => [e.id, e]));
+    const cards = t.cards.map((id) => byId.get(id)).filter(Boolean);
+
+    const section = (label) => { const f = document.createElement('div'); f.className = 'field'; const l = document.createElement('span'); l.className = 'fieldLabel'; l.textContent = label; f.appendChild(l); body.appendChild(f); return f; };
+    // 主な主体
+    {
+      const count = new Map();
+      cards.forEach((e) => e.actors.forEach((a) => { const k = worldNormName(a.name); if (!k) return; const c = count.get(k) || { name: a.name, n: 0 }; c.n++; count.set(k, c); }));
+      const top = [...count.values()].sort((a, b) => b.n - a.n).slice(0, WORLD_MIKI_ACTORS_SHOW);
+      if (top.length) {
+        const f = section('主な主体');
+        top.forEach((c) => {
+          const actor = worldFindIn(WORLD_STORES.actor, c.name);
+          const b = document.createElement('button'); b.type = 'button'; b.className = 'tagFilterBtn'; b.textContent = c.name + ' ' + c.n;
+          if (actor) b.addEventListener('click', () => openWorldEntry(actor.id, 'miki')); else b.disabled = true;
+          f.appendChild(b);
+        });
+      }
+    }
+    // 見る地層
+    {
+      const ss = t.strata.map(worldStratumById).filter(Boolean);
+      if (ss.length) {
+        const f = section('見る地層');
+        ss.forEach((s) => {
+          const b = document.createElement('button'); b.type = 'button'; b.className = 'tagFilterBtn'; b.textContent = s.name;
+          b.addEventListener('click', () => { worldState.stratumFrom = 'miki'; openWorldStratum(s.id); });
+          f.appendChild(b);
+        });
+      }
+    }
+    // 予告（枝の札から出たもの）
+    {
+      const set = new Set(t.cards);
+      const fcs = worldForecasts().filter((f) => set.has(f.fromEventId) && !f.foldedAt);
+      if (fcs.length) {
+        const f = section('予告 ' + fcs.length + '本');
+        fcs.sort((a, b) => ((a.due || '') < (b.due || '') ? -1 : 1)).forEach((fc) => {
+          const b = document.createElement('button'); b.type = 'button'; b.className = 'worldDigListRow';
+          const st = fc.state === 'hit' ? '当たり' : fc.state === 'miss' ? '外れ' : fc.state === 'unverifiable' ? '確かめられない' : '待ち';
+          b.textContent = (fc.actor || '') + '：' + (fc.what || '') + '（' + (fc.due ? worldShortDate(fc.due) : '期限なし') + '・' + st + '）';
+          b.addEventListener('click', () => worldOpenForecast('world'));
+          f.appendChild(b);
+        });
+      }
+    }
+    // 枝
+    {
+      const f = section('枝 ' + t.cards.length + '枚');
+      if (need.length && cards.length < t.cards.length) { const w = document.createElement('p'); w.className = 'fieldNote'; w.textContent = '札の月を読み込んでいます…'; f.appendChild(w); }
+      const sorted = cards.slice().sort((a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0));
+      // 同じ出来事の組は1枚にまとめる（組の中で先に並ぶ札を代表にする）
+      const groupOf = new Map();
+      worldMikiState().sameGroups.forEach((g) => g.forEach((c) => groupOf.set(c, g)));
+      const hiddenBy = new Map();
+      const shown = [];
+      const taken = new Set();
+      sorted.forEach((e) => {
+        if (taken.has(e.id)) return;
+        const g = groupOf.get(e.id);
+        const others = g ? g.filter((c) => c !== e.id && set_has(t.cards, c)) : [];
+        others.forEach((c) => taken.add(c));
+        taken.add(e.id);
+        hiddenBy.set(e.id, others.length);
+        shown.push(e);
+      });
+      const allIds = sorted.map((e) => e.id);
+      shown.slice(0, WORLD_MIKI_BRANCH_SHOW).forEach((e) => {
+        const row = document.createElement('button'); row.type = 'button'; row.className = 'worldDigListRow';
+        const dt = document.createElement('span'); dt.className = 'wdDate'; dt.textContent = worldEvDateShort(e);
+        const fa = document.createElement('span'); fa.className = 'wdFact'; fa.textContent = e.fact;
+        row.appendChild(dt); row.appendChild(fa);
+        if (hiddenBy.get(e.id)) { const q = document.createElement('span'); q.className = 'wdQ'; q.textContent = '同じ出来事 ほか' + hiddenBy.get(e.id) + '枚'; row.appendChild(q); }
+        row.addEventListener('click', () => openWorldCards({ title: t.name, ids: allIds, openId: e.id, from: 'miki' }));
+        f.appendChild(row);
+      });
+      if (shown.length > WORLD_MIKI_BRANCH_SHOW) f.appendChild(worldMoreLineEl('ほか ' + (shown.length - WORLD_MIKI_BRANCH_SHOW) + '枚 ▸', () => openWorldCards({ title: t.name, ids: allIds, from: 'miki' })));
+    }
+    function set_has(list, x) { return list.includes(x); }
+  }
+
   async function worldOpenAnyEvent(id) { const m = monthOfWorldId(id); if (m && !wd.loaded.has(m)) await ensureWorldMonths([m]); openWorldEvent(id); }
   function worldFollowsEl(ev) {
     const box = document.createElement('div');
@@ -22047,6 +22701,7 @@
     document.getElementById('worldNetView').hidden = worldState.view !== 'net';   // v20.4
     document.getElementById('worldForecastView').hidden = worldState.view !== 'forecast';   // v20.22 第2段A
     document.getElementById('worldDigView').hidden = worldState.view !== 'dig';   // v20.43
+    document.getElementById('worldMikiView').hidden = worldState.view !== 'miki';   // v20.50
     if (worldState.view === 'ask') renderWorldAsk();
     else if (worldState.view === 'main') renderWorldMain();
     else if (worldState.view === 'concept') renderWorldConcept();
@@ -22058,6 +22713,7 @@
     else if (worldState.view === 'net') renderWorldNet();   // v20.4
     else if (worldState.view === 'forecast') renderWorldForecast();   // v20.22 第2段A
     else if (worldState.view === 'dig') renderWorldDig();   // v20.43
+    else if (worldState.view === 'miki') renderWorldMiki();   // v20.50
     else renderWorldImport();
   }
   // v18 A-1: 今日の単位は「札」ではなく「主体」。readDate はそのまま残す
@@ -22197,6 +22853,7 @@
   }
   function renderWorldMain() {
     renderWorldMiniMap();   // v20.5 M5
+    renderWorldMikiEntry(document.getElementById('btnWorldMiki'));   // v20.50
     renderWorldTodayPick(document.getElementById('worldTodayPick'));   // v20.47
     const stale = worldStaleUnread();
     const bar = document.getElementById('worldStaleBar');
@@ -25870,21 +26527,24 @@
     reset.disabled = !worldResetState.backup || !worldResetState.savedToDevice || worldResetState.busy;
     if (!online && !st.textContent) st.textContent = '保存庫に繋がっていないので押せません（設定のトークンと通信を確かめてください）。';
     paintWorldEpochLine();
+    renderWorldMikiSplit();   // v20.50 幹 段1
     // v20.49 幹 段0：切れた推定は古い月にもあるので、索引の月を全部読み込んでから数え直す
     const needAll = Object.keys((wd.index && wd.index.months) || {}).filter((m) => !wd.loaded.has(m));
-    if (needAll.length) ensureWorldMonths(needAll).then(paintWorldEpochLine).catch(() => {});
+    if (needAll.length) ensureWorldMonths(needAll).then(() => { paintWorldEpochLine(); renderWorldMikiSplit(); }).catch(() => {});
   }
   function paintWorldEpochLine() {
     const el = document.getElementById('worldEpochLine');
     if (!el) return;
     const notLoaded = Object.keys((wd.index && wd.index.months) || {}).filter((m) => !wd.loaded.has(m)).length;
     el.textContent = '版 ' + APP_BUILD + ' ・ 世界の世代 ' + ((wd.index && wd.index.epoch) || 0) +
-      ' ・ 切れた推定：残り ' + worldCutReadCards().length + '枚' + (notLoaded ? '（読み込んでいない月 ' + notLoaded + '）' : '');
+      ' ・ 切れた推定：残り ' + worldCutReadCards().length + '枚' + worldMikiCenterCutNote() + (notLoaded ? '（読み込んでいない月 ' + notLoaded + '）' : '');
   }
 
   // ---- つなぎ --------------------------------------------------------------
   document.getElementById('btnOpenWorld').addEventListener('click', openWorld);
   document.getElementById('backFromWorld').addEventListener('click', () => {
+    // v20.50：幹の画面から開いた札の一覧・主体・地層は幹の画面へ。幹1本は幹の一覧へ（地層の戻り先より先に見る）
+    if (worldMikiBackTarget()) return;
     if (worldState.view === 'stratum' && !worldState.strataAll) { worldState.strataAll = true; renderWorld(); return; }
     // 整理は設定から入る画面なので、設定に返す
     if (worldState.view === 'tidy') { worldState.view = 'main'; openSettings(); return; }
@@ -25909,12 +26569,22 @@
   document.getElementById('btnWorldCardsBack').addEventListener('click', () => {
     const from = worldState.cards && worldState.cards.from;   // v20.4
     // v20.33：地図から開いた一覧は地図へ（上の「← 戻る」と同じ行き先にそろえる）
+    if (from === 'miki') { worldState.cards = null; worldState.view = 'miki'; renderWorld(); return; }   // v20.50
     worldState.cards = null; worldState.view = from === 'net' ? 'net' : from === 'map' ? 'map' : from === 'dig' ? 'dig' : 'main'; renderWorld();   // v20.43：調べたことから開いた札は一覧へ
   });
   // v20.22 第2段A：予告の画面
   document.getElementById('btnWorldForecast').addEventListener('click', () => worldOpenForecast('world'));
   document.getElementById('btnWorldDig').addEventListener('click', () => { worldState.view = 'dig'; renderWorld(); });   // v20.43
   document.getElementById('btnWorldDigBack').addEventListener('click', () => { worldState.view = 'main'; renderWorld(); });
+  // v20.50 幹
+  document.getElementById('btnWorldMiki').addEventListener('click', () => {
+    if (!worldMikiState().trunks.length) { worldMikiOpenSplitSettings(); return; }
+    worldState.mikiId = ''; worldState.view = 'miki'; renderWorld();
+  });
+  document.getElementById('btnWorldMikiBack').addEventListener('click', () => {
+    if (worldState.mikiId) { worldState.mikiId = ''; renderWorld(); return; }
+    worldState.view = 'main'; renderWorld();
+  });
   document.getElementById('btnWorldFcBack').addEventListener('click', worldForecastBack);
   // v20.39：答え合わせ。押したその場で組み立ててコピーする（通信しないので iPhone でもそのままコピーできる）
   document.getElementById('btnWorldFcVerifyCopy').addEventListener('click', () => {
