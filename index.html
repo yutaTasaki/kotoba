@@ -1332,6 +1332,8 @@
   .worldEdaLine .weKey.aim { color: #e0a060; }
   .worldMapBox.worldEdaMap .wmAim { fill: none; stroke: #e0a060; stroke-width: 1.6; opacity: 0.9; }
   .worldMapBox.worldEdaMap .wmAimHead { fill: none; stroke: #e0a060; stroke-width: 2.2; }
+  .worldMapBox.worldEdaMap .wmPlace { fill: #cfc8bb; stroke: #111; stroke-width: 1; }   /* v20.59 海峡などの場所の点（ひし形） */
+  .worldMapBox.worldEdaMap .wmPlaceLabel { fill: #cfc8bb; font-size: 9px; paint-order: stroke; stroke: #111; stroke-width: 3px; stroke-linejoin: round; }
   .worldMapBox.worldEdaMap .wmAimLabel { fill: #e8b27d; font-size: 10px; paint-order: stroke; stroke: #111; stroke-width: 3px; stroke-linejoin: round; }
   /* v20.4 M4 国の網 */
   .worldNetBox { position: relative; width: 100%; overflow: hidden; touch-action: pan-y; border: 1px solid var(--border); border-radius: 10px; background: #141414; user-select: none; -webkit-user-select: none; }
@@ -2611,7 +2613,7 @@
       <div id="worldNetBox" class="worldNetBox"></div>
       <p class="fieldNote" id="worldNetStatus"></p>
       <div class="field">
-        <button type="button" id="btnWorldNetList" class="linkLikeBtn" hidden>この国の札を一覧で見る</button>
+        <button type="button" id="btnWorldNetList" class="linkLikeBtn" hidden>この国の出来事を一覧で見る</button>
       </div>
       <div class="field">
         <button type="button" id="btnWorldNetBack" class="secondaryBtn">地図に戻る</button>
@@ -3192,7 +3194,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.58';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.59';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -20723,7 +20725,7 @@
       if (sf) {
         const origin = worldLiveEvents().find((e) => e.id === sf.originId);
         const p = document.createElement('div'); p.className = 'worldSelfLine';
-        p.appendChild(document.createTextNode(sf.fromSame ? '「同じ」とされたが別の出来事として作った札（比べた札：' : '自分で調べて作った札（元の札：'));   // v20.48
+        p.appendChild(document.createTextNode(sf.fromSame ? '「同じ」とされたが別の出来事として作った札（比べた出来事：' : '自分で調べて作った札（元の出来事：'));   // v20.48
         const o = document.createElement('button'); o.type = 'button'; o.className = 'linkLikeBtn';
         o.textContent = origin ? worldEvDateShort(origin) + ' ' + origin.fact : sf.originId || '？';
         o.addEventListener('click', async (e2) => { e2.stopPropagation(); const m = monthOfWorldId(sf.originId); if (m && !wd.loaded.has(m)) await ensureWorldMonths([m]); openWorldEvent(sf.originId); });
@@ -20917,7 +20919,7 @@
         sec.className = 'worldLinked';
         const lab = document.createElement('div');
         lab.className = 'rowLabel';
-        lab.textContent = 'つながる札';
+        lab.textContent = 'つながる出来事';
         sec.appendChild(lab);
         hits.slice(0, WORLD_LINKED_MAX).forEach((h) => {
           const r = document.createElement('button');
@@ -23126,7 +23128,7 @@
     const byId = (id) => worldEvents.find((e) => e.id === id);
     prev.forEach((id) => {
       const p = document.createElement('div'); p.className = 'worldSelfLine';
-      p.appendChild(document.createTextNode('続報の前の札：'));
+      p.appendChild(document.createTextNode('続報の前の出来事：'));
       const b = document.createElement('button'); b.type = 'button'; b.className = 'linkLikeBtn';
       const e = byId(id); b.textContent = (e ? worldEvDateShort(e) + ' ' + e.fact : id) + ' ▸';
       b.addEventListener('click', (e2) => { e2.stopPropagation(); worldOpenAnyEvent(id); });
@@ -23135,12 +23137,12 @@
     if (next.length) {
       const p = document.createElement('div'); p.className = 'worldSelfLine';
       const b = document.createElement('button'); b.type = 'button'; b.className = 'linkLikeBtn';
-      b.textContent = 'この後の続報 ' + next.length + '枚 ▸';
+      b.textContent = 'この後の続報 ' + next.length + '件 ▸';
       b.addEventListener('click', async (e2) => {
         e2.stopPropagation();
         const ms = [...new Set(next.map(monthOfWorldId).filter((m) => m && !wd.loaded.has(m)))];
         if (ms.length) await ensureWorldMonths(ms);
-        openWorldCards({ title: '続報の札（' + next.length + '枚）', ids: next });
+        openWorldCards({ title: '続報の出来事', ids: next });
       });
       p.appendChild(b); box.appendChild(p);
     }
@@ -23173,7 +23175,7 @@
     f.textContent = '見つけた出来事：' + (sm.fact || '（何が起きたかが書かれていません）') + (sm.factCut ? '…（長いので切りました）' : '');
     box.appendChild(f);
     const l = document.createElement('div'); l.className = 'dcLine';
-    l.appendChild(document.createTextNode('同じと判断した札：'));
+    l.appendChild(document.createTextNode('同じと判断した出来事：'));
     const target = sm.cardId ? worldEvents.find((e) => e.id === sm.cardId) : null;
     if (sm.cardId) {
       const b = document.createElement('button'); b.type = 'button'; b.className = 'linkLikeBtn';
@@ -23551,7 +23553,7 @@
       const open = document.createElement('div');
       open.className = 'worldActorOpen'; open.hidden = true;
       const f = document.createElement('div'); f.className = 'tlFact'; f.textContent = e.fact; open.appendChild(f);
-      const go = document.createElement('button'); go.type = 'button'; go.className = 'linkLikeBtn'; go.textContent = '札を開く';
+      const go = document.createElement('button'); go.type = 'button'; go.className = 'linkLikeBtn'; go.textContent = '出来事を開く';
       go.addEventListener('click', (ev2) => { ev2.stopPropagation(); openWorldEvent(e.id); });
       open.appendChild(go);
       box.appendChild(open);
@@ -23823,6 +23825,7 @@
   }
   function renderWorld() {
     worldNavTrack();   // v20.53
+    try { worldAimsTidyOnce(); } catch (e) {}   // v20.59 直し③：残した返事を比べ直して消す（1回だけ）。起動の途中で呼ばれても止めない
     document.getElementById('worldMainView').hidden = worldState.view !== 'main';
     document.getElementById('worldImportView').hidden = worldState.view !== 'import';
     document.getElementById('worldConceptView').hidden = worldState.view !== 'concept';
@@ -24517,7 +24520,7 @@
       const go = document.createElement('button');
       go.type = 'button'; go.className = 'linkLikeBtn'; go.textContent = '札を見る';
       go.addEventListener('click', () => {
-        openWorldCards({ title: '「' + ask.text + '」の札', ids: [...r.added, ...r.eventIds] });
+        openWorldCards({ title: '「' + ask.text + '」の出来事', ids: [...r.added, ...r.eventIds] });
       });
       cards.appendChild(go);
       inner.appendChild(cards);
@@ -24657,7 +24660,7 @@
       return;
     }
     const ev = worldLiveEvents().find((e) => e.id === id);
-    openWorldCards({ title: (ev ? worldEvDateShort(ev) + ' の札' : '札'), ids: [id], openId: id });
+    openWorldCards({ title: (ev ? worldEvDateShort(ev) + ' の出来事' : '出来事'), ids: [id], openId: id });
   }
   // from: 'board'（動いた主体から）／'tidy'（整理から）／'list'（探すなど）
   function openWorldEntry(id, from) {
@@ -24710,11 +24713,11 @@
     if (cards.length > 1) {
       const src = document.createElement('span');
       src.className = 'wmSrc';
-      src.textContent = '同じ動きの札' + cards.length + '枚';
+      src.textContent = '同じ動きの出来事' + cards.length + '件';
       row.appendChild(src);
     }
     row.addEventListener('click', () => {
-      if (cards.length > 1) openWorldCards({ title: '同じ動きの札（' + cards.length + '枚）', ids: cards.map((e) => e.id) });
+      if (cards.length > 1) openWorldCards({ title: '同じ動きの出来事', ids: cards.map((e) => e.id) });
       else openWorldEvent(cards[0].id);
     });
   }
@@ -24927,7 +24930,7 @@
           if (hits.length > WORLD_SEARCH_SHOW) {
             body.appendChild(worldMoreLineEl('ほか ' + (hits.length - WORLD_SEARCH_SHOW) + '件 ・ すべて見る', () => {
               if (kind === 'money') { worldState.search.money = q; openWorldCards({ title: '「' + q + '」のお金', money: true }); }
-              else openWorldCards({ title: '「' + q + '」の札', ids: hits.map((e) => e.id) });
+              else openWorldCards({ title: '「' + q + '」の出来事', ids: hits.map((e) => e.id) });
             }));
           }
           return;
@@ -24973,6 +24976,25 @@
     }
     return worldMapLibP;
   }
+  // v20.59 直し③：海峡・運河などの場所の点。国とも枠とも別の種類。呼び名と丸ごと一致したときだけ当てる
+  const WORLD_MAP_PLACES = {
+    P_HRM: { name: 'ホルムズ海峡', ll: [56.4, 26.5], aka: ['ホルムズ海峡', 'ホルムズ'] },
+    P_BAB: { name: 'バブエルマンデブ海峡', ll: [43.4, 12.6], aka: ['バブエルマンデブ海峡', 'バブエルマンデブ', 'バブ・エル・マンデブ海峡', 'バブルマンデブ海峡', 'バブルマンデブ'] },
+    P_RSE: { name: '紅海', ll: [38.0, 20.5], aka: ['紅海'] },
+    P_SUZ: { name: 'スエズ運河', ll: [32.35, 30.5], aka: ['スエズ運河', 'スエズ'] },
+    P_MLK: { name: 'マラッカ海峡', ll: [100.5, 3.0], aka: ['マラッカ海峡', 'マラッカ'] },
+    P_TWS: { name: '台湾海峡', ll: [119.8, 24.3], aka: ['台湾海峡'] },
+    P_BLK: { name: '黒海', ll: [34.5, 43.3], aka: ['黒海'] },
+    P_PNM: { name: 'パナマ運河', ll: [-79.7, 9.1], aka: ['パナマ運河'] },
+  };
+  // v20.59 直し③：国際機関の枠の名前（丸ごと一致）に足す。規則の例の「国連安保理」が当たらなかった
+  const WORLD_SLOT_EXTRA = { INT: ['国連安保理', '安保理', '国連安全保障理事会', '国連総会', '国際刑事裁判所', 'ICC', '国際司法裁判所', 'ICJ', 'BRICS', '国際原子力機関', 'IAEA'] };
+  function worldIsPlacePoint(c) { return !!c && Object.prototype.hasOwnProperty.call(WORLD_MAP_PLACES, c); }
+  function worldPlacePointOf(name) {
+    const k = worldNormName(name);
+    if (!k) return '';
+    return Object.keys(WORLD_MAP_PLACES).find((c) => WORLD_MAP_PLACES[c].aka.some((x) => worldNormName(x) === k)) || '';
+  }
   function worldBuildMapLib(d3, topojson, atlas, table) {
     const byNum = new Map(), byName = new Map(), nameOf = new Map();
     table.countries.forEach(([a3, num, ja, names]) => {
@@ -24993,10 +25015,13 @@
       anchors.set(a3, d3.geoCentroid({ type: 'Polygon', coordinates: big }));
     });
     Object.entries(table.points).forEach(([a3, ll]) => { if (!anchors.has(a3)) anchors.set(a3, ll); });
+    Object.entries(WORLD_MAP_PLACES).forEach(([c, p]) => anchors.set(c, p.ll));   // v20.59
+    Object.entries(WORLD_SLOT_EXTRA).forEach(([c, names]) => { if (table.slots && table.slots[c]) { const ex = table.slots[c].exact || []; table.slots[c].exact = ex.concat(names.filter((x) => !ex.includes(x))); } });   // v20.59
     return { d3, table, features, byName, nameOf, anchors };
   }
   function worldPlaceLabel(code, lib) {
     if (WORLD_MAP_SLOT_LABEL[code]) return WORLD_MAP_SLOT_LABEL[code];
+    if (worldIsPlacePoint(code)) return WORLD_MAP_PLACES[code].name;   // v20.59
     return (lib && lib.nameOf.get(code)) || code || '場所不明';
   }
   // 名前 → 国コード／枠（MKT・INT・REG）／'SAME'（一般名。もう片方の国）／''（場所不明）。
@@ -25035,6 +25060,7 @@
   function worldPlaceHow(name, lib) {
     const n = String(name || '').trim();
     if (!n) return { code: '', how: '' };
+    { const pl = worldPlacePointOf(n); if (pl) return { code: pl, how: 'place' }; }   // v20.59 場所の点（丸ごと一致だけ）
     const a = worldFindActorForPlace(n);
     // v20.27：名前に国の呼び名が2つ以上なら、1つの国に決めつけない（主体の国を手で決めたときだけは主体の国）
     if (!(a && a.country && a.countrySetAt) && worldCountriesIn(n, lib).length >= 2) return { code: '', how: 'multi' };
@@ -25094,7 +25120,7 @@
     let a = ha.code, b = hb.code;
     if (a === 'SAME') a = worldIsCountry(b, lib) ? b : '';
     if (b === 'SAME') b = worldIsCountry(a, lib) ? a : '';
-    const ok = (c) => worldIsCountry(c, lib) || WORLD_MAP_SLOTS.includes(c);
+    const ok = (c) => worldIsCountry(c, lib) || WORLD_MAP_SLOTS.includes(c) || worldIsPlacePoint(c);   // v20.59：場所の点も
     const pa = ok(a) ? a : '', pb = ok(b) ? b : '';
     // v20.27：国が2つ以上で決めなかった側は、場所が空でも how に 'multi' を残す（地図の下に件数で出すため）
     return { places: [pa, pb], how: [pa ? ha.how : (ha.how === 'multi' ? 'multi' : ''), pb ? hb.how : (hb.how === 'multi' ? 'multi' : '')] };
@@ -25136,6 +25162,7 @@
       if (ph.how.includes('multi')) m.multiRows.push(r);   // v20.27
       if ([r.flow.from, r.flow.to].some((n, i) => ph.how[i] === 'slot' && worldSlotTrailingCountries(n, lib).length)) m.slotCountryRows.push(r);
       if (!a || !b) { m.unknown.push(r); if (a && worldIsCountry(a, lib)) m.rootUnknown.push(r); return; }   // v20.30：主体の国が分かる場所不明（根にできる）
+      if (a === b && worldIsPlacePoint(a)) { m.unknown.push(r); return; }   // v20.59：同じ場所の点どうしは線にしない
       if (a === b && worldIsCountry(a, lib)) { if (!m.domestic.has(a)) m.domestic.set(a, []); m.domestic.get(a).push(r); return; }
       m.lines.push(r);
     });
@@ -26557,10 +26584,11 @@
   }
   // 札1枚の地図の中身。場所の決め方は地図タブと同じ。描く物が無ければ empty
   function worldEdaModel(ev, lib) {
-    const out = { kind: '', line: null, dots: [], slots: [], domestic: '', root: '', row: null, note: '', empty: false, aims: [] };
+    const out = { kind: '', line: null, dots: [], slots: [], places: [], domestic: '', root: '', row: null, note: '', empty: false, aims: [] };
     const isSlot = (c) => WORLD_MAP_SLOTS.includes(c);
     const add = (c) => {
       if (isSlot(c)) { if (!out.slots.includes(c)) out.slots.push(c); }
+      else if (worldIsPlacePoint(c)) { if (!out.places.includes(c)) out.places.push(c); }   // v20.59
       else if (worldIsCountry(c, lib) && !out.dots.includes(c)) out.dots.push(c);
     };
     // v20.58：効かせた線（確度3以下の札は描かない。お金の線と同じ決まり）
@@ -26572,7 +26600,7 @@
     if (!ev.flow) {
       out.kind = 'noflow';
       addAims();
-      out.empty = !out.dots.length && !out.slots.length;
+      out.empty = !out.dots.length && !out.slots.length && !out.places.length;
       return out;
     }
     const r = worldMergeFlows([ev])[0] || ev;
@@ -26589,9 +26617,9 @@
       out.kind = 'line'; out.line = [a, b]; add(a); add(b);
     } else if (a && b) {
       add(a);
-      out.kind = isSlot(a) ? 'sameSlot' : 'domestic';
-      if (!isSlot(a)) out.domestic = a;
-      out.note = isSlot(a) ? '（' + WORLD_MAP_SLOT_LABEL[a] + 'の中の動き）' : '（国の中の動き）';
+      out.kind = isSlot(a) || worldIsPlacePoint(a) ? 'sameSlot' : 'domestic';
+      if (out.kind === 'domestic') out.domestic = a;
+      out.note = out.kind === 'sameSlot' ? '（' + worldPlaceLabel(a, lib) + 'の中の動き）' : '';   // v20.59：国の中の動きは1行の頭に国名を付ける
     } else if (a || b) {
       add(a || b);
       out.kind = 'oneSide';
@@ -26603,7 +26631,7 @@
     // 杭：自分に使う金。地図タブの「自分に使う」と同じく、相手が別の国の線でないとき、出す側の国の下に
     if (WORLD_ROOTS_ON && worldUseOf(r) && worldIsCountry(a, lib) && !(out.kind === 'line' && worldIsCountry(b, lib))) out.root = a;
     addAims();
-    out.empty = !out.dots.length && !out.slots.length;
+    out.empty = !out.dots.length && !out.slots.length && !out.places.length;
     return out;
   }
   function worldDrawEdaMap(box, lib, m) {
@@ -26708,6 +26736,15 @@
       worldSvg('circle', { cx: p[0].toFixed(1), cy: p[1].toFixed(1), r: 3.5, class: 'wmDot' }, svg);
       if (c === m.domestic) { const t = worldSvg('text', { x: (p[0] + 6).toFixed(1), y: (p[1] - 5).toFixed(1), class: 'wmLabel' }, svg); t.textContent = '国内'; }
     });
+    // v20.59：場所の点（ひし形と名前）
+    (m.places || []).forEach((c) => {
+      const p = pt(c);
+      if (!p) return;
+      const x = p[0], y = p[1], r = 4.5;
+      worldSvg('path', { d: 'M' + x.toFixed(1) + ',' + (y - r).toFixed(1) + ' L' + (x + r).toFixed(1) + ',' + y.toFixed(1) + ' L' + x.toFixed(1) + ',' + (y + r).toFixed(1) + ' L' + (x - r).toFixed(1) + ',' + y.toFixed(1) + ' Z', class: 'wmPlace' }, svg);
+      const t = worldSvg('text', { x: (x + 7).toFixed(1), y: (y + 3).toFixed(1), class: 'wmPlaceLabel' }, svg);
+      t.textContent = WORLD_MAP_PLACES[c].name;
+    });
   }
   // なぜ の下に置く。文字を先に出し、地図は部品を読んでから入れる
   // v20.57 直し①：地図を出すのは線が描ける札だけ。v20.58 直し②：効かせた線も線に数え、1行は「お金：」「効かせた：」に分ける
@@ -26717,6 +26754,7 @@
     const note = document.createElement('span'); note.className = 'worldEdaNote';
     const aimRec = worldAimsState().cards.get(ev.id) || null;
     const aimRows = aimRec ? worldAimsLineRows(aimRec) : [];
+    let moneyRow = null;
     const row = (key, cls, text) => {
       const d = document.createElement('div'); d.className = 'worldEdaLine';
       if (key) { const k = document.createElement('span'); k.className = 'weKey' + (cls ? ' ' + cls : ''); k.textContent = key; d.appendChild(k); }
@@ -26727,7 +26765,7 @@
     if (ev.flow) {
       const sfb = worldEvSelf(ev);
       const selfFlow = sfb ? ['from', 'to', 'what', 'amount'].filter((k) => sfb.by[k] === 'self').map((k) => FUDA_FIELD_LABEL[k]) : [];
-      const d = row(aimRows.length ? 'お金：' : '', '', WORLD_FLOW_KIND_MARK[ev.flow.kind || 'money'] + worldFlowLine(ev.flow) + (worldUsdText(ev) ? '　' + worldUsdText(ev) : '') + (selfFlow.length ? '　（' + selfFlow.join('・') + '：自分で入力）' : ''));
+      const d = moneyRow = row(aimRows.length ? 'お金：' : '', '', WORLD_FLOW_KIND_MARK[ev.flow.kind || 'money'] + worldFlowLine(ev.flow) + (worldUsdText(ev) ? '　' + worldUsdText(ev) : '') + (selfFlow.length ? '　（' + selfFlow.join('・') + '：自分で入力）' : ''));
       d.appendChild(note);
     }
     aimRows.forEach((t) => row('効かせた：', 'aim', t));
@@ -26744,6 +26782,13 @@
       if (!mapBox.isConnected) return;
       const m = worldEdaModel(ev, lib);
       if (m.note && ev.flow) note.textContent = m.note;
+      // v20.59：国の中の動きは、1行の頭に「日本の中：」（効かせた相手もある札は「お金（日本の中）：」）
+      if (m.domestic && moneyRow) {
+        const name = worldPlaceLabel(m.domestic, lib);
+        const key = moneyRow.querySelector('.weKey');
+        if (key) key.textContent = 'お金（' + name + 'の中）：';
+        else { const k = document.createElement('span'); k.className = 'weKey'; k.textContent = name + 'の中：'; moneyRow.insertBefore(k, moneyRow.firstChild); }
+      }
       if (m.empty || (!m.line && !m.aims.length)) { mapBox.hidden = true; mapBox.style.aspectRatio = ''; return; }
       mapBox.hidden = false;
       worldDrawEdaMap(mapBox, lib, m);
@@ -26765,10 +26810,11 @@
   const WORLD_AIMS_FILL_KEY = 'kotoba_aimsFillDraft';   // 埋める途中（端末ごと）
   const WORLD_AIMS_RULE_LINES =
     '- 札ごとに、主体が「誰に向けて、何を効かせたか」を0〜2件書く。お金・物・人が動いていなくてよい（制裁・関税・攻撃・要求・合意・名指し・投票・訪問 など）。\n' +
-    '- from と to は、国・国際機関・地域の名前（例：米国、ロシア、EU、国連安保理）。「第三国の銀行」「市場」「株主」のように場所が決まらない相手は書かない。\n' +
+    '- from と to は、国・国際機関・地域・海峡の名前（例：米国、ロシア、EU、国連安保理、ホルムズ海峡）。「第三国の銀行」「市場」「株主」のように場所が決まらない相手は書かない。\n' +
     '- how は、手を表す短い言葉1つ（' + WORLD_AIM_HOW_MAX + '字まで）。\n' +
-    '- 自分の国の中だけの手（利上げ・統計・保有高・自国の予算）は []。\n' +
-    '- flow と同じ向きの同じ話は書かない。なぜ の背景に出てくるだけの国は書かない。\n';
+    '- 自分の国の中だけの手（利上げ・統計・保有高・自国の予算）は []。ただし、他の国から求められた手・他の国に向けた手は書く（例：米財務長官が日銀に利上げを求めた → 米国→日本「要求」）。\n' +
+    '- なぜ に書いてある狙いの相手（制裁で資金を断とうとしている国など）は書く。なぜ に名前が出てくるだけの国は書かない。\n' +
+    '- flow と同じ向きの同じ話は書かない。\n';   // v20.59 直し③：日銀の利上げ要求・制裁の狙いの国が落ちていた
   function worldAimsPromptPart() { return '■ 効かせた相手（aims）\n' + WORLD_AIMS_RULE_LINES + '\n'; }
   function worldAimsFormatEvent() { return ',\n  "aims":[{"from":"...","to":"...","how":"..."}]'; }
   function worldAimsFormatRules() { return '効かせた相手が無いとき： "aims": []\n'; }
@@ -26806,7 +26852,7 @@
       if (!x || typeof x !== 'object') return;
       const o = { from: worldStr(x.from, WORLD_AIM_NAME_MAX), to: worldStr(x.to, WORLD_AIM_NAME_MAX), how: worldStr(x.how, WORLD_AIM_HOW_MAX) };
       if (!o.from && !o.to) return;
-      const code = (n) => { if (!n) return ''; const c = worldPlaceHow(n, lib).code; return (worldIsCountry(c, lib) || WORLD_MAP_SLOTS.includes(c)) ? c : ''; };
+      const code = (n) => { if (!n) return ''; const c = worldPlaceHow(n, lib).code; return (worldIsCountry(c, lib) || WORLD_MAP_SLOTS.includes(c) || worldIsPlacePoint(c)) ? c : ''; };   // v20.59：場所の点も
       o.fromCode = code(o.from); o.toCode = code(o.to);
       const why = i >= WORLD_AIM_PER_CARD ? 'over' : !o.how ? 'noHow' : (!o.fromCode || !o.toCode) ? 'unknownPlace' : o.fromCode === o.toCode ? 'same'
         : aims.some((a) => a.fromCode === o.fromCode && a.toCode === o.toCode) ? 'dup' : '';
@@ -26834,7 +26880,8 @@
     const st = { cards: 0, lines: 0, extra: {}, pending: !lib };
     const recs = pend.map((p) => {
       const raw = (Array.isArray(p.raw) ? p.raw : []).filter((x) => x && typeof x === 'object').slice(0, 5).map((x) => ({ from: worldStr(x.from, WORLD_AIM_NAME_MAX), to: worldStr(x.to, WORLD_AIM_NAME_MAX), how: worldStr(x.how, WORLD_AIM_HOW_MAX) }));
-      const f = { card: p.ev.id, raw, src: 'import', batchId };
+      const f = { card: p.ev.id, src: 'import', batchId };
+      if (!lib) f.raw = raw;   // v20.59：場所を決められたら返事の写しは残さない
       if (lib) {
         const sp = worldAimsSplit(raw, lib);
         f.aims = sp.aims; f.extra = sp.extra;
@@ -26911,14 +26958,11 @@
     return { added, unknownCards, answered: Object.keys(run.result).length, missing: d.cardIds.filter((c) => !(c in run.result)) };
   }
   // 2回を比べる。場所にした組（USA>RUS）で比べ、2回とも同じ組だけ線。書き方は1回目
-  function worldAimsFillCompare(lib) {
-    const d = worldAimsFillDraft();
-    const r1 = d.runs[1], r2 = d.runs[2];
-    if (!r1 || !r2) return null;
-    const out = { cards: d.cardIds.length, common: 0, only1: 0, only2: 0, sway: [], result: {} };
+  function worldAimsCompareRuns(res1, res2, cardIds, lib) {
+    const out = { cards: cardIds.length, common: 0, only1: 0, only2: 0, sway: [], result: {} };
     const key = (x) => x.fromCode + '>' + x.toCode;
-    d.cardIds.forEach((card) => {
-      const s1 = worldAimsSplit(r1.result[card] || [], lib), s2 = worldAimsSplit(r2.result[card] || [], lib);
+    cardIds.forEach((card) => {
+      const s1 = worldAimsSplit(res1[card] || [], lib), s2 = worldAimsSplit(res2[card] || [], lib);
       const k2 = new Set(s2.aims.map(key)), k1 = new Set(s1.aims.map(key));
       const aims = s1.aims.filter((x) => k2.has(key(x)));
       const extra = s1.aims.filter((x) => !k2.has(key(x))).map((x) => Object.assign({}, x, { why: 'oneRun', run: 1 }))
@@ -26928,22 +26972,77 @@
       out.only1 += s1.aims.filter((x) => !k2.has(key(x))).length;
       out.only2 += s2.aims.filter((x) => !k1.has(key(x))).length;
       if (k1.size !== k2.size || [...k1].some((k) => !k2.has(k))) out.sway.push(card);
-      out.result[card] = { aims, extra, raw: r1.result[card] || [] };
+      out.result[card] = { aims, extra };
     });
     return out;
+  }
+  function worldAimsFillCompare(lib) {
+    const d = worldAimsFillDraft();
+    const r1 = d.runs[1], r2 = d.runs[2];
+    if (!r1 || !r2) return null;
+    return worldAimsCompareRuns(r1.result, r2.result, d.cardIds, lib);
+  }
+  // v20.59 直し③：v20.58 で残した返事の記録を、今の場所の表で比べ直してから消す（開いたときに1回だけ）
+  let worldAimsTidyDone = false;
+  function worldAimsTidyOnce() {
+    if (worldAimsTidyDone) return;
+    const fills = worldAimsRecs().filter((r) => r.type === 'fill');
+    if (!fills.length) return;
+    worldAimsTidyDone = true;
+    worldLoadMapLib().then((lib) => {
+      const st = worldAimsState();
+      const recs = [];
+      let upgraded = 0;
+      const byFill = new Map();
+      fills.forEach((f) => { if (!byFill.has(f.fillId)) byFill.set(f.fillId, {}); byFill.get(f.fillId)[f.run] = f; });
+      const keyOf = (list) => (list || []).map((x) => x.fromCode + '>' + x.toCode).sort().join('|');
+      byFill.forEach((runs, fillId) => {
+        if (!runs[1] || !runs[2]) return;
+        const r1 = runs[1].result || {}, r2 = runs[2].result || {};
+        const ids = [...new Set(Object.keys(r1).concat(Object.keys(r2)))];
+        const cmp = worldAimsCompareRuns(r1, r2, ids, lib);
+        ids.forEach((card) => {
+          const cur = st.cards.get(card);
+          if (!cur || cur.fillId !== fillId) return;   // 後で朝の取り込みなどで書き直された札は触らない
+          const x = cmp.result[card];
+          if (keyOf(cur.aims) === keyOf(x.aims)) return;
+          recs.push(worldAimsRec('card', { card, aims: x.aims, extra: x.extra, src: 'fill', fillId, redo: 'placeTable' }));
+          upgraded++;
+        });
+        recs.push(worldAimsRec('fillSum', { fillId, cards: cmp.cards, common: cmp.common, only1: cmp.only1, only2: cmp.only2, sway: cmp.sway.length, redo: 'placeTable', upgraded }));
+      });
+      if (recs.length) worldAimsAddRecs(recs);
+      const at = nowIso();
+      const gone = new Set(fills.map((f) => f.id));
+      wdig.docs.forEach((doc, m) => {
+        const arr = Array.isArray(doc[WORLD_AIMS_KEY]) ? doc[WORLD_AIMS_KEY] : [];
+        const hit = arr.filter((r) => gone.has(r.id));
+        if (!hit.length) return;
+        doc[WORLD_AIMS_KEY] = arr.filter((r) => !gone.has(r.id));
+        doc.deletedIds = doc.deletedIds.filter((t) => !gone.has(t.id)).concat(hit.map((r) => ({ id: r.id, deletedAt: at })));
+        doc.updatedAt = at;
+        wdig.dirty.add(m);
+        persistDigDoc(m);
+      });
+      worldAimsState.cache = null;
+      persistDigMeta();
+      scheduleSync();
+      if (nav.screen === 'world' && ['main', 'cards', 'miki'].includes(worldState.view)) renderWorld();
+      renderWorldAimsFill();
+    }).catch(() => { worldAimsTidyDone = false; });
   }
   function worldAimsFillInsert(lib) {
     const d = worldAimsFillDraft();
     const cmp = worldAimsFillCompare(lib);
     if (!cmp) return { error: '2回分の返事がそろっていません。' };
     const fillId = digNewId('af');
-    const recs = [1, 2].map((n) => worldAimsRec('fill', { fillId, run: n, order: d.runs[n].order, result: d.runs[n].result }));
+    const recs = [];   // v20.59：返事2回分の記録は書かない（比べた数と札ごとの記録だけ）
     recs.push(worldAimsRec('fillSum', { fillId, cards: cmp.cards, common: cmp.common, only1: cmp.only1, only2: cmp.only2, sway: cmp.sway.length }));
     let extra = 0;
     d.cardIds.forEach((card) => {
       const x = cmp.result[card];
       extra += x.extra.length;
-      recs.push(worldAimsRec('card', { card, raw: x.raw, aims: x.aims, extra: x.extra, src: 'fill', fillId }));
+      recs.push(worldAimsRec('card', { card, aims: x.aims, extra: x.extra, src: 'fill', fillId }));
     });
     worldAimsAddRecs(recs);
     worldAimsFillClear();
@@ -26952,6 +27051,7 @@
   function renderWorldAimsFill() {
     const box = document.getElementById('worldAimsFill');
     if (!box) return;
+    worldAimsTidyOnce();   // v20.59
     if (box.contains(document.activeElement) && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) return;   // 打っている最中は描き直さない
     box.innerHTML = '';
     const d = worldAimsFillDraft();
@@ -27200,14 +27300,14 @@
       const label = slot ? WORLD_MAP_SLOT_LABEL[slot] : worldPlaceLabel(c, lib);
       worldState.netLast = { c: slot || c, net, label };
       document.getElementById('worldNetTitle').textContent = label + 'の網（直近' + WORLD_MAP_DAYS + '日）';
-      listBtn.textContent = slot ? 'この市場の札を一覧で見る' : 'この国の札を一覧で見る';
+      listBtn.textContent = slot ? 'この市場の出来事を一覧で見る' : 'この国の出来事を一覧で見る';
       document.getElementById('worldNetLegend').textContent = slot
         ? '点：市場の名前（本物の市場が先、相手が分からない受け皿が後ろ）　上の帯：市場に入れる側　下の帯：市場から出す側'
         : '● 塗った点：登録している主体（押すと詳しく）　○ 白抜きの点：札に名前だけ出てきた相手（押すとその札）';
       if (!net.nodes.length && !net.outs.length) {
         box.innerHTML = ''; box.style.height = '';
         st.textContent = slot ? 'この枠に出せる動きがありません。'
-          : 'この国の網に出せる動きがありません（「' + worldPlaceShort(c, lib) + '」から「' + worldPlaceShort(c, lib) + '」への動きだけです）。下の「この国の札を一覧で見る」から見られます。';
+          : 'この国の網に出せる動きがありません（「' + worldPlaceShort(c, lib) + '」から「' + worldPlaceShort(c, lib) + '」への動きだけです）。下の「この国の出来事を一覧で見る」から見られます。';
         listBtn.hidden = !net.allRows.length;
         return;
       }
@@ -27221,7 +27321,7 @@
         ? '市場 ' + net.real + '・相手が分からない受け皿 ' + net.recv + '・外の札 ' + net.outs.length + '枚。'
           + '上の帯が市場に入れる側、下の帯が市場から出す側です。点を押すとその市場の動き、相手の国の札を押すとその国の網へ移ります。二本指で拡大・縮小できます。'
         : '点 ' + net.nodes.length + '・国内の矢印 ' + inner + '本・外の札 ' + net.outs.length + '枚。点・矢印・外の札を押すと開きます。二本指で拡大・縮小できます。'
-          + (net.selfRows ? '　「' + worldPlaceShort(c, lib) + '」から「' + worldPlaceShort(c, lib) + '」への動き ' + net.selfRows + '件は、網には出さず「この国の札を一覧で見る」に入れています。' : '');   // v20.5.1
+          + (net.selfRows ? '　「' + worldPlaceShort(c, lib) + '」から「' + worldPlaceShort(c, lib) + '」への動き ' + net.selfRows + '件は、網には出さず「この国の出来事を一覧で見る」に入れています。' : '');   // v20.5.1
       listBtn.hidden = !net.allRows.length;
     }).catch((e) => {
       if (token !== worldNetToken) return;
@@ -27424,7 +27524,7 @@
     }
     const byDate = (a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0);
     const list = worldLiveEvents().filter((e) => d.ids.includes(e.id)).sort(byDate);
-    document.getElementById('worldCardsTitle').textContent = d.title + '（' + list.length + '）';
+    document.getElementById('worldCardsTitle').textContent = d.title + '（' + list.length + '件）';   // v20.59：数は「件」
     if (d.note) { const p = document.createElement('p'); p.className = 'fieldNote wmListNote'; p.textContent = d.note; body.appendChild(p); }   // v20.26
     const box = document.createElement('div');
     renderWorldList(box, list, '端末に残っていません（読み込んでいない月の札です）。');
@@ -27572,7 +27672,7 @@
       rel.appendChild(row);
     });
 
-    document.getElementById('worldConceptEventsLabel').textContent = isActor ? 'この主体が動かした札（時系列）' : 'この' + (isTerm ? '用語' : '概念') + 'が出た出来事';
+    document.getElementById('worldConceptEventsLabel').textContent = isActor ? 'この主体が動かした出来事（時系列）' : 'この' + (isTerm ? '用語' : '概念') + 'が出た出来事';
     const evBox = document.getElementById('worldConceptEvents');
     if (isActor) renderWorldActorTimeline(evBox, c);
     else {
