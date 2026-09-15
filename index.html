@@ -1333,6 +1333,8 @@
   .worldMapBox.worldEdaMap .wmAim { fill: none; stroke: #e0a060; stroke-width: 1.6; opacity: 0.9; }
   .worldMapBox.worldEdaMap .wmAimHead { fill: none; stroke: #e0a060; stroke-width: 2.2; }
   .worldMapBox.worldEdaMap .wmPlace { fill: #cfc8bb; stroke: #111; stroke-width: 1; }   /* v20.59 海峡などの場所の点（ひし形） */
+  .worldMapBox.worldEdaMap .wmSideLabel { fill: var(--accent); font-size: 9px; paint-order: stroke; stroke: #111; stroke-width: 3px; stroke-linejoin: round; }   /* v20.61：場所の無い枠は点の横の文字 */
+  .worldMapBox.worldEdaMap .wmSideLabel.aim { fill: #e8b27d; }
   .worldMapBox.worldEdaMap .wmPlaceLabel { fill: #cfc8bb; font-size: 9px; paint-order: stroke; stroke: #111; stroke-width: 3px; stroke-linejoin: round; }
   .worldMapBox.worldEdaMap .wmAimLabel { fill: #e8b27d; font-size: 10px; paint-order: stroke; stroke: #111; stroke-width: 3px; stroke-linejoin: round; }
   /* v20.4 M4 国の網 */
@@ -3194,7 +3196,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.60';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.61';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -26573,7 +26575,7 @@
 
   // ---- v20.56 地図 段1：札の画面の地図（その札だけ・期間の制限なし） ----
   const WORLD_EDA_RATIO = 2.055;       // 世界全体の図の 幅÷高さ（地図の部品を読む前に場所を空けておくため）
-  const WORLD_EDA_SLOT_H = 28;         // 枠の箱の帯の高さ（要る枠の箱だけ置く）
+  const WORLD_EDA_SIDE_MAX = 12;       // v20.61：点の横に出す名前の字数
   const WORLD_EDA_SHAPE_KEEP = 2;      // 覚えておく国の形（幅ごと）
   let worldEdaShapeCache = [];
   let worldEdaLibReady = false;        // v20.57：地図の部品を読み終わったか（読む前だけ地図の場所を空けておく）
@@ -26602,23 +26604,36 @@
   }
   // 札1枚の地図の中身。場所の決め方は地図タブと同じ。描く物が無ければ empty
   function worldEdaModel(ev, lib) {
-    const out = { kind: '', line: null, dots: [], slots: [], places: [], domestic: '', root: '', row: null, note: '', empty: false, aims: [] };
+    // v20.61：場所の無い枠（市場・国の集まり）は、線にも箱にもせず、相手の点の横の文字（sides）にする
+    const out = { kind: '', line: null, dots: [], places: [], sides: [], domestic: '', root: '', row: null, note: '', empty: false, aims: [] };
     const isSlot = (c) => WORLD_MAP_SLOTS.includes(c);
     const add = (c) => {
-      if (isSlot(c)) { if (!out.slots.includes(c)) out.slots.push(c); }
-      else if (worldIsPlacePoint(c)) { if (!out.places.includes(c)) out.places.push(c); }   // v20.59
+      if (isSlot(c)) return;   // 枠は点にしない
+      if (worldIsPlacePoint(c)) { if (!out.places.includes(c)) out.places.push(c); }   // v20.59
       else if (worldIsCountry(c, lib) && !out.dots.includes(c)) out.dots.push(c);
+    };
+    // 片方だけが枠なら、もう片方の点の横に「→ 国債市場」（出る・入るの向きだけ）
+    const addSide = (ca, cb, na, nb, kind) => {
+      const slotIsB = isSlot(cb);
+      const at = slotIsB ? ca : cb;
+      if (isSlot(at) || !at) return false;
+      add(at);
+      out.sides.push({ at, name: worldStr(String((slotIsB ? nb : na) || ''), 40), dir: slotIsB ? 'out' : 'in', kind });
+      return true;
     };
     // v20.58：効かせた線（確度3以下の札は描かない。お金の線と同じ決まり）
     const addAims = () => {
       if (worldIsLowConf(ev)) return;
       const sp = worldAimsFor(ev.id, lib);
-      (sp ? sp.aims : []).forEach((x) => { out.aims.push(x); add(x.fromCode); add(x.toCode); });
+      (sp ? sp.aims : []).forEach((x) => {
+        if (isSlot(x.fromCode) || isSlot(x.toCode)) { addSide(x.fromCode, x.toCode, x.from, x.to, 'aim'); return; }   // v20.61
+        out.aims.push(x); add(x.fromCode); add(x.toCode);
+      });
     };
     if (!ev.flow) {
       out.kind = 'noflow';
       addAims();
-      out.empty = !out.dots.length && !out.slots.length && !out.places.length;
+      out.empty = !out.dots.length && !out.places.length;
       return out;
     }
     const r = worldMergeFlows([ev])[0] || ev;
@@ -26631,11 +26646,15 @@
       [a, b].filter(Boolean).forEach(add);
       out.kind = 'low';
       out.note = '（確度3以下なので線にしていません）';
+    } else if (a && b && a !== b && (isSlot(a) || isSlot(b))) {
+      // v20.61：片方が枠。もう片方が枠か場所不明なら、地図は出さない
+      out.kind = addSide(a, b, r.flow.from, r.flow.to, 'money') ? 'side' : 'slotOnly';
+      if (out.kind === 'slotOnly') out.note = '（どちらも場所が決まらない）';
     } else if (a && b && a !== b) {
       out.kind = 'line'; out.line = [a, b]; add(a); add(b);
     } else if (a && b) {
       add(a);
-      out.kind = isSlot(a) || worldIsPlacePoint(a) ? 'sameSlot' : 'domestic';
+      out.kind = isSlot(a) || worldIsPlacePoint(a) ? 'sameSlot' : 'domestic';   // 同じ枠どうしは地図を出さない（点にしないため）
       if (out.kind === 'domestic') out.domestic = a;
       out.note = out.kind === 'sameSlot' ? '（' + worldPlaceLabel(a, lib) + 'の中の動き）' : '';   // v20.59：国の中の動きは1行の頭に国名を付ける
     } else if (a || b) {
@@ -26649,14 +26668,13 @@
     // 杭：自分に使う金。地図タブの「自分に使う」と同じく、相手が別の国の線でないとき、出す側の国の下に
     if (WORLD_ROOTS_ON && worldUseOf(r) && worldIsCountry(a, lib) && !(out.kind === 'line' && worldIsCountry(b, lib))) out.root = a;
     addAims();
-    out.empty = !out.dots.length && !out.slots.length && !out.places.length;
+    out.empty = !out.dots.length && !out.places.length;
     return out;
   }
   function worldDrawEdaMap(box, lib, m) {
     const W = Math.max(200, Math.round(box.clientWidth || 358));
     const S = worldEdaShapes(lib, W);
-    const slotsH = m.slots.length ? WORLD_EDA_SLOT_H + 8 : 0;
-    const total = S.H + slotsH;
+    const total = S.H;   // v20.61：枠の箱は出さない
     box.innerHTML = '';
     box.style.aspectRatio = '';
     const svg = worldSvg('svg', { viewBox: '0 0 ' + W + ' ' + total, width: W, height: total, role: 'img', 'aria-label': 'この札の動きの地図' }, box);
@@ -26671,21 +26689,7 @@
     const land = S.tpl.cloneNode(true);
     mapArea.appendChild(land);
     m.dots.forEach((c) => { const p = land.querySelector('path[data-a3="' + c + '"]'); if (p) p.classList.add('on'); });
-    // 要る枠の箱だけを、地図の下の帯に並べる
-    const slotXY = {};
-    if (m.slots.length) {
-      const sw = Math.min(120, (W - 16) / 3), gap = 8, top = S.H + 6;
-      const x0 = (W - (m.slots.length * sw + (m.slots.length - 1) * gap)) / 2;
-      m.slots.forEach((c, i) => {
-        const x = x0 + i * (sw + gap);
-        const g = worldSvg('g', { class: 'wmSlot' }, svg);
-        worldSvg('rect', { x: x.toFixed(1), y: top, width: sw.toFixed(1), height: WORLD_EDA_SLOT_H, rx: 6, ry: 6 }, g);
-        const t = worldSvg('text', { x: (x + sw / 2).toFixed(1), y: top + 18, 'text-anchor': 'middle' }, g);
-        t.textContent = WORLD_MAP_SLOT_LABEL[c];
-        slotXY[c] = [x + sw / 2, top];
-      });
-    }
-    const pt = (c) => { if (slotXY[c]) return slotXY[c]; const ll = lib.anchors.get(c); return ll ? S.proj(ll) : null; };
+    const pt = (c) => { const ll = lib.anchors.get(c); return ll ? S.proj(ll) : null; };
     const r = m.row;
     const usd = r && (!r.flow.kind || r.flow.kind === 'money') ? worldUsdOf(r.rep || r) : null;
     if (m.line) {
@@ -26754,6 +26758,21 @@
       worldSvg('circle', { cx: p[0].toFixed(1), cy: p[1].toFixed(1), r: 3.5, class: 'wmDot' }, svg);
       if (c === m.domestic) { const t = worldSvg('text', { x: (p[0] + 6).toFixed(1), y: (p[1] - 5).toFixed(1), class: 'wmLabel' }, svg); t.textContent = '国内'; }
     });
+    // v20.61：場所の無い枠は、点の横に「→ 国債市場」（線は引かない）
+    {
+      const used = new Map();
+      (m.sides || []).forEach((x) => {
+        const p = pt(x.at);
+        if (!p) return;
+        const k = x.at;
+        const n = used.get(k) || 0; used.set(k, n + 1);
+        const left = p[0] > W - 100;   // 右端に近ければ左に出す
+        const t = worldSvg('text', { x: (p[0] + (left ? -7 : 7)).toFixed(1), y: (p[1] + 3 + n * 11).toFixed(1), class: 'wmSideLabel' + (x.kind === 'aim' ? ' aim' : ''), 'text-anchor': left ? 'end' : 'start' }, svg);
+        // 矢印は、点から離れる向き＝出る／点へ向かう向き＝入る。左に出すときは向きを逆にする
+        const nm = worldEdaSideName(x.name);
+        t.textContent = left ? (x.dir === 'out' ? nm + ' ←' : nm + ' →') : (x.dir === 'out' ? '→ ' + nm : '← ' + nm);
+      });
+    }
     // v20.59：場所の点（ひし形と名前）
     (m.places || []).forEach((c) => {
       const p = pt(c);
@@ -26764,6 +26783,14 @@
       const t = worldSvg('text', { x: (x + 7).toFixed(1), y: (y + 3).toFixed(1), class: 'wmPlaceLabel' }, svg);
       t.textContent = worldPlacePointLabel(c);
     });
+  }
+  // v20.61：点の横に出す相手の名前（12字まで。括弧の前で切る。全部は下の1行に出る）
+  function worldEdaSideName(name) {
+    let t = String(name || '').trim();
+    const i = t.search(/[（(]/);
+    if (i > 0) t = t.slice(0, i).trim();
+    const cs = [...t];
+    return cs.length > WORLD_EDA_SIDE_MAX ? cs.slice(0, WORLD_EDA_SIDE_MAX).join('') + '…' : t;
   }
   // なぜ の下に置く。文字を先に出し、地図は部品を読んでから入れる
   // v20.57 直し①：地図を出すのは線が描ける札だけ。v20.58 直し②：効かせた線も線に数え、1行は「お金：」「効かせた：」に分ける
@@ -26808,7 +26835,7 @@
         if (key) key.textContent = 'お金（' + name + 'の中）：';
         else { const k = document.createElement('span'); k.className = 'weKey'; k.textContent = name + 'の中：'; moneyRow.insertBefore(k, moneyRow.firstChild); }
       }
-      if (m.empty || (!m.line && !m.aims.length)) { mapBox.hidden = true; mapBox.style.aspectRatio = ''; return; }
+      if (m.empty || (!m.line && !m.aims.length && !(m.sides || []).length)) { mapBox.hidden = true; mapBox.style.aspectRatio = ''; return; }
       mapBox.hidden = false;
       worldDrawEdaMap(mapBox, lib, m);
     }).catch(() => {
