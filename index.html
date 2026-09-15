@@ -1160,6 +1160,10 @@
   .digCand .dcBtns { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
   .digCand .fudaStatus { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
   .digCand .fudaStatus.warn { color: var(--danger); }
+  .digCand .fudaStatus.next, .fudaForm .fudaStatus.next { font-size: 13px; color: var(--text); }
+  .fudaMiki { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+  .fudaMiki .fmLabel { font-size: 12px; color: var(--text-dim); }
+  .fudaMiki .fudaStatus { flex-basis: 100%; margin-top: 0; }
   .digCand .dcSrc a { color: var(--text-dim); }
   .digFoldBtn { display: block; background: none; border: 0; padding: 6px 0; margin: 2px 0; font: inherit; font-size: 12px; color: var(--text-dim); cursor: pointer; text-align: left; }
   .worldSelfLine .linkLikeBtn { font-size: 12px; }
@@ -3167,7 +3171,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.53';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.54';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -20195,7 +20199,8 @@
     if (p.date < addDays(todayStr(), -WORLD_TODAY_SHOW_DAYS)) return null;
     return p;
   }
-  async function worldImportJson(raw, viaAsk) {
+  async function worldImportJson(raw, viaAsk, opts) {
+    const selfMade = !!(opts && opts.selfMade);   // v20.54：候補から作る札。朝の取り込みの幹の記録（芽を探した印・控え）に触らない
     const parsed = shootParseJson(raw);
     const items = parsed ? (Array.isArray(parsed) ? parsed : Array.isArray(parsed.events) ? parsed.events : null) : null;
     if (!items) return { error: 'JSON として読めませんでした。{"events":[...]} の形で貼ってください。' };
@@ -20296,7 +20301,7 @@
       added.push(ev);
       idAt[i] = ev.id;
       { const rawF = (typeof it.follows === 'string' || typeof it.follows === 'number') ? String(it.follows).trim() : ''; if (rawF && rawF !== 'null') pendingFollows.push({ ev, raw: rawF }); }   // v20.48
-      if (!seedRegion && !viaAsk) worldMikiCollect(it, ev, i, mikiPend);   // v20.51
+      if (!seedRegion && !viaAsk && !selfMade) worldMikiCollect(it, ev, i, mikiPend);   // v20.51
       const rawAfter = (it.flow && typeof it.flow === 'object' && it.flow.after != null) ? String(it.flow.after).trim() : '';
       if (ev.flow && rawAfter && rawAfter !== 'null') pendingAfter.push({ ev, raw: rawAfter, i });
       if (ev.eventDate < addDays(today, -WORLD_OLD_EVENT_DAYS)) old++;
@@ -20362,7 +20367,7 @@
       ? worldRecordTodayPick(todayList, items, idAt, goneAt, batchId) : null;
     // v20.48 重複 段1：same（札にしなかった出来事）と follows（続き）。初期投入には付けない
     const importRec = seedRegion ? null : await worldRecordImport(parsed, pendingFollows, added, batchId);
-    const mikiRec = (seedRegion || viaAsk) ? null : worldMikiRecordImport(parsed, mikiPend, added, idAt, batchId);   // v20.51（続報の記録の後に。候補の数え方が続報を見るため）
+    const mikiRec = (seedRegion || viaAsk || selfMade) ? null : worldMikiRecordImport(parsed, mikiPend, added, idAt, batchId);   // v20.51（続報の記録の後に。候補の数え方が続報を見るため）
 
     if (added.length) {
       worldSaveConcepts();
@@ -21158,6 +21163,7 @@
             const a = document.createElement('a');
             a.href = x.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
             a.textContent = k === 'read' ? '参考' : 'url';
+            if (k === 'did' && !x.cardId) a.addEventListener('click', () => { const ky = d.id + '#' + d.found.indexOf(x); const dr = worldFudaDraft(ky, x); if (digUrl(dr.url).url === digUrl(x.url).url) worldFudaMarkOpened(ky, dr); });   // v20.54：事実の小さい url も開いた扱い
             const w = document.createElement('span'); w.className = 'digMeta'; w.appendChild(a); it.appendChild(w);
             // v20.44：人が開いて確かめたかを分ける
             const st = document.createElement('span'); st.className = 'digNoSrc';
@@ -21214,6 +21220,89 @@
     });
     return sec;
   }
+  // v20.54：開いた印を端末に残す（読み直し・アプリの切り替えで消さない）。候補ごとに開いた url と日。作ったら消す・30日で消す。同期しない
+  const WORLD_FUDA_OPENED_KEY = 'kotoba_fudaOpened';
+  const WORLD_FUDA_OPENED_DAYS = 30;
+  function worldFudaOpenedAll() {
+    let o = {};
+    try { o = JSON.parse(localStorage.getItem(WORLD_FUDA_OPENED_KEY) || '{}') || {}; } catch (e) { o = {}; }
+    if (typeof o !== 'object' || Array.isArray(o)) o = {};
+    const from = addDays(todayStr(), -WORLD_FUDA_OPENED_DAYS);
+    Object.keys(o).forEach((k) => { if (!o[k] || typeof o[k].url !== 'string' || !(o[k].day >= from)) delete o[k]; });
+    return o;
+  }
+  function worldFudaOpenedSave(o) { try { localStorage.setItem(WORLD_FUDA_OPENED_KEY, JSON.stringify(o)); } catch (e) {} }
+  function worldFudaOpenedUrl(key) { const h = worldFudaOpenedAll()[key]; return h ? h.url : ''; }
+  function worldFudaMarkOpened(key, draft) {
+    const u = digUrl(draft.url).url;
+    if (!u) return;
+    draft.opened = u;
+    const o = worldFudaOpenedAll(); o[key] = { url: u, day: todayStr() }; worldFudaOpenedSave(o);
+  }
+  function worldFudaForgetOpened(key) { const o = worldFudaOpenedAll(); if (o[key]) { delete o[key]; worldFudaOpenedSave(o); } }
+  const WORLD_FUDA_OPEN_FIRST = '↑ 先に［url を開く］を押して、ページに書いてあるか見てください（開くと、このボタンが押せます。ほかの端末で開いた分は数えません）';
+
+  // v20.54：候補から作る札の幹。はじめは元の札の今の幹に印。2本まで。印が無ければ葉
+  function worldFudaMikiInit(draft, originId) {
+    if (Array.isArray(draft.miki)) return;
+    const mk = worldMikiState();
+    const open = new Set(mk.trunks.map((t) => t.id));
+    draft.mikiInit = originId ? (mk.cardMiki.get(originId) || []).filter((id) => open.has(id)).slice(0, WORLD_MIKI_PER_CARD) : [];
+    draft.miki = draft.mikiInit.slice();
+  }
+  function worldFudaMikiEl(draft, originId, key) {
+    const mk = worldMikiState();
+    if (!mk.trunks.length) return null;
+    worldFudaMikiInit(draft, originId);
+    draft.miki = draft.miki.filter((id) => worldMikiTrunk(id));
+    const box = document.createElement('div'); box.className = 'fudaMiki';
+    const paint = () => {
+      box.innerHTML = '';
+      const l = document.createElement('span'); l.className = 'fmLabel'; l.textContent = '付ける幹：'; box.appendChild(l);
+      worldState.fudaMikiMore = worldState.fudaMikiMore || {};
+      const openAll = !!worldState.fudaMikiMore[key];
+      const first = mk.trunks.filter((t) => draft.mikiInit.includes(t.id) || draft.miki.includes(t.id));
+      const shown = openAll ? first.concat(mk.trunks.filter((t) => !first.includes(t))) : first;
+      shown.forEach((t) => {
+        const on = draft.miki.includes(t.id);
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'tagFilterBtn' + (on ? ' selected' : '');
+        b.textContent = (on ? '✓ ' : '') + t.name;
+        b.addEventListener('click', (e) => {
+          e.stopPropagation();
+          draft.mikiMsg = '';
+          if (on) draft.miki = draft.miki.filter((x) => x !== t.id);
+          else if (draft.miki.length >= WORLD_MIKI_PER_CARD) draft.mikiMsg = '幹は' + WORLD_MIKI_PER_CARD + '本までです（1本外してから選んでください）';
+          else draft.miki = draft.miki.concat([t.id]);
+          paint();
+        });
+        box.appendChild(b);
+      });
+      if (!openAll && mk.trunks.length > shown.length) {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'tagFilterBtn'; b.textContent = 'ほかの幹 ▸';
+        b.addEventListener('click', (e) => { e.stopPropagation(); worldState.fudaMikiMore[key] = true; paint(); });
+        box.appendChild(b);
+      }
+      const leaf = document.createElement('button'); leaf.type = 'button'; leaf.className = 'tagFilterBtn' + (draft.miki.length ? '' : ' selected');
+      leaf.textContent = (draft.miki.length ? '' : '✓ ') + '葉にする';
+      leaf.addEventListener('click', (e) => { e.stopPropagation(); draft.miki = []; draft.mikiMsg = ''; paint(); });
+      box.appendChild(leaf);
+      if (draft.mikiMsg) { const n = document.createElement('div'); n.className = 'fudaStatus warn'; n.textContent = draft.mikiMsg; box.appendChild(n); }
+    };
+    paint();
+    return box;
+  }
+  // 札ができたら枝か葉の記録を1件（幹が1本も無いときは書かない）
+  function worldFudaRecordMiki(cardId, draft, d, originId, ev) {
+    const mk = worldMikiState();
+    if (!mk.trunks.length || !cardId) return;
+    worldFudaMikiInit(draft, originId);
+    const miki = draft.miki.filter((id) => worldMikiTrunk(id)).slice(0, WORLD_MIKI_PER_CARD);
+    const same = miki.length === draft.mikiInit.length && miki.every((x) => draft.mikiInit.includes(x));
+    try {
+      worldMikiAddRecs([worldMikiRec('attach', { by: 'hito', src: 'dig', card: cardId, eventDate: ev ? ev.eventDate : '', fact: ev ? worldStr(ev.fact, WORLD_MIKI_FACT_MAX) : '', miki, more: null, digId: d.id, origin: same ? 'kept' : 'changed' })]);
+    } catch (e) { recordFeatureError('幹の記録', e); }
+  }
+
   // v20.46：札の候補の枠。値は下書き（［直す］で直したらその値）。押す2回（url を開く・書いてあった・札を作る）
   function worldDigCandEl(ev, d, ci, rerender) {
     const idx = 'c' + ci, key = d.id + '#' + idx;
@@ -21246,7 +21335,7 @@
     const src = document.createElement('div'); src.className = 'dcSrc';
     src.appendChild(document.createTextNode([draft.source].filter(Boolean).join(' ') + (draft.url ? '　' : '')));
     const u0 = digUrl(draft.url).url;
-    if (u0) { const a = document.createElement('a'); a.href = u0; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = 'url'; src.appendChild(a); src.appendChild(document.createTextNode(x.urlChecked === u0 ? '（開いて確かめた）' : (u0 === x.url && x.urlBy === 'chat' ? '（チャットが示した）' : ''))); }
+    if (u0) { const a = document.createElement('a'); a.href = u0; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = 'url'; a.addEventListener('click', () => { worldFudaMarkOpened(key, draft); setTimeout(() => paint(), 0); }); src.appendChild(a); src.appendChild(document.createTextNode(x.urlChecked === u0 ? '（開いて確かめた）' : (u0 === x.url && x.urlBy === 'chat' ? '（チャットが示した）' : ''))); }
     else src.appendChild(document.createTextNode('url がありません'));
     if (x.urlRaw) { const fl = document.createElement('span'); fl.className = 'digFlag'; fl.textContent = '（url の形が正しくない：' + x.urlRaw + '）'; src.appendChild(fl); }
     box.appendChild(src);
@@ -21260,14 +21349,16 @@
       openA.hidden = !u; if (u) openA.href = u;
       const r = worldFudaReady(draft, x);
       mk.disabled = !!r;
-      st.textContent = r ? (r.includes('url を貼って') ? 'url がありません。［直す］で貼ってください' : r.includes('出す側か受け取る側') || r.includes('字までに') || r.includes('日付') || r.includes('今月') || r.includes('今日') || r.includes('何が起きたか') ? r + '（［直す］で直せます）' : r) : '開いたページに書いてあったら押してください';
-      st.className = 'fudaStatus' + (r && !r.includes('url を開いて') ? ' warn' : '');   // 次の手順（url を開く）は赤にしない
+      st.textContent = r ? (r.includes('url を貼って') ? 'url がありません。［直す］で貼ってください' : r.includes('出す側か受け取る側') || r.includes('字までに') || r.includes('日付') || r.includes('今月') || r.includes('今日') || r.includes('何が起きたか') ? r + '（［直す］で直せます）' : r.includes('url を開いて') ? WORLD_FUDA_OPEN_FIRST : r) : '開いたページに書いてあったら押してください';
+      st.className = 'fudaStatus' + (r && !r.includes('url を開いて') ? ' warn' : r ? ' next' : '');   // 次の手順（url を開く）は赤にしない。v20.54：ふつうの字で目立たせる
     };
-    openA.addEventListener('click', () => { draft.opened = digUrl(draft.url).url; setTimeout(paint, 0); });
+    openA.addEventListener('click', () => { worldFudaMarkOpened(key, draft); setTimeout(paint, 0); });
     mk.addEventListener('click', async () => { if (worldFudaReady(draft, x)) { paint(); return; } mk.disabled = true; await worldFudaPress(ev, d, idx, draft, base, key, rerender); });
     fix.addEventListener('click', () => { worldState.fudaOpen = worldState.fudaOpen === key ? '' : key; rerender(); });
-    if (worldState.fudaOpen !== key) { btns.appendChild(openA); btns.appendChild(mk); }
-    btns.appendChild(fix);
+    // v20.54：押せない理由がボタンのすぐ下に来るよう、［直す］を先に並べる
+    if (worldState.fudaOpen !== key) { btns.appendChild(openA); btns.appendChild(fix); btns.appendChild(mk); }
+    else btns.appendChild(fix);
+    if (worldState.fudaOpen !== key) { const me = worldFudaMikiEl(draft, ev && ev.id, key); if (me) box.appendChild(me); }   // v20.54
     box.appendChild(btns);
     if (worldState.fudaOpen === key) box.appendChild(worldFudaFormEl(ev, d, idx, rerender));
     else box.appendChild(st);
@@ -21330,7 +21421,7 @@
     worldState.fudaDrafts = worldState.fudaDrafts || {};
     if (!worldState.fudaDrafts[key]) {
       const b = worldFudaBase(x);
-      worldState.fudaDrafts[key] = Object.assign({}, b, { url: x.url || '', dateMode: digIsMonth(b.date) ? 'month' : 'day', kind: 'money', rel: x.rel || '', opened: '' });   // v20.46：候補の rel を入れておく
+      worldState.fudaDrafts[key] = Object.assign({}, b, { url: x.url || '', dateMode: digIsMonth(b.date) ? 'month' : 'day', kind: 'money', rel: x.rel || '', opened: worldFudaOpenedUrl(key) });   // v20.46：候補の rel を入れておく。v20.54：開いた印は端末から
     }
     return worldState.fudaDrafts[key];
   }
@@ -21364,7 +21455,7 @@
     const res = await worldMakeFuda(ev, d, idx, draft, base);
     worldState.fudaStatus = worldState.fudaStatus || {};
     worldState.fudaStatus[key] = res.message;
-    if (res.ok) { delete worldState.fudaDrafts[key]; worldState.fudaOpen = ''; }
+    if (res.ok) { delete worldState.fudaDrafts[key]; worldState.fudaOpen = ''; worldFudaForgetOpened(key); }
     rerender();
   }
   function worldFudaFormEl(ev, d, idx, rerender) {
@@ -21393,8 +21484,8 @@
       mapNote.textContent = endD ? ('この日付だと地図（直近' + WORLD_MAP_DAYS + '日）に' + (endD >= from ? '出ます' : '出ません') + (draft.dateMode === 'month' ? '（月の最後の日で数えます）' : '')) : '';
       const why = worldFudaReady(draft, x);
       mkBtn.disabled = !!why;
-      status.textContent = why || '開いたページに書いてあったら押してください';
-      status.className = 'fudaStatus' + (why && !why.includes('url を開いて') ? ' warn' : '');
+      status.textContent = why ? (why.includes('url を開いて') ? WORLD_FUDA_OPEN_FIRST : why) : '開いたページに書いてあったら押してください';
+      status.className = 'fudaStatus' + (why && !why.includes('url を開いて') ? ' warn' : why ? ' next' : '');
     };
     const row = (label, k, opts) => {
       const r = document.createElement('div'); r.className = 'fudaRow';
@@ -21444,15 +21535,15 @@
     }
     row('出す側', 'from'); row('受け取る側', 'to'); row('何', 'what'); row('額', 'amount', { placeholder: '出典の書き方のまま' });
     row('出典', 'source');
-    row('url', 'url', { onInput: () => { draft.opened = ''; draft.checked = ''; } });
+    row('url', 'url', { onInput: () => { draft.opened = ''; draft.checked = ''; worldFudaForgetOpened(key); } });
     {
       const r = document.createElement('div'); r.className = 'fudaRow';
-      openA.addEventListener('click', () => { draft.opened = digUrl(draft.url).url; setTimeout(paint, 0); });
+      openA.addEventListener('click', () => { worldFudaMarkOpened(key, draft); setTimeout(paint, 0); });
       ngBtn.addEventListener('click', () => {
         const u = digUrl(draft.url).url;
         if (!u) return;
         worldDigUpdateItem(d.id, idx, (it) => { it.urlFailed = (it.urlFailed || []).concat([{ url: u, at: nowIso() }]); if (it.urlChecked === u) { delete it.urlChecked; delete it.urlCheckedAt; } });
-        draft.url = ''; draft.opened = ''; draft.checked = '';
+        draft.url = ''; draft.opened = ''; draft.checked = ''; worldFudaForgetOpened(key);
         worldState.fudaStatus = worldState.fudaStatus || {}; worldState.fudaStatus[key] = '開けなかった url を記録に残しました。別の url を貼ってください。';
         rerender();
       });
@@ -21476,6 +21567,8 @@
       const r = document.createElement('div'); r.className = 'fudaRow';
       const back = document.createElement('button'); back.type = 'button'; back.className = 'linkLikeBtn'; back.textContent = 'チャットの値に戻す';
       back.addEventListener('click', () => { delete worldState.fudaDrafts[key]; rerender(); });
+      const me = worldFudaMikiEl(draft, ev && ev.id, key);   // v20.54：付ける幹（［書いてあった・札を作る］のすぐ上）
+      if (me) box.appendChild(me);
       r.appendChild(back); r.appendChild(mkBtn);
       box.appendChild(r);
     }
@@ -21508,7 +21601,7 @@
       self: { digId: d.id, by, datePrec: mode },
     };
     const before = JSON.stringify(ev);
-    const res = await worldImportJson(JSON.stringify({ events: [item] }));
+    const res = await worldImportJson(JSON.stringify({ events: [item] }), undefined, { selfMade: true });   // v20.54：朝の取り込みの幹の記録に触らない
     if (res.error || !res.added) {
       const r = (res && res.rejected) || {};
       const why = res.error || (r.dup ? '似た札がもうあります' : r.future ? '日付が今日より後です' : r.date ? '日付が読めません' : r.url ? 'url が読めません' : r.fact ? '何が起きたかが空です' : '取り込めませんでした');
@@ -21516,6 +21609,8 @@
     }
     const cardId = res.addedIds[0];
     if (JSON.stringify(ev) !== before) recordFeatureError('札にする', new Error('元の札が変わった ' + ev.id));   // 起きないはず。起きたら設定に出す
+    const made = worldLiveEvents().find((e) => e.id === cardId);
+    worldFudaRecordMiki(cardId, draft, d, ev && ev.id, made || { eventDate, fact });   // v20.54：枝か葉の記録
     worldDigUpdateItem(d.id, idx, (it) => {
       it.cardId = cardId; it.cardAt = nowIso(); it.rel = draft.rel || ''; it.datePrec = mode;
       it.cardBy = by;
@@ -21683,6 +21778,49 @@
     const at = nowIso();
     return Object.assign({ id: worldMikiNewRecId(), type, at, createdAt: at, updatedAt: at, by: 'hito' }, fields);
   }
+  // v20.54：札1枚の幹の欄と3本目の欄を読む（朝の取り込み・割り直し・読む回で同じ決まり）。
+  // 捨てていたもの（3本目以降・知らない番号・同じ番号の3本目）は、付けずに控え（extra）として記録に残す
+  const WORLD_MIKI_EXTRA_MAX = 5;
+  function worldMikiPick(rawMiki, rawMore, open, first) {
+    const extra = {};
+    const push = (k, v) => { extra[k] = extra[k] || []; if (extra[k].length < WORLD_MIKI_EXTRA_MAX) extra[k].push(v); };
+    const cnt = { unknown: 0, over: 0, moreSame: 0, moreBad: 0, moved: 0 };
+    let list = [];
+    (Array.isArray(rawMiki) ? rawMiki : []).forEach((x) => {
+      const id = String(x == null ? '' : x).trim();
+      if (!id || id === 'null') return;
+      if (open.has(id)) list.push(id); else { cnt.unknown++; push('unknown', worldStr(id, 40)); }
+    });
+    list = [...new Set(list)];
+    if (first) list = [first].concat(list.filter((x) => x !== first));
+    // 3本目の欄：文字ならその番号、配列なら最初の読める番号
+    let more = null, moreFrom = '';
+    let m = rawMore;
+    if (Array.isArray(m)) m = m.map((x) => String(x == null ? '' : x).trim()).find((x) => x && x !== 'null') || '';
+    if (typeof m === 'number') m = String(m);
+    if (typeof m === 'string') {
+      const id = m.trim();
+      if (id && id !== 'null') {
+        if (!open.has(id)) { cnt.unknown++; push('unknown', worldStr(id, 40)); }
+        else if (list.slice(0, WORLD_MIKI_PER_CARD).includes(id)) { cnt.moreSame++; extra.moreSame = id; }
+        else { more = id; moreFrom = 'more'; }
+      }
+    } else if (m != null && m !== false && !(Array.isArray(rawMore) && !rawMore.length)) { cnt.moreBad++; extra.moreBad = 1; }
+    if (list.length > WORLD_MIKI_PER_CARD) {
+      const rest = list.slice(WORLD_MIKI_PER_CARD).filter((x) => x !== more);
+      list = list.slice(0, WORLD_MIKI_PER_CARD);
+      if (!more && rest.length) { more = rest.shift(); moreFrom = 'miki'; cnt.moved++; }
+      rest.forEach((x) => { cnt.over++; push('over', x); });
+    }
+    return { list, more, moreFrom, extra: Object.keys(extra).length ? extra : null, cnt };
+  }
+  // 記録に足す欄（空なら書かない）
+  function worldMikiPickFields(p) {
+    const o = { miki: p.list, more: p.more };
+    if (p.moreFrom) o.moreFrom = p.moreFrom;
+    if (p.extra) o.extra = p.extra;
+    return o;
+  }
   function worldMikiCenterCutNote() {
     const mk = worldMikiState();
     if (!mk.centerSet.size) return '';
@@ -21805,20 +21943,30 @@
     const asked = new Set(d.cardIds);
     const open = new Set(worldMikiState().trunks.map((t) => t.id));
     const run = d.runs[n] || { assign: {}, more: {}, same: [], order: n === 2 ? 'desc' : 'asc' };
-    let unknownCards = 0, unknownMiki = 0, over = 0, added = 0;
+    run.more = run.more || {}; run.moreFrom = run.moreFrom || {}; run.extra = run.extra || {};
+    let unknownCards = 0, unknownMiki = 0, over = 0, added = 0, moved = 0, moreSame = 0, moreBad = 0;
+    const moreIn = o.more && typeof o.more === 'object' && !Array.isArray(o.more) ? o.more : {};
+    // v20.54：3本目は朝の取り込みと同じ決まり（幹の欄の3本目は3本目へ移す・捨てずに控えに残す）
     Object.entries(o.assign).forEach(([card, ids]) => {
       if (!asked.has(card)) { unknownCards++; return; }
-      let list = (Array.isArray(ids) ? ids : []).map(String).filter((id) => { if (open.has(id)) return true; unknownMiki++; return false; });
-      list = [...new Set(list)];
-      if (list.length > WORLD_MIKI_PER_CARD) { over += list.length - WORLD_MIKI_PER_CARD; list = list.slice(0, WORLD_MIKI_PER_CARD); }
+      const p = worldMikiPick(ids, moreIn[card], open, '');
+      unknownMiki += p.cnt.unknown; over += p.cnt.over; moved += p.cnt.moved; moreSame += p.cnt.moreSame; moreBad += p.cnt.moreBad;
       if (!(card in run.assign)) added++;
-      run.assign[card] = list;
+      run.assign[card] = p.list;
+      if (p.more) { run.more[card] = p.more; run.moreFrom[card] = p.moreFrom; } else { delete run.more[card]; delete run.moreFrom[card]; }
+      if (p.extra) run.extra[card] = p.extra; else delete run.extra[card];
     });
-    if (o.more && typeof o.more === 'object') Object.entries(o.more).forEach(([card, id]) => { if (asked.has(card) && open.has(String(id))) run.more[card] = String(id); });
+    // 3本目だけを貼り直した札（幹の欄はもう入っている）
+    Object.entries(moreIn).forEach(([card, id]) => {
+      if (!asked.has(card) || card in o.assign || !(card in run.assign)) return;
+      const p = worldMikiPick(run.assign[card], id, open, '');
+      if (p.more) { run.more[card] = p.more; run.moreFrom[card] = p.moreFrom; }
+      unknownMiki += p.cnt.unknown; moreSame += p.cnt.moreSame;
+    });
     if (Array.isArray(o.same)) o.same.forEach((g) => { if (Array.isArray(g)) { const ids = [...new Set(g.map(String).filter((c) => asked.has(c)))].sort(); if (ids.length > 1) run.same.push(ids); } });
     d.runs[n] = run;
     worldMikiDraftSave();
-    return { added, unknownCards, unknownMiki, over, answered: Object.keys(run.assign).length, missing: d.cardIds.filter((c) => !(c in run.assign)) };
+    return { added, unknownCards, unknownMiki, over, moved, moreSame, moreBad, answered: Object.keys(run.assign).length, missing: d.cardIds.filter((c) => !(c in run.assign)) };
   }
   // 2回を比べる。共通の幹だけを付ける（1回目の順）。共通が無ければ幹0本
   function worldMikiCompare() {
@@ -21841,7 +21989,7 @@
       if (!out.pairs.has(key)) out.pairs.set(key, []);
       out.pairs.get(key).push(card);
     });
-    out.more = Object.keys(r1.more || {}).length;
+    out.more = Object.entries(r1.more || {}).filter(([card, id]) => !(r1.assign[card] || []).includes(id)).length;
     const g2 = new Set((r2.same || []).map((g) => g.join('|')));
     const seen = new Set();
     (r1.same || []).forEach((g) => { const k = g.join('|'); if (g2.has(k) && !seen.has(k)) { seen.add(k); out.sameGroups.push(g); } });
@@ -21859,7 +22007,12 @@
       const e = byCard.get(card);
       const miki = cmp.result[card] || [];
       if (miki.length) attached++; else none++;
-      recs.push(worldMikiRec('attach', { by: 'split', src: 'split', card, eventDate: e ? e.eventDate : '', fact: e ? worldStr(e.fact, WORLD_MIKI_FACT_MAX) : '', miki, more: (d.runs[1].more && d.runs[1].more[card]) || null }));
+      const r1 = d.runs[1];
+      const more1 = (r1.more && r1.more[card]) || null;
+      const f = { miki, more: more1 && !miki.includes(more1) ? more1 : null };   // v20.54：付けた幹と同じ番号は3本目にしない
+      if (f.more && r1.moreFrom && r1.moreFrom[card]) f.moreFrom = r1.moreFrom[card];
+      if (r1.extra && r1.extra[card]) f.extra = r1.extra[card];
+      recs.push(worldMikiRec('attach', Object.assign({ by: 'split', src: 'split', card, eventDate: e ? e.eventDate : '', fact: e ? worldStr(e.fact, WORLD_MIKI_FACT_MAX) : '' }, f)));
     });
     cmp.sameGroups.forEach((g) => recs.push(worldMikiRec('sameGroup', { by: 'split', cards: g })));
     worldMikiAddRecs(recs);
@@ -22001,7 +22154,10 @@
         const r = worldMikiReadRun(n, ta.value);
         if (r.error) { status.textContent = r.error; return; }
         worldMikiSplitCards.lastMsg = n + '回目：' + d.cardIds.length + '枚中 ' + r.answered + '枚に返事' + (r.missing.length ? '、' + r.missing.length + '枚は返事なし' : '') + '。' +
-          (r.unknownMiki ? '　※ 知らない幹の番号 ' + r.unknownMiki + '件は付けません。' : '') + (r.over ? '　※ 3本目以降 ' + r.over + '件は外しました。' : '') + (r.unknownCards ? '　※ 渡していない札 ' + r.unknownCards + '件は無視。' : '');
+          (r.moved ? '　幹の欄の3本目 ' + r.moved + '件は3本目に移しました。' : '') +
+          (r.unknownMiki ? '　※ 知らない幹の番号 ' + r.unknownMiki + '件（付けずに控えに残します）。' : '') + (r.over ? '　※ 4本目以降 ' + r.over + '件は付けずに控えに残します。' : '') +
+          (r.moreSame ? '　※ 3本目が付けた幹と同じ ' + r.moreSame + '件（3本目にしていません）。' : '') + (r.moreBad ? '　※ 読めない3本目 ' + r.moreBad + '件。' : '') +
+          (r.unknownCards ? '　※ 渡していない札 ' + r.unknownCards + '件は無視。' : '');
         renderWorldMikiSplit();
       });
       read.disabled = n === 2 && !d.runs[1];
@@ -22193,6 +22349,7 @@
         const dt = document.createElement('span'); dt.className = 'wdDate'; dt.textContent = worldEvDateShort(e);
         const fa = document.createElement('span'); fa.className = 'wdFact'; fa.textContent = e.fact;
         row.appendChild(dt); row.appendChild(fa);
+        if (worldEvSelf(e)) { const q = document.createElement('span'); q.className = 'wdQ'; q.textContent = '自分で調べた'; row.appendChild(q); }   // v20.54
         if (hiddenBy.get(e.id)) { const q = document.createElement('span'); q.className = 'wdQ'; q.textContent = '同じ出来事 ほか' + hiddenBy.get(e.id) + '枚'; row.appendChild(q); }
         row.addEventListener('click', () => openWorldCards({ title: t.name, ids: allIds, openId: e.id, from: 'miki' }));
         f.appendChild(row);
@@ -22233,7 +22390,7 @@
     return worldLiveEvents().filter((e) => {
       const a = mk.cardAttach.get(e.id);
       // 朝の取り込みで「入らない」と返った札だけ（割り直しで幹0本になった札は数えない。割り直しと札の記録は同じ押し下げで数ミリ秒ずれるため、日時では分けられない）
-      if (!a || a.src !== 'import' || a.at <= since) return false;
+      if (!a || (a.src !== 'import' && a.src !== 'dig') || a.at <= since) return false;   // v20.54：候補から作って葉にした札も積もった葉
       if ((mk.cardMiki.get(e.id) || []).length) return false;
       if (follows.has(e.id) || notFirst.has(e.id)) return false;
       return !!e.createdAt && formatDateStr(new Date(e.createdAt)) >= from;
@@ -22307,7 +22464,7 @@
   }
   function worldMikiRecordImport(parsed, pend, added, idAt, batchId) {
     const mk = worldMikiState();
-    const st = { reported: pend.miki.length > 0, attached: new Map(), none: 0, more: 0, unknown: 0, over: 0, cand: [], candReported: null, candAsked: 0, candBad: 0, starts: [], startNone: [], startDup: 0, startUnknown: 0 };
+    const st = { reported: pend.miki.length > 0, attached: new Map(), none: 0, more: 0, moved: 0, moreSame: 0, moreBad: 0, unknown: 0, over: 0, cand: [], candReported: null, candAsked: 0, candBad: 0, starts: [], startNone: [], startDup: 0, startUnknown: 0 };
     if (!mk.trunks.length) return null;
     const open = new Set(mk.trunks.map((t) => t.id));
     const recs = [];
@@ -22332,18 +22489,14 @@
     });
     const seen = new Set();
     pend.miki.forEach((p) => {
-      let list = [];
-      p.raw.forEach((x) => { const id = String(x || '').trim(); if (!id) return; if (open.has(id)) list.push(id); else st.unknown++; });
-      list = [...new Set(list)];
-      const s = startBy.get(p.ev.id);
-      if (s) list = [s].concat(list.filter((x) => x !== s));
-      if (list.length > WORLD_MIKI_PER_CARD) { st.over += list.length - WORLD_MIKI_PER_CARD; list = list.slice(0, WORLD_MIKI_PER_CARD); }
-      const more = typeof p.more === 'string' && open.has(p.more.trim()) ? p.more.trim() : null;
-      if (typeof p.more === 'string' && p.more.trim() && p.more.trim() !== 'null' && !more) st.unknown++;
-      if (more) st.more++;
+      // v20.54：幹の欄の3本目は3本目へ移し、4本目以降・知らない番号は控えに残す。付けた幹と同じ3本目は3本目にしない
+      const pk = worldMikiPick(p.raw, p.more, open, startBy.get(p.ev.id) || '');
+      const list = pk.list;
+      st.unknown += pk.cnt.unknown; st.over += pk.cnt.over; st.moved += pk.cnt.moved; st.moreSame += pk.cnt.moreSame; st.moreBad += pk.cnt.moreBad;
+      if (pk.more) st.more++;
       if (list.length) list.forEach((id) => st.attached.set(id, (st.attached.get(id) || 0) + 1)); else st.none++;
       seen.add(p.ev.id);
-      recs.push(worldMikiRec('attach', { by: 'import', src: 'import', card: p.ev.id, eventDate: p.ev.eventDate, fact: worldStr(p.ev.fact, WORLD_MIKI_FACT_MAX), miki: list, more, batchId }));
+      recs.push(worldMikiRec('attach', Object.assign({ by: 'import', src: 'import', card: p.ev.id, eventDate: p.ev.eventDate, fact: worldStr(p.ev.fact, WORLD_MIKI_FACT_MAX) }, worldMikiPickFields(pk), { batchId })));
     });
     // miki を書かなかった出発点の札も、その幹に付ける
     startBy.forEach((id, card) => {
@@ -22396,9 +22549,11 @@
       s += '幹に付いた枝：' + (parts.length ? parts.join('・') : '0枚');
       const left = worldMikiUnattached().length;
       s += '　／　どの幹にも入らない ' + st.none + '枚' + (left < WORLD_MIKI_CAND_MIN ? '（たまった ' + left + '枚。あと ' + (WORLD_MIKI_CAND_MIN - left) + '枚で候補を聞きます）' : '（たまった ' + left + '枚。次のプロンプトで候補を聞きます）') + '。';
-      if (st.more) s += '　3本目を付けたかった ' + st.more + '枚。';
-      if (st.unknown) s += '　※ 幹の番号が見つからない ' + st.unknown + '件（付けていません）。';
-      if (st.over) s += '　※ 3本目以降 ' + st.over + '件は外しました。';
+      if (st.more) s += '　3本目を付けたかった ' + st.more + '枚' + (st.moved ? '（うち幹の欄から移した ' + st.moved + '枚）' : '') + '。';
+      if (st.unknown) s += '　※ 幹の番号が見つからない ' + st.unknown + '件（付けずに控えに残しました）。';
+      if (st.over) s += '　※ 4本目以降 ' + st.over + '件は付けずに控えに残しました。';
+      if (st.moreSame) s += '　※ 3本目が付けた幹と同じ ' + st.moreSame + '件（3本目にしていません）。';
+      if (st.moreBad) s += '　※ 読めない3本目 ' + st.moreBad + '件。';
     }
     if (st.candAsked) s += st.candReported == null ? '　候補の報告なし（JSON に mikiNew がありません）。' : '　新しい幹の候補 ' + st.cand.length + '件（下の［▸］から立てられます）。';
     else if (st.cand.length) s += '　新しい幹の候補 ' + st.cand.length + '件。';
@@ -22511,7 +22666,7 @@
 
   // 世界の画面の一番上：今日動いた幹
   function worldMikiTodayModel() {
-    const recs = worldMikiRecs().filter((r) => r.type === 'attach' && (r.src === 'import' || r.src === 'card'));
+    const recs = worldMikiRecs().filter((r) => r.type === 'attach' && (r.src === 'import' || r.src === 'card' || r.src === 'dig'));   // v20.54：候補から作った枝も
     if (!recs.length) return null;
     const lastDay = recs.map((r) => localDateOfIso(r.at)).sort().pop();
     const mk = worldMikiState();
@@ -22727,7 +22882,7 @@
     const at = nowIso();
     const readBatch = 'rb_' + Date.now().toString(36);
     const known = new Set(worldEvents.map((e) => e.id));
-    const st = { lines: [], noReply: [], slotMissing: 0, badExit: 0, ignored: 0, dropped: [], unknownOpen: 0, unknownClose: 0, unknownBad: 0, cardsAttached: 0, cardsBad: 0, first: [] };
+    const st = { lines: [], noReply: [], slotMissing: 0, badExit: 0, ignored: 0, dropped: [], unknownOpen: 0, unknownClose: 0, unknownBad: 0, cardsAttached: 0, cardsBad: 0, cardsMore: 0, cardsOver: 0, cardsUnknown: 0, first: [] };
     const recs = [];
     const cleanText = (arr) => (Array.isArray(arr) ? arr : typeof arr === 'string' ? [arr] : []).map((x) => worldStr(x, WORLD_MIKI_ANSWER_MAX)).filter(Boolean);
     const cleanCards = (arr) => (Array.isArray(arr) ? arr : []).map(String).filter((id) => known.has(id));
@@ -22802,9 +22957,12 @@
     const mc = obj.mikiCards && typeof obj.mikiCards === 'object' && !Array.isArray(obj.mikiCards) ? obj.mikiCards : {};
     Object.entries(mc).forEach(([card, ids]) => {
       if (!(last.noMiki || []).includes(card) || mk.cardAttach.has(card)) { st.cardsBad++; return; }
-      const list = [...new Set((Array.isArray(ids) ? ids : []).map(String).filter((x) => worldMikiTrunk(x)))].slice(0, WORLD_MIKI_PER_CARD);
+      // v20.54：黙って切らない。3本目は3本目へ、4本目以降・知らない番号は控えに残して数える
+      const pk = worldMikiPick(ids, null, new Set(mk.trunks.map((t) => t.id)), '');
+      const list = pk.list;
+      st.cardsMore += pk.more ? 1 : 0; st.cardsOver += pk.cnt.over; st.cardsUnknown += pk.cnt.unknown;
       const e = worldEvents.find((v) => v.id === card);
-      recs.push(worldMikiRec('attach', { by: 'read', src: 'read', card, eventDate: e ? e.eventDate : '', fact: e ? worldStr(e.fact, WORLD_MIKI_FACT_MAX) : '', miki: list, more: null }));
+      recs.push(worldMikiRec('attach', Object.assign({ by: 'read', src: 'read', card, eventDate: e ? e.eventDate : '', fact: e ? worldStr(e.fact, WORLD_MIKI_FACT_MAX) : '' }, worldMikiPickFields(pk))));
       if (list.length) st.cardsAttached++;
     });
     if (recs.length) worldMikiAddRecs(recs);
@@ -22821,7 +22979,10 @@
     if (st.noReply.length) s += '　返事の無い幹 ' + st.noReply.length + '本（' + st.noReply.join('・') + '）。';
     if (st.dropped.length) s += '　' + st.dropped.join('／') + '。';
     if (st.unknownOpen || st.unknownClose) s += '　まだ分からないこと：' + [st.unknownOpen ? '+' + st.unknownOpen : '', st.unknownClose ? '分かって閉じた ' + st.unknownClose : ''].filter(Boolean).join('・') + '。';
-    if (st.cardsAttached) s += '　幹を付けた札 ' + st.cardsAttached + '枚。';
+    if (st.cardsAttached) s += '　枝になった ' + st.cardsAttached + '枚。';
+    if (st.cardsMore) s += '　3本目を付けたかった ' + st.cardsMore + '枚（幹の欄から移した）。';
+    if (st.cardsOver) s += '　※ 4本目以降 ' + st.cardsOver + '件は付けずに控えに残しました。';
+    if (st.cardsUnknown) s += '　※ 幹の番号が見つからない ' + st.cardsUnknown + '件（付けずに控えに残しました）。';
     if (st.slotMissing) s += '　※ 返事の無い答え ' + st.slotMissing + 'つ。';
     if (st.badExit) s += '　※ 読めない答え（出口・基準が決まりに無い・文が空）' + st.badExit + 'つは入れていません。';
     if (st.ignored) s += '　※ 渡していない幹への返事 ' + st.ignored + '件は無視しました。';
