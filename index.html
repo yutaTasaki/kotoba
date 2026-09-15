@@ -3178,7 +3178,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.56';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.57';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -26513,6 +26513,7 @@
   const WORLD_EDA_ACTOR_DOTS = 3;      // 主体の国の点の上限
   const WORLD_EDA_SHAPE_KEEP = 2;      // 覚えておく国の形（幅ごと）
   let worldEdaShapeCache = [];
+  let worldEdaLibReady = false;        // v20.57：地図の部品を読み終わったか（読む前だけ地図の場所を空けておく）
   // 取り込みのあとに裏でドル換算。換算した札があれば、読んでいる画面を描き直す（打っている画面は描き直さない）
   function worldFillUsdSoon() {
     setTimeout(() => {
@@ -26681,23 +26682,26 @@
       line.appendChild(document.createTextNode(WORLD_FLOW_KIND_MARK[ev.flow.kind || 'money'] + worldFlowLine(ev.flow) + (worldUsdText(ev) ? '　' + worldUsdText(ev) : '') + (selfFlow.length ? '　（' + selfFlow.join('・') + '：自分で入力）' : '')));
       line.appendChild(note);
     } else line.hidden = true;
-    const maybe = !!ev.flow || (ev.actors || []).length > 0;
-    mapBox.hidden = !maybe;
-    if (maybe) mapBox.style.aspectRatio = String(WORLD_EDA_RATIO);
+    // v20.57 直し①：地図を出すのは線が描ける札だけ（点だけの地図は読む助けにならない）。動きの無い札は地図も1行も出さない
+    mapBox.hidden = true;
     box.appendChild(mapBox);
     box.appendChild(line);
-    if (!maybe) return;
+    if (!ev.flow) return;
+    // 部品をまだ読んでいないときだけ場所を空けておく（読んだ後は、画面に出る前に入れるかどうかが決まる）
+    if (!worldEdaLibReady) { mapBox.hidden = false; mapBox.style.aspectRatio = String(WORLD_EDA_RATIO); }
     worldLoadMapLib().then((lib) => {
+      worldEdaLibReady = true;
       if (!mapBox.isConnected) return;
       const m = worldEdaModel(ev, lib);
-      if (ev.flow && m.note) note.textContent = m.note;
-      if (m.empty) { mapBox.hidden = true; mapBox.style.aspectRatio = ''; }
-      else worldDrawEdaMap(mapBox, lib, m);
-      if (!ev.flow && !m.empty) { line.hidden = false; line.textContent = '誰から誰へは書かれていません（点は主体の国）'; }
+      if (m.note) note.textContent = m.note;
+      if (m.empty || !m.line) { mapBox.hidden = true; mapBox.style.aspectRatio = ''; return; }
+      mapBox.hidden = false;
+      worldDrawEdaMap(mapBox, lib, m);
     }).catch(() => {
       if (!mapBox.isConnected) return;
       mapBox.style.aspectRatio = '';
       mapBox.innerHTML = '';
+      mapBox.hidden = false;
       const p = document.createElement('p'); p.className = 'fieldNote'; p.textContent = '地図を読み込めませんでした';
       mapBox.appendChild(p);
     });
