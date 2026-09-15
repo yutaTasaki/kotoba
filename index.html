@@ -1318,6 +1318,13 @@
   .worldMiniMap { margin: 0 0 10px; cursor: pointer; min-height: 20px; }
   .worldMiniMap > svg { touch-action: pan-y; }
   .worldMapBox .wmMiniText { fill: var(--text-dim); font-size: 10px; }
+  /* v20.56 地図 段1：札の画面の地図（押さない。指でなぞればページが動く）と、誰から誰への1行 */
+  .worldMapBox.worldEdaMap { margin: 2px 0 4px; }
+  .worldMapBox.worldEdaMap > svg { pointer-events: none; touch-action: pan-y; }
+  .worldMapBox.worldEdaMap .wmSlot rect { fill: #1a1a1a; stroke: var(--border); }
+  .worldMapBox.worldEdaMap .wmSlot text { fill: var(--text-dim); font-size: 10px; }
+  .worldEdaLine { font-size: 13px; color: var(--text); margin: 0 0 10px; }
+  .worldEdaLine .worldEdaNote { color: var(--text-dim); font-size: 12px; }
   /* v20.4 M4 国の網 */
   .worldNetBox { position: relative; width: 100%; overflow: hidden; touch-action: pan-y; border: 1px solid var(--border); border-radius: 10px; background: #141414; user-select: none; -webkit-user-select: none; }
   .worldNetBox.zoomed { touch-action: none; }
@@ -3171,7 +3178,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.55';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.56';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -20379,6 +20386,7 @@
     // 共起を足す。この回で生まれた概念が、前の札の concepts に名前だけ出て
     // いて捨てられていた分を、ここで拾う。足すだけなので冪等。読み込んで
     // いない月は対象外（それは設定の「作り直す」の仕事）。
+    if (added.length && !seedRegion) worldFillUsdSoon();   // v20.56 地図 段1：地図タブを開かなくても、入った札をドルに換算する
     let linked = 0;
     const partnerIds = new Set();
     if (added.length) {
@@ -20728,6 +20736,7 @@
     if (ev.why) worldFillWithTerms(why, ev.why, termEntries, usedTerms, openTerm);
     else why.textContent = ev.slim ? '（この出来事は要約だけ残しています）' : '（なぜ今動いたかが書かれていません）';
     box.appendChild(why);
+    worldEdaMapInsert(box, ev);   // v20.56 地図 段1：その札の地図と、誰から誰への1行
 
     // v12 動かした側。name + did の1行が既定、押すと述べた／推定が開く。
     // 推定は色と形で強く分ける（薄いラベルだと読み慣れたとき事実と区別がつかない）。
@@ -20799,15 +20808,7 @@
       });
       box.appendChild(sec);
     }
-    // v20.3.1：ドル換算は、押さなくても見える所に出す（数字・出典の欄は既定で閉じているため）。
-    // 「30億ユーロ ≒ 約34億ドル（推定・ECB 6/25）」。ドル建て・括弧のドル・物・人は何も出さない
-    const usdLine = worldUsdText(ev);
-    if (usdLine) {
-      const u = document.createElement('div');
-      u.className = 'worldUsdLine';
-      u.textContent = ev.flow.amount + ' ≒ ' + usdLine;
-      box.appendChild(u);
-    }
+    // v20.56：ドル換算の1行は、なぜ の下の「誰から誰へ」の1行に入れた（ここに二重に出さない）
 
     const pre = document.createElement('div');
     pre.className = 'worldPremise';
@@ -20941,17 +20942,7 @@
       p.appendChild(k); p.appendChild(document.createTextNode(ev.reason));
       deep.appendChild(p);
     }
-    if (ev.flow) {
-      const p = document.createElement('div');
-      p.className = 'worldMetaLine';
-      const k = document.createElement('span'); k.className = 'wmKey';
-      k.textContent = (WORLD_FLOW_KIND_LABEL[ev.flow.kind] || 'お金の動き') + '：';
-      // v20.45：自分で作った札は、自分で入れた欄を添える
-      const sfb = worldEvSelf(ev);
-      const selfFlow = sfb ? ['from', 'to', 'what', 'amount'].filter((kk) => sfb.by[kk] === 'self').map((kk) => FUDA_FIELD_LABEL[kk]) : [];
-      p.appendChild(k); p.appendChild(document.createTextNode(WORLD_FLOW_KIND_MARK[ev.flow.kind] + worldFlowLine(ev.flow) + (worldUsdText(ev) ? ' ' + worldUsdText(ev) : '') + (selfFlow.length ? '　（' + selfFlow.join('・') + '：自分で入力）' : '')));   // v20.3
-      deep.appendChild(p);
-    }
+    // v20.56：お金・物・人の動きの行は「詳しく」の外（なぜ の下）に出した
     if (ev.source) { const p = document.createElement('div'); p.textContent = ev.source; deep.appendChild(p); }
     // v19.3 確度。v20.26：理由があるときは「詳しく」の外に出したので、ここは理由の無い確度だけ（二重に出さない）
     if (ev.confidence && !ev.confidenceWhy) {
@@ -26514,6 +26505,202 @@
       }
     }
     t.textContent = (cross.length ? '直近' + WORLD_MINI_DAYS + '日：国をまたぐ線 ' + cross.length + '本' : '直近' + WORLD_MINI_DAYS + '日は国をまたぐ動きがありません') + '　押すと大きな地図（' + WORLD_MAP_DAYS + '日）';
+  }
+
+  // ---- v20.56 地図 段1：札の画面の地図（その札だけ・期間の制限なし） ----
+  const WORLD_EDA_RATIO = 2.055;       // 世界全体の図の 幅÷高さ（地図の部品を読む前に場所を空けておくため）
+  const WORLD_EDA_SLOT_H = 28;         // 枠の箱の帯の高さ（要る枠の箱だけ置く）
+  const WORLD_EDA_ACTOR_DOTS = 3;      // 主体の国の点の上限
+  const WORLD_EDA_SHAPE_KEEP = 2;      // 覚えておく国の形（幅ごと）
+  let worldEdaShapeCache = [];
+  // 取り込みのあとに裏でドル換算。換算した札があれば、読んでいる画面を描き直す（打っている画面は描き直さない）
+  function worldFillUsdSoon() {
+    setTimeout(() => {
+      worldFillUsd().then((r) => {
+        if (r && r.converted && nav.screen === 'world' && ['main', 'cards', 'miki'].includes(worldState.view)) renderWorld();
+      }).catch(() => {});
+    }, 0);
+  }
+  // 国の形は幅ごとに1回だけ作り、2回目からは複製する（開くたびに作ると札を開く時間が約10倍になる）
+  function worldEdaShapes(lib, W) {
+    let c = worldEdaShapeCache.find((x) => x.W === W && x.lib === lib);
+    if (c) return c;
+    const d3 = lib.d3, fc = { type: 'FeatureCollection', features: lib.features };
+    const proj = d3.geoEqualEarth();
+    proj.fitWidth(W, fc);
+    const H = Math.ceil(d3.geoPath(proj).bounds(fc)[1][1]);
+    const path = d3.geoPath(proj);
+    const g = worldSvg('g', {});
+    lib.features.forEach((f) => { const p = worldSvg('path', { d: path(f) || '', class: 'wmC' }, g); if (f.a3) p.setAttribute('data-a3', f.a3); });
+    c = { W, H, proj, tpl: g, lib };
+    worldEdaShapeCache = [c].concat(worldEdaShapeCache).slice(0, WORLD_EDA_SHAPE_KEEP);
+    return c;
+  }
+  // 札1枚の地図の中身。場所の決め方は地図タブと同じ。描く物が無ければ empty
+  function worldEdaModel(ev, lib) {
+    const out = { kind: '', line: null, dots: [], slots: [], domestic: '', root: '', row: null, note: '', empty: false };
+    const isSlot = (c) => WORLD_MAP_SLOTS.includes(c);
+    const add = (c) => {
+      if (isSlot(c)) { if (!out.slots.includes(c)) out.slots.push(c); }
+      else if (worldIsCountry(c, lib) && !out.dots.includes(c)) out.dots.push(c);
+    };
+    const actorCountries = () => {
+      const cs = [];
+      (ev.actors || []).forEach((a) => { const c = worldPlaceHow(a.name, lib).code; if (worldIsCountry(c, lib) && !cs.includes(c)) cs.push(c); });
+      return cs.slice(0, WORLD_EDA_ACTOR_DOTS);
+    };
+    if (!ev.flow) {
+      actorCountries().forEach(add);
+      out.kind = 'noflow';
+      out.empty = !out.dots.length;
+      return out;
+    }
+    const r = worldMergeFlows([ev])[0] || ev;
+    const ph = worldFlowPlacesHow(r.flow, lib);
+    worldApplyForeignHolder(r, ph);
+    const [a, b] = ph.places;
+    r.places = [a, b];
+    out.row = r;
+    if (worldIsLowConf(ev)) {
+      [a, b].filter(Boolean).forEach(add);
+      out.kind = 'low';
+      out.note = '（確度3以下なので線にしていません）';
+    } else if (a && b && a !== b) {
+      out.kind = 'line'; out.line = [a, b]; add(a); add(b);
+    } else if (a && b) {
+      add(a);
+      out.kind = isSlot(a) ? 'sameSlot' : 'domestic';
+      if (!isSlot(a)) out.domestic = a;
+      out.note = isSlot(a) ? '（' + WORLD_MAP_SLOT_LABEL[a] + 'の中の動き）' : '（国の中の動き）';
+    } else if (a || b) {
+      add(a || b);
+      out.kind = 'oneSide';
+      out.note = '（相手の場所が決まらない：' + worldStr(String((a ? r.flow.to : r.flow.from) || '？'), 30) + '）';
+    } else {
+      actorCountries().forEach(add);
+      out.kind = 'unknown';
+      out.note = '（場所が決まらない' + (out.dots.length ? '。点は主体の国' : '') + '）';
+    }
+    // 杭：自分に使う金。地図タブの「自分に使う」と同じく、相手が別の国の線でないとき、出す側の国の下に
+    if (WORLD_ROOTS_ON && worldUseOf(r) && worldIsCountry(a, lib) && !(out.kind === 'line' && worldIsCountry(b, lib))) out.root = a;
+    out.empty = !out.dots.length && !out.slots.length;
+    return out;
+  }
+  function worldDrawEdaMap(box, lib, m) {
+    const W = Math.max(200, Math.round(box.clientWidth || 358));
+    const S = worldEdaShapes(lib, W);
+    const slotsH = m.slots.length ? WORLD_EDA_SLOT_H + 8 : 0;
+    const total = S.H + slotsH;
+    box.innerHTML = '';
+    box.style.aspectRatio = '';
+    const svg = worldSvg('svg', { viewBox: '0 0 ' + W + ' ' + total, width: W, height: total, role: 'img', 'aria-label': 'この札の動きの地図' }, box);
+    const defs = worldSvg('defs', {}, svg);
+    const mk = worldSvg('marker', { id: 'wmEdaArrow', viewBox: '0 0 10 10', refX: '9', refY: '5', markerUnits: 'userSpaceOnUse', markerWidth: '9', markerHeight: '9', orient: 'auto-start-reverse' }, defs);
+    worldSvg('path', { d: 'M0,0 L10,5 L0,10 z', class: 'wmArrowHead' }, mk);
+    const mkOpen = worldSvg('marker', { id: 'wmEdaArrowOpen', viewBox: '0 0 10 10', refX: '9', refY: '5', markerUnits: 'userSpaceOnUse', markerWidth: '9', markerHeight: '9', orient: 'auto-start-reverse' }, defs);
+    worldSvg('path', { d: 'M0,0 L10,5 L0,10 z', class: 'wmArrowHeadOpen' }, mkOpen);
+    const mapArea = worldSvg('svg', { x: 0, y: 0, width: W, height: S.H, viewBox: '0 0 ' + W + ' ' + S.H, overflow: 'hidden', class: 'wmViewport' }, svg);
+    const land = S.tpl.cloneNode(true);
+    mapArea.appendChild(land);
+    m.dots.forEach((c) => { const p = land.querySelector('path[data-a3="' + c + '"]'); if (p) p.classList.add('on'); });
+    // 要る枠の箱だけを、地図の下の帯に並べる
+    const slotXY = {};
+    if (m.slots.length) {
+      const sw = Math.min(120, (W - 16) / 3), gap = 8, top = S.H + 6;
+      const x0 = (W - (m.slots.length * sw + (m.slots.length - 1) * gap)) / 2;
+      m.slots.forEach((c, i) => {
+        const x = x0 + i * (sw + gap);
+        const g = worldSvg('g', { class: 'wmSlot' }, svg);
+        worldSvg('rect', { x: x.toFixed(1), y: top, width: sw.toFixed(1), height: WORLD_EDA_SLOT_H, rx: 6, ry: 6 }, g);
+        const t = worldSvg('text', { x: (x + sw / 2).toFixed(1), y: top + 18, 'text-anchor': 'middle' }, g);
+        t.textContent = WORLD_MAP_SLOT_LABEL[c];
+        slotXY[c] = [x + sw / 2, top];
+      });
+    }
+    const pt = (c) => { if (slotXY[c]) return slotXY[c]; const ll = lib.anchors.get(c); return ll ? S.proj(ll) : null; };
+    const r = m.row;
+    const usd = r && (!r.flow.kind || r.flow.kind === 'money') ? worldUsdOf(r.rep || r) : null;
+    if (m.line) {
+      const p1 = pt(m.line[0]), p2 = pt(m.line[1]);
+      if (p1 && p2) {
+        const dx = p2[0] - p1[0], dy = p2[1] - p1[1], dist = Math.hypot(dx, dy) || 1, off = dist * 0.18;
+        const cx = (p1[0] + p2[0]) / 2 + (-dy / dist) * off, cy = (p1[1] + p2[1]) / 2 + (dx / dist) * off;
+        const pledge = worldFlowIsPledge(r);
+        const at = { d: 'M' + p1[0].toFixed(1) + ',' + p1[1].toFixed(1) + ' Q' + cx.toFixed(1) + ',' + cy.toFixed(1) + ' ' + p2[0].toFixed(1) + ',' + p2[1].toFixed(1),
+          class: 'wmL' + (!usd ? ' dot' : (r.flow.span || usd.per) ? ' dash' : '') + (pledge ? ' pledge' : ''), 'marker-end': pledge ? 'url(#wmEdaArrowOpen)' : 'url(#wmEdaArrow)' };
+        if (usd) at.style = 'stroke-width:' + worldUsdWidth(usd.value) + 'px';
+        worldSvg('path', at, svg);
+      }
+    }
+    // 杭（点の下。点が杭の上に来る）
+    if (m.root) {
+      const p = pt(m.root);
+      if (p) {
+        const w = usd ? worldUsdWidth(usd.value) : 1.2;
+        const shape = worldRootShape(WORLD_ROOT_TIP, p[0], p[1], w, WORLD_ROOT_LEN);
+        const pledge = worldFlowIsPledge(r);
+        shape.parts.forEach((part, i) => {
+          const at = Object.assign({}, part.at);
+          if (part.fade) {
+            const mode = !pledge ? 'plain' : WORLD_ROOT_PLEDGE === 'hollow' ? (part.w >= WORLD_ROOT_HOLLOW_MIN ? 'hollow' : 'weak') : WORLD_ROOT_PLEDGE;
+            const stops = mode === 'hollow' ? WORLD_ROOT_HOLLOW_FADE : mode === 'weak' ? WORLD_ROOT_PLEDGE_WEAK : WORLD_ROOT_FADE;
+            const id = 'wmEdaRootFade' + i;
+            const lg = worldSvg('linearGradient', { id, x1: '0', y1: part.fade[0].toFixed(1), x2: '0', y2: part.fade[1].toFixed(1), gradientUnits: 'userSpaceOnUse' }, defs);
+            worldSvg('stop', { offset: '0', style: 'stop-color:var(--accent);stop-opacity:' + stops[0] }, lg);
+            worldSvg('stop', { offset: '1', style: 'stop-color:var(--accent);stop-opacity:' + stops[1] }, lg);
+            if (mode === 'hollow') {
+              at.x = (+at.x + 0.5).toFixed(2); at.width = Math.max(part.w - 1, 0.1); at.height = (+at.height - 0.5).toFixed(1);
+              at.style = 'fill:none;stroke-width:1px'; at.stroke = 'url(#' + id + ')'; at.class = 'wmRootFill hollow';
+            } else {
+              at.fill = 'url(#' + id + ')'; at.class = 'wmRootFill' + (pledge ? ' pledge' : '') + (mode === 'weak' ? ' weak' : '');
+            }
+          } else if (part.fill) {
+            at.class = 'wmRootFill' + (pledge ? ' pledge' : ''); at.style = 'fill:var(--accent);fill-opacity:0.85';
+          } else {
+            at.class = 'wmRoot' + (pledge ? ' pledge' : ''); at.style = 'stroke-width:' + part.stroke + 'px';
+          }
+          worldSvg(part.tag, at, svg);
+        });
+      }
+    }
+    m.dots.forEach((c) => {
+      const p = pt(c);
+      if (!p) return;
+      worldSvg('circle', { cx: p[0].toFixed(1), cy: p[1].toFixed(1), r: 3.5, class: 'wmDot' }, svg);
+      if (c === m.domestic) { const t = worldSvg('text', { x: (p[0] + 6).toFixed(1), y: (p[1] - 5).toFixed(1), class: 'wmLabel' }, svg); t.textContent = '国内'; }
+    });
+  }
+  // なぜ の下に置く。文字を先に出し、地図は部品を読んでから入れる（場所ははじめから空けておく）
+  function worldEdaMapInsert(box, ev) {
+    const mapBox = document.createElement('div'); mapBox.className = 'worldMapBox worldEdaMap';
+    const line = document.createElement('div'); line.className = 'worldEdaLine';
+    const note = document.createElement('span'); note.className = 'worldEdaNote';
+    if (ev.flow) {
+      const sfb = worldEvSelf(ev);
+      const selfFlow = sfb ? ['from', 'to', 'what', 'amount'].filter((k) => sfb.by[k] === 'self').map((k) => FUDA_FIELD_LABEL[k]) : [];
+      line.appendChild(document.createTextNode(WORLD_FLOW_KIND_MARK[ev.flow.kind || 'money'] + worldFlowLine(ev.flow) + (worldUsdText(ev) ? '　' + worldUsdText(ev) : '') + (selfFlow.length ? '　（' + selfFlow.join('・') + '：自分で入力）' : '')));
+      line.appendChild(note);
+    } else line.hidden = true;
+    const maybe = !!ev.flow || (ev.actors || []).length > 0;
+    mapBox.hidden = !maybe;
+    if (maybe) mapBox.style.aspectRatio = String(WORLD_EDA_RATIO);
+    box.appendChild(mapBox);
+    box.appendChild(line);
+    if (!maybe) return;
+    worldLoadMapLib().then((lib) => {
+      if (!mapBox.isConnected) return;
+      const m = worldEdaModel(ev, lib);
+      if (ev.flow && m.note) note.textContent = m.note;
+      if (m.empty) { mapBox.hidden = true; mapBox.style.aspectRatio = ''; }
+      else worldDrawEdaMap(mapBox, lib, m);
+      if (!ev.flow && !m.empty) { line.hidden = false; line.textContent = '誰から誰へは書かれていません（点は主体の国）'; }
+    }).catch(() => {
+      if (!mapBox.isConnected) return;
+      mapBox.style.aspectRatio = '';
+      mapBox.innerHTML = '';
+      const p = document.createElement('p'); p.className = 'fieldNote'; p.textContent = '地図を読み込めませんでした';
+      mapBox.appendChild(p);
+    });
   }
   // ---- v20.4 M4：国の網 ------------------------------------------------------
   const WORLD_NET_MAX_NODES = 12;   // 円に並べる点の数。超えたら、動きの少ない方を「ほかN」にまとめる
