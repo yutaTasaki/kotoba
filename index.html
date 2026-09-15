@@ -148,6 +148,7 @@
   .fileLabel { cursor: pointer; }
   .bulkTextHeaderRow { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
   .bulkFilePickBtn { padding: 8px 12px; font-size: 13px; }
+  .draftSavedNote { color: var(--accent, #2e7d32); font-weight: 600; }
   .cardHome {
     background: var(--bg-card);
     border-radius: 18px;
@@ -1180,6 +1181,7 @@
   .mikiCompare { font-size: 13px; line-height: 1.6; color: var(--text); margin: 8px 0; }
   .mikiLinks { margin: 0 0 6px; }
   .mikiLinks .linkLikeBtn { display: block; text-align: left; }
+  .trDelArmed { color: #fff !important; background: #b3261e !important; border-color: #b3261e !important; }
   .worldTodayPick .mikiPickRow { margin-left: 12px; width: calc(100% - 12px); font-size: 13px; }
   .mikiSent { font-size: 13px; line-height: 1.6; color: var(--text); margin: 2px 0; }
   /* v20.22 第2段A：予告の画面。根拠はボタンより上に置く（押す前に読ませる） */
@@ -2892,7 +2894,7 @@
         <p class="fieldNote" id="bulkCharCount">タイムスタンプを除いた本文：0 / 20,000字</p>
         <p class="fieldNote warn" id="bulkOverLimitHint" hidden>20,000字を超えています。分けて貼り付けてください。</p>
       </div>
-      <button id="btnBulkDecompose" class="primaryBtn">分解する</button>
+      <button id="btnBulkDecompose" class="primaryBtn">まとめる</button>
       <p class="fieldNote" id="bulkStatus"></p>
     </div>
   </section>
@@ -2905,6 +2907,8 @@
     </header>
     <div class="editorBody">
       <p class="fieldNote" id="draftRemainingCount"></p>
+      <!-- v20.53：保存した直後に、何を保存したかを出す（欄が空になり次のカードに替わるので、消えたように見えていた） -->
+      <p class="fieldNote draftSavedNote" id="draftSavedNote" hidden></p>
       <div id="draftCard" class="cardHome" hidden>
         <div class="cardText" id="draftCardText"></div>
         <div class="cardSource" id="draftCardSource"></div>
@@ -6270,21 +6274,30 @@
   // 'transcript' (文字起こし) - only the extraction rule differs; both pass
   // the existing tag list (cached, same reasoning as the notes list above)
   // and ask for up to 3 tags per item, one new tag allowed if nothing fits.
+  // v20.53：「分けよ／抜き出せ」をやめ、主題（同じことを言っているまとまり）ごとにまとめる。最大 BULK_SUMMARY_MAX 件。
+  // 1件＝核（言葉として残す一文）＋周辺のメモ（同じ主題の残りの要旨）。1つの章から13枚できて本人が手で1〜2枚にまとめていたため
   function buildBulkDecomposeSystemBlocks(kind) {
+    const common =
+      '同じ主題の文は1件にまとめ、主題が変わるところでだけ分けてください。文章全体が1つの主題なら1件にします。最大' + BULK_SUMMARY_MAX + '件。' +
+      '細かく分けないでください（似た内容の件が並ぶと、あとで同じ話ばかり引かれます）。';
     const bodyText = kind === 'transcript'
-      ? '話し言葉の中から、本人の考え・気づき・言い切りとして独立して残す価値のある文を抜き出してください。' +
-        '相槌、繰り返し、言い直し、本の引用そのもの（本人の言葉ではない部分）は除いてください。' +
-        '1つ150字以内に整えますが、意味と言い回しは変えないでください。最大15件。'
-      : '独立した言葉・一節・格言として意味が完結する単位に分けてください。1つ200字以内。前後の解説文や見出しは含めないでください。';
+      ? '話し言葉を、本人の考えのまとまりごとにまとめてください。' + common +
+        '各件の core は、そのまとまりで本人が言い切った考えを、本人の言い回しを残して1〜2文に要約したもの（150字以内）。' +
+        '相槌、繰り返し、言い直し、本の引用そのもの（本人の言葉ではない部分）は core に入れないでください。' +
+        '各件の context は、そのまとまりで話していた内容の要旨を1〜3文（300字以内）。無ければ空文字。'
+      : '文章を、主題ごとにまとめてください。' + common +
+        '各件の core は、その主題をいちばんよく表す一節を原文のまま（言い換えない。200字以内。前後の解説文や見出しは含めない）。' +
+        '各件の context は、同じ主題の残りの内容の要旨を1〜3文（300字以内。大事な言い回しは「」で原文のまま残してよい）。無ければ空文字。';
     const text =
       '以下はこの人が使っている既存タグの一覧である。\n' + JSON.stringify(allTags()) +
       '\n\nこのあとユーザーメッセージで元のテキストを渡す。' + bodyText +
-      '各項目に既存タグ一覧から最大3つ選んでください。既存で合わなければ新しいタグを1つだけ提案してよいです。' +
+      '各件に既存タグ一覧から最大3つ選んでください。既存で合わなければ新しいタグを1つだけ提案してよいです。' +
       'JSONのみを返してください。\n\n返答形式（JSON配列のみ、他の文章は含めない）:\n' +
-      '[{"text": "...", "tags": ["..."]}]';
+      '[{"core": "...", "context": "...", "tags": ["..."]}]';
     return [{ type: 'text', text, cache_control: { type: 'ephemeral' } }];
   }
 
+  const BULK_SUMMARY_MAX = 3;   // v20.53：1回の一括入力でできる言葉の上限（主題ごとに1枚）
   async function callBulkDecomposeApi(rawText, kind, is429Retry, isParseRetry) {
     const model = getClaudeChatModel();
     const system = buildBulkDecomposeSystemBlocks(kind);
@@ -6307,12 +6320,14 @@
       throw new Error('invalid response shape');
     }
     const maxLen = kind === 'transcript' ? 150 : 200;
-    const maxItems = kind === 'transcript' ? 15 : 100; // book has no spec'd cap; generous safety valve
+    // v20.53：まとめた件の核（core）と周辺のメモ（context）。前の形（text）で返ってきても受ける
+    const coreOf = (item) => (item && typeof item.core === 'string' && item.core.trim()) ? item.core : (item && typeof item.text === 'string' ? item.text : '');
     return parsed
-      .filter((item) => item && typeof item.text === 'string' && item.text.trim())
-      .slice(0, maxItems)
+      .filter((item) => item && coreOf(item).trim())
+      .slice(0, BULK_SUMMARY_MAX)
       .map((item) => ({
-        text: item.text.trim().slice(0, maxLen),
+        text: coreOf(item).trim().slice(0, maxLen),
+        context: typeof item.context === 'string' ? item.context.trim().slice(0, 600) : '',
         tags: Array.isArray(item.tags) ? item.tags.filter((t) => typeof t === 'string' && t.trim()).slice(0, 3) : [],
       }));
   }
@@ -8602,14 +8617,14 @@
       const title = document.getElementById('bulkTitleInput').value.trim();
       source = title ? `自分（動画: ${title}）` : '自分（動画）';
     }
-    if (!getClaudeApiKey()) { statusEl.textContent = aiErrorText('分解できませんでした', { noKey: true }); return; }
+    if (!getClaudeApiKey()) { statusEl.textContent = aiErrorText('まとめられませんでした', { noKey: true }); return; }
     const btn = document.getElementById('btnBulkDecompose');
     btn.disabled = true;
-    statusEl.textContent = '分解しています…';
+    statusEl.textContent = '主題ごとにまとめています…';
     try {
       const items = await callBulkDecomposeApi(text, bulkState.kind);
       if (!items.length) {
-        statusEl.textContent = '分解できる項目が見つかりませんでした。';
+        statusEl.textContent = 'まとめられる内容が見つかりませんでした。';
         btn.disabled = false;
         return;
       }
@@ -8632,6 +8647,7 @@
       items.forEach((item, i) => {
         const id = generateDraftId();
         const draft = { id, text: item.text, source, tags: item.tags, createdAt: iso, updatedAt: iso, kind: bulkState.noteKind };
+        if (item.context) draft.context = [{ text: item.context, at: iso }];   // v20.53：同じ主題の残りは周辺のメモへ
         if (bulkState.noteKind === 'book') draft.book = { title: source, author: '' };
         if (batchDupFlags[i]) draft.batchDup = true;
         if (video) draft.video = { ...video };
@@ -8644,7 +8660,7 @@
       openDraftReview();
     } catch (e) {
       btn.disabled = false;
-      statusEl.textContent = aiErrorText('分解できませんでした', e);
+      statusEl.textContent = aiErrorText('まとめられませんでした', e);
       if (!(e && e.noKey)) recordFeatureError('一括入力', e);
     }
   });
@@ -8800,6 +8816,9 @@
   function openDraftReview() {
     draftQueue = data.drafts.map((d) => d.id);
     draftQueueIndex = 0;
+    // v20.53：打ちかけの控えがある下書きから始める（先頭から始めると、2枚目以降で打っていた言葉が欄に戻らなかった）
+    { const inp = readInputDraft(); const i = (inp && inp.ctx && inp.ctx.screen === 'draftreview' && inp.ctx.draftId) ? draftQueue.indexOf(inp.ctx.draftId) : -1; if (i > 0) draftQueueIndex = i; }
+    document.getElementById('draftSavedNote').hidden = true;
     draftSimilarDismissed = new Set();
     showScreen('draftreview');
     renderDraftCard();
@@ -8848,6 +8867,8 @@
     }
 
     draftEditorState.tags = [...draft.tags];
+    draftEditorState.touched = false;   // v20.53
+    draftArmReset();
     draftEditorState.keep = 0; renderDraftKeepRow();
     document.getElementById('draftTagInput').value = '';
     document.getElementById('draftMyWordsInput').value = '';
@@ -8951,7 +8972,7 @@
       renderDraftBookCandidates();
     }
     const ctxField = document.getElementById('draftContextField');
-    ctxField.hidden = kind !== 'book';
+    ctxField.hidden = kind !== 'book' && !(draft.context && draft.context.length);   // v20.53：まとめた件の周辺のメモは、名言・自分でも出す
     document.getElementById('draftContextInput').value = (draft.context || []).map((c) => c.text).join('\n\n');
   }
   function renderDraftBookCandidates() {
@@ -8969,12 +8990,34 @@
     const bookOk = document.getElementById('draftBookField').hidden || document.getElementById('draftBookTitle').value.trim().length > 0;
     const ok = document.getElementById('draftMyWordsInput').value.trim().length > 0 && bookOk;
     document.getElementById('btnDraftSave').disabled = !ok;
-    document.getElementById('draftMyWordsHint').hidden = ok;
+    // v20.53：赤い「必須」は、このカードで打ってから消したときだけ出す（替わったばかりのカードで出すと、打った言葉が消えて怒られたように見えた）
+    document.getElementById('draftMyWordsHint').hidden = ok || !draftEditorState.touched;
   }
-  document.getElementById('draftMyWordsInput').addEventListener('input', updateDraftSaveButtonState);
+  document.getElementById('draftMyWordsInput').addEventListener('input', () => {
+    draftEditorState.touched = true;
+    draftArmReset();
+    updateDraftSaveButtonState();
+  });
+  // v20.53：自分の言葉を打ってあるときに、それを捨てる操作（あとで・こちらを残す・置き換える・捨てる）は2回押しにする
+  function draftTypedWords() { return document.getElementById('draftMyWordsInput').value.trim(); }
+  const DRAFT_ARM_LABELS = {};
+  function draftArmReset() {
+    Object.keys(DRAFT_ARM_LABELS).forEach((id) => { const b = document.getElementById(id); if (b && b.dataset.armed) { b.textContent = DRAFT_ARM_LABELS[id]; delete b.dataset.armed; } });
+  }
+  // 1回目なら false（ボタンの文を変える）、2回目か打っていなければ true
+  function draftArmed(btn) {
+    if (!draftTypedWords()) return true;
+    if (btn.dataset.armed) { draftArmReset(); return true; }
+    draftArmReset();
+    DRAFT_ARM_LABELS[btn.id] = btn.textContent;
+    btn.dataset.armed = '1';
+    btn.textContent = '打った一言を捨てて' + btn.textContent;
+    return false;
+  }
 
   function advanceDraftQueueAfterRemoval() {
     if (draftQueueIndex >= draftQueue.length) draftQueueIndex = 0;
+    document.getElementById('draftSavedNote').hidden = true;   // v20.53：保存のときだけ、この後で出し直す
     renderDraftCard();
   }
 
@@ -9065,6 +9108,9 @@
       const title = document.getElementById('draftBookTitle').value.trim();
       draft.book = { title, author: document.getElementById('draftBookAuthor').value.trim() };
       draft.source = title;
+    }
+    // v20.53：周辺のメモの欄が出ているときは、どの種類でも欄の中身で持ち越す（本のときだけだった）
+    if (!document.getElementById('draftContextField').hidden) {
       const ctxText = document.getElementById('draftContextInput').value.trim();
       draft.context = ctxText ? [{ text: ctxText, at: (draft.context && draft.context[0] && draft.context[0].at) || iso }] : [];
     }
@@ -9092,20 +9138,26 @@
     triggerAutoLinkForNote(id, 'autolink');
     draftQueue.splice(draftQueueIndex, 1);
     advanceDraftQueueAfterRemoval();
+    // v20.53：何を保存したかを出し、次のカードが見える位置に戻す
+    const savedEl = document.getElementById('draftSavedNote');
+    savedEl.textContent = '保存しました：「' + noteSnippet(note.text, 24) + '」' + (draftQueue.length ? '（次の下書き・残り ' + draftQueue.length + ' 件）' : '（下書きはこれで全部です）');
+    savedEl.hidden = false;
+    const sh = document.getElementById('shell'); if (sh) sh.scrollTop = 0;
   });
 
   document.getElementById('btnDraftDiscard').addEventListener('click', () => {
     const draft = findDraft(draftQueue[draftQueueIndex]);
     if (!draft) return;
-    if (!confirm('この下書きを削除します。よろしいですか？')) return;
+    if (!confirm(draftTypedWords() ? 'この下書きを削除します。打った自分の言葉も消えます。よろしいですか？' : 'この下書きを削除します。よろしいですか？')) return;
     clearInputDraft();
     deleteDraft(draft.id);
     draftQueue.splice(draftQueueIndex, 1);
     advanceDraftQueueAfterRemoval();
   });
 
-  document.getElementById('btnDraftLater').addEventListener('click', () => {
+  document.getElementById('btnDraftLater').addEventListener('click', (ev) => {
     if (!draftQueue.length) return;
+    if (!draftArmed(ev.currentTarget)) return;   // v20.53
     clearInputDraft();
     const id = draftQueue[draftQueueIndex];
     draftQueue.splice(draftQueueIndex, 1);
@@ -9121,7 +9173,7 @@
   document.getElementById('btnDraftSimilarKeepExisting').addEventListener('click', () => {
     const draft = findDraft(draftQueue[draftQueueIndex]);
     if (!draft) return;
-    if (!confirm('この下書きを削除します。よろしいですか？')) return;
+    if (!confirm(draftTypedWords() ? 'この下書きを削除します。打った自分の言葉も消えます。よろしいですか？' : 'この下書きを削除します。よろしいですか？')) return;   // v20.53
     deleteDraft(draft.id);
     draftQueue.splice(draftQueueIndex, 1);
     advanceDraftQueueAfterRemoval();
@@ -9138,7 +9190,7 @@
     const draft = findDraft(draftQueue[draftQueueIndex]);
     const note = draftSimilarMatchNoteId ? findNote(draftSimilarMatchNoteId) : null;
     if (!draft || !note) return;
-    if (!confirm('既存のノートを、この下書きの内容で置き換えます。よろしいですか？')) return;
+    if (!confirm(draftTypedWords() ? '既存のノートを、この下書きの内容で置き換えます。打った自分の言葉は使われず、既存のノートの自分の言葉のままになります。よろしいですか？' : '既存のノートを、この下書きの内容で置き換えます。よろしいですか？')) return;   // v20.53
     if (note.text !== draft.text) pushHistory(note, 'textHistory', note.text, nowIso());
     note.text = draft.text;
     note.source = draft.source;
@@ -9162,7 +9214,11 @@
       if (startX == null) return;
       const dx = e.clientX - startX, dy = e.clientY - startY;
       startX = null;
-      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) document.getElementById('btnDraftLater').click();
+      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        // v20.53：自分の言葉を打ってあるときは、スワイプでは進めない（黙って捨てていた）
+        if (draftTypedWords()) { const s = document.getElementById('draftSavedNote'); s.textContent = '自分の言葉が入っているので、スワイプでは進めません。保存するか、「あとで」を2回押してください。'; s.hidden = false; return; }
+        document.getElementById('btnDraftLater').click();
+      }
     });
     el.addEventListener('pointerleave', () => { startX = null; });
   })();
@@ -9608,7 +9664,13 @@
     const exercises = {};
     Object.entries((parsed.exercises && typeof parsed.exercises === 'object') ? parsed.exercises : {}).forEach(([part, list]) => {
       if (!TRAINING_PARTS.includes(part) || !Array.isArray(list)) return;
-      exercises[part] = list.filter((e) => e && typeof e.name === 'string' && e.name.trim()).map((e) => ({ name: e.name.trim(), lastUsedAt: e.lastUsedAt || '' }));
+      // v20.53：hidden＝候補から消した（記録ごと消した・名前を変えた古い名前）。at＝その札を最後に消した・戻した時刻（2台で後の方を採る）
+      exercises[part] = list.filter((e) => e && typeof e.name === 'string' && e.name.trim()).map((e) => {
+        const o = { name: e.name.trim(), lastUsedAt: e.lastUsedAt || '' };
+        if (e.hidden) o.hidden = true;
+        if (typeof e.at === 'string' && e.at) o.at = e.at;
+        return o;
+      });
     });
     return {
       version: 1,
@@ -9654,7 +9716,13 @@
     const exercises = {};
     TRAINING_PARTS.forEach((part) => {
       const m = new Map();
-      [...((a.exercises || {})[part] || []), ...((b.exercises || {})[part] || [])].forEach((e) => { const c = m.get(e.name); if (!c || (e.lastUsedAt || '') > (c.lastUsedAt || '')) m.set(e.name, { name: e.name, lastUsedAt: e.lastUsedAt || '' }); });
+      // v20.53：消した印は「無いから戻る」にならないよう行を残して持つ。名前ごとに、消した・戻した時刻（at）の新しい方を採る
+      [...((a.exercises || {})[part] || []), ...((b.exercises || {})[part] || [])].forEach((e) => {
+        const c = m.get(e.name);
+        if (!c) { const o = { name: e.name, lastUsedAt: e.lastUsedAt || '' }; if (e.hidden) o.hidden = true; if (e.at) o.at = e.at; m.set(e.name, o); return; }
+        if ((e.lastUsedAt || '') > (c.lastUsedAt || '')) c.lastUsedAt = e.lastUsedAt || '';
+        if ((e.at || '') > (c.at || '')) { c.at = e.at; if (e.hidden) c.hidden = true; else delete c.hidden; }
+      });
       if (m.size) exercises[part] = [...m.values()];
     });
     // exercise -> muscles: per exercise name, the later edit wins
@@ -9802,19 +9870,69 @@
     return found;
   }
   function exercisesForPart(part) {
-    return ((trainingData.exercises || {})[part] || []).slice().sort((a, b) => ((a.lastUsedAt || '') < (b.lastUsedAt || '') ? 1 : -1));
+    return ((trainingData.exercises || {})[part] || []).filter((e) => !e.hidden).sort((a, b) => ((a.lastUsedAt || '') < (b.lastUsedAt || '') ? 1 : -1));
   }
-  function touchExercise(part, name, at) {
+  // explicit＝「種目を追加」で入れたとき。消した札を戻すのはこのときだけ（記録を保存し直したときの自動の入れ直しでは戻さない）
+  function touchExercise(part, name, at, explicit) {
     if (!trainingData.exercises[part]) trainingData.exercises[part] = [];
     const e = trainingData.exercises[part].find((x) => x.name === name);
-    if (e) { if (!e.lastUsedAt || e.lastUsedAt < at) e.lastUsedAt = at; }
-    else trainingData.exercises[part].push({ name, lastUsedAt: at });
+    if (e) {
+      if (!e.lastUsedAt || e.lastUsedAt < at) e.lastUsedAt = at;
+      if (e.hidden && explicit) { delete e.hidden; e.at = nowIso(); }
+    } else trainingData.exercises[part].push(explicit ? { name, lastUsedAt: at, at: nowIso() } : { name, lastUsedAt: at });
+  }
+  // v20.53：その部位の、その種目の記録を全部数える（消す前に何日・何セット消えるかを出すため）
+  function trainingExerciseUsage(part, name) {
+    let days = 0, sets = 0;
+    trainingData.days.forEach((d) => {
+      let hit = false;
+      d.parts.forEach((p) => { if (p.part !== part) return; p.exercises.forEach((x) => { if (x.name === name) { hit = true; sets += x.cardio ? 1 : x.sets.length; } }); });
+      if (hit) days++;
+    });
+    return { days, sets };
+  }
+  // v20.53：種目を記録ごと消す。消すのはその部位の中だけ（同じ名前がほかの部位にあれば、そちらは残す）。
+  // 記録が空になった日は、日を消した印を付けて消す（今までの「その日を空にした」と同じ）。候補の札は消した印を付けて残す
+  function deleteTrainingExercise(part, name) {
+    const iso = nowIso();
+    const removedDays = [];
+    trainingData.days = trainingData.days.filter((d) => {
+      let changed = false;
+      d.parts = d.parts.map((p) => {
+        if (p.part !== part) return p;
+        const before = p.exercises.length;
+        const exercises = p.exercises.filter((x) => x.name !== name);
+        if (exercises.length !== before) changed = true;
+        return { part: p.part, exercises };
+      }).filter((p) => p.exercises.length);
+      if (!changed) return true;
+      d.updatedAt = iso;
+      if (!d.parts.length && d.weight === null) {
+        trainingData.deletedDayIds = (trainingData.deletedDayIds || []).filter((t) => t.id !== d.id).concat([{ id: d.id, deletedAt: iso }]);
+        removedDays.push(d.date);
+        return false;
+      }
+      return true;
+    });
+    const list = trainingData.exercises[part] || (trainingData.exercises[part] = []);
+    const e = list.find((x) => x.name === name);
+    if (e) { e.hidden = true; e.at = iso; } else list.push({ name, lastUsedAt: '', hidden: true, at: iso });
+    // 開いている日の編集中の中身からも外す（残すと、次の自動保存でまた書かれる）
+    trState.parts.forEach((p) => { if (p.part === part) p.exercises = p.exercises.filter((x) => x.name !== name); });
+    saveTrainingData(trainingData);
+    return { removedDays };
   }
   function renameTrainingExercise(part, oldName, newName) {
-    const list = trainingData.exercises[part] || [];
+    const list = trainingData.exercises[part] || (trainingData.exercises[part] = []);
     const e = list.find((x) => x.name === oldName);
-    if (e) e.name = newName;
-    const iso = nowIso();
+    // v20.53：名前を書き換えるのではなく、古い名前に消した印を付けて新しい名前を足す（書き換えると、もう片方の端末の古い名前が同期で戻っていた）
+    const iso0 = nowIso();
+    const lastUsedAt = e ? e.lastUsedAt : '';
+    if (e) { e.hidden = true; e.at = iso0; }
+    const n = list.find((x) => x.name === newName);
+    if (n) { if ((lastUsedAt || '') > (n.lastUsedAt || '')) n.lastUsedAt = lastUsedAt; if (n.hidden) { delete n.hidden; } n.at = iso0; }
+    else list.push({ name: newName, lastUsedAt, at: iso0 });
+    const iso = iso0;
     trainingData.days.forEach((d) => {
       let changed = false;
       d.parts.forEach((p) => { if (p.part !== part) return; p.exercises.forEach((x) => { if (x.name === oldName) { x.name = newName; changed = true; } }); });
@@ -9829,13 +9947,14 @@
   // truth while the screen is open; every change is persisted (debounced)
   // without reloading the state from storage, so a half-typed set row is
   // never wiped out from under the user. Sync stays batched as before.
-  const trState = { date: '', weight: '', parts: [], renaming: null };
+  const trState = { date: '', weight: '', parts: [], renaming: null, removeArm: '' };
   let trSaveTimer = null;
 
   function trLoadDate(date) {
     trFlush();
     trState.date = date;
     trState.renaming = null;
+    trState.removeArm = '';
     const day = findTrainingDay(date);
     trState.weight = day && day.weight !== null ? String(day.weight) : '';
     trState.parts = day ? day.parts.map((p) => ({
@@ -9952,8 +10071,8 @@
     const manage = document.createElement('button');
     manage.type = 'button';
     manage.className = 'linkLikeBtn';
-    manage.textContent = trState.renaming === p.part ? '完了' : '種目の名前を変更';
-    manage.addEventListener('click', () => { trState.renaming = trState.renaming === p.part ? null : p.part; renderTraining(); });
+    manage.textContent = trState.renaming === p.part ? '完了' : '種目を直す';   // v20.53：名前の変更と、記録ごと消す
+    manage.addEventListener('click', () => { trState.renaming = trState.renaming === p.part ? null : p.part; trState.removeArm = ''; renderTraining(); });
     head.appendChild(manage);
     wrap.appendChild(head);
     const chips = document.createElement('div');
@@ -9968,6 +10087,27 @@
         ok.type = 'button'; ok.className = 'tagFilterBtn'; ok.textContent = '変更';
         ok.addEventListener('click', () => { const nn = input.value.trim(); if (nn && nn !== e.name) renameTrainingExercise(p.part, e.name, nn); renderTraining(); });
         ed.appendChild(input); ed.appendChild(ok);
+        // v20.53：記録ごと消す。1回目で何日・何セット消えるかを出し、2回目で消す（確認の窓は使わない）
+        const key = p.part + '|' + e.name;
+        const del = document.createElement('button');
+        del.type = 'button';
+        if (trState.removeArm === key) {
+          const u = trainingExerciseUsage(p.part, e.name);
+          del.className = 'tagFilterBtn trDelArmed';
+          del.textContent = u.days ? '記録ごと消す（' + u.days + '日・' + u.sets + 'セット）' : '消す（記録なし）';
+          del.addEventListener('click', () => {
+            del.disabled = true;
+            const r = deleteTrainingExercise(p.part, e.name);
+            trState.removeArm = '';
+            document.getElementById('trStatus').textContent = '「' + e.name + '」を消しました' + (u.days ? '（' + u.days + '日・' + u.sets + 'セット' + (r.removedDays.length ? '、空になった日 ' + r.removedDays.length + '日も消しました' : '') + '）' : '') + '。';
+            renderTraining();
+          });
+        } else {
+          del.className = 'tagFilterBtn';
+          del.textContent = '消す';
+          del.addEventListener('click', () => { trState.removeArm = key; renderTraining(); });
+        }
+        ed.appendChild(del);
         chips.appendChild(ed);
         return;
       }
@@ -10000,7 +10140,7 @@
     const doAdd = () => {
       const name = addInput.value.trim();
       if (!name) return;
-      touchExercise(p.part, name, '');
+      touchExercise(p.part, name, '', true);   // v20.53：消した種目をもう一度入れたら戻す
       if (!p.exercises.some((x) => x.name === name)) p.exercises.push(trNewExercise(p.part, name));
       trScheduleSave();
       renderTraining();
@@ -10706,7 +10846,7 @@
       '- 出力は JSON オブジェクトのみ。キーは与えられた種目名をそのまま、値は {"p": [...], "s": [...]} または null。説明文は書かない。' }];
   }
   function partOfExercise(name) {
-    const hit = TRAINING_PARTS.find((part) => ((trainingData.exercises || {})[part] || []).some((e) => e.name === name));
+    const hit = TRAINING_PARTS.find((part) => ((trainingData.exercises || {})[part] || []).some((e) => e.name === name && !e.hidden));
     return hit || 'その他';
   }
   // The reply may carry more than one JSON block (the model sometimes
