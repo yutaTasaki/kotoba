@@ -3163,7 +3163,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.52';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.53';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -7157,6 +7157,7 @@
     ['home', 'list', 'consult', 'detail', 'editor', 'settings', 'records', 'bulk', 'draftreview', 'training', 'meditation', 'shoot', 'world'].forEach((s) => {
       document.getElementById('screen-' + s).hidden = s !== name;
     });
+    if (name !== 'world') { try { worldNav.stack = []; worldNav.last = null; } catch (e) {} }   // v20.53：世界タブを離れたら戻る順番を捨てる（起動の途中で呼ばれたときは、まだ無い）
     nav.screen = name;
     // Fixed at the bottom of every screen now (v3.4); the draw/graph
     // fullscreen overlays don't go through showScreen() at all - they cover
@@ -23448,10 +23449,55 @@
 
   function openWorld() {
     worldState.view = 'main';
+    worldNav.stack = []; worldNav.last = null;   // v20.53：入口から開いたら、戻る順番は最初から
     showScreen('world');
     renderWorld();
   }
+  // v20.53：世界タブの戻る。画面ごとの「ここから戻ったら、ここへ」の決まりだけでは、決まりに無い組み合わせ
+  // （探す → 主体 → その主体の札 → 戻る）が一番最初の画面まで戻っていた。開いてきた画面の順番を覚えて1つ前へ戻す。
+  // 札をその場で開く・同期で描き直す、のように同じ画面のままのときは積まない。最初の画面に来たら順番を捨てる
+  const WORLD_NAV_MAX = 30;
+  const worldNav = { stack: [], last: null, popping: false };
+  function worldNavSnap() {
+    return {
+      view: worldState.view, cards: worldState.cards, cardsOpenId: worldState.cardsOpenId, conceptId: worldState.conceptId,
+      entryFrom: worldState.entryFrom, tidy: worldState.tidy, stratumId: worldState.stratumId, strataAll: worldState.strataAll,
+      mikiId: worldState.mikiId || '', stratumFrom: worldState.stratumFrom || '', fcFrom: worldState.fcFrom || '', askOpenId: worldState.askOpenId,
+      scroll: 0,
+    };
+  }
+  function worldNavKey(s) {
+    const c = s.cards;
+    return [s.view, c ? (c.money ? 'money' : '') + (c.title || '') + '#' + (c.ids || []).join(',') : '', s.view === 'concept' ? s.conceptId : '',
+      s.view === 'stratum' ? (s.strataAll ? '*' : s.stratumId) : '', s.view === 'miki' ? s.mikiId : ''].join('|');
+  }
+  function worldNavTrack() {
+    const cur = worldNavSnap();
+    if (cur.view === 'main') { worldNav.stack = []; worldNav.last = cur; return; }
+    if (!worldNav.popping && worldNav.last && worldNavKey(worldNav.last) !== worldNavKey(cur)) {
+      const sh = document.getElementById('shell');
+      worldNav.last.scroll = sh ? sh.scrollTop : 0;   // 離れる画面で見ていた場所
+      worldNav.stack.push(worldNav.last);
+      if (worldNav.stack.length > WORLD_NAV_MAX) worldNav.stack.shift();
+    }
+    worldNav.last = cur;
+  }
+  // 1つ前へ戻せたら true
+  function worldNavBack() {
+    const prev = worldNav.stack.pop();
+    if (!prev) return false;
+    worldNav.popping = true;
+    try {
+      Object.assign(worldState, { view: prev.view, cards: prev.cards, cardsOpenId: prev.cardsOpenId, conceptId: prev.conceptId, entryFrom: prev.entryFrom, tidy: prev.tidy,
+        stratumId: prev.stratumId, strataAll: prev.strataAll, mikiId: prev.mikiId, stratumFrom: prev.stratumFrom, fcFrom: prev.fcFrom, askOpenId: prev.askOpenId });
+      renderWorld();
+    } finally { worldNav.popping = false; }
+    const sh = document.getElementById('shell');
+    if (sh) setTimeout(() => { sh.scrollTop = prev.scroll || 0; }, 30);
+    return true;
+  }
   function renderWorld() {
+    worldNavTrack();   // v20.53
     document.getElementById('worldMainView').hidden = worldState.view !== 'main';
     document.getElementById('worldImportView').hidden = worldState.view !== 'import';
     document.getElementById('worldConceptView').hidden = worldState.view !== 'concept';
@@ -27309,6 +27355,7 @@
   // ---- つなぎ --------------------------------------------------------------
   document.getElementById('btnOpenWorld').addEventListener('click', openWorld);
   document.getElementById('backFromWorld').addEventListener('click', () => {
+    if (worldNavBack()) return;   // v20.53：開いてきた画面の1つ前へ
     // v20.50：幹の画面から開いた札の一覧・主体・地層は幹の画面へ。幹1本は幹の一覧へ（地層の戻り先より先に見る）
     if (worldMikiBackTarget()) return;
     if (worldState.view === 'stratum' && !worldState.strataAll) { worldState.strataAll = true; renderWorld(); return; }
@@ -27333,6 +27380,7 @@
     toggleHomeExpand('world');
   });
   document.getElementById('btnWorldCardsBack').addEventListener('click', () => {
+    if (worldNavBack()) return;   // v20.53
     const from = worldState.cards && worldState.cards.from;   // v20.4
     // v20.33：地図から開いた一覧は地図へ（上の「← 戻る」と同じ行き先にそろえる）
     if (from === 'miki') { worldState.cards = null; worldState.view = 'miki'; renderWorld(); return; }   // v20.50
@@ -27348,6 +27396,7 @@
     worldState.mikiId = ''; worldState.view = 'miki'; renderWorld();
   });
   document.getElementById('btnWorldMikiBack').addEventListener('click', () => {
+    if (worldNavBack()) return;   // v20.53
     if (worldState.mikiId) { worldState.mikiId = ''; renderWorld(); return; }
     worldState.view = 'main'; renderWorld();
   });
