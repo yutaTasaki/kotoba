@@ -1291,7 +1291,7 @@
   .worldMapBox .wmRoot { fill: none; stroke: var(--accent); opacity: 0.85; stroke-linecap: butt; }
   .worldMapBox .wmRoot.pledge { opacity: 0.4; }
   .worldMapBox .wmRootFill { stroke: none; }
-  .worldMapBox .wmRootFill.hollow { fill: none; }   /* v20.32 約束の根：白抜き。輪郭の色は形の中で決める */   /* v20.31 形で描く根（消える・くさび）。濃さは形の中で決める */
+  .worldMapBox .wmRootFill.hollow { fill: none; }   /* v20.32 約束の杭：白抜き。輪郭の色は形の中で決める */   /* v20.31 形で描く杭（消える・くさび）。濃さは形の中で決める */
   .worldMapBox .wmRootFill.pledge { opacity: 0.4; }
   .worldMapBox .wmArrowHeadOpen { fill: none; stroke: var(--accent); stroke-width: 1.4; opacity: 0.6; }
   .worldMapBox .wmArrowHead { fill: var(--accent); }
@@ -3171,7 +3171,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.54';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.55';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -5122,7 +5122,7 @@
     { n: 3, key: 'support', name: '支え', note: '仮の答えを支持する事実', accepts: ['research', 'record'] },
     { n: 4, key: 'detour', name: '寄り道', note: 'わくわく。信じ度を添えて', accepts: ['fun'] },
     { n: 5, key: 'break', name: '壊す', note: '仮の答えの前提と衝突する事実。ここが山', accepts: ['research', 'record'] },
-    { n: 6, key: 'word', name: '言葉', note: '相談から選んだ札と、自分の一言', accepts: ['word'] },
+    { n: 6, key: 'word', name: '言葉', note: '相談から選んだ言葉と、自分の一言', accepts: ['word'] },
     { n: 7, key: 'restate', name: '言い直し', note: 'ここで答えを言い直す（口で言う）', accepts: [] },
   ];
   const TALK_SLOT_BY_N = {};
@@ -14619,7 +14619,7 @@
     panel.innerHTML = '';
     const used = new Set((deck.cards || []).map((c) => c.noteId).filter(Boolean));
     const list = shootWordCandidates(deck).filter((x) => !used.has(x.id));
-    if (!list.length) { const p = document.createElement('p'); p.className = 'emptyMsg'; p.textContent = '「相談する」で返ってきた札か、問いの材料になった言葉がここに出ます。'; panel.appendChild(p); return; }
+    if (!list.length) { const p = document.createElement('p'); p.className = 'emptyMsg'; p.textContent = '「相談する」で返ってきた言葉か、問いの材料になった言葉がここに出ます。'; panel.appendChild(p); return; }
     list.forEach((x) => {
       const note = findNote(x.id);
       const row = document.createElement('div');
@@ -21825,7 +21825,7 @@
     const mk = worldMikiState();
     if (!mk.centerSet.size) return '';
     const n = worldLiveEvents().filter((e) => mk.centerSet.has(e.id) && worldHasCutRead(e)).length;
-    return '（うち中心の札 ' + n + '枚）';
+    return '（うち中心の枝 ' + n + '枚）';
   }
 
   // ---- 割り直しの途中（端末ごと）
@@ -21984,7 +21984,7 @@
       if (eq) { out.same++; return; }
       if (common.length) out.diffCommon++; else out.diffNone++;
       const x = a.filter((i) => !b.includes(i)), y = b.filter((i) => !a.includes(i));
-      const lx = x.length ? x.map(name).join('・') : '（幹なし）', ly = y.length ? y.map(name).join('・') : '（幹なし）';
+      const lx = x.length ? x.map(name).join('・') : '（葉）', ly = y.length ? y.map(name).join('・') : '（葉）';
       const key = [lx, ly].sort().join(' ⇔ ');
       if (!out.pairs.has(key)) out.pairs.set(key, []);
       out.pairs.get(key).push(card);
@@ -22135,7 +22135,7 @@
     // 切り方を直した（幹を立てた・直した）あとに段B を通していなければ、割り当て済みとは言わない
     // v20.52：外しただけ（名前も1行も変えない rename）と、候補や1枚の札から立てた幹は数えない。どちらも割り当てをやり直さなくても済むため
     const recutAfter = !!mk.lastSplit && worldMikiRecs().some((r) => (r.type === 'open' && r.from === 'split' || (r.type === 'rename' && !r.closed)) && r.at > mk.lastSplit.at);
-    if (recutAfter && !d.runs[1]) note('切り方を直したあと、まだ段B を通していません。いまの割り当ては直す前の幹のままです（外した幹の枝は、どの幹にも付いていません）。');
+    if (recutAfter && !d.runs[1]) note('切り方を直したあと、まだ段B を通していません。いまの割り当ては直す前の幹のままです（外した幹だけに付いていた枝は、葉に戻っています）。');
     else if (insertedAt && !d.runs[1]) note('割り当て済み（' + worldShortDate(insertedAt) + '）。やり直すときは、下の段B をもう一度通すか、切り方を直してください。');
     else note('段B：札を2回割らせます。1回目と2回目は、別のチャットに貼ってください（2回目は札の並びを逆にしてあります）。');
     [1, 2].forEach((n) => {
@@ -22175,7 +22175,7 @@
       const r = document.createElement('div'); r.className = 'mikiCompare';
       const line = (t) => { const p = document.createElement('div'); p.textContent = t; r.appendChild(p); };
       line('2回とも同じ幹 ' + cmp.same + '枚');
-      line('食い違い ' + (cmp.diffCommon + cmp.diffNone) + '枚 → 共通の幹だけ付ける ' + cmp.diffCommon + '枚／共通が無く付けない ' + cmp.diffNone + '枚');
+      line('食い違い ' + (cmp.diffCommon + cmp.diffNone) + '枚 → 共通の幹だけ付ける ' + cmp.diffCommon + '枚／共通が無く葉にした ' + cmp.diffNone + '枚');
       if (cmp.more) line('3本目を付けたかった ' + cmp.more + '枚（1回目）');
       line('同じ出来事の組（2回とも同じ）' + cmp.sameGroups.length + '組');
       const byCard = new Map(worldLiveEvents().map((e) => [e.id, e]));
@@ -22189,7 +22189,7 @@
         ins.disabled = true;
         const res = worldMikiInsertSplit();
         if (res.error) { status.textContent = res.error; ins.disabled = false; return; }
-        worldMikiSplitCards.lastMsg = '入れました：幹に付いた札 ' + res.attached + '枚・幹0本 ' + res.none + '枚・同じ出来事の組 ' + res.groups + '組。';
+        worldMikiSplitCards.lastMsg = '入れました：枝 ' + res.attached + '枚・葉 ' + res.none + '枚・同じ出来事の組 ' + res.groups + '組。';
         renderWorldMikiSplit();
         paintWorldEpochLine();
       });
@@ -22211,13 +22211,26 @@
     const mk = worldMikiState();
     worldState.stratumFrom = '';   // 既定の画面に戻ったら、地層の戻り先を忘れる
     b.hidden = false;
-    b.textContent = mk.trunks.length ? '幹 ' + mk.trunks.length + '本 ▸' : '幹を立てる ▸';
+    b.textContent = mk.trunks.length ? '幹 ' + mk.trunks.length + '本' + worldMikiLeafBudLabel() + ' ▸' : '幹を立てる ▸';
+  }
+  // v20.55：一番上の1行に添える葉と芽の数（葉＝幹の記録があり、どの幹にも付いていない札）
+  function worldMikiLeafBudLabel() {
+    const mk = worldMikiState();
+    let leaves = 0;
+    worldLiveEvents().forEach((e) => { if (mk.cardAttach.has(e.id) && !(mk.cardMiki.get(e.id) || []).length) leaves++; });
+    const buds = worldMikiOpenCands().length;
+    return (leaves ? '・葉 ' + leaves + '枚' : '') + (buds ? '・芽 ' + buds : '');
   }
   // ---- 札の画面：幹の行
   function worldMikiLinksEl(ev) {
     const ids = worldMikiState().cardMiki.get(ev.id) || [];
     const ts = ids.map(worldMikiTrunk).filter(Boolean);
-    if (!ts.length) return null;
+    if (!ts.length) {
+      // v20.55：葉のとき（幹の記録があり、どの幹にも付いていない）
+      if (!worldMikiState().trunks.length || !worldMikiState().cardAttach.has(ev.id)) return null;
+      const leaf = document.createElement('div'); leaf.className = 'mikiLinks fieldNote'; leaf.textContent = '葉（まだどの幹にも付いていない）';
+      return leaf;
+    }
     const box = document.createElement('div'); box.className = 'mikiLinks';
     ts.forEach((t) => {
       const b = document.createElement('button'); b.type = 'button'; b.className = 'linkLikeBtn';
@@ -22252,6 +22265,7 @@
     if (!t) {
       worldState.mikiId = '';
       document.getElementById('worldMikiTitle').textContent = '幹（' + mk.trunks.length + '）';
+      { const p = document.createElement('p'); p.className = 'fieldNote'; p.textContent = '枝＝幹に付いた札、葉＝まだどの幹にも付いていない札（葉が積もると新しい幹の芽を探します）。根＝その幹が始まった出来事。'; body.appendChild(p); }   // v20.55
       if (mk.dupNames.length) { const p = document.createElement('p'); p.className = 'fieldNote'; p.textContent = '※ 同じ名前の幹が2本あります：' + mk.dupNames.join('・'); body.appendChild(p); }
       if (!mk.trunks.length) {
         const p = document.createElement('p'); p.className = 'emptyMsg'; p.textContent = 'まだ幹がありません。'; body.appendChild(p);
@@ -22326,7 +22340,7 @@
     // 枝
     {
       const f = section('枝 ' + t.cards.length + '枚');
-      if (need.length && cards.length < t.cards.length) { const w = document.createElement('p'); w.className = 'fieldNote'; w.textContent = '札の月を読み込んでいます…'; f.appendChild(w); }
+      if (need.length && cards.length < t.cards.length) { const w = document.createElement('p'); w.className = 'fieldNote'; w.textContent = '枝の月を読み込んでいます…'; f.appendChild(w); }
       const sorted = cards.slice().sort((a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0));
       // 同じ出来事の組は1枚にまとめる（組の中で先に並ぶ札を代表にする）
       const groupOf = new Map();
@@ -22546,22 +22560,22 @@
     if (!st.reported) s += '幹の報告なし（JSON に miki がありません）。';
     else {
       const parts = [...st.attached.entries()].sort((a, b) => b[1] - a[1]).map(([id, n]) => name(id) + ' +' + n);
-      s += '幹に付いた枝：' + (parts.length ? parts.join('・') : '0枚');
+      s += '枝：' + (parts.length ? parts.join('・') : '0枚');
       const left = worldMikiUnattached().length;
-      s += '　／　どの幹にも入らない ' + st.none + '枚' + (left < WORLD_MIKI_CAND_MIN ? '（たまった ' + left + '枚。あと ' + (WORLD_MIKI_CAND_MIN - left) + '枚で候補を聞きます）' : '（たまった ' + left + '枚。次のプロンプトで候補を聞きます）') + '。';
+      s += '　／　葉 +' + st.none + (left < WORLD_MIKI_CAND_MIN ? '（積もった葉 ' + left + '枚。あと' + (WORLD_MIKI_CAND_MIN - left) + '枚で、新しい幹の芽を探します）' : '（積もった葉 ' + left + '枚。次の朝のプロンプトで、新しい幹の芽を探します）') + '。';   // v20.55：葉は新しい幹の種
       if (st.more) s += '　3本目を付けたかった ' + st.more + '枚' + (st.moved ? '（うち幹の欄から移した ' + st.moved + '枚）' : '') + '。';
       if (st.unknown) s += '　※ 幹の番号が見つからない ' + st.unknown + '件（付けずに控えに残しました）。';
       if (st.over) s += '　※ 4本目以降 ' + st.over + '件は付けずに控えに残しました。';
       if (st.moreSame) s += '　※ 3本目が付けた幹と同じ ' + st.moreSame + '件（3本目にしていません）。';
       if (st.moreBad) s += '　※ 読めない3本目 ' + st.moreBad + '件。';
     }
-    if (st.candAsked) s += st.candReported == null ? '　候補の報告なし（JSON に mikiNew がありません）。' : '　新しい幹の候補 ' + st.cand.length + '件（下の［▸］から立てられます）。';
-    else if (st.cand.length) s += '　新しい幹の候補 ' + st.cand.length + '件。';
-    if (st.candBad) s += '　※ 候補の中の知らない札・名前の無い候補 ' + st.candBad + '件は外しました。';
-    st.starts.forEach((x) => { const e = worldEvents.find((v) => v.id === x.card); s += '　出発点：' + name(x.miki) + ' → ' + (e ? e.eventDate + ' ' + e.fact : x.card) + '。'; });
-    st.startNone.forEach((x) => { s += '　出発点が見つからない：' + name(x.miki) + '（' + x.why + '）。'; });
-    if (st.startDup) s += '　※ 出発点がもう決まっていた幹 ' + st.startDup + '件（その札はふつうの枝にしました）。';
-    if (st.startUnknown) s += '　※ 出発点の幹の番号が見つからない ' + st.startUnknown + '件。';
+    if (st.candAsked) s += st.candReported == null ? '　芽の報告なし（JSON に mikiNew がありません）。' : '　葉から芽が ' + st.cand.length + 'つ' + (st.cand.length ? '（下の［▸］から幹にできます）' : '') + '。';
+    else if (st.cand.length) s += '　葉から芽が ' + st.cand.length + 'つ。';
+    if (st.candBad) s += '　※ 芽の中の知らない札・名前の無い芽 ' + st.candBad + '件は外しました。';
+    st.starts.forEach((x) => { const e = worldEvents.find((v) => v.id === x.card); s += '　根：' + name(x.miki) + ' → ' + (e ? e.eventDate + ' ' + e.fact : x.card) + '。'; });
+    st.startNone.forEach((x) => { s += '　根が見つからない：' + name(x.miki) + '（' + x.why + '）。'; });
+    if (st.startDup) s += '　※ 根がもう決まっていた幹 ' + st.startDup + '件（その札はふつうの枝にしました）。';
+    if (st.startUnknown) s += '　※ 根の幹の番号が見つからない ' + st.startUnknown + '件。';
     return s;
   }
 
@@ -22621,18 +22635,18 @@
     };
     if (cands.length) {
       const t = document.createElement('button'); t.type = 'button'; t.className = 'tagFilterBtn' + (st.open === 'cand' ? ' selected' : '');
-      t.textContent = '新しい幹の候補 ' + cands.length + '件 ' + (st.open === 'cand' ? '▾' : '▸');
+      t.textContent = '芽 ' + cands.length + 'つ（葉から出た新しい幹の案）' + (st.open === 'cand' ? '▾' : '▸');
       t.addEventListener('click', () => { st.open = st.open === 'cand' ? '' : 'cand'; rerender(); });
       box.appendChild(t);
       if (st.open === 'cand') cands.forEach((c) => {
         const w = document.createElement('div'); w.className = 'digCand';
         const why = document.createElement('div'); why.className = 'dcWhy'; why.textContent = 'なぜ：' + (c.why || '（理由が書かれていません）'); w.appendChild(why);
-        (c.cards || []).forEach((id) => { const e = worldEvents.find((v) => v.id === id); const r = document.createElement('div'); r.className = 'fieldNote'; r.textContent = '入る札：' + (e ? worldEvDateShort(e) + ' ' + e.fact : id); w.appendChild(r); });
+        (c.cards || []).forEach((id) => { const e = worldEvents.find((v) => v.id === id); const r = document.createElement('div'); r.className = 'fieldNote'; r.textContent = 'もとの葉：' + (e ? worldEvDateShort(e) + ' ' + e.fact : id); w.appendChild(r); });
         w.appendChild(nameLineForm(c, (n, l) => {
           const res = worldMikiOpenWith(n, l, 'candidate', c.id, c.cards || []);
-          st.msg = '幹「' + worldStr(n, WORLD_MIKI_NAME_MAX) + '」を立てました' + (res.full ? '（2本付いていた札 ' + res.full + '枚には付けていません）' : '') + '。';
+          st.msg = '幹「' + worldStr(n, WORLD_MIKI_NAME_MAX) + '」を立てました' + (res.full ? '（もう幹が2本付いていた枝 ' + res.full + '枚には付けていません）' : '') + '。';
           st.open = ''; rerender();
-        }, 'この幹を立てる'));
+        }, 'この芽を幹にする'));
         box.appendChild(w);
       });
     }
@@ -22646,15 +22660,15 @@
         const w = document.createElement('div'); w.className = 'digCand';
         const f = document.createElement('div'); f.className = 'dcFact'; f.textContent = worldEvDateShort(e) + ' ' + e.fact; w.appendChild(f);
         const ts = (mk.cardMiki.get(e.id) || []).map(worldMikiTrunk).filter(Boolean);
-        const m = document.createElement('div'); m.className = 'fieldNote'; m.textContent = ts.length ? '幹：' + ts.map((x) => x.name).join('・') : 'どの幹にも入っていない'; w.appendChild(m);
+        const m = document.createElement('div'); m.className = 'fieldNote'; m.textContent = ts.length ? '枝（幹：' + ts.map((x) => x.name).join('・') + '）' : '葉（まだどの幹にも付いていない）'; w.appendChild(m);
         if (st.cardId === e.id) {
           w.appendChild(nameLineForm({ name: '', line: '' }, (n, l) => {
             const res = worldMikiOpenWith(n, l, 'card', e.id, [e.id]);
-            st.msg = '幹「' + worldStr(n, WORLD_MIKI_NAME_MAX) + '」を立てました' + (res.full ? '（この札にはもう2本付いていたので、枝にはしていません）' : '') + '。';
+            st.msg = '幹「' + worldStr(n, WORLD_MIKI_NAME_MAX) + '」を立てました' + (res.full ? '（この枝にはもう幹が2本付いていたので、この幹の枝にはしていません）' : '') + '。';
             st.open = ''; st.cardId = ''; rerender();
           }, '立てる'));
         } else {
-          const b = document.createElement('button'); b.type = 'button'; b.className = 'tagFilterBtn'; b.textContent = 'この札から幹を立てる';
+          const b = document.createElement('button'); b.type = 'button'; b.className = 'tagFilterBtn'; b.textContent = ts.length ? 'この枝から別の幹を立てる' : 'この葉から幹を立てる';
           b.addEventListener('click', () => { st.cardId = e.id; rerender(); });
           w.appendChild(b);
         }
@@ -22718,7 +22732,7 @@
     if (pick && !items.length) { const e = document.createElement('div'); e.className = 'tpEmpty'; e.textContent = (pick.date === todayStr() ? '今日' : worldShortDate(pick.date) + ' ') + 'の取り込みでは、見るべき件は選ばれませんでした'; box.appendChild(e); }
     const rest = items.filter((_, k) => !placed.has(k));
     if (rest.length) {
-      const h = document.createElement('div'); h.className = 'tpHead'; h.textContent = '幹に入らない今日見るべき件'; box.appendChild(h);
+      const h = document.createElement('div'); h.className = 'tpHead'; h.textContent = '今日の葉（新しい話かもしれない件）'; box.appendChild(h);
       rest.forEach((x) => box.appendChild(pickRow(x)));
     }
     return true;
@@ -22987,7 +23001,7 @@
     if (st.badExit) s += '　※ 読めない答え（出口・基準が決まりに無い・文が空）' + st.badExit + 'つは入れていません。';
     if (st.ignored) s += '　※ 渡していない幹への返事 ' + st.ignored + '件は無視しました。';
     if (st.unknownBad) s += '　※ 読めない「まだ分からないこと」' + st.unknownBad + '件は入れていません。';
-    if (st.cardsBad) s += '　※ 幹を付けられない札 ' + st.cardsBad + '件（すでに幹がある・渡していない）。';
+    if (st.cardsBad) s += '　※ 枝にできない札 ' + st.cardsBad + '件（すでに枝・渡していない）。';
     return s;
   }
 
@@ -23018,7 +23032,7 @@
       const f = sec('今の答え');
       const p = document.createElement('p'); p.className = 'fieldNote';
       p.textContent = r.ready ? '答えはまだ。次の読む回で最初の答えを書きます（1回に' + WORLD_MIKI_FIRST_PER_READ + '本まで）。'
-        : '答えはまだ（' + [r.start ? '' : '出発点がまだ（朝の取り込みで探します）', r.cut ? '中心の札に切れた推定が ' + r.cut + '枚' : '', r.missing ? '端末に無い札 ' + r.missing + '枚' : ''].filter(Boolean).join('・') + '）。';
+        : '答えはまだ（' + [r.start ? '' : '根がまだ（朝の取り込みで探します）', r.cut ? '中心の枝に切れた推定が ' + r.cut + '枚' : '', r.missing ? '端末に無い札 ' + r.missing + '枚' : ''].filter(Boolean).join('・') + '）。';
       f.appendChild(p);
     } else {
       [1, 2, 3].forEach((s) => {
@@ -23052,7 +23066,7 @@
       }
     }
     const st = A.starts.get(t.id);
-    const f = sec('出発点');
+    const f = sec('根');
     if (!st) { const p = document.createElement('p'); p.className = 'fieldNote'; p.textContent = 'まだ（朝の取り込みで1本ずつ探します）'; f.appendChild(p); }
     else if (!st.card) { const p = document.createElement('p'); p.className = 'fieldNote'; p.textContent = '見つからなかった：' + (st.none || ''); f.appendChild(p); }
     else {
@@ -23072,7 +23086,7 @@
       return box;
     }
     const p = document.createElement('p'); p.className = 'fieldNote';
-    p.textContent = '外すと、この幹に付いていた枝 ' + t.cards.length + '枚は、この幹から外れます（札は消えません。ほかの幹にも付いていれば、そちらには残ります）。外した幹は戻せません。';
+    p.textContent = '外すと、この幹の枝 ' + t.cards.length + '枚は外れます。ほかの幹にも付いている枝はそちらに残り、それ以外は葉に戻ります（札は消えません）。外した幹は戻せません。';
     box.appendChild(p);
     const yes = document.createElement('button'); yes.type = 'button'; yes.className = 'dangerBtn'; yes.textContent = '外す';
     yes.addEventListener('click', () => {
@@ -23093,7 +23107,7 @@
     const at = A.lastAt.get(t.id);
     if (at) return '　最後に確かめた ' + worldShortDate(localDateOfIso(at) || at);
     const r = worldMikiReadiness(t);
-    return '　答えはまだ' + (r.ready ? '（次の読む回で）' : '（' + [r.start ? '' : '出発点まだ', r.cut ? '中心の切れた推定 ' + r.cut : ''].filter(Boolean).join('・') + '）').replace('（）', '');
+    return '　答えはまだ' + (r.ready ? '（次の読む回で）' : '（' + [r.start ? '' : '根まだ', r.cut ? '中心の枝の切れた推定 ' + r.cut : ''].filter(Boolean).join('・') + '）').replace('（）', '');
   }
   async function worldOpenAnyEvent(id) { const m = monthOfWorldId(id); if (m && !wd.loaded.has(m)) await ensureWorldMonths([m]); openWorldEvent(id); }
   function worldFollowsEl(ev) {
@@ -24240,15 +24254,15 @@
       ['枠の名前に国も並ぶ相手', [WORLD_LIST_NOTES.slotCountry + '。「欧州の同盟国とカナダ」のように、「と」「・」「、」の後ろに国がある。枠のまま描く。']],
       ['確度3以下で外した動き', [WORLD_LIST_NOTES.sunk + '。確度3以下の動きは、地図・小さな地図・国の網・世界の画面のお金に描かない。お金の一覧には出す。']],
       ['線の太さ', ['ドル換算の5段（地図の左下の見本のとおり）。換算できないものは点線。']],
-    ].concat(WORLD_ROOTS_ON ? [['根（自分に使う）', [
-      '「自分に使う」を押すと、主体の国の点から下へ根が伸びる（' + worldRootTipName() + '）。根は、主体が自分の側に積んだ金（' + WORLD_USE_KINDS.map((k) => k.name).join('・') + '）。',
-      '国の網では、自分に使う金は先が⊥の矢印になる（地図の根と網で形が違う）。',
-      '根の位置は持ち主の国で、使った場所ではない（海外工場の設備も持ち主の国に描く）。',
+    ].concat(WORLD_ROOTS_ON ? [['杭（自分に使う）', [
+      '「自分に使う」を押すと、主体の国の点から下へ杭が伸びる（' + worldRootTipName() + '）。杭は、主体が自分の側に打ち込んだ金（' + WORLD_USE_KINDS.map((k) => k.name).join('・') + '）。',
+      '国の網では、自分に使う金は先が⊥の矢印になる（地図の杭と網で形が違う）。',
+      '杭の位置は持ち主の国で、使った場所ではない（海外工場の設備も持ち主の国に描く）。',
       '相手が別の国にある金は、自分に使う金でも横の線のまま（国の外へ出ている分）。',
-      '額は根の太さで、根の長さはどの国も同じ（' + WORLD_ROOT_LEN + 'px）。1つの国の根は1本で、太さはその国の一番大きい1本の段（足さない）。',
-      'ほかの国の点に触れる根は、その図では出さず、地図の下に「〇〇の図で見られる根」と出す。',
-      (WORLD_ROOT_PLEDGE === 'hollow' ? '約束の金の根は白抜き（輪郭だけ）。線の約束の白抜きの矢印と同じ意味。細い根（' + WORLD_ROOT_HOLLOW_MIN + 'px未満）は白抜きにできないので、薄く描く。' : '約束の金の根は薄い。'),
-      (WORLD_ROOT_TAP === 'pair' ? '国の点か根を押すと、地図の下にその国の「網」と「根」が並ぶので、どちらかを選ぶ（点と根は小さく、指で押し分けられないため）。' : '根の上（点のすぐ下から先まで）を押すと、その国の根の一覧が、国の点の上を押すと、その国の網が開く。')]]] : []);
+      '額は杭の太さで、杭の長さはどの国も同じ（' + WORLD_ROOT_LEN + 'px）。1つの国の杭は1本で、太さはその国の一番大きい1本の段（足さない）。',
+      'ほかの国の点に触れる杭は、その図では出さず、地図の下に「〇〇の図で見られる杭」と出す。',
+      (WORLD_ROOT_PLEDGE === 'hollow' ? '約束の金の杭は白抜き（輪郭だけ）。線の約束の白抜きの矢印と同じ意味。細い杭（' + WORLD_ROOT_HOLLOW_MIN + 'px未満）は白抜きにできないので、薄く描く。' : '約束の金の杭は薄い。'),
+      (WORLD_ROOT_TAP === 'pair' ? '国の点か杭を押すと、地図の下にその国の「網」と「杭」が並ぶので、どちらかを選ぶ（点と杭は小さく、指で押し分けられないため）。' : '杭の上（点のすぐ下から先まで）を押すと、その国の杭の一覧が、国の点の上を押すと、その国の網が開く。')]]] : []);
   }
   function worldMoneyGuideSections() {
     return [
@@ -25602,7 +25616,7 @@
     ['goods', '物・人', (r) => (r.flow.kind || 'money') !== 'money', '物か人が動いたもの（お金以外）'],
     ['oil', '原油・石油', (r) => worldFlowItem(r) === '原油・石油', '物のうち原油・石油製品が動いたもの'],
     ['pledge', '約束', (r) => worldFlowIsPledge(r), 'まだ動いていない約束の金（配分・表明など）'],
-    ['self', '自分に使う', (r) => !!worldUseOf(r), () => (WORLD_ROOTS_ON ? '根＝自分の側に積んだ金、線＝行き先が別の国' : worldSelfUseLine())],   // v20.25・v20.30
+    ['self', '自分に使う', (r) => !!worldUseOf(r), () => (WORLD_ROOTS_ON ? '杭＝自分の側に打ち込んだ金、線＝行き先が別の国' : worldSelfUseLine())],   // v20.25・v20.30
   ];
   function worldKindLine(key) { const d = worldKindDef(key); return typeof d[3] === 'function' ? d[3]() : (d[3] || ''); }
   // v20.26：地域の説明は地域の名前から作る（地域を足しても文を書き足さない）
@@ -26023,7 +26037,7 @@
           }).filter(Boolean).sort((a, b) => a.dd - b.dd);
           if (hitCountries.length) {
             const head = document.createElement('span'); head.className = 'fieldNote wmPickHead';
-            head.textContent = (hitCountries.length > 1 ? 'この辺りの国と根' : worldPlaceLabel(hitCountries[0].L.a, lib)) + '：';
+            head.textContent = (hitCountries.length > 1 ? 'この辺りの国と杭' : worldPlaceLabel(hitCountries[0].L.a, lib)) + '：';
             chooser.appendChild(head);
             hitCountries.forEach(({ L }) => {
               const name = worldPlaceLabel(L.a, lib);
@@ -26031,8 +26045,8 @@
               bNet.type = 'button'; bNet.className = 'tagFilterBtn wmPairNet'; bNet.textContent = name + 'の網';
               bNet.addEventListener('click', () => worldOpenCountryNet(L.a));
               const bRoot = document.createElement('button');
-              bRoot.type = 'button'; bRoot.className = 'tagFilterBtn wmPairRoot'; bRoot.textContent = name + 'の根（' + L.rows.length + '本）';
-              bRoot.addEventListener('click', () => worldOpenFlowRows(L.rows, name + 'の根（' + L.rows.length + '本・自分に使う金・直近' + WORLD_MAP_DAYS + '日）'));
+              bRoot.type = 'button'; bRoot.className = 'tagFilterBtn wmPairRoot'; bRoot.textContent = name + 'の杭（' + L.rows.length + '本）';
+              bRoot.addEventListener('click', () => worldOpenFlowRows(L.rows, name + 'の杭（' + L.rows.length + '本・自分に使う金・直近' + WORLD_MAP_DAYS + '日）'));
               chooser.appendChild(bNet); chooser.appendChild(bRoot);
             });
             chooser.hidden = false;
@@ -26042,7 +26056,7 @@
         }
         if (onRoot && WORLD_ROOT_TAP === 'split') {
           chooser.hidden = true;
-          worldOpenFlowRows(onRoot.rows, worldPlaceLabel(onRoot.a, lib) + 'の根（' + onRoot.rows.length + '本・自分に使う金・直近' + WORLD_MAP_DAYS + '日）');
+          worldOpenFlowRows(onRoot.rows, worldPlaceLabel(onRoot.a, lib) + 'の杭（' + onRoot.rows.length + '本・自分に使う金・直近' + WORLD_MAP_DAYS + '日）');
           return;
         }
         // v20.31：根を出している画面では、国の点の上（点の半径＋同じ広さ）を押したら、その国の網を直接開く（点のすぐ下に自分の根があり、いつも一覧になっていたため）
@@ -26054,7 +26068,7 @@
       const nearDots = py <= H ? dots.map((d) => ({ ...d, dd: Math.hypot(d.p[0] - px, d.p[1] - py) * sx }))
         .filter((d) => d.dd <= WORLD_MAP_TAP_PX).sort((x, y) => x.dd - y.dd) : [];
       const nearLines = worldMapNearLines(px, py, sx, lineHits, WORLD_MAP_TAP_PX);
-      const lineTitle = (L) => (L.root ? worldPlaceLabel(L.a, lib) + 'の根（' + L.rows.length + '本・自分に使う金・直近' + WORLD_MAP_DAYS + '日）' : worldPlaceLabel(L.a, lib) + ' → ' + worldPlaceLabel(L.b, lib));   // v20.30
+      const lineTitle = (L) => (L.root ? worldPlaceLabel(L.a, lib) + 'の杭（' + L.rows.length + '本・自分に使う金・直近' + WORLD_MAP_DAYS + '日）' : worldPlaceLabel(L.a, lib) + ' → ' + worldPlaceLabel(L.b, lib));   // v20.30
       const lineRows = (L) => L.rows || [L.r];
       if (!nearDots.length && !nearLines.length) { chooser.hidden = true; return; }
       if (nearDots.length + nearLines.length === 1) {
@@ -26078,7 +26092,7 @@
       nearLines.slice(0, max).forEach((L) => {
         const b = document.createElement('button');
         b.type = 'button'; b.className = 'wmPickLine';
-        b.textContent = L.root ? worldPlaceLabel(L.a, lib) + 'の根（' + L.rows.length + '本）' : worldMapPickLabel(L.r);   // v20.30
+        b.textContent = L.root ? worldPlaceLabel(L.a, lib) + 'の杭（' + L.rows.length + '本）' : worldMapPickLabel(L.r);   // v20.30
         b.addEventListener('click', () => worldOpenFlowRows(lineRows(L), lineTitle(L)));
         chooser.appendChild(b);
       });
@@ -26108,15 +26122,15 @@
       const roots = model.roots || [];
       const countries = new Set(roots.map((r) => r.places[0]).filter((c) => worldIsCountry(c, lib)));
       // v20.31：1行目を根の数え方に置き換える（国をまたぐ線・枠への線・国内の足し算をさせない）
-      st.textContent = '直近' + WORLD_MAP_DAYS + '日：自分に使う ' + (roots.length + model.lines.length) + '本＝根 ' + roots.length + '本' + (countries.size ? '（' + countries.size + 'か国）' : '') + '・相手が別の国の線 ' + model.lines.length + '本'
-        + '。二本指で拡大・縮小、拡大中は指でなぞって動かせます。' + (WORLD_ROOT_TAP === 'pair' ? '国の点か根を押すと、その国の網と根を地図の下から選べます。線を押すと、その動きを出します。' : '根や線、国の点を押すと、その動きを出します。近くに2つ以上あるときは、地図の下の一覧から選べます。');
+      st.textContent = '直近' + WORLD_MAP_DAYS + '日：自分に使う ' + (roots.length + model.lines.length) + '本＝杭 ' + roots.length + '本' + (countries.size ? '（' + countries.size + 'か国）' : '') + '・相手が別の国の線 ' + model.lines.length + '本'
+        + '。二本指で拡大・縮小、拡大中は指でなぞって動かせます。' + (WORLD_ROOT_TAP === 'pair' ? '国の点か杭を押すと、その国の網と杭を地図の下から選べます。線を押すと、その動きを出します。' : '杭や線、国の点を押すと、その動きを出します。近くに2つ以上あるときは、地図の下の一覧から選べます。');
       const rootOnly = roots.filter((r) => (model.rootUnknown || []).includes(r));
-      if (rootOnly.length) line(['相手の場所が分からず、主体の国に根だけ描いたもの ', linkBtn(rootOnly.length + '本', () => worldOpenFlowRows(rootOnly, '相手の場所が分からず、主体の国に根だけ描いたもの（直近' + WORLD_MAP_DAYS + '日）', 'map', WORLD_LIST_NOTES.rootOnly))]);
+      if (rootOnly.length) line(['相手の場所が分からず、主体の国に杭だけ描いたもの ', linkBtn(rootOnly.length + '本', () => worldOpenFlowRows(rootOnly, '相手の場所が分からず、主体の国に杭だけ描いたもの（直近' + WORLD_MAP_DAYS + '日）', 'map', WORLD_LIST_NOTES.rootOnly))]);
       (rootHidden || []).forEach(({ c, rows }) => {
         const ll = lib.anchors.get(c);
         const reg2 = WORLD_MAP_REGIONS.find((x) => x[2] && x[0] !== region && ll && ll[0] >= x[2][0][0] && ll[0] <= x[2][1][0] && ll[1] >= x[2][0][1] && ll[1] <= x[2][1][1]);
-        const text = (reg2 ? reg2[1] + 'の図で見られる根' : 'ほかの点に触れて出していない根') + ' ' + rows.length + '本（' + worldPlaceLabel(c, lib) + '）';
-        line([linkBtn(text, () => { if (reg2) { worldState.mapRegion = reg2[0]; renderWorldMap(); } else worldOpenFlowRows(rows, worldPlaceLabel(c, lib) + 'の根（直近' + WORLD_MAP_DAYS + '日）', 'map'); })]);
+        const text = (reg2 ? reg2[1] + 'の図で見られる杭' : 'ほかの点に触れて出していない杭') + ' ' + rows.length + '本（' + worldPlaceLabel(c, lib) + '）';
+        line([linkBtn(text, () => { if (reg2) { worldState.mapRegion = reg2[0]; renderWorldMap(); } else worldOpenFlowRows(rows, worldPlaceLabel(c, lib) + 'の杭（直近' + WORLD_MAP_DAYS + '日）', 'map'); })]);
       });
       const noPlace = model0.unknown.filter((r) => !!worldUseOf(r) && !(model0.rootUnknown || []).includes(r));
       if (noPlace.length) line(['主体の国も分からず描けないもの ', linkBtn(noPlace.length + '本', () => worldOpenFlowRows(noPlace, '自分に使う金のうち、主体の国も分からないもの（直近' + WORLD_MAP_DAYS + '日）', 'map', WORLD_LIST_NOTES.selfNoPlace))]);
@@ -28420,7 +28434,7 @@
     if (res.todayPick) msg += '　' + worldTodayPickNote(res.todayPick);   // v20.47
     if (res.importRec) msg += '　' + worldImportRecNote(res.importRec);   // v20.48
     if (res.mikiRec) msg += '　' + worldMikiImportNote(res.mikiRec);   // v20.51
-    if (res.todayStartSkipped) msg += '　※ 出発点の札 ' + res.todayStartSkipped + '件は今日見るべき件から外しました。';
+    if (res.todayStartSkipped) msg += '　※ 根の札 ' + res.todayStartSkipped + '件は今日見るべき件から外しました。';
     worldState.lastImportRecId = res.importRec ? res.importRec.id : '';
     worldState.sameOpen = '';
     if (res.createdConcepts.length) msg += '　新しい概念 ' + res.createdConcepts.length + '件。';
