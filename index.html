@@ -1334,6 +1334,9 @@
   .worldMapBox.worldEdaMap .wmAimHead { fill: none; stroke: #e0a060; stroke-width: 2.2; }
   .worldMapBox.worldEdaMap .wmPlace { fill: #cfc8bb; stroke: #111; stroke-width: 1; }   /* v20.59 海峡などの場所の点（ひし形） */
   .worldMapBox.worldEdaMap .wmPlaceLabel { fill: #cfc8bb; font-size: 9px; paint-order: stroke; stroke: #111; stroke-width: 3px; stroke-linejoin: round; }
+  /* v20.67 見せ方 段3-2：時間（前の値 → 今の値と差） */
+  .worldTimePair { margin: 8px 0 2px; font-size: 13px; color: var(--text-dim); }
+  .worldTimePair .wtpNow { color: var(--text); }
   /* v20.66 見せ方 段3-1：時間（地層の折れ線） */
   .worldTimeLine { margin: 8px 0 2px; }
   .worldTimeLine svg { width: 100%; height: auto; display: block; }
@@ -3213,7 +3216,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.66';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.67';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -26823,8 +26826,11 @@
     const note = document.createElement('span'); note.className = 'worldEdaNote';
     const aimRec = worldAimsState().cards.get(ev.id) || null;
     let sizeM = null; try { sizeM = worldSizeModel(ev); } catch (e) { sizeM = null; }   // v20.64 見せ方 段2-1
-    let cmpM = null;   // v20.65 見せ方 段2-2：欄の total が無いときだけ、チャットが書いた比べる相手を使う
-    try { if (!sizeM && worldViewOf(ev) === WORLD_VIEW_SIZE) cmpM = worldCmpOf(ev); } catch (e) { cmpM = null; }
+    let cmpM = null, cmpIsTime = false;   // v20.65 見せ方 段2-2／v20.67 段3-2：時間の札にも使う
+    try {
+      const vw = worldViewOf(ev);
+      if (!sizeM && (vw === WORLD_VIEW_SIZE || vw === WORLD_VIEW_TIME)) { cmpM = worldCmpOf(ev); cmpIsTime = vw === WORLD_VIEW_TIME; }
+    } catch (e) { cmpM = null; }
     let timeM = null; try { timeM = worldTimeModel(ev); } catch (e) { timeM = null; }   // v20.66 見せ方 段3-1
     const aimRows = aimRec ? worldAimsLineRows(aimRec) : [];
     let moneyRow = null;
@@ -26847,7 +26853,8 @@
     mapBox.hidden = true;
     box.appendChild(mapBox);
     worldSizeBarInsert(box, sizeM);   // v20.64 見せ方 段2-1：大きさの帯（地図が出ない札は、ここが空いている）
-    if (cmpM) worldCmpBarInsert(box, ev, cmpM);   // v20.65 見せ方 段2-2
+    if (cmpM && cmpIsTime) worldCmpPairInsert(box, ev, cmpM);   // v20.67 見せ方 段3-2：数字2つと差
+    else if (cmpM) worldCmpBarInsert(box, ev, cmpM);   // v20.65 見せ方 段2-2
     if (timeM) worldTimeLineInsert(box, ev, timeM);   // v20.66 見せ方 段3-1
     box.appendChild(lines);
     if (!ev.flow && !(aimRec && aimRows.length)) return;
@@ -27022,14 +27029,15 @@
   const WORLD_CMP_NAME_MAX = 30;
   const WORLD_CMP_RATIO_MAX = 100;   // これを超えたら棒をやめて言葉にする
   const WORLD_CMP_RULE_LINES =
-    '- 札の額が「何かと比べて大きいか小さいか」で意味が変わるとき、比べる相手を1つだけ書く。2つ以上は書かない。\n' +
+    '- 札の数字が「何かと比べて大きいか小さいか」「前からどう動いたか」で意味が変わるとき、比べる相手を1つだけ書く。2つ以上は書かない。\n' +
     '- **比べる相手は、その出典の中にある数字だけ。外から探してこない。**\n' +
     '- rel は2つだけ。part＝この札の額が全体の一部（name と value に全体を書く）。prev＝同じ主体の前の額（前の回の同じ項目）。\n' +
-    '- ratio は「この札の額 ÷ 相手の額」。単位をそろえてから割る。part なら1より小さい。\n' +
+    '- ratio は「この札の数字 ÷ 相手の数字」。単位をそろえてから割る。part なら1より小さい。\n' +
+    '- now には、この札の数字を単位ごと書く（例：3.005%、806億ドル）。flow の額と違うことがあるので必ず書く。\n' +
     '- name は相手が何かが分かる短い言葉（例：前年同期の設備投資、2026年度の概算要求）。value は出典の書き方のまま。\n' +
     '- flow の total を書いたときは cmp を書かない（同じことになる）。比べる相手が出典に無いときは null。\n';
   function worldCmpPromptPart() { return '■ 比べる相手（cmp）\n' + WORLD_CMP_RULE_LINES + '\n'; }
-  function worldCmpFormatEvent() { return ',\n  "cmp":{"name":"前年同期の設備投資","value":"396億4300万ドル","rel":"prev","ratio":2.03}'; }
+  function worldCmpFormatEvent() { return ',\n  "cmp":{"name":"前年同期の設備投資","value":"396億4300万ドル","now":"806億ドル","rel":"prev","ratio":2.03}'; }
   function worldCmpFormatRules() { return '比べる相手が出典に無いとき： "cmp": null\n'; }
   function worldCmpsRecs() {
     const out = [];
@@ -27057,9 +27065,10 @@
     const value = worldStr(String(raw.value || ''), WORLD_CMP_NAME_MAX);
     const rel = String(raw.rel || '').trim();
     const ratio = Number(raw.ratio);
+    const now = worldStr(String(raw.now || ''), WORLD_CMP_NAME_MAX);   // v20.67：この札の数字（flow の額と違うことがある）
     if (!name || !value || !WORLD_CMP_RELS.includes(rel)) return null;
     if (!(ratio > 0) || !isFinite(ratio)) return null;
-    return { name, value, rel, ratio };
+    return now ? { name, value, rel, ratio, now } : { name, value, rel, ratio };
   }
   function worldCmpOf(ev) {
     const r = worldCmpsState().cards.get(ev && ev.id ? ev.id : String(ev || ''));
@@ -27077,11 +27086,33 @@
     if (!st || !st.cards) return '';
     return '比べる相手 ' + Object.entries(st.rels).map(([k, v]) => (k === 'part' ? '全体の中の一部' : '前の額') + ' ' + v).join('・') + '。';
   }
+  // v20.67 見せ方 段3-2：時間の札は、数字2つと差だけ（0から伸ばす棒だと 2.891%→3.005% がほぼ同じ長さになる）
+  function worldCmpUnit(s) { const x = String(s || '').replace(/[,，\s]/g, ''); const m = /^-?[0-9]+(\.[0-9]+)?/.exec(x); return m ? x.slice(m[0].length) : null; }
+  function worldCmpDiffText(from, to) {
+    const uf = worldCmpUnit(from), ut = worldCmpUnit(to);
+    if (uf === null || ut === null || uf !== ut) return '';
+    const a = worldLevelNum(from), b = worldLevelNum(to);
+    if (!isFinite(a) || !isFinite(b)) return '';
+    const d = b - a;
+    const r = Math.abs(d) < 1 ? String(Math.round(d * 1000) / 1000) : String(Math.round(d * 100) / 100);
+    const sign = d > 0 ? '+' : '';
+    return '（' + sign + r + (uf === '%' || uf === '％' ? '' : uf) + '）';
+  }
+  function worldCmpPairInsert(box, ev, c) {
+    if (!c || !c.now) return;
+    const wrap = document.createElement('div'); wrap.className = 'worldTimePair';
+    wrap.appendChild(document.createTextNode(c.name + ' ' + c.value + ' → '));
+    const now = document.createElement('span'); now.className = 'wtpNow'; now.textContent = c.now;
+    wrap.appendChild(now);
+    const df = worldCmpDiffText(c.value, c.now);
+    if (df) wrap.appendChild(document.createTextNode(df));
+    box.appendChild(wrap);
+  }
   // 棒2本（前の額）。100倍を超えたら棒をやめて言葉にする
   function worldCmpBarInsert(box, ev, c) {
     if (!c) return;
     const f = ev.flow || {};
-    const now = worldStr(String(f.amount || ''), 40);
+    const now = worldStr(String(c.now || f.amount || ''), 40);   // v20.67：now があればそちら
     if (!now) return;
     const wrap = document.createElement('div'); wrap.className = 'worldSizeBar';
     const over = c.ratio > WORLD_CMP_RATIO_MAX || c.ratio < 1 / WORLD_CMP_RATIO_MAX;
