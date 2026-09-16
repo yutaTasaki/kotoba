@@ -1334,6 +1334,12 @@
   .worldMapBox.worldEdaMap .wmAimHead { fill: none; stroke: #e0a060; stroke-width: 2.2; }
   .worldMapBox.worldEdaMap .wmPlace { fill: #cfc8bb; stroke: #111; stroke-width: 1; }   /* v20.59 海峡などの場所の点（ひし形） */
   .worldMapBox.worldEdaMap .wmPlaceLabel { fill: #cfc8bb; font-size: 9px; paint-order: stroke; stroke: #111; stroke-width: 3px; stroke-linejoin: round; }
+  /* v20.64 見せ方 段2-1：大きさ（全体の中の一部）の帯 */
+  .worldSizeBar { margin: 8px 0 2px; }
+  .worldSizeBar .wsTrack { height: 10px; background: #1c1c1c; border: 1px solid var(--border); border-radius: 2px; overflow: hidden; }
+  .worldSizeBar .wsFill { height: 100%; background: var(--accent); opacity: 0.85; }
+  .worldSizeBar .wsText { margin-top: 3px; font-size: 12px; color: var(--text-dim); }
+  .worldSizeBar .wsPart { color: var(--text); }
   .worldMapBox.worldEdaMap .wmAimLabel { fill: #e8b27d; font-size: 10px; paint-order: stroke; stroke: #111; stroke-width: 3px; stroke-linejoin: round; }
   /* v20.4 M4 国の網 */
   .worldNetBox { position: relative; width: 100%; overflow: hidden; touch-action: pan-y; border: 1px solid var(--border); border-radius: 10px; background: #141414; user-select: none; -webkit-user-select: none; }
@@ -3194,7 +3200,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.63';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.64';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -23321,12 +23327,12 @@
     const s = worldSourceForUrl(ev.url);
     return (s && s.stance) || '';
   }
-  function worldFlowLine(f) {
+  function worldFlowLine(f, noTracked) {   // v20.64：帯を出す札では割合の文を出さない（同じことを2回言わない）
     return [f.from || '？', '→', f.to || '？', f.what ? '　' + f.what : '', f.amount ? ' ' + f.amount : '',
       // v15: 1回の拠出か累計かで意味がまるで違う。額の隣に必ず出す
       f.span ? '（期間：' + f.span + '）' : '',   // v20.26：「累計」は計画の額にも出て、実績に見えた
       // v19.3 追えた割合。残りを次に調べる手がかりにする
-      worldFlowTrackedText(f)].join(' ').replace(/\s+/g, ' ').trim();
+      noTracked ? '' : worldFlowTrackedText(f)].join(' ').replace(/\s+/g, ' ').trim();
   }
   // 「100億ドル超のうち35億ドル（35%）の行き先が分かった」
   function worldFlowTrackedText(f) {
@@ -26802,6 +26808,7 @@
     const lines = document.createElement('div'); lines.className = 'worldEdaLines';
     const note = document.createElement('span'); note.className = 'worldEdaNote';
     const aimRec = worldAimsState().cards.get(ev.id) || null;
+    let sizeM = null; try { sizeM = worldSizeModel(ev); } catch (e) { sizeM = null; }   // v20.64 見せ方 段2-1
     const aimRows = aimRec ? worldAimsLineRows(aimRec) : [];
     let moneyRow = null;
     const row = (key, cls, text) => {
@@ -26814,7 +26821,7 @@
     if (ev.flow) {
       const sfb = worldEvSelf(ev);
       const selfFlow = sfb ? ['from', 'to', 'what', 'amount'].filter((k) => sfb.by[k] === 'self').map((k) => FUDA_FIELD_LABEL[k]) : [];
-      const d = moneyRow = row(aimRows.length ? 'お金：' : '', '', WORLD_FLOW_KIND_MARK[ev.flow.kind || 'money'] + worldFlowLine(ev.flow) + (worldUsdText(ev) ? '　' + worldUsdText(ev) : '') + (selfFlow.length ? '　（' + selfFlow.join('・') + '：自分で入力）' : ''));
+      const d = moneyRow = row(aimRows.length ? 'お金：' : '', '', WORLD_FLOW_KIND_MARK[ev.flow.kind || 'money'] + worldFlowLine(ev.flow, !!sizeM) + (worldUsdText(ev) ? '　' + worldUsdText(ev) : '') + (selfFlow.length ? '　（' + selfFlow.join('・') + '：自分で入力）' : ''));
       d.appendChild(note);
     }
     aimRows.forEach((t) => row('効かせた：', 'aim', t));
@@ -26822,6 +26829,7 @@
     lines.hidden = !lines.children.length;
     mapBox.hidden = true;
     box.appendChild(mapBox);
+    worldSizeBarInsert(box, sizeM);   // v20.64 見せ方 段2-1：大きさの帯（地図が出ない札は、ここが空いている）
     box.appendChild(lines);
     if (!ev.flow && !(aimRec && aimRows.length)) return;
     if (worldViewOf(ev) !== WORLD_VIEW_PLACE) return;   // v20.62：地図は「場所が効く札」だけ（印が無い札にも出さない）
@@ -26857,6 +26865,7 @@
   // これから入る札はチャットが書く。今ある145枚は下書き（WORLD_VIEW_SEED）から読む。データには書かない。
   const WORLD_VIEWS_KEY = 'views';             // 調べた記録の月ファイルの並び（知らない並びは v20.48 から残る）
   const WORLD_VIEW_PLACE = 'place';
+  const WORLD_VIEW_SIZE = 'size';   // v20.64
   const WORLD_VIEW_KINDS = ['place', 'size', 'line', 'time', 'order', 'none'];
   const WORLD_VIEW_LABEL = { place: '場所', size: '大きさ', line: '構図', time: '時間', order: '順序', none: '文だけ' };
   const WORLD_VIEW_RULE_LINES =
@@ -26917,6 +26926,35 @@
   function worldViewImportNote(st) {
     if (!st || !st.cards) return '';
     return '見せ方 ' + Object.entries(st.kinds).map(([k, v]) => (WORLD_VIEW_LABEL[k] || k) + ' ' + v).join('・') + '。';
+  }
+
+  // ---- v20.64 見せ方 段2-1：大きさ（全体の中の一部）----------------------------
+  // 全体（total）と、その中を占める割合（share）が欄にある札だけ。新しいデータは足さない。
+  // 棒の長さは線形（長さ＝量そのもの）。相手（全体）の名前と値を必ず横に書く。
+  function worldSizeModel(ev) {
+    if (worldViewOf(ev) !== WORLD_VIEW_SIZE) return null;
+    const f = ev.flow || {};
+    const part = worldStr(String(f.amount || ''), 40), whole = worldStr(String(f.total || ''), 40);
+    const share = Number(f.share);
+    if (!part || !whole) return null;
+    if (!(share > 0) || share > 100) return null;
+    return { part, whole, share: Math.min(100, Math.max(1, Math.round(share))) };
+  }
+  function worldSizeBarInsert(box, m) {
+    if (!m) return;
+    const wrap = document.createElement('div'); wrap.className = 'worldSizeBar';
+    const track = document.createElement('div'); track.className = 'wsTrack';
+    const fill = document.createElement('div'); fill.className = 'wsFill';
+    fill.style.width = m.share + '%';
+    track.appendChild(fill);
+    wrap.appendChild(track);
+    const t = document.createElement('div'); t.className = 'wsText';
+    t.appendChild(document.createTextNode(m.whole + ' のうち '));
+    const p = document.createElement('span'); p.className = 'wsPart'; p.textContent = m.part;
+    t.appendChild(p);
+    t.appendChild(document.createTextNode('（' + m.share + '%）'));
+    wrap.appendChild(t);
+    box.appendChild(wrap);
   }
 
   // ---- v20.58 地図 直し②：効かせた相手（aims） ----------------------------------
