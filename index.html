@@ -1334,6 +1334,12 @@
   .worldMapBox.worldEdaMap .wmAimHead { fill: none; stroke: #e0a060; stroke-width: 2.2; }
   .worldMapBox.worldEdaMap .wmPlace { fill: #cfc8bb; stroke: #111; stroke-width: 1; }   /* v20.59 海峡などの場所の点（ひし形） */
   .worldMapBox.worldEdaMap .wmPlaceLabel { fill: #cfc8bb; font-size: 9px; paint-order: stroke; stroke: #111; stroke-width: 3px; stroke-linejoin: round; }
+  /* v20.65 見せ方 段2-2：同じ主体の前の額と比べる棒2本 */
+  .worldSizeBar .wsRow { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+  .worldSizeBar .wsRow .wsTrack { flex: 1; }
+  .worldSizeBar .wsRow .wsFill.prev { background: var(--text-dim); opacity: 0.6; }
+  .worldSizeBar .wsName { font-size: 12px; color: var(--text-dim); }
+  .worldSizeBar .wsName.now { color: var(--text); }
   /* v20.64 見せ方 段2-1：大きさ（全体の中の一部）の帯 */
   .worldSizeBar { margin: 8px 0 2px; }
   .worldSizeBar .wsTrack { height: 10px; background: #1c1c1c; border: 1px solid var(--border); border-radius: 2px; overflow: hidden; }
@@ -3200,7 +3206,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.64';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.65';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -18675,7 +18681,7 @@
     const known = worldKnownNames();
     const knownActors = worldKnownActorLines();
     const strataLines = worldStrataPromptLines();
-    const flowLines = worldRecentFlowLines();
+    // v20.65：最近のお金の動きの節を外したので、一覧は作らない
     // v19: 既知の概念が少ないうちは「既知から必ず探す」が成り立たない。件数で自動で切り替える
     const boot = worldConcepts().length < WORLD_CONCEPT_BOOTSTRAP;
     // v19.1：禁止例は concepts の行のすぐ次に置く（premise の項に離して置いたら読まれず、「ホルムズ海峡」が入った）
@@ -18904,12 +18910,9 @@
       '      悪い例：同じ出典で "amount":"100億ドル超","total":"" （全体を amount に書き、一部しか追えていないことが消える）\n' +
       '  strata：この金が動かした「地層」の id を0〜' + WORLD_FLOW_STRATA_MAX + '個。末尾の一覧にあるものだけ。\n' +
       '          例：介入 → 外貨準備が動く。\n' +
-      '  after：この動きの原因や前段に当たる動きがあれば、その id。\n' +
-      '         末尾の「最近のお金の動き」の id（w_…）か、\n' +
-      '         同じ JSON の前の出来事なら "#番号"（上から1、2…と数える）。\n' +
+      '  after：この動きの原因や前段に当たる動きが同じ JSON の中にあれば "#番号"（上から1、2…と数える）。\n' +
       '         自分より後ろの出来事は指さない。無ければ null。無理に繋がない。\n' +
-      // v19.15：別の出典から同じ動きを書き直し、after でその動き自身を指した札が2枚並んだ
-      '         末尾の「最近のお金の動き」にすでにある動きを、別の札として書き直さない。\n' +
+      // v19.15：同じ動きを別の札として書き直さない
       '         after に書くのは、その動きの前段（原因になった別の動き）だけで、同じ動きを指さない。\n' +
       '         例：1件目が「制裁で原油が中国へ流れた」、3件目が「その原油の代金が動いた」なら、\n' +
       '             3件目の after は "#1"。\n' +
@@ -18952,6 +18955,7 @@
       (seed ? '' : worldMikiPromptPart()) +   // v20.51 幹 段2：どの幹の枝か・候補・出発点
       (seed ? '' : worldAimsPromptPart()) +   // v20.58 地図 直し②：効かせた相手
       (seed ? '' : worldViewPromptPart()) +   // v20.62 見せ方 段1
+      (seed ? '' : worldCmpPromptPart()) +   // v20.65 見せ方 段2-2
       '■ 並べ方\n' +
       '重要だと思う順に並べる。上から読まれる。\n\n' +
       (seed ? '' : worldTodayPromptPart()) +   // v20.47：初期投入には付けない
@@ -18974,7 +18978,7 @@
       '  "wants":"...",\n' +
       '  "srcCadence":"quarter",\n' +
       '  "confidence":8,\n' +
-      '  "confidenceWhy":""' + (seed ? '' : ',\n  "follows":null' + worldMikiFormatEvent() + worldAimsFormatEvent() + worldViewFormatEvent()) + '\n' +   // v20.48・v20.51
+      '  "confidenceWhy":""' + (seed ? '' : ',\n  "follows":null' + worldMikiFormatEvent() + worldAimsFormatEvent() + worldViewFormatEvent() + worldCmpFormatEvent()) + '\n' +   // v20.48・v20.51
       '}]' + (seed ? '' : ',\n"same":[{"id":"w_...","fact":"...","why":"...","url":"https://..."}]' + worldMikiFormatTop()) +   // v20.48・v20.51
       (seed ? '' : ',\n"today":[{"ref":"#1","type":"詰まり","why":"..."}]') + (daily.length || filings.length
         ? ',\n"checked":[\n' + daily.map((d) => d.label).concat(filings.map(worldSecLabel)).map((l) => '  {"source":"' + l + '","opened":true,"picked":0,"note":""}').join(',\n') + '\n]'
@@ -18985,7 +18989,7 @@
       '動いたものが無い・書けないとき： "flow": null\n' +
       '前の動きの続きでないとき： "after": null\n' +
       (seed ? '' : '今日見るべきものが無いとき： "today": []\n') +   // v20.47
-      (seed ? '' : 'すでにある札と同じ出来事が無いとき： "same": []\nすでにある札の続きでないとき： "follows": null\n' + worldMikiFormatRules() + worldAimsFormatRules()) +   // v20.48・v20.51
+      (seed ? '' : 'すでにある札と同じ出来事が無いとき： "same": []\nすでにある札の続きでないとき： "follows": null\n' + worldMikiFormatRules() + worldAimsFormatRules() + worldCmpFormatRules()) +   // v20.48・v20.51
       '全部追えたとき・全体の金額が無いとき： "total": "", "share": null\n' +
       'confidence が' + (WORLD_CONF_WHY_BELOW + 1) + '以上のとき： "confidenceWhy": ""\n' +
       (daily.length || filings.length ? '毎回必ず見るもの' + (filings.length ? '・決算' : '') + 'から札にしなかったとき： "checked" は省かず "picked": 0\n' : '') +
@@ -19001,9 +19005,8 @@
       (known.length ? known.join(' / ') : '（まだありません）') + '\n\n' +
       '■ すでに知っているアクター（actors の name はここから探す。無ければ新しく書いてよい。name には先頭の名前だけを書き、［別名：…］は書かない。最大' + WORLD_KNOWN_ACTORS_MAX + '件）\n' +
       (knownActors.length ? knownActors.join(' / ') : '（まだありません）') + '\n\n' +
-      '■ 最近のお金の動き（after はこの id から選ぶ。ここに無い id を書かない。ここにある動きを別の札として書き直さない。［物］［人］は物と人の動き）\n' +
-      (flowLines.length ? flowLines.join('\n') : '（まだありません）') +
-      (seed ? '' : worldKnownCardsPart(flowLines) + worldMikiListPart());   // v20.48・v20.51：幹の一覧は一番後ろ
+      // v20.65 見せ方 段2-2：「最近のお金の動き」の節は外した（after は8本中2本しか合っておらず、2,053字を比べる相手に回す）
+      (seed ? '' : worldKnownCardsPart([]) + worldMikiListPart());   // v20.48・v20.51：幹の一覧は一番後ろ
   }
   // v20.48 重複 段1：すでにある札の一覧。取り込んだ日（札を作った日）が直近の札。非表示・初期投入・自分で作った札も含む。
   // 「最近のお金の動き」に出ている札は重ねない。数字はプロンプトに入れた後の状態としてここに控え、コピーの文に出す
@@ -20276,6 +20279,7 @@
     const mikiPend = { miki: [], start: [] };   // v20.51 幹 段2
     const aimsPend = [];   // v20.58 地図 直し②
     const viewPend = [];   // v20.62 見せ方 段1
+    const cmpPend = [];   // v20.65 見せ方 段2-2
 
     items.forEach((it, i) => {
       if (!it || typeof it !== 'object') { rejected.fact++; goneAt[i] = '本文なし'; return; }
@@ -20337,6 +20341,7 @@
       if (!seedRegion && !viaAsk && !selfMade) worldMikiCollect(it, ev, i, mikiPend);   // v20.51
       if (!seedRegion && !viaAsk && !selfMade && Array.isArray(it.aims)) aimsPend.push({ ev, raw: it.aims });   // v20.58
       if (!seedRegion && !viaAsk && !selfMade) { const vw = String((it && it.view) || '').trim(); if (WORLD_VIEW_KINDS.includes(vw)) viewPend.push({ ev, view: vw }); }   // v20.62
+      if (!seedRegion && !viaAsk && !selfMade) { const cp = worldCmpClean(it && it.cmp); if (cp) cmpPend.push({ ev, cmp: cp }); }   // v20.65
       const rawAfter = (it.flow && typeof it.flow === 'object' && it.flow.after != null) ? String(it.flow.after).trim() : '';
       if (ev.flow && rawAfter && rawAfter !== 'null') pendingAfter.push({ ev, raw: rawAfter, i });
       if (ev.eventDate < addDays(today, -WORLD_OLD_EVENT_DAYS)) old++;
@@ -20404,7 +20409,8 @@
     const importRec = seedRegion ? null : await worldRecordImport(parsed, pendingFollows, added, batchId);
     const mikiRec = (seedRegion || viaAsk || selfMade) ? null : worldMikiRecordImport(parsed, mikiPend, added, idAt, batchId);
     const aimsRec = aimsPend.length ? await worldAimsRecordImport(aimsPend, batchId) : null;   // v20.58 地図 直し②
-    const viewRec = viewPend.length ? worldViewRecordImport(viewPend, batchId) : null;   // v20.62 見せ方 段1   // v20.51（続報の記録の後に。候補の数え方が続報を見るため）
+    const viewRec = viewPend.length ? worldViewRecordImport(viewPend, batchId) : null;   // v20.62 見せ方 段1
+    const cmpRec = cmpPend.length ? worldCmpRecordImport(cmpPend, batchId) : null;   // v20.65 見せ方 段2-2   // v20.51（続報の記録の後に。候補の数え方が続報を見るため）
 
     if (added.length) {
       worldSaveConcepts();
@@ -20436,6 +20442,7 @@
       mikiRec, todayStartSkipped,   // v20.51
       aimsRec,   // v20.58
       viewRec,   // v20.62
+      cmpRec,   // v20.65
       added: added.length, rejected, old, forks, leans, droppedForks, onStrata, droppedStrata, unknownConcepts,
       createdConcepts, createdTerms, createdActors, batchId, linked, partnerIds: [...partnerIds],
       addedIds: added.map((e) => e.id),
@@ -26809,6 +26816,8 @@
     const note = document.createElement('span'); note.className = 'worldEdaNote';
     const aimRec = worldAimsState().cards.get(ev.id) || null;
     let sizeM = null; try { sizeM = worldSizeModel(ev); } catch (e) { sizeM = null; }   // v20.64 見せ方 段2-1
+    let cmpM = null;   // v20.65 見せ方 段2-2：欄の total が無いときだけ、チャットが書いた比べる相手を使う
+    try { if (!sizeM && worldViewOf(ev) === WORLD_VIEW_SIZE) cmpM = worldCmpOf(ev); } catch (e) { cmpM = null; }
     const aimRows = aimRec ? worldAimsLineRows(aimRec) : [];
     let moneyRow = null;
     const row = (key, cls, text) => {
@@ -26830,6 +26839,7 @@
     mapBox.hidden = true;
     box.appendChild(mapBox);
     worldSizeBarInsert(box, sizeM);   // v20.64 見せ方 段2-1：大きさの帯（地図が出ない札は、ここが空いている）
+    if (cmpM) worldCmpBarInsert(box, ev, cmpM);   // v20.65 見せ方 段2-2
     box.appendChild(lines);
     if (!ev.flow && !(aimRec && aimRows.length)) return;
     if (worldViewOf(ev) !== WORLD_VIEW_PLACE) return;   // v20.62：地図は「場所が効く札」だけ（印が無い札にも出さない）
@@ -26939,6 +26949,98 @@
     if (!part || !whole) return null;
     if (!(share > 0) || share > 100) return null;
     return { part, whole, share: Math.min(100, Math.max(1, Math.round(share))) };
+  }
+  // v20.65：比べる相手（cmp）。朝の取り込みでチャットが書く。記録は調べた記録の月ファイルの新しい並び cmps
+  const WORLD_CMPS_KEY = 'cmps';
+  const WORLD_CMP_RELS = ['part', 'prev'];
+  const WORLD_CMP_NAME_MAX = 30;
+  const WORLD_CMP_RATIO_MAX = 100;   // これを超えたら棒をやめて言葉にする
+  const WORLD_CMP_RULE_LINES =
+    '- 札の額が「何かと比べて大きいか小さいか」で意味が変わるとき、比べる相手を1つだけ書く。2つ以上は書かない。\n' +
+    '- **比べる相手は、その出典の中にある数字だけ。外から探してこない。**\n' +
+    '- rel は2つだけ。part＝この札の額が全体の一部（name と value に全体を書く）。prev＝同じ主体の前の額（前の回の同じ項目）。\n' +
+    '- ratio は「この札の額 ÷ 相手の額」。単位をそろえてから割る。part なら1より小さい。\n' +
+    '- name は相手が何かが分かる短い言葉（例：前年同期の設備投資、2026年度の概算要求）。value は出典の書き方のまま。\n' +
+    '- flow の total を書いたときは cmp を書かない（同じことになる）。比べる相手が出典に無いときは null。\n';
+  function worldCmpPromptPart() { return '■ 比べる相手（cmp）\n' + WORLD_CMP_RULE_LINES + '\n'; }
+  function worldCmpFormatEvent() { return ',\n  "cmp":{"name":"前年同期の設備投資","value":"396億4300万ドル","rel":"prev","ratio":2.03}'; }
+  function worldCmpFormatRules() { return '比べる相手が出典に無いとき： "cmp": null\n'; }
+  function worldCmpsRecs() {
+    const out = [];
+    wdig.docs.forEach((doc) => (Array.isArray(doc[WORLD_CMPS_KEY]) ? doc[WORLD_CMPS_KEY] : []).forEach((r) => { if (r && typeof r === 'object' && r.id && r.type) out.push(r); }));
+    return out.sort((p, q) => (p.at < q.at ? -1 : p.at > q.at ? 1 : p.id < q.id ? -1 : p.id > q.id ? 1 : 0));
+  }
+  function worldCmpsState() {
+    const recs = worldCmpsRecs();
+    const sig = recs.length + ':' + (recs.length ? recs[recs.length - 1].id : '');
+    if (worldCmpsState.cache && worldCmpsState.cache.sig === sig) return worldCmpsState.cache;
+    const cards = new Map();
+    recs.forEach((r) => { if (r.type === 'card' && WORLD_EVENT_ID_RE.test(String(r.card || ''))) cards.set(r.card, r); });
+    worldCmpsState.cache = { sig, cards };
+    return worldCmpsState.cache;
+  }
+  function worldCmpsAddRecs(recs) {
+    if (!recs.length) return;
+    digMutate((doc) => { doc[WORLD_CMPS_KEY] = (Array.isArray(doc[WORLD_CMPS_KEY]) ? doc[WORLD_CMPS_KEY] : []).concat(recs); });
+    worldCmpsState.cache = null;
+  }
+  // 返事を、出せる形に整える（出せないものは null）
+  function worldCmpClean(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const name = worldStr(String(raw.name || ''), WORLD_CMP_NAME_MAX);
+    const value = worldStr(String(raw.value || ''), WORLD_CMP_NAME_MAX);
+    const rel = String(raw.rel || '').trim();
+    const ratio = Number(raw.ratio);
+    if (!name || !value || !WORLD_CMP_RELS.includes(rel)) return null;
+    if (!(ratio > 0) || !isFinite(ratio)) return null;
+    return { name, value, rel, ratio };
+  }
+  function worldCmpOf(ev) {
+    const r = worldCmpsState().cards.get(ev && ev.id ? ev.id : String(ev || ''));
+    return r ? worldCmpClean(r) : null;
+  }
+  function worldCmpRecordImport(pend, batchId) {
+    const at = nowIso();
+    const recs = pend.map((p) => Object.assign({ id: digNewId('cp'), type: 'card', at, createdAt: at, updatedAt: at, card: p.ev.id, src: 'import', batchId }, p.cmp));
+    try { worldCmpsAddRecs(recs); } catch (e) { recordFeatureError('比べる相手の記録', e); return null; }
+    const n = {};
+    pend.forEach((p) => { n[p.cmp.rel] = (n[p.cmp.rel] || 0) + 1; });
+    return { cards: pend.length, rels: n };
+  }
+  function worldCmpImportNote(st) {
+    if (!st || !st.cards) return '';
+    return '比べる相手 ' + Object.entries(st.rels).map(([k, v]) => (k === 'part' ? '全体の中の一部' : '前の額') + ' ' + v).join('・') + '。';
+  }
+  // 棒2本（前の額）。100倍を超えたら棒をやめて言葉にする
+  function worldCmpBarInsert(box, ev, c) {
+    if (!c) return;
+    const f = ev.flow || {};
+    const now = worldStr(String(f.amount || ''), 40);
+    if (!now) return;
+    const wrap = document.createElement('div'); wrap.className = 'worldSizeBar';
+    const over = c.ratio > WORLD_CMP_RATIO_MAX || c.ratio < 1 / WORLD_CMP_RATIO_MAX;
+    if (over) {
+      const t2 = document.createElement('div'); t2.className = 'wsText';
+      const times = c.ratio >= 1 ? Math.round(c.ratio) + '倍' : (c.ratio * 100 < 1 ? (c.ratio * 100).toFixed(2) : (c.ratio * 100).toFixed(1)) + '%';
+      t2.textContent = c.name + ' ' + c.value + ' の ' + times + '（差が大きいので棒にしていません）';
+      wrap.appendChild(t2);
+      box.appendChild(wrap);
+      return;
+    }
+    const big = Math.max(1, c.ratio);
+    const rows = [[now, c.ratio / big, true], [c.name + ' ' + c.value, 1 / big, false]];
+    rows.forEach(([label, w, isNow]) => {
+      const row = document.createElement('div'); row.className = 'wsRow';
+      const track = document.createElement('div'); track.className = 'wsTrack';
+      const fill = document.createElement('div'); fill.className = 'wsFill' + (isNow ? '' : ' prev');
+      fill.style.width = Math.min(100, Math.max(1, Math.round(w * 100))) + '%';
+      track.appendChild(fill); row.appendChild(track);
+      const nm = document.createElement('span'); nm.className = 'wsName' + (isNow ? ' now' : '');
+      nm.textContent = label;
+      row.appendChild(nm);
+      wrap.appendChild(row);
+    });
+    box.appendChild(wrap);
   }
   function worldSizeBarInsert(box, m) {
     if (!m) return;
@@ -29215,6 +29317,7 @@
     if (res.mikiRec) msg += '　' + worldMikiImportNote(res.mikiRec);   // v20.51
     if (res.aimsRec) msg += '　' + worldAimsImportNote(res.aimsRec);   // v20.58
     if (res.viewRec) msg += '　' + worldViewImportNote(res.viewRec);   // v20.62
+    if (res.cmpRec) msg += '　' + worldCmpImportNote(res.cmpRec);   // v20.65
     if (res.todayStartSkipped) msg += '　※ 根の札 ' + res.todayStartSkipped + '件は今日見るべき件から外しました。';
     worldState.lastImportRecId = res.importRec ? res.importRec.id : '';
     worldState.sameOpen = '';
