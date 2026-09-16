@@ -3194,7 +3194,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.62';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.63';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -26604,6 +26604,33 @@
     worldEdaShapeCache = [c].concat(worldEdaShapeCache).slice(0, WORLD_EDA_SHAPE_KEEP);
     return c;
   }
+  // ---- v20.63：関わる場所に合わせて拡大する ----
+  const WORLD_EDA_ZOOM_MAX = 6;        // これ以上は拡大しない（110m の形が粗くなる）
+  const WORLD_EDA_ZOOM_MIN = 1.2;      // これ未満なら拡大しない（世界全体のまま）
+  const WORLD_EDA_ZOOM_FILL = 0.6;     // 関わる点の四角が枠のどれだけを占めるか（残りが余白。上下左右に2割ずつ）
+  // 関わる点（国・海峡・本部）が収まる四角に余白を足し、その範囲が枠いっぱいになる倍率を出す。
+  // 国の形は幅ごとに1回だけ作ったものを使い回し、拡大は SVG の transform でかける（作り直さない）。
+  function worldEdaView(m, S, W, H) {
+    const cs = (m.dots || []).concat(m.places || []);
+    const ps = [];
+    cs.forEach((c) => { const ll = S.lib.anchors.get(c); if (ll) ps.push(S.proj(ll)); });
+    if (!ps.length) return { k: 1, tx: 0, ty: 0, span: null };
+    const xs = ps.map((p) => p[0]), ys = ps.map((p) => p[1]);
+    let x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs);
+    let y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
+    const sw = x1 - x0, sh = y1 - y0;
+    // 関わる点の四角が枠の6割に収まる倍率。点が1つ・2つで近いときは上限まで寄る
+    let k = Math.min(sw > 0.5 ? (W * WORLD_EDA_ZOOM_FILL) / sw : WORLD_EDA_ZOOM_MAX, sh > 0.5 ? (H * WORLD_EDA_ZOOM_FILL) / sh : WORLD_EDA_ZOOM_MAX);
+    if (!(k > 0) || !isFinite(k)) k = 1;
+    k = Math.min(k, WORLD_EDA_ZOOM_MAX);
+    if (k < WORLD_EDA_ZOOM_MIN) return { k: 1, tx: 0, ty: 0, span: null };
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    // 端の札で地図の外の余白が見えないよう、世界の中に収める
+    const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+    const tx = clamp(W / 2 - cx * k, W * (1 - k), 0);
+    const ty = clamp(H / 2 - cy * k, H * (1 - k), 0);
+    return { k, tx, ty, span: { w: W / k, h: H / k } };
+  }
   // 札1枚の地図の中身。場所の決め方は地図タブと同じ。描く物が無ければ empty
   function worldEdaModel(ev, lib) {
     // v20.62：地図は「場所が効く札」だけ。枠（市場・国の集まり）が相手のときは、点の横の文字も出さない（相手の名前は下の1行に出る）
@@ -26681,10 +26708,14 @@
     const mkAim = worldSvg('marker', { id: 'wmEdaAimEnd', viewBox: '0 0 10 10', refX: '8', refY: '5', markerUnits: 'userSpaceOnUse', markerWidth: '10', markerHeight: '10', orient: 'auto' }, defs);   // v20.58「⊣」
     worldSvg('path', { d: 'M8,0 L8,10', class: 'wmAimHead' }, mkAim);
     const mapArea = worldSvg('svg', { x: 0, y: 0, width: W, height: S.H, viewBox: '0 0 ' + W + ' ' + S.H, overflow: 'hidden', class: 'wmViewport' }, svg);
+    const view = worldEdaView(m, S, W, S.H);   // v20.63：関わる場所に合わせて拡大
     const land = S.tpl.cloneNode(true);
-    mapArea.appendChild(land);
+    if (view.k !== 1) {
+      const gz = worldSvg('g', { transform: 'translate(' + view.tx.toFixed(2) + ',' + view.ty.toFixed(2) + ') scale(' + view.k.toFixed(4) + ')' }, mapArea);
+      gz.appendChild(land);
+    } else mapArea.appendChild(land);
     m.dots.forEach((c) => { const p = land.querySelector('path[data-a3="' + c + '"]'); if (p) p.classList.add('on'); });
-    const pt = (c) => { const ll = lib.anchors.get(c); return ll ? S.proj(ll) : null; };
+    const pt = (c) => { const ll = lib.anchors.get(c); if (!ll) return null; const p = S.proj(ll); return p ? [p[0] * view.k + view.tx, p[1] * view.k + view.ty] : null; };
     const r = m.row;
     const usd = r && (!r.flow.kind || r.flow.kind === 'money') ? worldUsdOf(r.rep || r) : null;
     if (m.line) {
