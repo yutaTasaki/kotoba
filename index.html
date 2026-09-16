@@ -1333,8 +1333,6 @@
   .worldMapBox.worldEdaMap .wmAim { fill: none; stroke: #e0a060; stroke-width: 1.6; opacity: 0.9; }
   .worldMapBox.worldEdaMap .wmAimHead { fill: none; stroke: #e0a060; stroke-width: 2.2; }
   .worldMapBox.worldEdaMap .wmPlace { fill: #cfc8bb; stroke: #111; stroke-width: 1; }   /* v20.59 海峡などの場所の点（ひし形） */
-  .worldMapBox.worldEdaMap .wmSideLabel { fill: var(--accent); font-size: 9px; paint-order: stroke; stroke: #111; stroke-width: 3px; stroke-linejoin: round; }   /* v20.61：場所の無い枠は点の横の文字 */
-  .worldMapBox.worldEdaMap .wmSideLabel.aim { fill: #e8b27d; }
   .worldMapBox.worldEdaMap .wmPlaceLabel { fill: #cfc8bb; font-size: 9px; paint-order: stroke; stroke: #111; stroke-width: 3px; stroke-linejoin: round; }
   .worldMapBox.worldEdaMap .wmAimLabel { fill: #e8b27d; font-size: 10px; paint-order: stroke; stroke: #111; stroke-width: 3px; stroke-linejoin: round; }
   /* v20.4 M4 国の網 */
@@ -3196,7 +3194,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.61';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.62';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -18947,6 +18945,7 @@
       (seed ? '' : worldSamePromptPart()) +   // v20.48：初期投入には付けない
       (seed ? '' : worldMikiPromptPart()) +   // v20.51 幹 段2：どの幹の枝か・候補・出発点
       (seed ? '' : worldAimsPromptPart()) +   // v20.58 地図 直し②：効かせた相手
+      (seed ? '' : worldViewPromptPart()) +   // v20.62 見せ方 段1
       '■ 並べ方\n' +
       '重要だと思う順に並べる。上から読まれる。\n\n' +
       (seed ? '' : worldTodayPromptPart()) +   // v20.47：初期投入には付けない
@@ -18969,7 +18968,7 @@
       '  "wants":"...",\n' +
       '  "srcCadence":"quarter",\n' +
       '  "confidence":8,\n' +
-      '  "confidenceWhy":""' + (seed ? '' : ',\n  "follows":null' + worldMikiFormatEvent() + worldAimsFormatEvent()) + '\n' +   // v20.48・v20.51
+      '  "confidenceWhy":""' + (seed ? '' : ',\n  "follows":null' + worldMikiFormatEvent() + worldAimsFormatEvent() + worldViewFormatEvent()) + '\n' +   // v20.48・v20.51
       '}]' + (seed ? '' : ',\n"same":[{"id":"w_...","fact":"...","why":"...","url":"https://..."}]' + worldMikiFormatTop()) +   // v20.48・v20.51
       (seed ? '' : ',\n"today":[{"ref":"#1","type":"詰まり","why":"..."}]') + (daily.length || filings.length
         ? ',\n"checked":[\n' + daily.map((d) => d.label).concat(filings.map(worldSecLabel)).map((l) => '  {"source":"' + l + '","opened":true,"picked":0,"note":""}').join(',\n') + '\n]'
@@ -20270,6 +20269,7 @@
     const pendingAfter = [];
     const mikiPend = { miki: [], start: [] };   // v20.51 幹 段2
     const aimsPend = [];   // v20.58 地図 直し②
+    const viewPend = [];   // v20.62 見せ方 段1
 
     items.forEach((it, i) => {
       if (!it || typeof it !== 'object') { rejected.fact++; goneAt[i] = '本文なし'; return; }
@@ -20330,6 +20330,7 @@
       { const rawF = (typeof it.follows === 'string' || typeof it.follows === 'number') ? String(it.follows).trim() : ''; if (rawF && rawF !== 'null') pendingFollows.push({ ev, raw: rawF }); }   // v20.48
       if (!seedRegion && !viaAsk && !selfMade) worldMikiCollect(it, ev, i, mikiPend);   // v20.51
       if (!seedRegion && !viaAsk && !selfMade && Array.isArray(it.aims)) aimsPend.push({ ev, raw: it.aims });   // v20.58
+      if (!seedRegion && !viaAsk && !selfMade) { const vw = String((it && it.view) || '').trim(); if (WORLD_VIEW_KINDS.includes(vw)) viewPend.push({ ev, view: vw }); }   // v20.62
       const rawAfter = (it.flow && typeof it.flow === 'object' && it.flow.after != null) ? String(it.flow.after).trim() : '';
       if (ev.flow && rawAfter && rawAfter !== 'null') pendingAfter.push({ ev, raw: rawAfter, i });
       if (ev.eventDate < addDays(today, -WORLD_OLD_EVENT_DAYS)) old++;
@@ -20396,7 +20397,8 @@
     // v20.48 重複 段1：same（札にしなかった出来事）と follows（続き）。初期投入には付けない
     const importRec = seedRegion ? null : await worldRecordImport(parsed, pendingFollows, added, batchId);
     const mikiRec = (seedRegion || viaAsk || selfMade) ? null : worldMikiRecordImport(parsed, mikiPend, added, idAt, batchId);
-    const aimsRec = aimsPend.length ? await worldAimsRecordImport(aimsPend, batchId) : null;   // v20.58 地図 直し②   // v20.51（続報の記録の後に。候補の数え方が続報を見るため）
+    const aimsRec = aimsPend.length ? await worldAimsRecordImport(aimsPend, batchId) : null;   // v20.58 地図 直し②
+    const viewRec = viewPend.length ? worldViewRecordImport(viewPend, batchId) : null;   // v20.62 見せ方 段1   // v20.51（続報の記録の後に。候補の数え方が続報を見るため）
 
     if (added.length) {
       worldSaveConcepts();
@@ -20427,6 +20429,7 @@
       importRec,   // v20.48
       mikiRec, todayStartSkipped,   // v20.51
       aimsRec,   // v20.58
+      viewRec,   // v20.62
       added: added.length, rejected, old, forks, leans, droppedForks, onStrata, droppedStrata, unknownConcepts,
       createdConcepts, createdTerms, createdActors, batchId, linked, partnerIds: [...partnerIds],
       addedIds: added.map((e) => e.id),
@@ -26575,7 +26578,6 @@
 
   // ---- v20.56 地図 段1：札の画面の地図（その札だけ・期間の制限なし） ----
   const WORLD_EDA_RATIO = 2.055;       // 世界全体の図の 幅÷高さ（地図の部品を読む前に場所を空けておくため）
-  const WORLD_EDA_SIDE_MAX = 12;       // v20.61：点の横に出す名前の字数
   const WORLD_EDA_SHAPE_KEEP = 2;      // 覚えておく国の形（幅ごと）
   let worldEdaShapeCache = [];
   let worldEdaLibReady = false;        // v20.57：地図の部品を読み終わったか（読む前だけ地図の場所を空けておく）
@@ -26604,29 +26606,20 @@
   }
   // 札1枚の地図の中身。場所の決め方は地図タブと同じ。描く物が無ければ empty
   function worldEdaModel(ev, lib) {
-    // v20.61：場所の無い枠（市場・国の集まり）は、線にも箱にもせず、相手の点の横の文字（sides）にする
-    const out = { kind: '', line: null, dots: [], places: [], sides: [], domestic: '', root: '', row: null, note: '', empty: false, aims: [] };
+    // v20.62：地図は「場所が効く札」だけ。枠（市場・国の集まり）が相手のときは、点の横の文字も出さない（相手の名前は下の1行に出る）
+    const out = { kind: '', line: null, dots: [], places: [], domestic: '', root: '', row: null, note: '', empty: false, aims: [] };
     const isSlot = (c) => WORLD_MAP_SLOTS.includes(c);
     const add = (c) => {
       if (isSlot(c)) return;   // 枠は点にしない
       if (worldIsPlacePoint(c)) { if (!out.places.includes(c)) out.places.push(c); }   // v20.59
       else if (worldIsCountry(c, lib) && !out.dots.includes(c)) out.dots.push(c);
     };
-    // 片方だけが枠なら、もう片方の点の横に「→ 国債市場」（出る・入るの向きだけ）
-    const addSide = (ca, cb, na, nb, kind) => {
-      const slotIsB = isSlot(cb);
-      const at = slotIsB ? ca : cb;
-      if (isSlot(at) || !at) return false;
-      add(at);
-      out.sides.push({ at, name: worldStr(String((slotIsB ? nb : na) || ''), 40), dir: slotIsB ? 'out' : 'in', kind });
-      return true;
-    };
     // v20.58：効かせた線（確度3以下の札は描かない。お金の線と同じ決まり）
     const addAims = () => {
       if (worldIsLowConf(ev)) return;
       const sp = worldAimsFor(ev.id, lib);
       (sp ? sp.aims : []).forEach((x) => {
-        if (isSlot(x.fromCode) || isSlot(x.toCode)) { addSide(x.fromCode, x.toCode, x.from, x.to, 'aim'); return; }   // v20.61
+        if (isSlot(x.fromCode) || isSlot(x.toCode)) return;   // v20.62：枠が相手の組は地図に出さない
         out.aims.push(x); add(x.fromCode); add(x.toCode);
       });
     };
@@ -26647,9 +26640,11 @@
       out.kind = 'low';
       out.note = '（確度3以下なので線にしていません）';
     } else if (a && b && a !== b && (isSlot(a) || isSlot(b))) {
-      // v20.61：片方が枠。もう片方が枠か場所不明なら、地図は出さない
-      out.kind = addSide(a, b, r.flow.from, r.flow.to, 'money') ? 'side' : 'slotOnly';
-      if (out.kind === 'slotOnly') out.note = '（どちらも場所が決まらない）';
+      // v20.62：片方が枠。線にも点の横の文字にもしない（相手の名前は下の1行に出る）
+      const at = isSlot(b) ? a : b;
+      if (at && !isSlot(at)) add(at);
+      out.kind = 'slotOnly';
+      out.note = '（相手の場所が決まらない：' + worldStr(String((isSlot(b) ? r.flow.to : r.flow.from) || '？'), 30) + '）';
     } else if (a && b && a !== b) {
       out.kind = 'line'; out.line = [a, b]; add(a); add(b);
     } else if (a && b) {
@@ -26758,21 +26753,6 @@
       worldSvg('circle', { cx: p[0].toFixed(1), cy: p[1].toFixed(1), r: 3.5, class: 'wmDot' }, svg);
       if (c === m.domestic) { const t = worldSvg('text', { x: (p[0] + 6).toFixed(1), y: (p[1] - 5).toFixed(1), class: 'wmLabel' }, svg); t.textContent = '国内'; }
     });
-    // v20.61：場所の無い枠は、点の横に「→ 国債市場」（線は引かない）
-    {
-      const used = new Map();
-      (m.sides || []).forEach((x) => {
-        const p = pt(x.at);
-        if (!p) return;
-        const k = x.at;
-        const n = used.get(k) || 0; used.set(k, n + 1);
-        const left = p[0] > W - 100;   // 右端に近ければ左に出す
-        const t = worldSvg('text', { x: (p[0] + (left ? -7 : 7)).toFixed(1), y: (p[1] + 3 + n * 11).toFixed(1), class: 'wmSideLabel' + (x.kind === 'aim' ? ' aim' : ''), 'text-anchor': left ? 'end' : 'start' }, svg);
-        // 矢印は、点から離れる向き＝出る／点へ向かう向き＝入る。左に出すときは向きを逆にする
-        const nm = worldEdaSideName(x.name);
-        t.textContent = left ? (x.dir === 'out' ? nm + ' ←' : nm + ' →') : (x.dir === 'out' ? '→ ' + nm : '← ' + nm);
-      });
-    }
     // v20.59：場所の点（ひし形と名前）
     (m.places || []).forEach((c) => {
       const p = pt(c);
@@ -26783,14 +26763,6 @@
       const t = worldSvg('text', { x: (x + 7).toFixed(1), y: (y + 3).toFixed(1), class: 'wmPlaceLabel' }, svg);
       t.textContent = worldPlacePointLabel(c);
     });
-  }
-  // v20.61：点の横に出す相手の名前（12字まで。括弧の前で切る。全部は下の1行に出る）
-  function worldEdaSideName(name) {
-    let t = String(name || '').trim();
-    const i = t.search(/[（(]/);
-    if (i > 0) t = t.slice(0, i).trim();
-    const cs = [...t];
-    return cs.length > WORLD_EDA_SIDE_MAX ? cs.slice(0, WORLD_EDA_SIDE_MAX).join('') + '…' : t;
   }
   // なぜ の下に置く。文字を先に出し、地図は部品を読んでから入れる
   // v20.57 直し①：地図を出すのは線が描ける札だけ。v20.58 直し②：効かせた線も線に数え、1行は「お金：」「効かせた：」に分ける
@@ -26821,6 +26793,7 @@
     box.appendChild(mapBox);
     box.appendChild(lines);
     if (!ev.flow && !(aimRec && aimRows.length)) return;
+    if (worldViewOf(ev) !== WORLD_VIEW_PLACE) return;   // v20.62：地図は「場所が効く札」だけ（印が無い札にも出さない）
     // 部品をまだ読んでいないときだけ場所を空けておく（読んだ後は、画面に出る前に入れるかどうかが決まる）
     if (!worldEdaLibReady) { mapBox.hidden = false; mapBox.style.aspectRatio = String(WORLD_EDA_RATIO); }
     worldLoadMapLib().then((lib) => {
@@ -26835,7 +26808,7 @@
         if (key) key.textContent = 'お金（' + name + 'の中）：';
         else { const k = document.createElement('span'); k.className = 'weKey'; k.textContent = name + 'の中：'; moneyRow.insertBefore(k, moneyRow.firstChild); }
       }
-      if (m.empty || (!m.line && !m.aims.length && !(m.sides || []).length)) { mapBox.hidden = true; mapBox.style.aspectRatio = ''; return; }
+      if (m.empty || (!m.line && !m.aims.length)) { mapBox.hidden = true; mapBox.style.aspectRatio = ''; return; }   // v20.62：点の横の文字は数えない
       mapBox.hidden = false;
       worldDrawEdaMap(mapBox, lib, m);
     }).catch(() => {
@@ -26846,6 +26819,73 @@
       const p = document.createElement('p'); p.className = 'fieldNote'; p.textContent = '地図を読み込めませんでした';
       mapBox.appendChild(p);
     });
+  }
+
+  // ---- v20.62 見せ方 段1：札ごとの「見せ方」の印（view） ----------------------------
+  // 地図を出すかどうかを「乗せられるか」ではなく「その札で場所が効くか」で決める。
+  // これから入る札はチャットが書く。今ある145枚は下書き（WORLD_VIEW_SEED）から読む。データには書かない。
+  const WORLD_VIEWS_KEY = 'views';             // 調べた記録の月ファイルの並び（知らない並びは v20.48 から残る）
+  const WORLD_VIEW_PLACE = 'place';
+  const WORLD_VIEW_KINDS = ['place', 'size', 'line', 'time', 'order', 'none'];
+  const WORLD_VIEW_LABEL = { place: '場所', size: '大きさ', line: '構図', time: '時間', order: '順序', none: '文だけ' };
+  const WORLD_VIEW_RULE_LINES =
+    '- 札ごとに、何を見せれば読む助けになるかを1つ選ぶ。\n' +
+    '  place ＝ どこからどこへ動いたかが効く（制裁・貿易・輸送・避難・海峡・パイプライン）\n' +
+    '  size ＝ 額や量が、何かと比べて大きいか小さいかが効く（自社株買い・支援額・設備投資・予算）\n' +
+    '  line ＝ 誰と誰がどちら側に並んだかが効く（賛否の票・加盟・共同声明）\n' +
+    '  time ＝ 前の値から今の値への移りが効く（金利・物価・保有高・生産量）\n' +
+    '  order ＝ 前の動き → この札 → 次の動き の鎖が効く（報復の応酬・制裁の積み重ね）\n' +
+    '  none ＝ 文だけで足りる\n' +
+    '- 迷ったら place 以外にする。世界地図を出しても読む助けにならない札の方が多い。\n' +
+    '- 国と国の間で物や人が動いた札でも、効くのが量の比べなら size、移りなら time。\n';
+  function worldViewPromptPart() { return '■ 見せ方（view）\n' + WORLD_VIEW_RULE_LINES + '\n'; }
+  function worldViewFormatEvent() { return ',\n  "view":"place"'; }
+  // 下書き（145枚。1枚ずつ読んで付けた。chousa/2026-09-16_misekata_bunrui.md）
+  const WORLD_VIEW_SEED_RAW = '20201008_786962:order 20250213_1:size 20250604_1:line 20251003_1:size 20251117_1:line 20260114_1:size 20260427_1:size 20260414_1:place 20260625_1:size 20260625_2:size 20260616_1:time 20260626_1:size 20260629_1:size 20260625_3:time 20260625_4:time 20260618_1:time 20260625_5:size 20260708_1:size 20260716_1:size 20260729_1:line 20260729_2:size 20260715_1:none 20260701_1:none 20260706_1:size 20260717_1:size 20260723_1:order 20260706_2:time 20260720_1:size 20260724_1:time 20260731_1:time 20260730_1:size 20260722_1:time 20260728_1:size 20260723_2:size 20260716_2:size 20260729_3:size 20260731_2:size 20260812_1:order 20260804_1:size 20260826_1:place 20260821_1:place 20260824_1:size 20260831_1:place 20260827_1:place 20260820_1:place 20260814_1:size 20260808_1:size 20260820_2:time 20260831_2:size 20260821_2:size 20260826_2:place 20260824_2:order 20260831_3:size 20260831_4:size 20260804_2:size 20260811_1:time 20260805_1:size 20260826_3:size 20260804_3:size 20260830_1:size 20260804_4:size 20260831_5:time 20260804_5:size 20260804_6:size 20260910_1:time 20260907_1:time 20260910_2:place 20260910_3:time 20260902_1:time 20260906_1:size 20260907_2:time 20260908_1:order 20260906_2:line 20260909_1:line 20260909_2:time 20260904_1:size 20260903_1:time 20260910_4:time 20260907_3:time 20260909_3:size 20260908_2:order 20260908_3:order 20260902_2:place 20260909_4:time 20260901_1:time 20260909_5:size 20260907_4:time 20260901_2:none 20260901_3:time 20260906_3:place 20260911_1:time 20260910_5:time 20260904_2:size 20260909_6:time 20260904_3:none 20260911_2:place 20260910_6:time 20260910_7:time 20260910_8:line 20260911_3:place 20260910_9:time 20260910_10:time 20260910_11:time 20260909_7:time 20260911_4:place 20260911_5:line 20260911_6:size 20260906_4:size 20260907_5:size 20260908_4:size 20260910_12:time 20260911_7:line 20260911_8:place 20260911_9:order 20260910_13:time 20260904_4:place 20260901_4:size 20260911_10:time 20260911_11:time 20260911_12:place 20260910_14:place 20260911_13:place 20260910_15:size 20260907_6:time 20260910_16:place 20260912_1:line 20260911_14:size 20260910_17:line 20260911_946052:place 20260911_724867:size 20260913_536879:time 20260910_893367:size 20260908_910785:size 20260913_454637:place 20260914_832810:time 20260911_355336:size 20260914_851257:size 20260909_214114:none 20260910_686466:place 20260908_808545:line 20260914_444584:order 20260914_856219:time 20260909_895066:order 20260909_415146:time 20260912_958275:order';
+  function worldViewSeed() {
+    if (worldViewSeed.mem) return worldViewSeed.mem;
+    const m = {};
+    WORLD_VIEW_SEED_RAW.split(' ').forEach((p) => { const i = p.lastIndexOf(':'); if (i > 0) m['w_' + p.slice(0, i)] = p.slice(i + 1); });
+    worldViewSeed.mem = m;
+    return m;
+  }
+  function worldViewsRecs() {
+    const out = [];
+    wdig.docs.forEach((doc) => (Array.isArray(doc[WORLD_VIEWS_KEY]) ? doc[WORLD_VIEWS_KEY] : []).forEach((r) => { if (r && typeof r === 'object' && r.id && r.type) out.push(r); }));
+    return out.sort((p, q) => (p.at < q.at ? -1 : p.at > q.at ? 1 : p.id < q.id ? -1 : p.id > q.id ? 1 : 0));
+  }
+  function worldViewsState() {
+    const recs = worldViewsRecs();
+    const sig = recs.length + ':' + (recs.length ? recs[recs.length - 1].id : '');
+    if (worldViewsState.cache && worldViewsState.cache.sig === sig) return worldViewsState.cache;
+    const cards = new Map();
+    recs.forEach((r) => { if (r.type === 'card' && WORLD_EVENT_ID_RE.test(String(r.card || ''))) cards.set(r.card, r); });
+    worldViewsState.cache = { sig, cards };
+    return worldViewsState.cache;
+  }
+  function worldViewsRec(type, fields) { const at = nowIso(); return Object.assign({ id: digNewId('vw'), type, at, createdAt: at, updatedAt: at }, fields); }
+  function worldViewsAddRecs(recs) {
+    if (!recs.length) return;
+    digMutate((doc) => { doc[WORLD_VIEWS_KEY] = (Array.isArray(doc[WORLD_VIEWS_KEY]) ? doc[WORLD_VIEWS_KEY] : []).concat(recs); });
+    worldViewsState.cache = null;
+  }
+  // 記録 → 下書き → 空（空なら地図を出さない）
+  function worldViewOf(ev) {
+    const id = ev && ev.id ? ev.id : String(ev || '');
+    const r = worldViewsState().cards.get(id);
+    const v = r ? String(r.view || '') : (worldViewSeed()[id] || '');
+    return WORLD_VIEW_KINDS.includes(v) ? v : '';
+  }
+  function worldViewRecordImport(pend, batchId) {
+    const recs = pend.map((p) => worldViewsRec('card', { card: p.ev.id, view: p.view, src: 'import', batchId }));
+    try { worldViewsAddRecs(recs); } catch (e) { recordFeatureError('見せ方の記録', e); return null; }
+    const n = {};
+    pend.forEach((p) => { n[p.view] = (n[p.view] || 0) + 1; });
+    return { cards: pend.length, kinds: n };
+  }
+  function worldViewImportNote(st) {
+    if (!st || !st.cards) return '';
+    return '見せ方 ' + Object.entries(st.kinds).map(([k, v]) => (WORLD_VIEW_LABEL[k] || k) + ' ' + v).join('・') + '。';
   }
 
   // ---- v20.58 地図 直し②：効かせた相手（aims） ----------------------------------
@@ -29105,6 +29145,7 @@
     if (res.importRec) msg += '　' + worldImportRecNote(res.importRec);   // v20.48
     if (res.mikiRec) msg += '　' + worldMikiImportNote(res.mikiRec);   // v20.51
     if (res.aimsRec) msg += '　' + worldAimsImportNote(res.aimsRec);   // v20.58
+    if (res.viewRec) msg += '　' + worldViewImportNote(res.viewRec);   // v20.62
     if (res.todayStartSkipped) msg += '　※ 根の札 ' + res.todayStartSkipped + '件は今日見るべき件から外しました。';
     worldState.lastImportRecId = res.importRec ? res.importRec.id : '';
     worldState.sameOpen = '';
