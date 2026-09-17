@@ -1186,6 +1186,10 @@
   .kjPickMain { font-size: 14px; line-height: 1.5; }
   .kjAgain { font-size: 12px; margin-top: 6px; }
   .kjCopyRow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 6px 0; }
+  .kjMag { border-top: 1px dashed var(--text-faint); margin-top: 10px; padding-top: 6px; }
+  .kjMag input, #worldMagsBody input { width: 100%; box-sizing: border-box; margin: 4px 0; }
+  .kjMagRow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; margin: 4px 0; font-size: 13px; }
+  .kjMagRow a { color: var(--accent); font-size: 12px; }
   .kjBody { white-space: pre-wrap; word-break: break-word; font: inherit; font-size: 13px; line-height: 1.7; }
   .katariSec .ktOmo { border-left: 2px dashed var(--guess); padding-left: 8px; margin: 6px 0; font-size: 13px; line-height: 1.6; }
   .katariSec .ktSub { font-size: 12px; color: var(--text-dim); }
@@ -2672,6 +2676,17 @@
       </div>
     </div>
 
+    <!-- v20.77：マガジンの一覧（テーマ別。記事はチャットが判断して入る） -->
+    <div class="editorBody" id="worldMagsView" hidden>
+      <div class="worldSectionHead">
+        <h3 style="margin:0;">マガジン</h3>
+      </div>
+      <div id="worldMagsBody"></div>
+      <div class="field">
+        <button type="button" id="btnWorldMagsBack" class="secondaryBtn">戻る</button>
+      </div>
+    </div>
+
     <!-- v20.43：自分で調べたことの一覧（戻した新しい順）。押すと元の札を開く -->
     <div class="editorBody" id="worldDigView" hidden>
       <div class="worldSectionHead">
@@ -3274,7 +3289,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.76';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.77';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -4082,7 +4097,7 @@
   function idCollisionHead(kind, o) {
     const t = kind === 'event' ? o.fact : kind === 'forecast' ? (o.actor || '') + '：' + (o.what || '')
       : (kind === 'concept' || kind === 'term' || kind === 'actor') ? o.name
-      : kind === 'dig' ? o.question : kind === 'pick' ? '今日見るべき件 ' + (o.date || '') : kind === 'import' ? '取り込みの記録 ' + (o.date || '') : kind === 'choices' ? '深く見る ' + (o.date || '') : kind === 'katari' ? '語り方 ' + (o.eventId || '') : kind === 'kiji' ? '記事 ' + (o.date || '') :kind === 'asked' ? (o.target || '') + ' ' + (o.key || '') : o.text;   // v20.43
+      : kind === 'dig' ? o.question : kind === 'pick' ? '今日見るべき件 ' + (o.date || '') : kind === 'import' ? '取り込みの記録 ' + (o.date || '') : kind === 'choices' ? '深く見る ' + (o.date || '') : kind === 'katari' ? '語り方 ' + (o.eventId || '') : kind === 'kiji' ? '記事 ' + (o.date || '') : kind === 'mags' ? 'マガジン ' + (o.name || '') :kind === 'asked' ? (o.target || '') + ' ' + (o.key || '') : o.text;   // v20.43
     return String(t || (kind === 'journal' ? o.kind || '' : '')).replace(/\s+/g, ' ').slice(0, 40);
   }
   // 鍵は直書き（後ろで宣言する const は、起動時の読み込みの方が早いと使えない）
@@ -7301,7 +7316,7 @@
   const LAST_SCREEN_KEY = 'kotoba_lastScreen';
   const LAST_SCREEN_MAX_AGE_MS = 4 * 3600 * 1000;
   const LAST_SCREEN_OK = new Set(['list', 'records', 'training', 'meditation', 'shoot', 'world', 'settings']);
-  const LAST_WORLD_VIEW_OK = new Set(['main', 'map', 'import', 'actors', 'tidy', 'ask', 'dig', 'kiji']);   // v20.73：記事づくりはチャットと行き来するので戻す（開いていた記事は kotoba_kijiOpen）   // 一時的な中身に頼る表示（札の一覧・概念・地層・国の網）は戻さない
+  const LAST_WORLD_VIEW_OK = new Set(['main', 'map', 'import', 'actors', 'tidy', 'ask', 'dig', 'kiji', 'mags']);   // v20.73：記事づくりはチャットと行き来するので戻す（開いていた記事は kotoba_kijiOpen）   // 一時的な中身に頼る表示（札の一覧・概念・地層・国の網）は戻さない
   function rememberScreen() {
     try {
       if (!LAST_SCREEN_OK.has(nav.screen)) { localStorage.removeItem(LAST_SCREEN_KEY); return; }
@@ -15834,6 +15849,18 @@
   const KIJI_BODY_MIN = 1500;      // v20.73 記事の本文の下限と上限（通勤中に読める）。1点の目安ではなく幅で渡し、中はチャットに任せる
   const KIJI_BODY_MAX = 2500;      // 数え方は出典の行・見出し・図の印を除いた文（アプリが出す1行と同じ）
   const KIJI_INTRO_CHARS = 120;    // v20.74 つかみ案1つの長さ（前提と思惑は本文の最初の箱へ移した）
+  // v20.77 マガジン：テーマ別。最初の7つ（本人が決めた。分類できない記事が出たら足す）
+  const KIJI_MAGS_SEED = [
+    { id: 'mg_energy', name: '石油と海の道の思惑', line: 'ホルムズ・紅海・原油・ガス' },
+    { id: 'mg_rates', name: '金利と通貨の思惑', line: '日銀・FRB・円安・介入' },
+    { id: 'mg_sanction', name: '制裁と関税の思惑', line: '制裁・関税・輸出規制' },
+    { id: 'mg_war', name: '戦争とお金の思惑', line: '防衛費・支援・戦費' },
+    { id: 'mg_debt', name: '国の借金の思惑', line: '国債・財政赤字' },
+    { id: 'mg_bigtech', name: '巨大企業の賭けの思惑', line: 'AI・半導体・大型投資' },
+    { id: 'mg_resource', name: '資源の囲い込みの思惑', line: 'レアアース・金・食料' },
+  ];
+  const KIJI_MAG_MAX = 3;          // 1記事が入るマガジンの数の目安
+  const KIJI_MAG_NAME_MAX = 30;
   const KIJI_OMO_SHARE = 40;      // v20.76 思惑の節は本文の何%以上か（ここがメイン）
   const KIJI_LONG_PARA = 120;     // v20.74 これを超える段落は長いと知らせる（決まりは1段落1〜2文）
   const KIJI_LONG_SENT = 80;      // これを超える文は長いと知らせる（決まりは60字目安。少し余裕を見る）
@@ -20878,6 +20905,8 @@
       '8. 分かりにくい言葉と「なんで？」（questions）を3〜6：ニュースをふつうに見る大人でも止まるところだけ。基本の言葉（日銀・金利・円安など）は入れない。\n' +
       '   - q：専門家しか使わない言葉（「当座預金って？」）か、つながりの疑問（「なんでお金が減ると金利が関係するの？」）。\n' +
       '   - a：答えを1〜2文。本文では、その話題が出た所で使う。\n' +
+      '9. マガジンとハッシュタグ（下の「マガジンの一覧」を使う）：\n' +
+      worldMagJudgeRuleText().split('\n').filter(Boolean).map((x) => '   ' + x).join('\n') + '\n' +
       '\n' +
       '■ 出力形式（JSON のみ。ほかの文章を返さない）\n' +
       '{"eventId":"' + ev.id + '",\n' +
@@ -20887,7 +20916,9 @@
       ' "titles":[{"text":"26字以内","type":"食い違い型"}],\n' +
       ' "promise":{"what":"1文","who":"1文","lens":"1文"},\n' +
       ' "intros":[{"text":"' + KIJI_INTRO_CHARS + '字以内"}],\n' +
-      ' "questions":[{"q":"〇〇って？","a":"答え（1〜2文）"}]}\n\n' +
+      ' "questions":[{"q":"〇〇って？","a":"答え（1〜2文）"}],\n' +
+      ' "magazines":["一覧の名前"],"newMagazine":null,"tags":["米国","原油"]}\n\n' +
+      worldMagsText() +
       '※ 形だけの例です。中身はこの出来事で書いてください。eventId はこの出来事の番号のまま。';
   }
   function worldKijiPicked(kj) {
@@ -21037,7 +21068,8 @@
       return i >= 0 ? i : list.length === 1 ? 0 : -1;
     };
     const pick = { thumb: keep('thumb', plan.thumbs, (x) => x.text), title: keep('title', plan.titles, (x) => x.text), intro: keep('intro', plan.intros, (x) => x.text) };
-    worldKijiUpdate(kj.id, (k) => { k.plan = plan; k.pick = pick; });
+    const mg = worldMagJudgeFrom(parsed);   // v20.77
+    worldKijiUpdate(kj.id, (k) => { k.plan = plan; k.pick = pick; if (mg.ids.length || mg.newMag || mg.unknown.length) k.mag = mg; });
     const notes = [];
     if (!plan.promise.lens) notes.push('「次のニュースで使える見方」が空');
     if (plan.thumbs.length < 3) notes.push('サムネ案が3つに足りない');
@@ -21046,7 +21078,8 @@
     const longTitles = plan.titles.filter((t) => t.text.length > KIJI_TITLE_CHARS).length;
     if (longTitles) notes.push(KIJI_TITLE_CHARS + '字を超えるタイトル ' + longTitles + '案');
     if (cut) notes.push('長くて切った欄 ' + cut + 'か所');
-    return { text: '取り込みました：サムネ案 ' + plan.thumbs.length + '・タイトル案 ' + plan.titles.length + '・つかみ案 ' + plan.intros.length + '・なんで？ ' + plan.questions.length + (notes.length ? '（' + notes.join('・') + '）' : '') };
+    worldMagJudgeNote(mg).forEach((x) => notes.push(x));
+    return { text: '取り込みました：マガジン ' + mg.ids.length + '・サムネ案 ' + plan.thumbs.length + '・タイトル案 ' + plan.titles.length + '・つかみ案 ' + plan.intros.length + '・なんで？ ' + plan.questions.length + (notes.length ? '（' + notes.join('・') + '）' : '') };
   }
   // 機械で分かることは機械で数える：字数・図の印・出典の行・出典の無い区切り・アプリの言葉
   function worldKijiLint(body) {
@@ -21184,6 +21217,7 @@
     worldState.kijiStatus = worldState.kijiStatus || {};
     const el = (tag, cls, text) => { const x = document.createElement(tag); if (cls) x.className = cls; if (text != null) x.textContent = text; return x; };
     const head = el('div', 'kjFact', ev.fact); box.appendChild(head);
+    { const ml = el('button', 'linkLikeBtn kjAgain', 'マガジンの一覧 ▸'); ml.type = 'button'; ml.addEventListener('click', () => { worldState.view = 'mags'; renderWorld(); }); box.appendChild(ml); }   // v20.77
     if (kt.toi) box.appendChild(el('div', 'kjSub', '問い：' + kt.toi));
 
     // 1段ぶんの枠：コピー → 貼る → 取り込む。済んでいれば中身と［貼り直す］
@@ -21293,11 +21327,199 @@
       const posted = el('button', 'secondaryBtn', kj.postedAt ? worldShortDate(kj.postedAt.slice(0, 10)) + ' に note に出した（取り消す）' : 'note に出した'); posted.type = 'button';
       posted.addEventListener('click', () => { worldKijiUpdate(kj.id, (k) => { k.postedAt = k.postedAt ? '' : nowIso(); }); rerender(); });
       sec.appendChild(posted);
+      sec.appendChild(worldKijiMagSecEl(kj, ev, el, copyRow, rerender));   // v20.77
       box.appendChild(sec);
     }
     const src = el('button', 'linkLikeBtn', '元の出来事を開く'); src.type = 'button';
     src.addEventListener('click', () => worldOpenAnyEvent(kj.eventId));
     box.appendChild(src);
+  }
+  // ---- v20.77 マガジン：テーマ別の一覧をアプリに持つ。どのマガジンに入るかはチャットが判断する ----------
+  // 一覧は最初の7つ（コードの中）＋あとから足したもの（調べたことの月ファイルの mags）
+  function worldMags() {
+    const added = [];
+    wdig.docs.forEach((doc) => (Array.isArray(doc.mags) ? doc.mags : []).forEach((m) => { if (m && m.id && m.name) added.push(m); }));
+    const byId = new Map(KIJI_MAGS_SEED.map((m) => [m.id, Object.assign({ seed: true }, m)]));
+    added.sort((p, q) => (p.at < q.at ? -1 : 1)).forEach((m) => {
+      const cur = byId.get(m.id);
+      if (!cur || (m.updatedAt || '') >= (cur.updatedAt || '')) byId.set(m.id, Object.assign({}, cur || {}, m));
+    });
+    return [...byId.values()].filter((m) => !m.hidden);
+  }
+  function worldMagAdd(name, line) {
+    const at = nowIso();
+    const rec = { id: digNewId('mg'), name: String(name).trim().slice(0, KIJI_MAG_NAME_MAX), line: String(line || '').trim().slice(0, 100), at, createdAt: at, updatedAt: at };
+    digMutate((doc) => { if (!Array.isArray(doc.mags)) doc.mags = []; doc.mags.push(rec); });
+    return rec;
+  }
+  function worldMagsText() {
+    return '■ マガジンの一覧\n' + worldMags().map((m) => '- ' + m.name + (m.line ? '：' + m.line : '')).join('\n') + '\n\n';
+  }
+  function worldMagJudgeRuleText() {
+    return '- magazines：上の「マガジンの一覧」から、この記事が入るものを1〜' + KIJI_MAG_MAX + 'つ、名前をそのまま書く。\n' +
+      '  読者がそのジャンルが好きで追いかけたときに、この記事が入っていて自然なものだけ選ぶ。無理に数を増やさない。\n' +
+      '- newMagazine：一覧のどれにも合わないときだけ、新しいマガジンの案（name は「〇〇の思惑」の形、line は入る記事の例、why は1文）。合うものがあれば null。\n' +
+      '- tags：ハッシュタグを3〜5。地域（米国・中国・中東など）と、この記事の中心の言葉。「#」は付けない。\n';
+  }
+  // 返事の magazines（名前）を一覧の番号に直す。一覧に無い名前は unknown に残す（黙って捨てない）
+  function worldMagJudgeFrom(parsed) {
+    const mags = worldMags();
+    const norm = (t) => String(t || '').replace(/[「」『』\s]/g, '');
+    const ids = [], unknown = [];
+    (Array.isArray(parsed.magazines) ? parsed.magazines : []).forEach((x) => {
+      const n = norm(typeof x === 'object' && x ? x.name : x);
+      if (!n) return;
+      const m = mags.find((g) => norm(g.name) === n) || mags.find((g) => norm(g.name).includes(n) || n.includes(norm(g.name)));
+      if (m) { if (!ids.includes(m.id)) ids.push(m.id); } else unknown.push(String(typeof x === 'object' && x ? x.name : x).slice(0, KIJI_MAG_NAME_MAX));
+    });
+    const nm = parsed.newMagazine && typeof parsed.newMagazine === 'object' && parsed.newMagazine.name
+      ? { name: String(parsed.newMagazine.name).slice(0, KIJI_MAG_NAME_MAX), line: String(parsed.newMagazine.line || '').slice(0, 100), why: String(parsed.newMagazine.why || '').slice(0, 200) } : null;
+    const tags = (Array.isArray(parsed.tags) ? parsed.tags : []).map((t) => String(t || '').replace(/^#/, '').trim().slice(0, 30)).filter(Boolean).slice(0, 8);
+    return { ids: ids.slice(0, KIJI_MAG_MAX + 2), unknown, newMag: nm, tags, at: nowIso() };
+  }
+  function worldMagJudgeNote(mg) {
+    const notes = [];
+    if (!mg.ids.length && !mg.newMag) notes.push('マガジンが判断されていない');
+    if (mg.unknown.length) notes.push('一覧に無いマガジン名 ' + mg.unknown.join('・') + '（入れていません）');
+    if (mg.newMag) notes.push('新しいマガジンの案あり');
+    return notes;
+  }
+  // 企画より前に作った記事など、マガジンをまだ判断していない記事のための小さな依頼文
+  function worldMagJudgePromptText(kj, ev) {
+    const body = (kj.check && kj.check.body) || kj.body || '';
+    return 'note に出した記事を、マガジンに分けてください。\n\n' +
+      worldMagsText() +
+      '■ 決まり\n' + worldMagJudgeRuleText() + '\n' +
+      '■ 記事\n' + (body ? body.slice(0, 3000) : '（本文はまだありません）出来事：' + (ev ? ev.fact : '')) + '\n\n' +
+      '■ 出力形式（JSON のみ）\n' +
+      '{"magazines":["一覧の名前"],"newMagazine":null,"tags":["米国","原油"]}';
+  }
+  function worldKijiImportMag(kj, raw) {
+    const lj = worldLooseJson(raw);
+    if (!lj.value || typeof lj.value !== 'object' || Array.isArray(lj.value)) return { error: 'JSON として読めませんでした' + (lj.error ? '：' + lj.error : '') + '。{"magazines":[...],"tags":[...]} の形で貼ってください。' };
+    const mg = worldMagJudgeFrom(lj.value);
+    if (!mg.ids.length && !mg.newMag && !mg.unknown.length) return { error: 'マガジンが書かれていませんでした。' };
+    worldKijiUpdate(kj.id, (k) => { k.mag = mg; });
+    const n = worldMagJudgeNote(mg);
+    return { text: '取り込みました：マガジン ' + mg.ids.length + '・ハッシュタグ ' + mg.tags.length + (n.length ? '（' + n.join('・') + '）' : '') };
+  }
+  function worldKijiTitleOf(kj) {
+    const body = (kj.check && kj.check.body) || kj.body || '';
+    const t = (body.split(/\r?\n/).find((l) => l.trim()) || '').replace(/^#\s*/, '').trim();
+    if (t) return t;
+    const pk = worldKijiPicked(kj);
+    return pk.title ? pk.title.text : '（タイトルはまだ）';
+  }
+  function worldNoteUrl(raw) {
+    const t = String(raw || '').trim();
+    return /^https:\/\/note\.com\/\S+$/.test(t) ? t : '';
+  }
+  // できあがりの中：マガジン・ハッシュタグ・note の記事 URL
+  function worldKijiMagSecEl(kj, ev, el, copyRow, rerender) {
+    const sec = el('div', 'kjMag');
+    sec.appendChild(el('div', 'kjGroup', 'マガジン（チャットが判断）'));
+    const mags = worldMags();
+    const mg = kj.mag;
+    if (mg) {
+      const names = mg.ids.map((id) => (mags.find((m) => m.id === id) || {}).name).filter(Boolean);
+      sec.appendChild(el('div', 'kjLine', names.length ? names.join('・') : 'どの一覧のマガジンにも入らない'));
+      if (mg.unknown.length) sec.appendChild(el('div', 'kjSub', '一覧に無い名前で返ってきたもの：' + mg.unknown.join('・') + '（入れていません）'));
+      if (mg.newMag && !mags.some((m) => m.name === mg.newMag.name)) {
+        sec.appendChild(el('div', 'kjSub', '新しいマガジンの案：' + mg.newMag.name + (mg.newMag.line ? '（' + mg.newMag.line + '）' : '') + (mg.newMag.why ? ' ─ ' + mg.newMag.why : '')));
+        const add = el('button', 'linkLikeBtn', '一覧に足して、この記事を入れる'); add.type = 'button';
+        add.addEventListener('click', () => { const m = worldMagAdd(mg.newMag.name, mg.newMag.line); worldKijiUpdate(kj.id, (k) => { k.mag = Object.assign({}, k.mag, { ids: (k.mag.ids || []).concat([m.id]) }); }); rerender(); });
+        sec.appendChild(add);
+      }
+      if (mg.tags.length) copyRow(sec, 'ハッシュタグをコピー', mg.tags.map((t) => '#' + t).join(' '), mg.tags.map((t) => '#' + t).join(' '));
+    } else {
+      sec.appendChild(el('div', 'kjSub', 'まだ判断していません（企画を今の依頼文で作ると判断されます。この記事だけ判断してもらうなら下から）'));
+      const skey = kj.id + ':mag';
+      const copy = el('button', 'secondaryBtn', 'マガジンを判断してもらう依頼文をコピー'); copy.type = 'button';
+      const copySt = el('span', 'kjSub', '');
+      copy.addEventListener('click', async () => { const ok = await copyToClipboard(worldMagJudgePromptText(kj, ev)); copySt.textContent = ok ? 'コピーしました' : 'コピーできませんでした'; });
+      const ta = el('textarea'); ta.rows = 3; ta.autocomplete = 'off'; ta.placeholder = '{"magazines":[...],"tags":[...]} をここに貼る';
+      ta.value = worldKijiDrafts()[skey] || '';
+      ta.addEventListener('input', () => worldKijiDraftSet(skey, ta.value));
+      const imp = el('button', 'secondaryBtn', '返事を取り込む'); imp.type = 'button';
+      const st = el('p', 'fieldNote', (worldState.kijiStatus || {})[skey] || '');
+      imp.addEventListener('click', () => {
+        const res = worldKijiImportMag(kj, ta.value);
+        worldState.kijiStatus = worldState.kijiStatus || {};
+        if (res.error) { st.textContent = res.error; worldState.kijiStatus[skey] = res.error; return; }
+        worldState.kijiStatus[skey] = res.text; worldKijiDraftSet(skey, ''); rerender();
+      });
+      sec.appendChild(copy); sec.appendChild(copySt); sec.appendChild(ta); sec.appendChild(imp); sec.appendChild(st);
+    }
+    // note の記事 URL
+    sec.appendChild(el('div', 'kjGroup', 'note の記事の URL'));
+    const url = el('input'); url.type = 'url'; url.autocomplete = 'off'; url.placeholder = 'https://note.com/…/n/…'; url.value = kj.noteUrl || '';
+    const urlSt = el('span', 'kjSub', kj.noteUrl ? '残してあります' : '');
+    const save = () => {
+      const v = url.value.trim();
+      if (v === (kj.noteUrl || '')) return;
+      if (v && !worldNoteUrl(v)) { urlSt.textContent = 'note の記事の URL（https://note.com/ で始まる）を貼ってください'; return; }
+      worldKijiUpdate(kj.id, (k) => { k.noteUrl = v; if (v && !k.postedAt) k.postedAt = nowIso(); });
+      kj.noteUrl = v;
+      urlSt.textContent = v ? '残しました' : '消しました';
+    };
+    url.addEventListener('change', save);
+    url.addEventListener('blur', save);
+    sec.appendChild(url); sec.appendChild(urlSt);
+    const list = el('button', 'linkLikeBtn', 'マガジンの一覧 ▸'); list.type = 'button';
+    list.addEventListener('click', () => { worldState.view = 'mags'; renderWorld(); });
+    sec.appendChild(list);
+    return sec;
+  }
+  function renderWorldMags() {
+    const box = document.getElementById('worldMagsBody');
+    box.innerHTML = '';
+    const el = (tag, cls, text) => { const x = document.createElement(tag); if (cls) x.className = cls; if (text != null) x.textContent = text; return x; };
+    const mags = worldMags();
+    const kijis = worldKijiAll().filter((k) => k.plan || k.body);
+    const row = (k) => {
+      const r = el('div', 'kjMagRow');
+      const day = (k.postedAt || k.at || '').slice(0, 10);
+      r.appendChild(el('span', 'kjSub', (day ? worldShortDate(day) + ' ' : '') + (k.postedAt ? '' : '（まだ出していない）')));
+      const open = el('button', 'linkLikeBtn', worldKijiTitleOf(k)); open.type = 'button';
+      open.addEventListener('click', () => { worldState.kijiId = k.id; try { localStorage.setItem(KIJI_OPEN_KEY, k.id); } catch (e) {} worldState.view = 'kiji'; renderWorld(); });
+      r.appendChild(open);
+      if (k.noteUrl) { const a = el('a', '', 'note'); a.href = k.noteUrl; a.target = '_blank'; a.rel = 'noopener noreferrer'; r.appendChild(a); }
+      else if (k.postedAt) r.appendChild(el('span', 'kjSub', 'URL 未登録'));
+      return r;
+    };
+    const sortK = (a, b) => ((b.postedAt || b.at) > (a.postedAt || a.at) ? 1 : -1);
+    mags.forEach((m) => {
+      const inIt = kijis.filter((k) => k.mag && (k.mag.ids || []).includes(m.id)).sort(sortK);
+      const sec = el('div', 'kjStep');
+      sec.appendChild(el('div', 'kjStepHead', m.name + '（' + inIt.length + '本）'));
+      if (m.line) sec.appendChild(el('div', 'kjSub', m.line));
+      inIt.forEach((k) => sec.appendChild(row(k)));
+      box.appendChild(sec);
+    });
+    const none = kijis.filter((k) => !k.mag || !(k.mag.ids || []).length).sort(sortK);
+    if (none.length) {
+      const sec = el('div', 'kjStep');
+      sec.appendChild(el('div', 'kjStepHead', 'まだマガジンに入っていない記事（' + none.length + '本）'));
+      none.forEach((k) => sec.appendChild(row(k)));
+      box.appendChild(sec);
+    }
+    // 足す
+    const add = el('div', 'kjStep');
+    add.appendChild(el('div', 'kjStepHead', 'マガジンを足す'));
+    add.appendChild(el('div', 'kjSub', 'どれにも入らない記事が続いたら足します。名前は「〇〇の思惑」の形。'));
+    const nameIn = el('input'); nameIn.type = 'text'; nameIn.placeholder = '名前（例：食料と肥料の思惑）';
+    const lineIn = el('input'); lineIn.type = 'text'; lineIn.placeholder = '入る記事の例（例：小麦・肥料・輸出規制）';
+    const btn = el('button', 'secondaryBtn', '足す'); btn.type = 'button';
+    const st = el('p', 'fieldNote', '');
+    btn.addEventListener('click', () => {
+      const n = nameIn.value.trim();
+      if (!n) { st.textContent = '名前を入れてください'; return; }
+      if (mags.some((m) => m.name === n)) { st.textContent = '同じ名前のマガジンがあります'; return; }
+      worldMagAdd(n, lineIn.value);
+      renderWorldMags();
+    });
+    add.appendChild(nameIn); add.appendChild(lineIn); add.appendChild(btn); add.appendChild(st);
+    box.appendChild(add);
   }
   function renderWorldChoice(box) {
     if (!box) return;
@@ -25025,6 +25247,7 @@
     document.getElementById('worldDigView').hidden = worldState.view !== 'dig';   // v20.43
     document.getElementById('worldMikiView').hidden = worldState.view !== 'miki';   // v20.50
     document.getElementById('worldKijiView').hidden = worldState.view !== 'kiji';   // v20.73
+    document.getElementById('worldMagsView').hidden = worldState.view !== 'mags';   // v20.77
     if (worldState.view === 'ask') renderWorldAsk();
     else if (worldState.view === 'main') renderWorldMain();
     else if (worldState.view === 'concept') renderWorldConcept();
@@ -25038,6 +25261,7 @@
     else if (worldState.view === 'dig') renderWorldDig();   // v20.43
     else if (worldState.view === 'miki') renderWorldMiki();   // v20.50
     else if (worldState.view === 'kiji') renderWorldKiji();   // v20.73
+    else if (worldState.view === 'mags') renderWorldMags();   // v20.77
     else renderWorldImport();
   }
   // v18 A-1: 今日の単位は「札」ではなく「主体」。readDate はそのまま残す
@@ -29872,6 +30096,7 @@
   document.getElementById('btnWorldDig').addEventListener('click', () => { worldState.view = 'dig'; renderWorld(); });   // v20.43
   document.getElementById('btnWorldDigBack').addEventListener('click', () => { worldState.view = 'main'; renderWorld(); });
   document.getElementById('btnWorldKijiBack').addEventListener('click', () => { if (worldNavBack()) return; worldState.view = 'main'; renderWorld(); });   // v20.73
+  document.getElementById('btnWorldMagsBack').addEventListener('click', () => { if (worldNavBack()) return; worldState.view = 'main'; renderWorld(); });   // v20.77
   // v20.50 幹
   document.getElementById('btnWorldMiki').addEventListener('click', () => {
     if (!worldMikiState().trunks.length) { worldMikiOpenSplitSettings(); return; }
