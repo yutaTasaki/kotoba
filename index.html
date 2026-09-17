@@ -1158,6 +1158,21 @@
   .worldChoice .chBtns .linkLikeBtn { font-size: 13px; }
   .worldChoice .chNone { font-size: 13px; }
   .worldChoiceLine { font-size: 12px; color: var(--text-dim); margin: 0 0 6px; }
+  /* v20.72 note 段2：語り方。表だけ横に動かす（ページは横に動かない） */
+  .worldChoice textarea { width: 100%; box-sizing: border-box; margin-top: 6px; }
+  .worldChoice .chKatari { font-size: 13px; line-height: 1.6; margin: 4px 0; }
+  .worldChoice .chNoFit { font-size: 13px; color: var(--danger); margin: 4px 0; }
+  .katariSec { margin-top: 12px; }
+  .katariSec .ktLine { font-size: 13px; line-height: 1.6; margin: 4px 0; }
+  .katariSec .ktKey { font-size: 11px; color: var(--text-faint); margin-right: 4px; }
+  .katariSec .ktScroll { overflow-x: auto; margin: 6px 0; }
+  .katariSec table { border-collapse: collapse; font-size: 12px; min-width: 640px; }
+  .katariSec th, .katariSec td { border: 1px solid var(--text-faint); padding: 4px 6px; vertical-align: top; text-align: left; line-height: 1.5; }
+  .katariSec th { color: var(--text-dim); font-weight: normal; white-space: nowrap; }
+  .katariSec tr.ktClosed td { color: var(--text-faint); }
+  .katariSec a { color: var(--accent); word-break: break-all; }
+  .katariSec .ktOmo { border-left: 2px dashed var(--guess); padding-left: 8px; margin: 6px 0; font-size: 13px; line-height: 1.6; }
+  .katariSec .ktSub { font-size: 12px; color: var(--text-dim); }
   .digCand { border: 1px solid var(--accent-dim); border-radius: 8px; padding: 7px 9px; margin: 6px 0; }
   .digCand .dcFact { font-size: 14px; font-weight: 700; line-height: 1.5; }
   .digCand .dcLine { font-size: 12px; color: var(--text); margin-top: 2px; }
@@ -3232,7 +3247,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.71';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.72';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -4040,7 +4055,7 @@
   function idCollisionHead(kind, o) {
     const t = kind === 'event' ? o.fact : kind === 'forecast' ? (o.actor || '') + '：' + (o.what || '')
       : (kind === 'concept' || kind === 'term' || kind === 'actor') ? o.name
-      : kind === 'dig' ? o.question : kind === 'pick' ? '今日見るべき件 ' + (o.date || '') : kind === 'import' ? '取り込みの記録 ' + (o.date || '') : kind === 'choices' ? '深く見る ' + (o.date || '') :kind === 'asked' ? (o.target || '') + ' ' + (o.key || '') : o.text;   // v20.43
+      : kind === 'dig' ? o.question : kind === 'pick' ? '今日見るべき件 ' + (o.date || '') : kind === 'import' ? '取り込みの記録 ' + (o.date || '') : kind === 'choices' ? '深く見る ' + (o.date || '') : kind === 'katari' ? '語り方 ' + (o.eventId || '') :kind === 'asked' ? (o.target || '') + ' ' + (o.key || '') : o.text;   // v20.43
     return String(t || (kind === 'journal' ? o.kind || '' : '')).replace(/\s+/g, ' ').slice(0, 40);
   }
   // 鍵は直書き（後ろで宣言する const は、起動時の読み込みの方が早いと使えない）
@@ -15776,6 +15791,11 @@
   const WORLD_TODAY_TYPE_MAX = 10;    // 5つに当たらないときの自分の言葉
   const WORLD_TODAY_WHY_ASK = 60;     // プロンプトで頼む字数
   const WORLD_TODAY_WHY_MAX = 120;    // 安全弁。超えたら切って印
+  const KATARI_MAX = { name: 80, country: 40, date: 40, text: 300, word: 40, words: 8, toi: 80, core: 40, utagai: 5 };   // v20.72 語り方の欄の長さ（超えたら切って数える）
+  const KATARI_OWNERS = ['国営', '政府寄り', '民間', '当事者'];
+  const KATARI_SPLITS = ['割れた', '一部だけ', '揃った'];
+  const KATARI_ACTOR_READS = 3;   // 依頼文に渡す、同じ主体のほかの札での読み（主体ごと・新しい順）
+  const KATARI_DRAFT_KEY = 'kotoba_katariDraft';   // 貼った返事を取り込むまで持つ（アプリを行き来して読み直されても消えない）
   const WORLD_CHOICE_MAX = 4;          // v20.71 note 段1：毎日並べる候補の数（ほかに「今日はなし」）
   const WORLD_CHOICE_PER_SRC = 2;      // 今日見るべき件から・ずれのある札から、それぞれ最大いくつ（足りなければ片方で埋める）
   const WORLD_CHOICE_ZURE_DAYS = 14;   // ずれのある札は、出来事の日付が何日前まで
@@ -20382,19 +20402,280 @@
     } catch (e) { recordFeatureError('深く見るものを選ぶ', e); }
   }
   // 選び直す：消さずに印を付ける（何を選んでやめたかが残る）
-  function worldChoiceCancel(id) {
+  function worldChoiceCancel(id, noFit) {
     try {
       const at = nowIso();
       wdig.docs.forEach((doc, m) => {
         const c = (Array.isArray(doc.choices) ? doc.choices : []).find((x) => x.id === id);
         if (!c) return;
         c.canceled = true; c.updatedAt = at; doc.updatedAt = at;
+        if (noFit) c.noFit = true;   // v20.72：芯になりにくいと返った札は、次から候補に出さない
         wdig.dirty.add(m);
         persistDigDoc(m);
       });
       persistDigMeta();
       scheduleSync();
     } catch (e) { recordFeatureError('選び直す', e); }
+  }
+  // ---- v20.72 note 段2：語り方を集める ------------------------------------------
+  function worldKatariAll() {
+    const all = [];
+    wdig.docs.forEach((doc) => (Array.isArray(doc.katari) ? doc.katari : []).forEach((k) => { if (k && k.id && k.eventId) all.push(k); }));
+    return all.sort((p, q) => (p.at > q.at ? -1 : p.at < q.at ? 1 : 0));
+  }
+  function worldKatariFor(eventId) { return worldKatariAll().filter((k) => k.eventId === eventId); }
+  function worldKatariDrafts() { try { return JSON.parse(localStorage.getItem(KATARI_DRAFT_KEY) || '{}') || {}; } catch (e) { return {}; } }
+  function worldKatariDraftSet(key, text) {
+    try { const d = worldKatariDrafts(); if (text) d[key] = text; else delete d[key]; localStorage.setItem(KATARI_DRAFT_KEY, JSON.stringify(d)); } catch (e) {}
+  }
+  function worldKatariPromptText(ev) {
+    const lines = [worldDigCardBlock(ev).trimEnd()];
+    if (ev.zure) lines.push('言っていることとしていることのずれ（チャットが前に読んだもの）：' + ev.zure);
+    if (ev.premise && ev.premise.line) lines.push('仕組みの1行：' + ev.premise.line);
+    const trunks = (worldMikiState().cardMiki.get(ev.id) || []).map(worldMikiTrunk).filter(Boolean);
+    trunks.forEach((t) => lines.push('この出来事が属する大きな話：' + t.name + (t.line ? '（' + t.line + '）' : '')));
+    const reads = [];
+    ev.actors.forEach((a) => {
+      const other = worldLiveEvents()
+        .filter((e) => e.id !== ev.id && e.actors.some((b) => b.name === a.name && b.read))
+        .sort((p, q) => (p.eventDate > q.eventDate ? -1 : p.eventDate < q.eventDate ? 1 : 0))
+        .slice(0, KATARI_ACTOR_READS);
+      other.forEach((e) => reads.push('- ' + a.name + '（' + e.eventDate + '「' + e.fact + '」）：' + e.actors.find((b) => b.name === a.name).read));
+    });
+    if (reads.length) lines.push('同じ主体の、ほかの出来事での読み（前にチャットが推測したもの）：\n' + reads.join('\n'));
+    return 'この出来事を、立場の違う媒体がどう語っているかを調べ、思惑を推測する材料にまとめてください。\n' +
+      '今日は ' + todayStr() + ' です。できるだけ新しい記事を検索して読んでください。\n\n' +
+      lines.join('\n') + '\n\n' +
+      '■ 集める媒体\n' +
+      '- 立場を最低3つ、できれば5つ。次の中から、この出来事に合うものを選ぶ。\n' +
+      '  当事者の国／それと対立する国／第三国（近くの国・影響を受ける国）／国際機関・市場の専門媒体\n' +
+      '- 当事者の国と対立する国は、できるだけその国の媒体（国営・政府寄りを含む）を探す。英語版があれば英語版でよい。\n' +
+      '  例：ロシア TASS・RT／中国 新華社・環球時報・China Daily／イラン IRNA・Tehran Times／中東 アルジャジーラ・Arab News・Times of Israel・Daily Sabah／米国 Fox News・CNBC／英国 BBC／日本 NHK・産経・読売・朝日・東京新聞／ウクライナ Kyiv Independent\n' +
+      '- 媒体ごとに、国と持ち主の種類（国営・政府寄り・民間・当事者 のどれか）を書く。右寄り・左寄りは書かない。\n' +
+      '- 開けなかった媒体は opened を false にして残す。見出しと検索結果の要約しか読めなかったものは headlineOnly を true にする。\n' +
+      '- 開けていないページの中身を想像で書かない。\n\n' +
+      '■ 媒体ごとに書くこと\n' +
+      '- stress：何を強調したか（1文）\n' +
+      '- omit：何を書かなかったか（1文。ほかの媒体が書いていて、この媒体が触れていないこと）\n' +
+      '- blame：誰のせいにしたか・誰の手柄にしたか（1文）\n' +
+      '- words：立場が出る言葉（「制圧」と「解放」のような言葉）。そのまま抜き出す。\n' +
+      '- 言い分は必ず「誰がそう言ったか」が分かるように書く。宣伝をそのまま事実として書かない。\n\n' +
+      '■ 動き（moves）\n' +
+      '- 語りとは別に、お金・もの・人が実際にどう動いたかを、出典つきで書く。\n' +
+      '- 語りの中の数字と、一次資料の数字を混ぜない。amount は出典の書き方のまま。換算しない。\n\n' +
+      '■ 割れ方（split）\n' +
+      '- kind：割れた・一部だけ・揃った のどれか。line：1文。\n' +
+      '- 揃っていても、次のどれかがあれば記事の芯になる。必ず探し、あれば core に書く。\n' +
+      '  語りと動きのずれ（みんなの語りと、実際の動きが食い違う）\n' +
+      '  誰も書かないこと（対立する立場どうしが、同じ点に触れない）\n' +
+      '  対立どうしの一致（対立する立場どうしが、同じことを言う）\n' +
+      '  どれも無ければ core は空。\n\n' +
+      '■ 思惑（omowaku・推測）\n' +
+      '- 主体ごとに1〜3件。1件1文。推測と分かる書き方にする（「〜と見られる」「〜したいのではないか」）。\n' +
+      '- basis：どの語り・どの動きから読んだか。\n' +
+      '- breaks：何が起きたら、この推測は外れていたことになるか（1文）。\n' +
+      '- backs：何が起きたら、この推測が強まるか（1文）。\n' +
+      '- 上の「前にチャットが推測したもの」の言い換えにしない。この出来事の語りと動きから読む。\n\n' +
+      '■ 読者に残す\n' +
+      '- toi：記事の入口になる「なぜ〜のか」を1つ（40字以内）。ニュースは見るが「なぜ」が分からない人に向けて、専門用語を使わない。\n' +
+      '- shikumi：この出来事で分かる、ほかの出来事にも使える仕組みを1文。\n' +
+      '- utagai：私が「本当にそうか」と考えるための疑いの候補を3つ（1件1文）。\n\n' +
+      '■ 芯になりそうか（fit）\n' +
+      '- ok：記事の芯になるなら true、なりにくいなら false。why：理由を1文。なりにくいときは、何が足りないかを書く。\n' +
+      '- 語りが揃っていて core も空なら、false にしてよい。無理に芯を作らない。\n\n' +
+      '■ 出力形式（JSON のみ。ほかの文章を返さない）\n' +
+      '{"eventId":"' + ev.id + '",\n' +
+      ' "media":[{"name":"A通信","country":"X国","owner":"国営","url":"https://...","date":"YYYY-MM-DD","opened":true,"headlineOnly":false,\n' +
+      '           "stress":"何を強調したか","omit":"何を書かなかったか","blame":"誰のせいにしたか","words":["解放"]}],\n' +
+      ' "moves":[{"text":"B社がC国に10億ドルを払った","flow":{"from":"B社","to":"C国","what":"支払い","amount":"10億ドル"},"source":"媒体名と日付","url":"https://..."}],\n' +
+      ' "split":{"kind":"一部だけ","line":"1文","core":"語りと動きのずれ"},\n' +
+      ' "omowaku":[{"actor":"X国政府","text":"推測（1文）","basis":"根拠","breaks":"崩れる条件","backs":"裏づける条件"}],\n' +
+      ' "toi":"なぜ〜のか","shikumi":"仕組み（1文）","utagai":["疑い1","疑い2","疑い3"],\n' +
+      ' "fit":{"ok":true,"why":"理由（1文）"}}\n\n' +
+      '※ 上の例の中身（A通信・B社・C国・X国・金額）は架空です。形だけを使ってください。eventId はこの出来事の番号のまま書いてください。\n' +
+      'お金・もの・人が動いていない move は "flow": null';
+  }
+  function worldImportKatariJson(ev, choice, raw) {
+    const parsed = shootParseJson(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { error: 'JSON として読めませんでした。{"eventId":"...","media":[...]} の形で貼ってください。' };
+    const eid = typeof parsed.eventId === 'string' ? parsed.eventId.trim() : '';
+    if (eid && eid !== ev.id) return { error: '別の出来事（' + eid + '）の語り方です。この出来事の番号は ' + ev.id + ' です。' };
+    const c = { cut: 0, badUrl: 0, unreadable: 0, closed: 0, headline: 0, ownerRaw: 0, splitRaw: 0 };
+    const str = (v, max) => { const r = digStr(v, max); if (r.cut) c.cut++; return r.t; };
+    const put = (o, k, v) => { if (v) o[k] = v; };
+    const urlOf = (o, v) => { const u = digUrl(v); if (u.url) o.url = u.url; if (u.urlRaw) { o.urlRaw = u.urlRaw; c.badUrl++; } };
+    const flowOf = (o, f) => { if (!f || typeof f !== 'object') return; const x = {}; ['from', 'to', 'what', 'amount'].forEach((k) => put(x, k, str(f[k], DIG_MAX.flowPart))); if (Object.keys(x).length) o.flow = x; };
+    const media = [];
+    (Array.isArray(parsed.media) ? parsed.media : []).forEach((m) => {
+      if (!m || typeof m !== 'object' || !str(m.name, KATARI_MAX.name)) { c.unreadable++; return; }
+      const o = { name: str(m.name, KATARI_MAX.name) };
+      put(o, 'country', str(m.country, KATARI_MAX.country));
+      const ow = str(m.owner, KATARI_MAX.country);
+      if (KATARI_OWNERS.includes(ow)) o.owner = ow; else if (ow) { o.ownerRaw = ow; c.ownerRaw++; }
+      urlOf(o, m.url);
+      put(o, 'date', str(m.date, KATARI_MAX.date));
+      o.opened = m.opened !== false;
+      if (!o.opened) c.closed++;
+      if (m.headlineOnly === true) { o.headlineOnly = true; c.headline++; }
+      ['stress', 'omit', 'blame'].forEach((k) => put(o, k, str(m[k], KATARI_MAX.text)));
+      const words = (Array.isArray(m.words) ? m.words : []).map((w) => str(w, KATARI_MAX.word)).filter(Boolean);
+      if (words.length) o.words = words.slice(0, KATARI_MAX.words);
+      media.push(o);
+    });
+    const moves = [];
+    (Array.isArray(parsed.moves) ? parsed.moves : []).forEach((m) => {
+      if (typeof m === 'string') m = { text: m };
+      const t = m && typeof m === 'object' ? str(m.text, KATARI_MAX.text) : '';
+      if (!t) { c.unreadable++; return; }
+      const o = { text: t };
+      flowOf(o, m.flow);
+      put(o, 'source', str(m.source, DIG_MAX.source));
+      urlOf(o, m.url);
+      moves.push(o);
+    });
+    const split = {};
+    if (parsed.split && typeof parsed.split === 'object') {
+      const k = str(parsed.split.kind, KATARI_MAX.core);
+      if (KATARI_SPLITS.includes(k)) split.kind = k; else if (k) { split.kindRaw = k; c.splitRaw++; }
+      put(split, 'line', str(parsed.split.line, KATARI_MAX.text));
+      put(split, 'core', str(parsed.split.core, KATARI_MAX.core));
+    }
+    const omowaku = [];
+    (Array.isArray(parsed.omowaku) ? parsed.omowaku : []).forEach((m) => {
+      const t = m && typeof m === 'object' ? str(m.text, KATARI_MAX.text) : '';
+      if (!t) { c.unreadable++; return; }
+      const o = { text: t };
+      put(o, 'actor', str(m.actor, KATARI_MAX.name));
+      ['basis', 'breaks', 'backs'].forEach((k) => put(o, k, str(m[k], KATARI_MAX.text)));
+      omowaku.push(o);
+    });
+    const toi = str(parsed.toi, KATARI_MAX.toi);
+    const shikumi = str(parsed.shikumi, KATARI_MAX.text);
+    const utagai = (Array.isArray(parsed.utagai) ? parsed.utagai : []).map((x) => str(x, KATARI_MAX.text)).filter(Boolean).slice(0, KATARI_MAX.utagai);
+    const fit = {};
+    if (parsed.fit && typeof parsed.fit === 'object') {
+      if (parsed.fit.ok === true || parsed.fit.ok === false) fit.ok = parsed.fit.ok;
+      put(fit, 'why', str(parsed.fit.why, KATARI_MAX.text));
+    }
+    if (!media.length && !omowaku.length) return { error: '語り方に中身がありませんでした（media と omowaku が空です）。' };
+    const body = { media, moves, split, omowaku, toi, shikumi, utagai, fit };
+    const key = JSON.stringify(body);
+    const same = worldKatariFor(ev.id).find((k) => JSON.stringify({ media: k.media, moves: k.moves, split: k.split, omowaku: k.omowaku, toi: k.toi, shikumi: k.shikumi, utagai: k.utagai, fit: k.fit }) === key);
+    if (same) return { error: 'この語り方はもう入っています（' + worldDigDay(same.at) + ' に取り込んだもの）。' };
+    const at = nowIso();
+    const rec = Object.assign({ id: digNewId('kt'), choiceId: choice ? choice.id : '', eventId: ev.id, at, createdAt: at, updatedAt: at }, body);
+    digMutate((doc) => { if (!Array.isArray(doc.katari)) doc.katari = []; doc.katari.push(rec); });
+    return { rec, c };
+  }
+  function worldKatariResultText(res) {
+    const r = res.rec, c = res.c;
+    let t = '取り込みました：媒体 ' + r.media.length + '・動き ' + r.moves.length + '・思惑 ' + r.omowaku.length;
+    const notes = [];
+    if (c.closed) notes.push('開けなかった媒体 ' + c.closed);
+    if (c.headline) notes.push('見出しだけ ' + c.headline);
+    if (r.media.length < 3) notes.push('立場が3つに足りない');
+    if (c.ownerRaw) notes.push('持ち主の書き方が4つのどれでもない ' + c.ownerRaw + '件（書かれたまま残しました）');
+    if (c.splitRaw) notes.push('割れ方の書き方が3つのどれでもない（書かれたまま残しました）');
+    if (r.fit.ok === undefined) notes.push('芯になりそうかが書かれていません');
+    if (c.badUrl) notes.push('url の形が正しくない ' + c.badUrl + '件');
+    if (c.cut) notes.push('長くて切った欄 ' + c.cut + 'か所');
+    if (c.unreadable) notes.push('文が無くて読めなかった件 ' + c.unreadable + '件');
+    if (notes.length) t += '（' + notes.join('・') + '）';
+    return t;
+  }
+  // 選んだ枠の中：まだ無ければ［コピー］と貼る欄。あれば問い・割れ方・芯になりそうか
+  function worldKatariChoiceEl(box, chosen, ev, rerender) {
+    const recs = worldKatariFor(ev.id).filter((k) => k.choiceId === chosen.id);
+    worldState.katariStatus = worldState.katariStatus || {};
+    const status = worldState.katariStatus[chosen.id] || '';
+    if (recs.length) {
+      const k = recs[0];
+      if (status) { const st = document.createElement('p'); st.className = 'fieldNote'; st.textContent = status; box.appendChild(st); }
+      if (k.toi) { const p = document.createElement('div'); p.className = 'chKatari'; p.textContent = '問い：' + k.toi; box.appendChild(p); }
+      const sp = k.split.kind || k.split.kindRaw;
+      if (sp) { const p = document.createElement('div'); p.className = 'chKatari'; p.textContent = '割れ方：' + sp + (k.split.core ? '（' + k.split.core + '）' : '') + (k.split.line ? ' ─ ' + k.split.line : ''); box.appendChild(p); }
+      if (k.fit.ok === false) {
+        const p = document.createElement('div'); p.className = 'chNoFit'; p.textContent = '芯になりにくい：' + (k.fit.why || '（理由が書かれていません）'); box.appendChild(p);
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'linkLikeBtn'; b.textContent = '別の候補から選び直す';
+        b.addEventListener('click', () => { worldChoiceCancel(chosen.id, true); rerender(); });
+        box.appendChild(b);
+      } else {
+        const p = document.createElement('div'); p.className = 'fieldNote'; p.textContent = '語り方・思惑の全部は［札を開く］の中'; box.appendChild(p);
+      }
+      return;
+    }
+    const copy = document.createElement('button'); copy.type = 'button'; copy.className = 'secondaryBtn'; copy.textContent = '語り方を集める依頼文をコピー';
+    const copySt = document.createElement('p'); copySt.className = 'fieldNote';
+    worldState.katariCopied = worldState.katariCopied || {};
+    copySt.textContent = worldState.katariCopied[chosen.id] || '';   // 記録を書くと枠が描き直されるので、知らせは覚えておく
+    copy.addEventListener('click', async () => {
+      const ok = await copyToClipboard(worldKatariPromptText(ev));
+      copySt.textContent = worldState.katariCopied[chosen.id] = ok ? 'コピーしました。新しいチャットに貼ってください。返ってきた JSON を下に貼ります。' : 'コピーできませんでした。';
+      if (ok) worldDigRecordAsk('katari', ev.id, chosen.id);
+    });
+    const ta = document.createElement('textarea');
+    ta.rows = 4; ta.autocomplete = 'off'; ta.placeholder = '{"eventId":"' + ev.id + '", "media":[...]} をここに貼る';
+    ta.value = worldKatariDrafts()[chosen.id] || '';
+    ta.addEventListener('input', () => worldKatariDraftSet(chosen.id, ta.value));
+    const imp = document.createElement('button'); imp.type = 'button'; imp.className = 'secondaryBtn'; imp.textContent = '語り方を取り込む';
+    const st = document.createElement('p'); st.className = 'fieldNote'; st.textContent = status;
+    imp.addEventListener('click', () => {
+      const res = worldImportKatariJson(ev, chosen, ta.value);
+      if (res.error) { st.textContent = res.error; worldState.katariStatus[chosen.id] = res.error; return; }
+      worldState.katariStatus[chosen.id] = worldKatariResultText(res);
+      worldKatariDraftSet(chosen.id, '');
+      rerender();
+    });
+    box.appendChild(copy); box.appendChild(copySt); box.appendChild(ta); box.appendChild(imp); box.appendChild(st);
+  }
+  // 札の画面：いちばん新しい語り方を全部見せる
+  function worldKatariSecEl(ev) {
+    const recs = worldKatariFor(ev.id);
+    if (!recs.length) return null;
+    const k = recs[0];
+    const sec = document.createElement('div'); sec.className = 'katariSec';
+    sec.addEventListener('click', (e) => e.stopPropagation());
+    const lab = document.createElement('div'); lab.className = 'rowLabel';
+    lab.textContent = '語り方（' + worldShortDate(k.at.slice(0, 10)) + ' に集めた・推測を含む' + (recs.length > 1 ? '・ほかに' + (recs.length - 1) + '回' : '') + '）';
+    sec.appendChild(lab);
+    const line = (key, text) => { if (!text) return; const p = document.createElement('div'); p.className = 'ktLine'; const s0 = document.createElement('span'); s0.className = 'ktKey'; s0.textContent = key; p.appendChild(s0); p.appendChild(document.createTextNode(text)); sec.appendChild(p); };
+    line('問い', k.toi);
+    const sp = k.split.kind || k.split.kindRaw;
+    if (sp) line('割れ方', sp + (k.split.core ? '（' + k.split.core + '）' : '') + (k.split.line ? ' ─ ' + k.split.line : ''));
+    if (k.fit.ok === false) line('芯', 'なりにくい ─ ' + (k.fit.why || ''));
+    else if (k.fit.ok === true && k.fit.why) line('芯', 'なる ─ ' + k.fit.why);
+    if (k.media.length) {
+      const wrap = document.createElement('div'); wrap.className = 'ktScroll';
+      const tbl = document.createElement('table');
+      const hr = document.createElement('tr');
+      ['媒体', '国・持ち主', '強調', '書かなかった', '誰のせい', '言葉'].forEach((h) => { const th = document.createElement('th'); th.textContent = h; hr.appendChild(th); });
+      tbl.appendChild(hr);
+      k.media.forEach((m) => {
+        const tr = document.createElement('tr'); if (!m.opened) tr.className = 'ktClosed';
+        const td = (text) => { const x = document.createElement('td'); x.textContent = text || ''; tr.appendChild(x); return x; };
+        const n = td('');
+        if (m.url) { const a = document.createElement('a'); a.href = m.url; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = m.name; n.appendChild(a); } else n.textContent = m.name;
+        const tag = !m.opened ? '開けなかった' : m.headlineOnly ? '見出しだけ' : '';
+        if (tag || m.date) { const sub = document.createElement('div'); sub.className = 'ktSub'; sub.textContent = [m.date, tag].filter(Boolean).join(' '); n.appendChild(sub); }
+        td([m.country, m.owner || m.ownerRaw].filter(Boolean).join('・'));
+        td(m.stress); td(m.omit); td(m.blame); td((m.words || []).join('、'));
+        tbl.appendChild(tr);
+      });
+      wrap.appendChild(tbl); sec.appendChild(wrap);
+    }
+    k.moves.forEach((m) => line('動き', m.text + (m.flow ? '［' + [m.flow.from || '？', '→', m.flow.to || '？', m.flow.what || '', m.flow.amount || ''].join(' ').trim() + '］' : '') + (m.source ? '（' + m.source + '）' : '') + (m.url ? '' : '　出典なし')));
+    if (k.omowaku.length) {
+      const g = document.createElement('div'); g.className = 'ktKey'; g.textContent = '思惑（推測）'; sec.appendChild(g);
+      k.omowaku.forEach((o) => {
+        const d = document.createElement('div'); d.className = 'ktOmo';
+        d.appendChild(document.createTextNode((o.actor ? o.actor + '：' : '') + o.text));
+        [['根拠', o.basis], ['崩れる条件', o.breaks], ['裏づける条件', o.backs]].forEach(([kk, v]) => { if (!v) return; const s1 = document.createElement('div'); s1.className = 'ktSub'; s1.textContent = kk + '：' + v; d.appendChild(s1); });
+        sec.appendChild(d);
+      });
+    }
+    line('仕組み', k.shikumi);
+    k.utagai.forEach((u, i) => line(i ? '　　' : '疑いの候補', '①②③④⑤'[i] + ' ' + u));
+    return sec;
   }
   function renderWorldChoice(box) {
     if (!box) return;
@@ -20427,6 +20708,7 @@
       again.addEventListener('click', () => { worldChoiceCancel(chosen.id); rerender(); });
       btns.appendChild(open); btns.appendChild(again);
       box.appendChild(btns);
+      if (ev) worldKatariChoiceEl(box, chosen, ev, rerender);   // v20.72
       box.hidden = false;
       return;
     }
@@ -21349,6 +21631,7 @@
     box.appendChild(digRow);   // v20.43
     box.appendChild(copyNote);
     box.appendChild(deep);
+    { const kt = worldKatariSecEl(ev); if (kt) box.appendChild(kt); }   // v20.72 語り方
     { const sec = worldDigSectionEl(ev, () => { renderWorldDetail(box, ev, paintRight); repaint(); }); if (sec) box.appendChild(sec); }   // v20.43
 
     // 分かれ目の1行。v19.5 段階2 から予測の枠（3択・一言・期限）は出さない（prediction のデータは残す）
