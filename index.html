@@ -1169,6 +1169,7 @@
   .worldSelfLine .linkLikeBtn { font-size: 12px; }
   .worldSelfBy { font-size: 11px; color: var(--text-dim); margin: 0 0 8px; }
   .worldRow .wSelf { font-size: 10px; color: var(--text); white-space: nowrap; margin-left: 4px; }
+  .worldRow .wMatome { font-size: 10px; color: var(--warn, #e0a060); white-space: nowrap; margin-left: 4px; border: 1px dotted var(--warn, #e0a060); border-radius: 3px; padding: 0 3px; }   /* v20.69：まとめサイトの可能性 */
   .digNoSrc { font-size: 11px; color: var(--text-dim); margin-left: 4px; }
   .worldDigListRow { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: baseline; width: 100%; text-align: left; background: none; border: 0; border-top: 1px solid var(--border); padding: 7px 0; margin: 0; font: inherit; color: var(--text); cursor: pointer; }
   .worldDigListRow .wdDate { font-size: 11px; color: var(--text-faint); white-space: nowrap; }
@@ -3219,7 +3220,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.68';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.69';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -15530,6 +15531,21 @@
   // v19.4 段階5：ソースの周期。周期を持つソース＝必ず見るもの。'' は周期なし（よく使う出典）
   const WORLD_CADENCES_SRC      = ['', 'day', 'week', 'dekad', 'month', 'quarter'];
   const WORLD_CADENCE_SRC_DAYS  = { day: 1, week: 7, dekad: 10, month: 30, quarter: 90 };
+  // v20.69 まとめサイト対策 案A：一次資料ではなく、まとめ・ポータル系だと分かっているものだけの一覧。
+  // 「一次資料の一覧」ではないので、一覧に無いドメインには何もしない。見つかるたびに1行ずつ足す。
+  const WORLD_MATOME_DOMAINS = ['hojyokin-portal.jp'];   // 例：ガソリン補助額のまとめサイト（v20.68 の事故の出典）
+  const WORLD_MATOME_CONF_CAP = 5;   // この確度を超える申告だけ、ここまで戻す（下げるのではなく天井）
+  function worldMatomeHost(url) {
+    const h = worldHostOf(url);
+    if (!h) return '';
+    return WORLD_MATOME_DOMAINS.find((d) => h === d || h.endsWith('.' + d)) || '';
+  }
+  function worldCappedConfidence(v, url) {
+    return (v && worldMatomeHost(url) && v > WORLD_MATOME_CONF_CAP) ? WORLD_MATOME_CONF_CAP : v;
+  }
+  // v20.69 まとめサイト対策 案B：確度は動かさず、自己申告（confidenceWhy）の中の「一次資料に届いていない」を
+  // 取り込みの結果に数だけ知らせる。誤って多く拾っても実害は文が1つ増えるだけなので、広めに拾う。
+  const WORLD_PRIMARY_GAP_RE = /一次資料.{0,6}(当たれず|確認でき|確かめ.{0,4}(ず|てい)|読めず)|(原文|原資料|発表文|公表文|本文).{0,8}(当たれず|確認でき|確かめ.{0,4}(ず|てい)|開けず|読めず)|報道(のみ|だけ)|(要約|集計|二次)(サイト|媒体|情報|的)/;
   const WORLD_CADENCE_SRC_LABEL = { '': '周期なし', day: '毎日', week: '週1', dekad: '旬', month: '月1', quarter: '四半期' };
   const WORLD_PULL_PENDING_KEY  = 'kotoba_worldPullPending';
   // v19.6 段階6：お金の鎖
@@ -16345,7 +16361,8 @@
       // v19.3：この出典は何を欲しがっているか。ソース側にあった立場の1行を札に移した（一覧の外の出典でも残る）
       wants: worldStr(e.wants, WORLD_WANTS_MAX),
       // v19.3：確度 1〜10。7以下は理由を1行
-      confidence: worldConfidence(e.confidence),
+      // v20.69：まとめサイトだと分かっている場所からの申告は、天井を超えていたら天井まで戻す
+      confidence: worldCappedConfidence(worldConfidence(e.confidence), e.url),
       confidenceWhy: worldStr(e.confidenceWhy, 80),
       // v19.11：この出典が新しい数字を出す周期の推定。出典をソースに昇格するときの初期値
       srcCadence: (WORLD_CADENCE_SRC_DAYS[e.srcCadence] ? e.srcCadence : ''),
@@ -20306,6 +20323,7 @@
     let old = 0, forks = 0, leans = 0, droppedForks = 0, onStrata = 0, droppedStrata = 0, unknownConcepts = 0, withActors = 0, withRead = 0, withFlow = 0;
     let outside = 0, lowConf = 0, sunkConf = 0, noConf = 0, tracked = 0;   // v19.3
     let staleNum = 0;   // v20.68：期限切れの数字
+    let primaryGapNum = 0;   // v20.69：一次資料に届いていない可能性（確度は動かさない。知らせるだけ）
     const outsideMap = new Map();   // v19.11
     const createdActors = [];
     const lv = { levelsFilled: 0, levelsDup: 0, levelsUnknown: 0 };   // v15
@@ -20406,6 +20424,7 @@
         }
       }
       if (isDateStr(ev.validTo) && ev.validTo < today) staleNum++;   // v20.68：置き換わる数字が、もう期限切れ
+      if (ev.confidenceWhy && WORLD_PRIMARY_GAP_RE.test(ev.confidenceWhy)) primaryGapNum++;   // v20.69
       if (ev.confidence && ev.confidence <= WORLD_CONF_WHY_BELOW) lowConf++;
       if (worldIsLowConf(ev)) sunkConf++;
       if (!ev.confidence) noConf++;
@@ -20485,6 +20504,7 @@
       viewRec,   // v20.62
       cmpRec,   // v20.65
       staleNum,   // v20.68
+      primaryGapNum,   // v20.69
       added: added.length, rejected, old, forks, leans, droppedForks, onStrata, droppedStrata, unknownConcepts,
       createdConcepts, createdTerms, createdActors, batchId, linked, partnerIds: [...partnerIds],
       addedIds: added.map((e) => e.id),
@@ -20754,6 +20774,8 @@
         if (ev.confidenceWhy) c.title = ev.confidenceWhy;
         right.appendChild(c);
       }
+      // v20.69 まとめサイト対策 案A：url から毎回判定するので、古い札を開いたときにも効く
+      { const mh = worldMatomeHost(ev.url); if (mh) { const g = document.createElement('span'); g.className = 'wMatome'; g.textContent = 'まとめサイトの可能性'; g.title = mh; right.appendChild(g); } }
     };
     paintRight();
     row.appendChild(right);
@@ -29459,6 +29481,7 @@
     if (res.viewRec) msg += '　' + worldViewImportNote(res.viewRec);   // v20.62
     if (res.cmpRec) msg += '　' + worldCmpImportNote(res.cmpRec);   // v20.65
     if (res.staleNum) msg += '　※ もう次の回が出ている数字 ' + res.staleNum + '件（札に「すでに次の回が出ている」と出ます）。';   // v20.68
+    if (res.primaryGapNum) msg += '　※ 一次資料に届いていない可能性がある札 ' + res.primaryGapNum + '件（確度はそのまま。理由は確度の隣に出ます）。';   // v20.69
     if (res.todayStartSkipped) msg += '　※ 根の札 ' + res.todayStartSkipped + '件は今日見るべき件から外しました。';
     worldState.lastImportRecId = res.importRec ? res.importRec.id : '';
     worldState.sameOpen = '';
