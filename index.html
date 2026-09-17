@@ -1152,6 +1152,12 @@
   .worldTodayPick .gone .tpFact { color: var(--text-faint); }
   .worldTodayPick .tpWhy { font-size: 12px; color: var(--text-dim); margin-top: 2px; line-height: 1.5; }
   .worldTodayPick .tpNote { font-size: 12px; color: var(--text-faint); margin-top: 2px; }
+  /* v20.71 note 段1：今日、深く見るなら。選ぶのは本人（提案を並べるだけ） */
+  .worldChoice .chChosen { font-size: 14px; line-height: 1.5; border: 1px solid var(--accent-dim); border-radius: 8px; padding: 7px 9px; margin: 0 0 6px; }
+  .worldChoice .chBtns { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px; }
+  .worldChoice .chBtns .linkLikeBtn { font-size: 13px; }
+  .worldChoice .chNone { font-size: 13px; }
+  .worldChoiceLine { font-size: 12px; color: var(--text-dim); margin: 0 0 6px; }
   .digCand { border: 1px solid var(--accent-dim); border-radius: 8px; padding: 7px 9px; margin: 6px 0; }
   .digCand .dcFact { font-size: 14px; font-weight: 700; line-height: 1.5; }
   .digCand .dcLine { font-size: 12px; color: var(--text); margin-top: 2px; }
@@ -2541,6 +2547,9 @@
       <!-- v20.50 幹 段1：幹の一覧への入口（幹が無いうちは「幹を立てる」） -->
       <button type="button" id="btnWorldMiki" class="linkLikeBtn" hidden></button>
 
+      <!-- v20.71 note 段1：今日、深く見るなら（候補を並べ、本人が1つ選ぶ） -->
+      <div id="worldChoice" class="worldTodayPick worldChoice" hidden></div>
+
       <!-- v20.51 幹 段2：今日動いた幹（今日見るべき件はその幹の下に入れる） -->
       <div id="worldMikiToday" class="worldTodayPick" hidden></div>
 
@@ -3223,7 +3232,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.70';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.71';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -4031,7 +4040,7 @@
   function idCollisionHead(kind, o) {
     const t = kind === 'event' ? o.fact : kind === 'forecast' ? (o.actor || '') + '：' + (o.what || '')
       : (kind === 'concept' || kind === 'term' || kind === 'actor') ? o.name
-      : kind === 'dig' ? o.question : kind === 'pick' ? '今日見るべき件 ' + (o.date || '') : kind === 'import' ? '取り込みの記録 ' + (o.date || '') :kind === 'asked' ? (o.target || '') + ' ' + (o.key || '') : o.text;   // v20.43
+      : kind === 'dig' ? o.question : kind === 'pick' ? '今日見るべき件 ' + (o.date || '') : kind === 'import' ? '取り込みの記録 ' + (o.date || '') : kind === 'choices' ? '深く見る ' + (o.date || '') :kind === 'asked' ? (o.target || '') + ' ' + (o.key || '') : o.text;   // v20.43
     return String(t || (kind === 'journal' ? o.kind || '' : '')).replace(/\s+/g, ' ').slice(0, 40);
   }
   // 鍵は直書き（後ろで宣言する const は、起動時の読み込みの方が早いと使えない）
@@ -15767,6 +15776,9 @@
   const WORLD_TODAY_TYPE_MAX = 10;    // 5つに当たらないときの自分の言葉
   const WORLD_TODAY_WHY_ASK = 60;     // プロンプトで頼む字数
   const WORLD_TODAY_WHY_MAX = 120;    // 安全弁。超えたら切って印
+  const WORLD_CHOICE_MAX = 4;          // v20.71 note 段1：毎日並べる候補の数（ほかに「今日はなし」）
+  const WORLD_CHOICE_PER_SRC = 2;      // 今日見るべき件から・ずれのある札から、それぞれ最大いくつ（足りなければ片方で埋める）
+  const WORLD_CHOICE_ZURE_DAYS = 14;   // ずれのある札は、出来事の日付が何日前まで
   const WORLD_TODAY_SHOW_DAYS = 7;    // 今日の取り込みが無い日に、何日前の分まで出すか
   // v20.48 重複 段1：すでにある札の一覧と same・follows。日数・件数はここだけで変える
   const WORLD_KNOWN_CARDS_DAYS = 14;  // 取り込んだ日（札を作った日）が今日を含めて直近何日の札を渡すか
@@ -20320,6 +20332,134 @@
     if (p.date < addDays(todayStr(), -WORLD_TODAY_SHOW_DAYS)) return null;
     return p;
   }
+  // ---- v20.71 note 段1：毎日選ぶ ----------------------------------------------
+  // 記録は調べたことの月ファイルの choices（v20.48 から、知らない並びでも id と日時があれば落ちない）
+  function worldChoices() {
+    const all = [];
+    wdig.docs.forEach((doc) => (Array.isArray(doc.choices) ? doc.choices : []).forEach((c) => { if (c && c.id && isDateStr(c.date)) all.push(c); }));
+    return all.sort((p, q) => (p.at < q.at ? -1 : p.at > q.at ? 1 : 0));
+  }
+  function worldChoiceToday() {
+    const t = todayStr();
+    return worldChoices().filter((c) => c.date === t && !c.canceled).pop() || null;
+  }
+  function worldChoiceOf(eventId) { return worldChoices().filter((c) => c.cardId === eventId && !c.canceled); }
+  function worldChoiceZureMonths() {
+    const t = todayStr();
+    return [...new Set([monthOfDate(t), monthOfDate(addDays(t, -WORLD_CHOICE_ZURE_DAYS))])];
+  }
+  // 候補：今日見るべき件（札が取り込まれた件）とずれのある札。前に選んだ札・芯になりにくいと返った札は出さない
+  function worldChoiceCandidates() {
+    const skip = new Set(worldChoices().filter((c) => c.cardId && (!c.canceled || c.noFit)).map((c) => c.cardId));
+    const live = new Map(worldLiveEvents().map((e) => [e.id, e]));
+    const pick = worldTodayPickToShow();
+    const tList = [];
+    (pick ? pick.items : []).forEach((x) => {
+      if (x.gone || !x.cardId || skip.has(x.cardId) || tList.some((y) => y.cardId === x.cardId)) return;
+      const ev = live.get(x.cardId);
+      if (!ev && pick.date !== todayStr()) return;
+      tList.push({ cardId: x.cardId, fact: (ev && ev.fact) || x.fact || '', why: x.why || '', type: x.type || '', zure: (ev && ev.zure) || '' });
+    });
+    const from = addDays(todayStr(), -WORLD_CHOICE_ZURE_DAYS);
+    const zList = worldLiveEvents()
+      .filter((e) => e.zure && e.eventDate >= from && !skip.has(e.id) && !tList.some((y) => y.cardId === e.id))
+      .sort((a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0))
+      .map((e) => ({ cardId: e.id, fact: e.fact, zure: e.zure }));
+    const out = tList.slice(0, WORLD_CHOICE_PER_SRC).concat(zList.slice(0, WORLD_CHOICE_PER_SRC));
+    const rest = tList.slice(WORLD_CHOICE_PER_SRC).concat(zList.slice(WORLD_CHOICE_PER_SRC));
+    while (out.length < WORLD_CHOICE_MAX && rest.length) out.push(rest.shift());
+    return out.slice(0, WORLD_CHOICE_MAX).map((c) => Object.assign(c, { from: c.why !== undefined && c.zure ? 'both' : c.why !== undefined ? 'today' : 'zure' }));
+  }
+  function worldChoiceSave(cand, shown) {
+    try {
+      const at = nowIso();
+      const rec = { id: digNewId('ch'), date: todayStr(), at, createdAt: at, updatedAt: at, shown: shown.map((c) => c.cardId) };
+      if (cand) {
+        rec.cardId = cand.cardId; rec.from = cand.from; rec.fact = cand.fact;
+        rec.note = cand.from === 'today' ? (cand.why || '') : (cand.zure || '');
+      } else rec.none = true;
+      digMutate((doc) => { if (!Array.isArray(doc.choices)) doc.choices = []; doc.choices.push(rec); });
+    } catch (e) { recordFeatureError('深く見るものを選ぶ', e); }
+  }
+  // 選び直す：消さずに印を付ける（何を選んでやめたかが残る）
+  function worldChoiceCancel(id) {
+    try {
+      const at = nowIso();
+      wdig.docs.forEach((doc, m) => {
+        const c = (Array.isArray(doc.choices) ? doc.choices : []).find((x) => x.id === id);
+        if (!c) return;
+        c.canceled = true; c.updatedAt = at; doc.updatedAt = at;
+        wdig.dirty.add(m);
+        persistDigDoc(m);
+      });
+      persistDigMeta();
+      scheduleSync();
+    } catch (e) { recordFeatureError('選び直す', e); }
+  }
+  function renderWorldChoice(box) {
+    if (!box) return;
+    box.innerHTML = '';
+    const rerender = () => renderWorldChoice(box);
+    const need = worldChoiceZureMonths().filter((m) => (wd.index && wd.index.months && wd.index.months[m]) && !wd.loaded.has(m));
+    if (need.length) ensureWorldMonths(need).then(() => { if (nav.screen === 'world' && worldState.view === 'main') rerender(); });
+    const chosen = worldChoiceToday();
+    const head = document.createElement('div'); head.className = 'tpHead';
+    box.appendChild(head);
+    if (chosen && chosen.none) {
+      head.textContent = '今日、深く見るなら';
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'linkLikeBtn chNone';
+      b.textContent = '今日は選ばない（戻す）';
+      b.addEventListener('click', () => { worldChoiceCancel(chosen.id); rerender(); });
+      box.appendChild(b);
+      box.hidden = false;
+      return;
+    }
+    if (chosen) {
+      head.textContent = '今日深く見る';
+      const ev = worldLiveEvents().find((e) => e.id === chosen.cardId);
+      const d = document.createElement('div'); d.className = 'chChosen';
+      d.textContent = (ev && ev.fact) || chosen.fact || chosen.cardId;
+      box.appendChild(d);
+      const btns = document.createElement('div'); btns.className = 'chBtns';
+      const open = document.createElement('button'); open.type = 'button'; open.className = 'linkLikeBtn'; open.textContent = '札を開く';
+      open.addEventListener('click', () => worldOpenAnyEvent(chosen.cardId));
+      const again = document.createElement('button'); again.type = 'button'; again.className = 'linkLikeBtn'; again.textContent = '選び直す';
+      again.addEventListener('click', () => { worldChoiceCancel(chosen.id); rerender(); });
+      btns.appendChild(open); btns.appendChild(again);
+      box.appendChild(btns);
+      box.hidden = false;
+      return;
+    }
+    const cands = worldChoiceCandidates();
+    if (!cands.length) { box.hidden = true; return; }
+    head.textContent = '今日、深く見るなら（1つ選ぶ）';
+    cands.forEach((c) => {
+      const row = document.createElement('button'); row.type = 'button'; row.className = 'tpRow';
+      const f = document.createElement('div'); f.className = 'tpFact';
+      const tag = document.createElement('span'); tag.className = 'tpType';
+      tag.textContent = c.from === 'both' ? '今日見るべき件・ずれあり' : c.from === 'today' ? '今日見るべき件' : 'ずれあり';
+      f.appendChild(tag);
+      f.appendChild(document.createTextNode(c.fact || '（何が起きたかが書かれていません）'));
+      row.appendChild(f);
+      if (c.from !== 'zure') {
+        const w = document.createElement('div'); w.className = 'tpWhy';
+        w.textContent = 'なぜ：' + (c.why || '（理由が書かれていません）');
+        row.appendChild(w);
+      }
+      if (c.zure) {
+        const z = document.createElement('div'); z.className = 'tpWhy';
+        z.textContent = 'ずれ：' + c.zure;
+        row.appendChild(z);
+      }
+      row.addEventListener('click', () => { worldChoiceSave(c, cands); rerender(); });
+      box.appendChild(row);
+    });
+    const none = document.createElement('button'); none.type = 'button'; none.className = 'linkLikeBtn chNone';
+    none.textContent = '今日はなし';
+    none.addEventListener('click', () => { worldChoiceSave(null, cands); rerender(); });
+    box.appendChild(none);
+    box.hidden = false;
+  }
   async function worldImportJson(raw, viaAsk, opts) {
     const selfMade = !!(opts && opts.selfMade);   // v20.54：候補から作る札。朝の取り込みの幹の記録（芽を探した印・控え）に触らない
     const parsed = shootParseJson(raw);
@@ -20877,6 +21017,7 @@
       }
     }
     box.appendChild(worldFollowsEl(ev));   // v20.48：続きの印
+    { const ch = worldChoiceOf(ev.id); if (ch.length) { const p = document.createElement('div'); p.className = 'worldChoiceLine'; p.textContent = ch.map((c) => worldShortDate(c.date)).join('・') + ' に深く見るものとして選んだ'; box.appendChild(p); } }   // v20.71
     { const mk = worldMikiLinksEl(ev); if (mk) box.appendChild(mk); }   // v20.50：幹（最大2本）
     const termEntries = worldTermEntriesOf(ev);
     const usedTerms = new Set();   // 1語につき最初の1回だけ（why → detail の順に消費）
@@ -24130,6 +24271,7 @@
   function renderWorldMain() {
     renderWorldMiniMap();   // v20.5 M5
     renderWorldMikiEntry(document.getElementById('btnWorldMiki'));   // v20.50
+    renderWorldChoice(document.getElementById('worldChoice'));   // v20.71 note 段1
     // v20.51 幹 段2：幹があれば「今日動いた幹」の下に今日見るべき件を入れる。幹が無ければ今までどおり
     if (renderWorldMikiToday(document.getElementById('worldMikiToday'))) document.getElementById('worldTodayPick').hidden = true;
     else renderWorldTodayPick(document.getElementById('worldTodayPick'));   // v20.47
