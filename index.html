@@ -1186,6 +1186,12 @@
   .kjPickMain { font-size: 14px; line-height: 1.5; }
   .kjAgain { font-size: 12px; margin-top: 6px; }
   .kjCopyRow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 6px 0; }
+  /* v20.79 撮る v3：本番の台本 */
+  .shootScriptBar { display: flex; gap: 8px; align-items: center; padding: 6px 10px; }
+  .shootScriptMeta { font-size: 12px; color: var(--text-dim); }
+  .shootScript { padding: 8px 14px 60px; white-space: pre-wrap; word-break: break-word; line-height: 2; font-size: 20px; }
+  .shootScript .shootScriptHead { color: var(--accent); font-size: 14px; margin: 18px 0 4px; }
+  #shootV3 .kjStep textarea, #shootV3 .kjStep input { width: 100%; box-sizing: border-box; margin: 4px 0; }
   .kjMag { border-top: 1px dashed var(--text-faint); margin-top: 10px; padding-top: 6px; }
   .kjMag input, #worldMagsBody input { width: 100%; box-sizing: border-box; margin: 4px 0; }
   .kjMagRow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; margin: 4px 0; font-size: 13px; }
@@ -2448,6 +2454,10 @@
     </div>
 
     <div class="editorBody" id="shootEditView" hidden>
+      <!-- v20.79 撮る v3：6つの段 -->
+      <div id="shootV3"></div>
+      <details class="setMore" id="shootOldWrap">
+        <summary>前の形（v9まで：問い・仮の答え・カード・展開・流れの説明）</summary>
       <div class="field">
         <span class="fieldLabel">1 問い</span>
         <div class="tagFilterRow" id="shootQuestionChips"></div>
@@ -2550,9 +2560,10 @@
         <textarea id="shootNoteCopyPaste" rows="3" readonly hidden></textarea>
         <p class="fieldNote" id="shootNoteStatus"></p>
       </div>
+      </details>
       <div class="field">
         <button id="btnShootStart" class="primaryBtn">撮影表示をひらく</button>
-        <p class="fieldNote" id="shootStartHint" hidden>「入り」と「仮の答え」を書くと開けます。</p>
+        <p class="fieldNote" id="shootStartHint" hidden>台本があればそれを出します。無いときは「入り」と「仮の答え」を書くと開けます。</p>
         <div class="medRow">
           <button type="button" id="btnShootDone" class="secondaryBtn" style="width:auto;">撮った印をつける</button>
           <button type="button" id="btnShootDelete" class="dangerBtn" style="width:auto;">このデッキを消す</button>
@@ -3215,6 +3226,15 @@
       <div class="shootHeadA" id="shootStageAnswer"></div>
     </div>
     <div id="shootStageCards" class="shootCards"></div>
+    <!-- v20.79：台本があれば、台本を大きく出す -->
+    <div id="shootStageScriptWrap" hidden>
+      <div class="shootScriptBar">
+        <button type="button" id="btnShootFontDown" class="shootUrlBtn">小さく</button>
+        <button type="button" id="btnShootFontUp" class="shootUrlBtn">大きく</button>
+        <span class="shootScriptMeta" id="shootScriptMeta"></span>
+      </div>
+      <div id="shootStageScript" class="shootScript"></div>
+    </div>
   </div>
   <div id="screen-medTimer" class="drawOverlay" hidden>
     <div id="medTimerBig">00:00</div>
@@ -3289,7 +3309,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.78';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.79';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -3428,6 +3448,16 @@
         : null;
       out.status = j.status === 'shot' ? 'shot' : 'draft';
       out.shotAt = typeof j.shotAt === 'string' ? j.shotAt : '';
+      // v20.79 撮る v3：題材の判定 → 材料 → 構成 → 台本 → サムネ・タイトル → 公開後
+      out.tane = typeof j.tane === 'string' ? j.tane.slice(0, 600) : '';
+      out.judge = (j.judge && typeof j.judge === 'object') ? j.judge : null;
+      out.mats = Array.isArray(j.mats) ? j.mats.filter((x) => x && typeof x === 'object').slice(0, 20) : [];
+      out.blocks = Array.isArray(j.blocks) ? j.blocks.filter((x) => x && typeof x === 'object').slice(0, 6) : [];
+      out.opening = typeof j.opening === 'string' ? j.opening.slice(0, 1000) : '';
+      out.ending = typeof j.ending === 'string' ? j.ending.slice(0, 800) : '';
+      out.script = (j.script && typeof j.script === 'object' && typeof j.script.text === 'string') ? { text: j.script.text.slice(0, 20000), at: String(j.script.at || '') } : null;
+      out.pack = (j.pack && typeof j.pack === 'object') ? j.pack : null;
+      out.after = (j.after && typeof j.after === 'object') ? j.after : null;
     }
     return out;
   }
@@ -14617,6 +14647,7 @@
       shootRecordAnswer(deck);
       if ((deck.answers || []).length !== before) shootTouch(deck);
     }
+    try { renderToruSteps(deck); } catch (e) { recordFeatureError('撮るの段', e); }   // v20.79
     renderShootQuestionChips(deck);
     renderShootPremises(deck);
     renderShootHookCandidates();
@@ -15273,14 +15304,457 @@
     renderShootStage();
     syncAllNow().then(() => { if (!document.getElementById('screen-shootStage').hidden) renderShootStage(); }).catch(() => {});
   }
+  const SHOOT_FONT_KEY = 'kotoba_shootFont';
+  function shootFontSize() { const n = Number(localStorage.getItem(SHOOT_FONT_KEY)); return n >= 14 && n <= 40 ? n : 20; }
+  function shootFontSet(n) { const v = Math.max(14, Math.min(40, n)); try { localStorage.setItem(SHOOT_FONT_KEY, String(v)); } catch (e) {} const el = document.getElementById('shootStageScript'); if (el) el.style.fontSize = v + 'px'; }
+  function renderShootScript(deck) {
+    const box = document.getElementById('shootStageScript');
+    box.innerHTML = '';
+    box.style.fontSize = shootFontSize() + 'px';
+    const l = toruScriptLint(deck.script.text);
+    document.getElementById('shootScriptMeta').textContent = '約' + l.chars + '字・約' + Math.round(l.chars / 380) + '分';
+    deck.script.text.split(/\n/).forEach((line) => {
+      const t = line.trim();
+      if (!t) { box.appendChild(document.createElement('br')); return; }
+      const d = document.createElement('div');
+      if (/^＃/.test(t)) { d.className = 'shootScriptHead'; d.textContent = t.replace(/^＃\s*/, '── '); } else d.textContent = t;
+      box.appendChild(d);
+    });
+  }
   function closeShootStage() {
     document.getElementById('screen-shootStage').hidden = true;
     shootWakeRelease();
     renderShoot();
   }
+  // ---- v20.79 撮る v3：題材の判定 → 材料 → 構成 → 台本 → サムネ・タイトル → 公開後 ----------
+  // 仕様 docs/toru/toru_v3_shiyou.md（非公開）。口調シート docs/toru/kuchou.md
+  const TORU_SURE = { fact: '確かめられる', report: '報じられている', legend: 'そう語られてきた', mine: '自分の実感' };
+  const TORU_MAT_KINDS = ['研究', '歴史', '伝承', 'オカルト', '自分'];
+  const TORU_SCRIPT_MIN = 6500;
+  const TORU_SCRIPT_MAX = 7500;
+  const TORU_BAD_WORDS = ['皆さん', 'みなさん', 'なのです', 'ですよね', '要は', 'ではないでしょうか', '私たち'];
+  const TORU_DRAFT_KEY = 'kotoba_toruDraft';
+  function toruDrafts() { try { return JSON.parse(localStorage.getItem(TORU_DRAFT_KEY) || '{}') || {}; } catch (e) { return {}; } }
+  function toruDraftSet(key, text) { try { const d = toruDrafts(); if (text) d[key] = text; else delete d[key]; localStorage.setItem(TORU_DRAFT_KEY, JSON.stringify(d)); } catch (e) {} }
+
+  // 口調シート（フリートーク9本の実測から。台本の依頼文に毎回入れる）
+  function toruStyleText() {
+    return '■ 話し方（この形で書く。ここがいちばん大事）\n' +
+      '- 語尾：「〜なんだよ」「〜だよね」「〜じゃん」「〜なんだけどね」「〜と思うんだけど」。本編はタメ口寄り。冒頭の挨拶だけ「です・ます」。\n' +
+      '- 文の切れ目に「ね、」を置いて間を取る。「〜っていう」で言い換えながら進む。\n' +
+      '- つなぎは「だから」「でも」「やっぱり」。ぼかすときは「なんか」「ちょっと」「多分」。強めるときは「すごい」。\n' +
+      '- **使わない言い方**：' + TORU_BAD_WORDS.join('・') + '。硬い書き言葉にしない。\n' +
+      '- 聞き手に呼びかける（「みんな〜ある？」「どうしてるんだろうって思ったんだよ」）。\n' +
+      '- 自分の失敗や弱さを1回は入れる（「僕は自分に怒りが向くんだよ。良くないことなんだけどね」）。\n' +
+      '- 出典は会話の形で言う（「この本読んでみたんだけどさ」）。\n' +
+      '- 難しい言葉は、その場で言い換える（「心理的エントロピー、まあ頭の中が散らかってる状態ね」）。\n\n';
+  }
+  function toruReaderText() {
+    return '■ 誰に何を届けるか\n' +
+      '- 視聴者：説明のつかない体験を、夜にひとりで考えてしまう人。目に見えない世界への好奇心がある人。\n' +
+      '- 届けるもの：誰にでも起きる体験を入口に、研究・歴史・伝承・オカルト／スピリチュアル・自分の実感をつないで、その体験の見え方を変えること。\n' +
+      '- 伝承やオカルトは、否定も肯定もしない。「そう語られてきた」として置き、なぜそう語られたのかを考える。\n' +
+      '- 事実・研究で確かめられたこと・語られてきた話・自分の実感を、言い方で分ける。\n\n';
+  }
+  function toruJudgeHistoryText() {
+    const rows = [];
+    deckEntries().slice(0, 6).forEach((d) => {
+      if (!d.judge || !d.judge.at) return;
+      const a = d.after && d.after.at ? '（公開後：CTR ' + (d.after.ctr || '？') + '％・平均視聴 ' + (d.after.avgView || '？') + '）' : '';
+      rows.push('- ' + (d.judge.genshou || d.tane || '').slice(0, 40) + '：' + (d.judge.ok ? '通った' : '捨てた') + a);
+    });
+    return rows.length ? '■ これまでの題材（同じ切り口を繰り返さないため）\n' + rows.join('\n') + '\n\n' : '';
+  }
+  function toruJudgePromptText(deck) {
+    return SHOOT_PROMPT_HEAD +
+      'YouTube の動画の題材が、面白くなるかどうかを判定してください。\n今日は ' + todayStr() + ' です。\n\n' +
+      toruReaderText() + toruJudgeHistoryText() +
+      '■ 種（本人が書いたもの）\n' + (deck.tane || '（まだ書かれていません）') + '\n\n' +
+      '■ 判定の決まり\n' +
+      '- genshou：誰にでも起きる、説明のつかない体験に言い直す（1文）。種が抽象的なら、体験の形にする。\n' +
+      '- joushiki：世間ではそれをどう片付けているか（1文。「気のせい」「年のせい」「偶然」など）。\n' +
+      '- zure：研究・歴史・伝承・オカルト／スピリチュアルでは、それがどう違って見えるか。2〜4つ。\n' +
+      '  1つずつ kind（研究／歴史／伝承／オカルト）と text（1文）。探せば材料がありそうか、も含めて考える。\n' +
+      '- kaishuu：見終わったあと、その体験がどう違って見えるかを1文で。これが書けない題材は通さない。\n' +
+      '- gap：known＝視聴者がすでに知っていること。unknown＝知らないこと（ここが大きいほど良い）。\n' +
+      '- ok：上が全部埋まり、知らないことが十分に大きければ true。埋まらなければ false。\n' +
+      '- why：なぜその判定か（1〜2文）。false なら missing に足りないものを書く。\n' +
+      '- 甘くしない。通らない種は通らないと言う。\n\n' +
+      '■ 出力形式（JSON のみ）\n' +
+      '{"genshou":"1文","joushiki":"1文",\n' +
+      ' "zure":[{"kind":"研究","text":"1文"}],\n' +
+      ' "kaishuu":"1文","gap":{"known":"1文","unknown":"1〜2文"},\n' +
+      ' "ok":true,"why":"1〜2文","missing":""}';
+  }
+  function toruJudgeText(deck) {
+    const j = deck.judge;
+    if (!j) return '';
+    return '■ 題材\n現象：' + (j.genshou || '') + '\n世間の常識：' + (j.joushiki || '') + '\n' +
+      (j.zure || []).map((z) => 'ずれ（' + z.kind + '）：' + z.text).join('\n') + '\n' +
+      '回収：' + (j.kaishuu || '') + '\n' +
+      '視聴者が知っていること：' + ((j.gap && j.gap.known) || '') + '\n' +
+      '知らないこと：' + ((j.gap && j.gap.unknown) || '') + '\n\n';
+  }
+  function toruMatsPromptText(deck) {
+    return SHOOT_PROMPT_HEAD +
+      'この題材の動画の材料を集めてください。web 検索を使ってかまいません。\n今日は ' + todayStr() + ' です。\n\n' +
+      toruReaderText() + toruJudgeText(deck) +
+      '■ 集めるもの\n' +
+      '- 6〜10個。kind は ' + TORU_MAT_KINDS.join('／') + ' のどれか。**研究だけに寄らせない**。伝承・オカルトも必ず入れる。\n' +
+      '- fact：話し言葉で言える1文（60字以内）。論文の要約にしない。数字は1つまで。\n' +
+      '- detail：数字・方法・人数・年（開いたときだけ見るもの）。\n' +
+      '- source：媒体・著者・年。url：あれば（無ければ空）。\n' +
+      '- sure：確かさ。fact＝一次資料や研究で確かめられる／report＝報道や書籍にそう書かれている／legend＝そう語られてきた話／mine＝本人の実感。\n' +
+      '- why：この題材のどこに効くか（1文）。とくに「常識をどう裏返すか」。\n' +
+      '- 伝承・オカルトは、本当かどうかを判定しない。「そう語られてきた」として置き、なぜそう語られたのかが分かる材料にする。\n' +
+      '- 作り話をしない。見つからなければ少なくてよい。\n\n' +
+      '■ 出力形式（JSON のみ）\n' +
+      '{"mats":[{"kind":"研究","fact":"1文","detail":"数字や方法","source":"媒体・著者・年","url":"https://...","sure":"fact","why":"1文"}]}';
+  }
+  function toruMatsText(deck) {
+    const m = deck.mats || [];
+    if (!m.length) return '';
+    return '■ 材料\n' + m.map((x, i) => (i + 1) + '. [' + x.kind + '／' + (TORU_SURE[x.sure] || x.sure) + '] ' + x.fact +
+      (x.detail ? '\n   くわしく：' + x.detail : '') + (x.source ? '\n   出どころ：' + x.source : '') + (x.why ? '\n   効くところ：' + x.why : '')).join('\n') + '\n\n';
+  }
+  function toruBlocksPromptText(deck) {
+    return SHOOT_PROMPT_HEAD +
+      'この題材と材料で、20分の動画の構成を作ってください。台本はまだ書きません。\n\n' +
+      toruReaderText() + toruJudgeText(deck) + toruMatsText(deck) +
+      '■ 構成の決まり\n' +
+      '- ブロックは3〜4つ。1ブロックは4〜5分。\n' +
+      '- name：ブロックの名前（15字以内。視聴者が「今どこの話か」分かる言葉）。\n' +
+      '- promise：このブロックで何が分かるか（1文）。\n' +
+      '- mats：使う材料の番号（上の数字）。1ブロックに1〜3つ。\n' +
+      '- kaishuu：**ブロックの終わりで回収する一文**。「〜なのは、〜だからではなく、〜だから」の形で、体験の見え方を変える。\n' +
+      '  **毎回ちがう言い方にする。同じ決まり文句を繰り返さない。**\n' +
+      '- bridge：次のブロックへの橋。**前のブロックの足りないところから入る**（「でも、これだけじゃ説明がつかないことがある」のように）。最後のブロックは空。\n' +
+      '- opening：冒頭（0〜60秒）。現象 → 呼びかけ → 常識 → でも → 今日わかること2つ → 最後まで見たらどうなるか、の順で3〜5文。\n' +
+      '- ending：最後。持ち帰り1つ → まとめ → 視聴者への問い、の順で2〜3文。\n\n' +
+      '■ 出力形式（JSON のみ）\n' +
+      '{"opening":"3〜5文","blocks":[{"name":"15字以内","promise":"1文","mats":[1,2],"kaishuu":"1文","bridge":"1文"}],"ending":"2〜3文"}';
+  }
+  function toruBlocksText(deck) {
+    const b = deck.blocks || [];
+    if (!b.length) return '';
+    return '■ 構成\n冒頭：' + (deck.opening || '') + '\n' +
+      b.map((x, i) => (i + 1) + '. ' + x.name + '\n   約束：' + (x.promise || '') + '\n   使う材料：' + (x.mats || []).join('・') +
+        '\n   回収：' + (x.kaishuu || '') + (x.bridge ? '\n   次への橋：' + x.bridge : '')).join('\n') +
+      '\n最後：' + (deck.ending || '') + '\n\n';
+  }
+  function toruScriptPromptText(deck) {
+    return SHOOT_PROMPT_HEAD.replace('返事は JSON だけ', '返事は台本だけ') +
+      'この構成で、動画の台本を書いてください。**話し言葉の全文**です。\n\n' +
+      toruStyleText() + toruReaderText() + toruJudgeText(deck) + toruMatsText(deck) + toruBlocksText(deck) +
+      '■ 台本の決まり\n' +
+      '- ' + TORU_SCRIPT_MIN + '〜' + TORU_SCRIPT_MAX + '字（約20分）。\n' +
+      '- 構成の順に書く。ブロックの頭に「＃ ブロックの名前」の行を置く（読み上げない目印）。\n' +
+      '- ブロックの終わりに、構成の「回収」を自分の言葉で言い直して置く。**同じ言い回しを繰り返さない。**\n' +
+      '- 材料は、出どころを会話の形で言う。確かさを言い分ける（「研究で分かってる」「そう報じられてる」「そう語られてきた」「僕の感覚だけど」）。\n' +
+      '- 伝承・オカルトは、断定も否定もしない。「なぜそう語られてきたのか」を考える形にする。\n' +
+      '- 途中で1回、自分に反論する（「いや、それって気のせいじゃない？って思うよね」）。\n' +
+      '- 数字は1つの段落に2つまで。\n' +
+      '- 最初の2〜3文で、タイトルの約束を回収する（何の話か・何が分かるか）。\n\n' +
+      '■ 返事\n台本だけを返す。前置きや説明を付けない。';
+  }
+  function toruPackPromptText(deck) {
+    const s = (deck.script && deck.script.text) || '';
+    return SHOOT_PROMPT_HEAD +
+      'この動画のサムネイルとタイトルの案を作ってください。\n\n' +
+      toruReaderText() + toruJudgeText(deck) +
+      '■ 頼むこと\n' +
+      '- thumbs：サムネ案3〜5。text（サムネの文字・15字以内）、picture（絵の中身1〜2文）、prompt（画像生成AIへのプロンプト。絵の中の文字は入れない）、why（なぜ目を引くか1文）。\n' +
+      '  **サムネ単体で興味を引く。** タイトルは補助。答えは見せず、「何が起きているんだ？」と思わせる。\n' +
+      '- titles：タイトル案10〜20。26字以内。**「【作業用】」「#番号」は絶対に使わない。** 型を混ぜる（体験型・逆説型・疑問型・数字型・不思議型）。\n' +
+      '- opening：開始数秒で言う2〜3文。サムネとタイトルの約束をここで回収する。\n' +
+      '- tags：YouTube のタグを5〜8個（実際に台本で話している言葉）。\n\n' +
+      '■ 台本（先頭2000字）\n' + s.slice(0, 2000) + '\n\n' +
+      '■ 出力形式（JSON のみ）\n' +
+      '{"thumbs":[{"text":"15字以内","picture":"絵の中身","prompt":"画像生成AIへのプロンプト","why":"1文"}],\n' +
+      ' "titles":[{"text":"26字以内","type":"体験型"}],"opening":"2〜3文","tags":["タグ"]}';
+  }
+
+  // ---- 取り込み
+  function toruImportJudge(deck, raw) {
+    const lj = worldLooseJson(raw);
+    const p = lj.value;
+    if (!p || typeof p !== 'object' || Array.isArray(p)) return { error: 'JSON として読めませんでした' + (lj.error ? '：' + lj.error : '') + '。' };
+    const s = (v, n) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
+    const judge = {
+      genshou: s(p.genshou, 200), joushiki: s(p.joushiki, 200),
+      zure: (Array.isArray(p.zure) ? p.zure : []).map((z) => (z && typeof z === 'object' ? { kind: s(z.kind, 20), text: s(z.text, 300) } : null)).filter((z) => z && z.text).slice(0, 6),
+      kaishuu: s(p.kaishuu, 300),
+      gap: { known: s(p.gap && p.gap.known, 300), unknown: s(p.gap && p.gap.unknown, 400) },
+      ok: p.ok === true, why: s(p.why, 400), missing: s(p.missing, 300), at: nowIso(),
+    };
+    if (!judge.genshou && !judge.kaishuu) return { error: '判定に中身がありませんでした。' };
+    deck.judge = judge;
+    shootTouch(deck);
+    const notes = [];
+    if (!judge.kaishuu) notes.push('回収の1文が無い');
+    if (judge.zure.length < 2) notes.push('ずれが2つに足りない');
+    return { text: judge.ok ? '通りました：' + judge.genshou : '通りませんでした：' + (judge.missing || judge.why) + (notes.length ? '（' + notes.join('・') + '）' : '') };
+  }
+  function toruImportMats(deck, raw) {
+    const lj = worldLooseJson(raw);
+    const p = lj.value;
+    const list = p && (Array.isArray(p) ? p : Array.isArray(p.mats) ? p.mats : null);
+    if (!list) return { error: 'JSON として読めませんでした' + (lj.error ? '：' + lj.error : '') + '。{"mats":[...]} の形で貼ってください。' };
+    const s = (v, n) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
+    let badUrl = 0;
+    const mats = list.filter((x) => x && typeof x === 'object' && s(x.fact, 400)).map((x, i) => {
+      const u = shootSafeUrl(s(x.url, 400));
+      if (s(x.url, 400) && !u) badUrl++;
+      return {
+        id: 'mt' + (i + 1), kind: TORU_MAT_KINDS.includes(s(x.kind, 20)) ? s(x.kind, 20) : s(x.kind, 20) || '研究',
+        fact: s(x.fact, 300), detail: s(x.detail, 600), source: s(x.source, 200), url: u,
+        sure: TORU_SURE[s(x.sure, 20)] ? s(x.sure, 20) : 'report', why: s(x.why, 300),
+      };
+    }).slice(0, 20);
+    if (!mats.length) return { error: '材料がありませんでした。' };
+    deck.mats = mats;
+    shootTouch(deck);
+    const kinds = {};
+    mats.forEach((m) => { kinds[m.kind] = (kinds[m.kind] || 0) + 1; });
+    const notes = [];
+    if (mats.length < 6) notes.push('6つに足りない');
+    if (!mats.some((m) => m.sure === 'legend')) notes.push('「そう語られてきた」話が無い');
+    if (badUrl) notes.push('url の形が正しくない ' + badUrl + '件（空にしました）');
+    return { text: '取り込みました：材料 ' + mats.length + '（' + Object.entries(kinds).map(([k, n]) => k + n).join('・') + '）' + (notes.length ? '（' + notes.join('・') + '）' : '') };
+  }
+  function toruImportBlocks(deck, raw) {
+    const lj = worldLooseJson(raw);
+    const p = lj.value;
+    if (!p || typeof p !== 'object' || Array.isArray(p) || !Array.isArray(p.blocks)) return { error: 'JSON として読めませんでした' + (lj.error ? '：' + lj.error : '') + '。{"blocks":[...]} の形で貼ってください。' };
+    const s = (v, n) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
+    const blocks = p.blocks.filter((b) => b && typeof b === 'object' && s(b.name, 60)).map((b) => ({
+      name: s(b.name, 60), promise: s(b.promise, 300),
+      mats: (Array.isArray(b.mats) ? b.mats : []).map((x) => Number(x)).filter((x) => x > 0).slice(0, 5),
+      kaishuu: s(b.kaishuu, 300), bridge: s(b.bridge, 300),
+    })).slice(0, 6);
+    if (!blocks.length) return { error: 'ブロックがありませんでした。' };
+    deck.blocks = blocks;
+    deck.opening = s(p.opening, 1000);
+    deck.ending = s(p.ending, 800);
+    shootTouch(deck);
+    const notes = [];
+    if (blocks.length < 3) notes.push('ブロックが3つに足りない');
+    if (blocks.some((b) => !b.kaishuu)) notes.push('回収の一文が無いブロックあり');
+    const ks = blocks.map((b) => b.kaishuu.slice(0, 12));
+    if (new Set(ks).size < ks.length) notes.push('回収の言い方が同じブロックあり');
+    if (!deck.opening) notes.push('冒頭が無い');
+    return { text: '取り込みました：ブロック ' + blocks.length + (notes.length ? '（' + notes.join('・') + '）' : '') };
+  }
+  function toruScriptLint(text) {
+    const t = String(text || '');
+    const chars = t.replace(/^＃[^\n]*$/gm, '').replace(/\s/g, '').length;
+    const heads = (t.match(/^＃[^\n]*$/gm) || []).length;
+    const bad = {};
+    TORU_BAD_WORDS.forEach((w) => { const n = (t.split(w).length - 1); if (n) bad[w] = n; });
+    return { chars, heads, bad };
+  }
+  function toruScriptLintText(l, deck) {
+    const parts = ['台本 約' + l.chars + '字', 'ブロックの見出し ' + l.heads];
+    const notes = [];
+    if (l.chars < TORU_SCRIPT_MIN) notes.push('下限 ' + TORU_SCRIPT_MIN + '字より短い（約' + Math.round(l.chars / 380) + '分）');
+    if (l.chars > TORU_SCRIPT_MAX) notes.push('上限 ' + TORU_SCRIPT_MAX + '字より長い（約' + Math.round(l.chars / 380) + '分）');
+    const want = (deck.blocks || []).length;
+    if (want && l.heads !== want) notes.push('ブロックは ' + want + 'つのはず');
+    const b = Object.entries(l.bad);
+    if (b.length) notes.push('使わないはずの言い方：' + b.map(([k, n]) => k + '×' + n).join('・'));
+    return parts.join('・') + (notes.length ? '（' + notes.join('／') + '）' : '');
+  }
+  function toruImportScript(deck, raw) {
+    let t = String(raw || '').trim().replace(/^```\w*\s*\n/, '').replace(/\n```\s*$/, '').trim();
+    if (t.length < 500) return { error: '台本が短すぎます（' + t.length + '字）。返事の全文を貼ってください。' };
+    if (t[0] === '{') return { error: 'JSON が貼られています。台本の往復の返事を貼ってください。' };
+    deck.script = { text: t, at: nowIso() };
+    shootTouch(deck);
+    return { text: '取り込みました：' + toruScriptLintText(toruScriptLint(t), deck) };
+  }
+  function toruImportPack(deck, raw) {
+    const lj = worldLooseJson(raw);
+    const p = lj.value;
+    if (!p || typeof p !== 'object' || Array.isArray(p)) return { error: 'JSON として読めませんでした' + (lj.error ? '：' + lj.error : '') + '。' };
+    const s = (v, n) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
+    const pack = {
+      thumbs: (Array.isArray(p.thumbs) ? p.thumbs : []).map((t) => ({ text: s(t.text, 40), picture: s(t.picture, 400), prompt: s(t.prompt, 2000), why: s(t.why, 300) })).filter((t) => t.text || t.picture).slice(0, 8),
+      titles: (Array.isArray(p.titles) ? p.titles : []).map((t) => (typeof t === 'string' ? { text: s(t, 80), type: '' } : { text: s(t.text, 80), type: s(t.type, 20) })).filter((t) => t.text).slice(0, 25),
+      opening: s(p.opening, 800), tags: (Array.isArray(p.tags) ? p.tags : []).map((x) => s(x, 30)).filter(Boolean).slice(0, 10),
+      pick: -1, at: nowIso(),
+    };
+    if (!pack.thumbs.length && !pack.titles.length) return { error: 'サムネ案もタイトル案もありませんでした。' };
+    deck.pack = pack;
+    shootTouch(deck);
+    const notes = [];
+    const bad = pack.titles.filter((t) => /作業用|#\d/.test(t.text)).length;
+    if (bad) notes.push('【作業用】や番号の入ったタイトル ' + bad + '件');
+    const long = pack.titles.filter((t) => t.text.length > 26).length;
+    if (long) notes.push('26字を超えるタイトル ' + long + '件');
+    return { text: '取り込みました：サムネ案 ' + pack.thumbs.length + '・タイトル案 ' + pack.titles.length + '・タグ ' + pack.tags.length + (notes.length ? '（' + notes.join('・') + '）' : '') };
+  }
+
+  // ---- 画面（デッキの中の6つの段）
+  function renderToruSteps(deck) {
+    const box = document.getElementById('shootV3');
+    if (!box) return;
+    if (box.contains(document.activeElement) && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) return;
+    box.innerHTML = '';
+    const el = (tag, cls, text) => { const x = document.createElement(tag); if (cls) x.className = cls; if (text != null) x.textContent = text; return x; };
+    const rerender = () => renderToruSteps(deck);
+    shootState.toruMsg = shootState.toruMsg || {};
+    const step = (key, label, ready, done, promptFn, importFn, placeholder, renderDone, extra) => {
+      const sec = el('div', 'kjStep' + (done ? ' done' : '') + (ready ? '' : ' wait'));
+      sec.appendChild(el('div', 'kjStepHead', label + (done ? '（済）' : '')));
+      if (!ready) { sec.appendChild(el('div', 'kjSub', '前の段が済むと始められます')); box.appendChild(sec); return; }
+      if (extra) extra(sec);
+      const skey = deck.id + ':' + key;
+      const reopen = !!(shootState.toruOpen && shootState.toruOpen[skey]);
+      if (done && !reopen) {
+        if (shootState.toruMsg[skey]) sec.appendChild(el('p', 'fieldNote', shootState.toruMsg[skey]));
+        renderDone(sec);
+        const again = el('button', 'linkLikeBtn', '貼り直す'); again.type = 'button';
+        again.addEventListener('click', () => { shootState.toruOpen = shootState.toruOpen || {}; shootState.toruOpen[skey] = true; rerender(); });
+        sec.appendChild(again);
+        box.appendChild(sec);
+        return;
+      }
+      const copy = el('button', 'secondaryBtn', label.replace(/^\d+\.\s*/, '') + 'の依頼文をコピー'); copy.type = 'button';
+      const copySt = el('p', 'fieldNote', '');
+      copy.addEventListener('click', async () => { const ok = await copyToClipboard(promptFn()); copySt.textContent = ok ? 'コピーしました。チャットに貼り、返事をここに貼ります。' : 'コピーできませんでした。'; });
+      const ta = el('textarea'); ta.rows = 4; ta.autocomplete = 'off'; ta.placeholder = placeholder;
+      ta.value = toruDrafts()[skey] || '';
+      ta.addEventListener('input', () => toruDraftSet(skey, ta.value));
+      const imp = el('button', 'secondaryBtn', '返事を取り込む'); imp.type = 'button';
+      const st = el('p', 'fieldNote', shootState.toruMsg[skey] || '');
+      imp.addEventListener('click', () => {
+        let res;
+        try { res = importFn(ta.value); } catch (e) { recordFeatureError('撮るの取り込み', e); res = { error: '取り込めませんでした（' + e.message + '）' }; }
+        if (res.error) { st.textContent = res.error; shootState.toruMsg[skey] = res.error; return; }
+        shootState.toruMsg[skey] = res.text;
+        toruDraftSet(skey, '');
+        if (shootState.toruOpen) delete shootState.toruOpen[skey];
+        rerender();
+      });
+      sec.appendChild(copy); sec.appendChild(copySt); sec.appendChild(ta); sec.appendChild(imp); sec.appendChild(st);
+      box.appendChild(sec);
+    };
+    // 1 題材の判定（種の欄つき）
+    step('judge', '1. 題材の判定', true, !!(deck.judge && deck.judge.at), () => toruJudgePromptText(deck), (raw) => toruImportJudge(deck, raw),
+      '{"genshou":"...","ok":true} をここに貼る',
+      (sec) => {
+        const j = deck.judge;
+        sec.appendChild(el('div', j.ok ? 'kjLine' : 'chNoFit', (j.ok ? '通った：' : '通らなかった：') + (j.why || '')));
+        sec.appendChild(el('div', 'kjLine', '現象：' + j.genshou));
+        sec.appendChild(el('div', 'kjSub', '常識：' + j.joushiki));
+        (j.zure || []).forEach((z) => sec.appendChild(el('div', 'kjSub', 'ずれ（' + z.kind + '）：' + z.text)));
+        sec.appendChild(el('div', 'kjLine', '回収：' + j.kaishuu));
+        sec.appendChild(el('div', 'kjSub', '知っている：' + (j.gap.known || '') + '／知らない：' + (j.gap.unknown || '')));
+        if (!j.ok && j.missing) sec.appendChild(el('div', 'kjSub', '足りないもの：' + j.missing));
+      },
+      (sec) => {
+        sec.appendChild(el('div', 'kjGroup', '種（気になっていること・思いついたこと）'));
+        const ta = el('textarea'); ta.rows = 2; ta.placeholder = '例：夜、嫌なことを思い出して頭の中で言い合ってしまう'; ta.autocomplete = 'off';
+        ta.value = deck.tane || '';
+        ta.addEventListener('input', () => { deck.tane = ta.value.slice(0, 600); shootScheduleSave(); });
+        sec.appendChild(ta);
+      });
+    // 2 材料
+    step('mats', '2. 材料', !!(deck.judge && deck.judge.ok), !!(deck.mats && deck.mats.length), () => toruMatsPromptText(deck), (raw) => toruImportMats(deck, raw),
+      '{"mats":[...]} をここに貼る',
+      (sec) => {
+        (deck.mats || []).forEach((m, i) => {
+          const d = el('div', 'kjLine', (i + 1) + '. ［' + m.kind + '・' + (TORU_SURE[m.sure] || m.sure) + '］' + m.fact);
+          sec.appendChild(d);
+          if (m.source || m.url) {
+            const s = el('div', 'kjSub', m.source ? m.source + ' ' : '');
+            if (m.url) { const a = el('a', '', 'url'); a.href = m.url; a.target = '_blank'; a.rel = 'noopener noreferrer'; s.appendChild(a); }
+            sec.appendChild(s);
+          }
+          if (m.why) sec.appendChild(el('div', 'kjSub', '効くところ：' + m.why));
+        });
+      });
+    // 3 構成
+    step('blocks', '3. 構成', !!(deck.mats && deck.mats.length), !!(deck.blocks && deck.blocks.length), () => toruBlocksPromptText(deck), (raw) => toruImportBlocks(deck, raw),
+      '{"opening":"...","blocks":[...]} をここに貼る',
+      (sec) => {
+        if (deck.opening) sec.appendChild(el('div', 'kjSub', '冒頭：' + deck.opening));
+        (deck.blocks || []).forEach((b, i) => {
+          sec.appendChild(el('div', 'kjLine', (i + 1) + '. ' + b.name));
+          sec.appendChild(el('div', 'kjSub', '約束：' + b.promise + '／材料：' + (b.mats || []).join('・')));
+          sec.appendChild(el('div', 'kjSub', '回収：' + b.kaishuu + (b.bridge ? '　→ ' + b.bridge : '')));
+        });
+        if (deck.ending) sec.appendChild(el('div', 'kjSub', '最後：' + deck.ending));
+      });
+    // 4 台本
+    step('script', '4. 台本', !!(deck.blocks && deck.blocks.length), !!(deck.script && deck.script.text), () => toruScriptPromptText(deck), (raw) => toruImportScript(deck, raw),
+      '返ってきた台本をそのまま貼る',
+      (sec) => {
+        sec.appendChild(el('div', 'kjLine', toruScriptLintText(toruScriptLint(deck.script.text), deck)));
+        const d = el('details', 'kjPreview'); d.appendChild(el('summary', '', '台本を見る')); d.appendChild(el('pre', 'kjBody', deck.script.text)); sec.appendChild(d);
+        const b = el('button', 'secondaryBtn', '本番の画面をひらく'); b.type = 'button';
+        b.addEventListener('click', () => openShootStage(deck.id));
+        sec.appendChild(b);
+      });
+    // 5 サムネ・タイトル
+    step('pack', '5. サムネ・タイトル', !!(deck.script && deck.script.text), !!(deck.pack && deck.pack.at), () => toruPackPromptText(deck), (raw) => toruImportPack(deck, raw),
+      '{"thumbs":[...],"titles":[...]} をここに貼る',
+      (sec) => {
+        const p = deck.pack;
+        (p.thumbs || []).forEach((t, i) => {
+          const r = el('button', 'kjPick' + (p.pick === i ? ' on' : '')); r.type = 'button';
+          r.appendChild(el('div', 'kjPickMain', '「' + t.text + '」'));
+          r.appendChild(el('div', 'kjSub', '絵：' + t.picture + (t.why ? '（' + t.why + '）' : '')));
+          r.addEventListener('click', () => { p.pick = i; shootTouch(deck); rerender(); });
+          sec.appendChild(r);
+        });
+        if (p.pick >= 0 && p.thumbs[p.pick]) {
+          const b = el('button', 'secondaryBtn', 'サムネのプロンプトをコピー'); b.type = 'button';
+          const s = el('span', 'kjSub', '');
+          b.addEventListener('click', async () => { const ok = await copyToClipboard(p.thumbs[p.pick].prompt); s.textContent = ok ? 'コピーしました（画像生成AIに貼る）' : 'コピーできませんでした'; });
+          sec.appendChild(b); sec.appendChild(s);
+        }
+        sec.appendChild(el('div', 'kjGroup', 'タイトル案'));
+        (p.titles || []).forEach((t) => sec.appendChild(el('div', 'kjSub', t.text + '（' + t.text.length + '字' + (t.type ? '・' + t.type : '') + '）')));
+        if (p.opening) sec.appendChild(el('div', 'kjLine', '開始数秒：' + p.opening));
+        if (p.tags && p.tags.length) {
+          const b = el('button', 'secondaryBtn', 'タグをコピー'); b.type = 'button';
+          const s = el('span', 'kjSub', p.tags.join('・'));
+          b.addEventListener('click', async () => { const ok = await copyToClipboard(p.tags.join(',')); s.textContent = ok ? 'コピーしました' : 'コピーできませんでした'; });
+          sec.appendChild(b); sec.appendChild(s);
+        }
+      });
+    // 6 公開後
+    {
+      const sec = el('div', 'kjStep' + (deck.after && deck.after.at ? ' done' : ''));
+      sec.appendChild(el('div', 'kjStepHead', '6. 公開後' + (deck.after && deck.after.at ? '（済）' : '')));
+      sec.appendChild(el('div', 'kjSub', 'YouTube Studio → アナリティクス → リーチ の数字。次の題材の判定に渡します。'));
+      deck.after = deck.after || { url: '', ctr: '', avgView: '', drop: '', note: '', at: '' };
+      const f = (key, label, ph) => {
+        const wrap = el('div', 'kjLine');
+        wrap.appendChild(el('span', 'kjSub', label));
+        const i = el('input'); i.type = 'text'; i.placeholder = ph; i.autocomplete = 'off'; i.value = deck.after[key] || '';
+        i.addEventListener('input', () => { deck.after[key] = i.value.slice(0, 300); deck.after.at = nowIso(); shootScheduleSave(); });
+        wrap.appendChild(i);
+        sec.appendChild(wrap);
+      };
+      f('url', '動画の URL', 'https://youtu.be/...');
+      f('ctr', 'クリック率（％）', '例：3.8');
+      f('avgView', '平均視聴時間', '例：2分40秒');
+      f('drop', '離脱が大きかった所', '例：3分あたり');
+      f('note', 'コメント・気づき', '');
+      box.appendChild(sec);
+    }
+  }
   function renderShootStage() {
     const deck = findDeck(shootState.deckId);
     if (!deck) { closeShootStage(); return; }
+    // v20.79：台本があれば、台本を大きく出す（カードの一覧は台本が無いときだけ）
+    const hasScript = !!(deck.script && deck.script.text);
+    document.getElementById('shootStageScriptWrap').hidden = !hasScript;
+    document.getElementById('shootStageCards').hidden = hasScript;
+    document.getElementById('shootStageHead').hidden = hasScript;
+    if (hasScript) { renderShootScript(deck); return; }
     // 1 入り and 2 先出し are the pinned head; the rest are frames of cards
     document.getElementById('shootStageQuestion').textContent = deck.hook || '（入り未設定）';
     document.getElementById('shootStageAnswer').textContent = deck.text ? '先出し ・ ' + deck.text : '';
@@ -15466,6 +15940,8 @@
   document.getElementById('btnShootAddFun').addEventListener('click', () => { const deck = findDeck(shootState.deckId); if (deck) deckAddCard(deck, { kind: 'fun' }); });
   document.getElementById('btnShootStart').addEventListener('click', openShootStage);
   document.getElementById('btnShootStageClose').addEventListener('click', closeShootStage);
+  document.getElementById('btnShootFontUp').addEventListener('click', () => shootFontSet(shootFontSize() + 2));   // v20.79
+  document.getElementById('btnShootFontDown').addEventListener('click', () => shootFontSet(shootFontSize() - 2));
   document.getElementById('btnShootIntroDone').addEventListener('click', () => {
     if (shootState.deckId) shootState.noteReadFor = shootState.deckId;
     document.getElementById('shootStageIntro').hidden = true;
