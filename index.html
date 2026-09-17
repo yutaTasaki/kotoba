@@ -1338,6 +1338,9 @@
   /* v20.68：この数字はいつまでの分か */
   .worldValidTo { margin: 6px 0 0; font-size: 12px; color: var(--text-dim); }
   .worldValidTo.over { color: var(--warn, #e0a060); }
+  .worldHistory { margin: 4px 0 0; font-size: 12px; color: var(--text-dim); }
+  .worldHistory .whTitle { font-size: 11px; }
+  .worldHistory .whRow { margin-top: 1px; }
   /* v20.67 見せ方 段3-2：時間（前の値 → 今の値と差） */
   .worldTimePair { margin: 8px 0 2px; font-size: 13px; color: var(--text-dim); }
   .worldTimePair .wtpNow { color: var(--text); }
@@ -3220,7 +3223,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.69';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.70';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -15533,6 +15536,8 @@
   const WORLD_CADENCE_SRC_DAYS  = { day: 1, week: 7, dekad: 10, month: 30, quarter: 90 };
   // v20.69 まとめサイト対策 案A：一次資料ではなく、まとめ・ポータル系だと分かっているものだけの一覧。
   // 「一次資料の一覧」ではないので、一覧に無いドメインには何もしない。見つかるたびに1行ずつ足す。
+  const WORLD_UPDATE_LIST_MAX = 15;   // v20.70：プロンプトに渡す「置き換わる数字」の上限
+  const WORLD_HISTORY_MAX = 20;       // v20.70：1枚の札に残す過去の値の上限（古い方から捨てる）
   const WORLD_MATOME_DOMAINS = ['hojyokin-portal.jp'];   // 例：ガソリン補助額のまとめサイト（v20.68 の事故の出典）
   const WORLD_MATOME_CONF_CAP = 5;   // この確度を超える申告だけ、ここまで戻す（下げるのではなく天井）
   function worldMatomeHost(url) {
@@ -16368,6 +16373,17 @@
       srcCadence: (WORLD_CADENCE_SRC_DAYS[e.srcCadence] ? e.srcCadence : ''),
       // v20.68：この数字が「いつまでの分」か。置き換わらない数字（出来事・累計・決算）は空
       validTo: isDateStr(e.validTo) ? e.validTo : '',
+      // v20.70：過去の値（書き換えのたびに積む。チャットには書かせない。中身は決まった形だけ通す）
+      history: (Array.isArray(e.history) ? e.history : []).filter((x) => x && typeof x === 'object').slice(-WORLD_HISTORY_MAX).map((x) => ({
+        at: typeof x.at === 'string' ? x.at : nowIso(),
+        eventDate: isDateStr(x.eventDate) ? x.eventDate : '',
+        fact: worldStr(x.fact, WORLD_FACT_MAX),
+        amount: worldStr(x.amount, 40),
+        validTo: isDateStr(x.validTo) ? x.validTo : '',
+        source: worldStr(x.source, 120),
+        url: typeof x.url === 'string' ? x.url : '',
+        confidenceWhy: worldStr(x.confidenceWhy, 80),
+      })),
       url: typeof e.url === 'string' ? (shootSafeUrl(e.url.trim()) || '') : '',
       concepts: (Array.isArray(e.concepts) ? e.concepts : []).map((x) => worldStr(x, 80)).filter(Boolean).slice(0, 8),
       related: (Array.isArray(e.related) ? e.related : []).map((x) => worldStr(x, 80)).filter(Boolean).slice(0, 5),
@@ -18995,6 +19011,8 @@
       '- validTo：この数字が「いつまでの分」か（YYYY-MM-DD）。次の回で置き換わる数字だけ書く。\n' +
       '  例：週ごとに決まる支給単価・補助率、その日の残高、その週の在庫、今月の見通し。\n' +
       '  置き換わらない数字（起きた出来事・累計・決算・契約額）は null。\n' +
+      '- updates：末尾の「置き換わる数字」に、この札が置き換える先があれば、その番号（w_…）。\n' +
+      '  新しい回の値は、新しい札としてではなく、その札を書き換える形にする（前の値は自動で残る）。無ければ null。\n' +
       '- **価格・補助率・為替・金利・在庫量のように決まった周期で置き換わる数字は、その場で最新の回を開き直す。**\n' +
       '  前に見た値や、まとめサイトに載っている値をそのまま使わない。今日より前で終わる回は札にしない。\n' +
       '- confidence：この札の確かさを 1〜' + WORLD_CONF_MAX + ' の整数で。\n' +
@@ -19030,6 +19048,7 @@
       '  "wants":"...",\n' +
       '  "srcCadence":"quarter",\n' +
       '  "validTo":null,\n' +
+      '  "updates":null,\n' +
       '  "confidence":8,\n' +
       '  "confidenceWhy":""' + (seed ? '' : ',\n  "follows":null' + worldMikiFormatEvent() + worldAimsFormatEvent() + worldViewFormatEvent() + worldCmpFormatEvent()) + '\n' +   // v20.48・v20.51
       '}]' + (seed ? '' : ',\n"same":[{"id":"w_...","fact":"...","why":"...","url":"https://..."}]' + worldMikiFormatTop()) +   // v20.48・v20.51
@@ -19059,8 +19078,22 @@
       (known.length ? known.join(' / ') : '（まだありません）') + '\n\n' +
       '■ すでに知っているアクター（actors の name はここから探す。無ければ新しく書いてよい。name には先頭の名前だけを書き、［別名：…］は書かない。最大' + WORLD_KNOWN_ACTORS_MAX + '件）\n' +
       (knownActors.length ? knownActors.join(' / ') : '（まだありません）') + '\n\n' +
+      // v20.70：置き換わる数字（validTo がある札）。新しい回が出ていたら updates に番号を書いて書き換えさせる
+      (seed ? '' : worldUpdateListPart()) +
       // v20.65 見せ方 段2-2：「最近のお金の動き」の節は外した（after は8本中2本しか合っておらず、2,053字を比べる相手に回す）
       (seed ? '' : worldKnownCardsPart([]) + worldMikiListPart());   // v20.48・v20.51：幹の一覧は一番後ろ
+  }
+  // v20.70：validTo がある札（読み込んである月だけ）。多い方から溢れさせず、古い期限から並べる
+  function worldUpdateCandidates() {
+    return worldEvents.filter((e) => isDateStr(e.validTo)).sort((a, b) => (a.validTo < b.validTo ? -1 : a.validTo > b.validTo ? 1 : 0));
+  }
+  function worldUpdateListPart() {
+    const all = worldUpdateCandidates();
+    const cards = all.slice(0, WORLD_UPDATE_LIST_MAX);
+    const cut = Math.max(0, all.length - WORLD_UPDATE_LIST_MAX);
+    return '\n\n■ 置き換わる数字（validTo がある札。新しい回の値を見つけたら、新しい札にせず updates にこの番号を書いて書き換える）\n' +
+      (cards.length ? cards.map((e) => e.id + '　' + worldEvDateShort(e) + '　' + e.fact + '（〜' + e.validTo.slice(5).replace('-', '/') + '）').join('\n') : '（まだありません）') +
+      (cut ? '\n（ほかに ' + cut + '件）' : '');
   }
   // v20.48 重複 段1：すでにある札の一覧。取り込んだ日（札を作った日）が直近の札。非表示・初期投入・自分で作った札も含む。
   // 「最近のお金の動き」に出ている札は重ねない。数字はプロンプトに入れた後の状態としてここに控え、コピーの文に出す
@@ -20324,6 +20357,8 @@
     let outside = 0, lowConf = 0, sunkConf = 0, noConf = 0, tracked = 0;   // v19.3
     let staleNum = 0;   // v20.68：期限切れの数字
     let primaryGapNum = 0;   // v20.69：一次資料に届いていない可能性（確度は動かさない。知らせるだけ）
+    const updated = [];   // v20.70：書き換えた札（新規の added とは別に数える）
+    let updateMissing = 0;   // v20.70：updates が指す先が見つからない・validTo が無い
     const outsideMap = new Map();   // v19.11
     const createdActors = [];
     const lv = { levelsFilled: 0, levelsDup: 0, levelsUnknown: 0 };   // v15
@@ -20345,6 +20380,26 @@
       if (it.eventDate > today) { rejected.future++; goneAt[i] = '未来の日付'; return; }
       const url = typeof it.url === 'string' ? (shootSafeUrl(it.url.trim()) || '') : '';
       if (!url) { rejected.url++; goneAt[i] = 'URL なし'; return; }
+      // v20.70：置き換わる数字の書き換え。対象が実在し validTo を持っていれば、新規と数えず書き換える（重複判定より先に見る）
+      // 分類（用語・アクター・地層・幹の紐付け・見せ方の印）は対象の札のまま残し、観測した値（事実・理由・詳しく・出典・確度・動き・置き換わり期限）だけを差し替える
+      const updTargetId = typeof it.updates === 'string' ? it.updates.trim() : '';
+      const updTarget = updTargetId ? worldEvents.find((e) => e.id === updTargetId && isDateStr(e.validTo)) : null;
+      if (updTargetId && !updTarget) updateMissing++;   // 対象が無い・期限が無い札を指した。今までどおり新規の札にする
+      if (updTarget) {
+        const snap = { at: iso, eventDate: updTarget.eventDate, fact: updTarget.fact, amount: (updTarget.flow && updTarget.flow.amount) || '', validTo: updTarget.validTo, source: updTarget.source, url: updTarget.url, confidenceWhy: updTarget.confidenceWhy };
+        const hist = (Array.isArray(updTarget.history) ? updTarget.history : []).concat([snap]).slice(-WORLD_HISTORY_MAX);
+        const nv = normalizeWorldEvent(Object.assign({}, updTarget, {
+          fact, why: it.why, detail: it.detail, source: it.source, url, confidence: it.confidence,
+          confidenceWhy: it.confidenceWhy, validTo: it.validTo, flow: it.flow, premise: it.premise,
+          history: hist, updatedAt: iso,
+        }));
+        if (nv) {
+          worldEvents = worldEvents.filter((e) => e.id !== updTarget.id).concat([nv]);
+          updated.push(nv);
+          touchedMonths.add(monthOfDate(nv.eventDate));
+        }
+        return;
+      }
       if (worldDupOf({ fact, url }, it.eventDate, !!(it.self && it.self.datePrec === 'month'))) { rejected.dup++; goneAt[i] = '重複'; return; }   // v20.45：月までの札は月の中を見る
       const ev = normalizeWorldEvent({
         id: worldGenEventId(it.eventDate, taken),
@@ -20482,7 +20537,7 @@
     // 共起を足す。この回で生まれた概念が、前の札の concepts に名前だけ出て
     // いて捨てられていた分を、ここで拾う。足すだけなので冪等。読み込んで
     // いない月は対象外（それは設定の「作り直す」の仕事）。
-    if (added.length && !seedRegion) worldFillUsdSoon();   // v20.56 地図 段1：地図タブを開かなくても、入った札をドルに換算する
+    if ((added.length || updated.length) && !seedRegion) worldFillUsdSoon();   // v20.56 地図 段1／v20.70：書き換えた札も対象
     let linked = 0;
     const partnerIds = new Set();
     if (added.length) {
@@ -20504,6 +20559,8 @@
       viewRec,   // v20.62
       cmpRec,   // v20.65
       staleNum,   // v20.68
+      updatedNum: updated.length,   // v20.70
+      updateMissing,   // v20.70
       primaryGapNum,   // v20.69
       added: added.length, rejected, old, forks, leans, droppedForks, onStrata, droppedStrata, unknownConcepts,
       createdConcepts, createdTerms, createdActors, batchId, linked, partnerIds: [...partnerIds],
@@ -26884,8 +26941,25 @@
     p.textContent = 'この数字は ' + (md ? Number(md[1]) + '月' + Number(md[2]) + '日' : v) + 'までの分' + (over ? '（すでに次の回が出ている）' : '');
     box.appendChild(p);
   }
+  // v20.70：過去の値（比べられるように、同じ札の中に残す）
+  function worldHistoryInsert(box, ev) {
+    const h = Array.isArray(ev.history) ? ev.history : [];
+    if (!h.length) return;
+    const wrap = document.createElement('div'); wrap.className = 'worldHistory';
+    const t = document.createElement('div'); t.className = 'whTitle'; t.textContent = '過去の値';
+    wrap.appendChild(t);
+    h.forEach((x) => {
+      const row = document.createElement('div'); row.className = 'whRow';
+      const md2 = /^\d{4}-(\d{2})-(\d{2})$/.exec(x.validTo || '');
+      const per = md2 ? '（〜' + Number(md2[1]) + '/' + Number(md2[2]) + '）' : '';
+      row.textContent = (x.amount || x.fact || '？') + per;
+      wrap.appendChild(row);
+    });
+    box.appendChild(wrap);
+  }
   function worldEdaMapInsert(box, ev) {
     worldValidToInsert(box, ev);   // v20.68
+    worldHistoryInsert(box, ev);   // v20.70
     const mapBox = document.createElement('div'); mapBox.className = 'worldMapBox worldEdaMap';
     const lines = document.createElement('div'); lines.className = 'worldEdaLines';
     const note = document.createElement('span'); note.className = 'worldEdaNote';
@@ -29481,6 +29555,8 @@
     if (res.viewRec) msg += '　' + worldViewImportNote(res.viewRec);   // v20.62
     if (res.cmpRec) msg += '　' + worldCmpImportNote(res.cmpRec);   // v20.65
     if (res.staleNum) msg += '　※ もう次の回が出ている数字 ' + res.staleNum + '件（札に「すでに次の回が出ている」と出ます）。';   // v20.68
+    if (res.updatedNum) msg += '　※ 書き換えた札 ' + res.updatedNum + '件（過去の値は札の中に残しています）。';   // v20.70
+    if (res.updateMissing) msg += '　※ 書き換え先が見つからなかった件 ' + res.updateMissing + '件（新しい札として入れました）。';   // v20.70
     if (res.primaryGapNum) msg += '　※ 一次資料に届いていない可能性がある札 ' + res.primaryGapNum + '件（確度はそのまま。理由は確度の隣に出ます）。';   // v20.69
     if (res.todayStartSkipped) msg += '　※ 根の札 ' + res.todayStartSkipped + '件は今日見るべき件から外しました。';
     worldState.lastImportRecId = res.importRec ? res.importRec.id : '';
