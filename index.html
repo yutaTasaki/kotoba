@@ -15831,7 +15831,8 @@
     'インド・民間：The Hindu／Times of India／Hindustan Times', 'ウクライナ：Kyiv Independent／Ukrinform／Ukrainska Pravda',
     '米国・民間：CNBC／Fox News／AP／CNN', '日本：NHK／日経／読売／産経／朝日／東京新聞',
   ];
-  const KIJI_BODY_CHARS = 2000;    // v20.73 記事の本文の目安（通勤中に読める）
+  const KIJI_BODY_MIN = 1500;      // v20.73 記事の本文の下限と上限（通勤中に読める）。1点の目安ではなく幅で渡し、中はチャットに任せる
+  const KIJI_BODY_MAX = 2500;      // 数え方は出典の行・見出し・図の印を除いた文（アプリが出す1行と同じ）
   const KIJI_INTRO_CHARS = 250;    // 冒頭案1つの長さ
   const KIJI_TITLE_CHARS = 26;     // note の一覧で切れにくい長さ（検証記事の最小値。要確認）
   const KIJI_DRAFT_KEY = 'kotoba_kijiDraft';   // 貼った返事を取り込むまで持つ
@@ -20780,7 +20781,7 @@
     return '■ この記事の読者と決まり\n' +
       '- 読者：ニュースは見るが「なぜ」が分からず流れていく人。この出来事についてほとんど何も知らない（見出しを見たことがある程度）。\n' +
       '- 連載の芯：言っていることと、実際に動くモノ（お金・人・物）は違う。\n' +
-      '- 長さ：通勤中に読める（本文 約' + KIJI_BODY_CHARS + '字）。毎日出す。\n' +
+      '- 長さ：通勤中に読める（本文 ' + KIJI_BODY_MIN + '〜' + KIJI_BODY_MAX + '字。出典の行・見出し・図の印は数えない）。毎日出す。\n' +
       '- 思惑はどこまでも推測。「こうなるはず」「〜に違いない」と言い切らない。\n' +
       '  書き方の例：「もしこの読みが当たっているなら、〜が見えてくるかもしれない」「次のニュースで見ておきたいのは〜」\n' +
       '- 下の材料に出てくる「札」「確度」「語り方」「幹」「読む回」はアプリの中の言葉。読者は知らないので記事に出さない。\n\n';
@@ -20865,7 +20866,7 @@
     return 'この出来事の記事の本文を書いてください。企画は下のとおり決まっています。\n今日は ' + todayStr() + ' です。\n\n' +
       worldKijiRulesText() + L.join('\n') + '\n\n' + worldKijiSureText() + worldKijiEvBlock(ev) + worldKatariText(kt) +
       '■ 書き方の決まり\n' +
-      '- 約' + KIJI_BODY_CHARS + '字。最初の行は「# タイトル」。見出しは「## 」だけ。太字と箇条書きは使ってよい。表は使わない。\n' +
+      '- 本文は ' + KIJI_BODY_MIN + '〜' + KIJI_BODY_MAX + '字（出典の行・見出し・図の印は数えない）。この幅の中なら、長さは中身に合わせてよい。最初の行は「# タイトル」。見出しは「## 」だけ。太字と箇条書きは使ってよい。表は使わない。\n' +
       '- 冒頭は、上で決めた冒頭をそのまま使う（言い回しの調整はよい）。\n' +
       '- 流れ：冒頭 → 立場ごとの語り → 実際の動き → 思惑（推測） → 次のニュースで見ておきたいこと（Plot Promise の「次のニュースで使える見方」をここで回収する）。\n' +
       '- 出典は、文章の塊ごとに、その塊の直後に1行で置く：（出典：媒体名・日付 url）。最後にまとめない。\n' +
@@ -20977,7 +20978,8 @@
     const w = Object.entries(l.words);
     if (w.length) notes.push('アプリの言葉かもしれない語：' + w.map(([k, n]) => k + '×' + n).join('・'));
     if (l.hard.length) notes.push('言い切りかもしれない語：' + [...new Set(l.hard)].join('・'));
-    if (l.plain > KIJI_BODY_CHARS * 1.5) notes.push('長め');
+    if (l.plain < KIJI_BODY_MIN) notes.push('下限 ' + KIJI_BODY_MIN + '字より短い');
+    if (l.plain > KIJI_BODY_MAX) notes.push('上限 ' + KIJI_BODY_MAX + '字より長い');
     return parts.join('・') + (notes.length ? '（' + notes.join('／') + '）' : '');
   }
   function worldKijiImportBody(kj, raw) {
