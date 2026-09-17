@@ -3274,7 +3274,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.73';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.74';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -15833,7 +15833,9 @@
   ];
   const KIJI_BODY_MIN = 1500;      // v20.73 記事の本文の下限と上限（通勤中に読める）。1点の目安ではなく幅で渡し、中はチャットに任せる
   const KIJI_BODY_MAX = 2500;      // 数え方は出典の行・見出し・図の印を除いた文（アプリが出す1行と同じ）
-  const KIJI_INTRO_CHARS = 250;    // 冒頭案1つの長さ
+  const KIJI_INTRO_CHARS = 120;    // v20.74 つかみ案1つの長さ（前提と思惑は本文の最初の箱へ移した）
+  const KIJI_LONG_PARA = 120;     // v20.74 これを超える段落は長いと知らせる（決まりは1段落1〜2文）
+  const KIJI_LONG_SENT = 80;      // これを超える文は長いと知らせる（決まりは60字目安。少し余裕を見る）
   const KIJI_TITLE_CHARS = 26;     // note の一覧で切れにくい長さ（検証記事の最小値。要確認）
   const KIJI_DRAFT_KEY = 'kotoba_kijiDraft';   // 貼った返事を取り込むまで持つ
   const KIJI_OPEN_KEY = 'kotoba_kijiOpen';     // 開いていた記事（アプリを行き来して読み直されても戻る）
@@ -20542,8 +20544,9 @@
       'お金・もの・人が動いていない move は "flow": null';
   }
   function worldImportKatariJson(ev, choice, raw) {
-    const parsed = shootParseJson(raw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { error: 'JSON として読めませんでした。{"eventId":"...","media":[...]} の形で貼ってください。' };
+    const lj = worldLooseJson(raw);
+    const parsed = lj.value;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { error: 'JSON として読めませんでした' + (lj.error ? '：' + lj.error : '') + '。{"eventId":"...","media":[...]} の形で貼ってください。' };
     const eid = typeof parsed.eventId === 'string' ? parsed.eventId.trim() : '';
     if (eid && eid !== ev.id) return { error: '別の出来事（' + eid + '）の語り方です。この出来事の番号は ' + ev.id + ' です。' };
     const c = { cut: 0, badUrl: 0, unreadable: 0, closed: 0, headline: 0, ownerRaw: 0, splitRaw: 0 };
@@ -20727,6 +20730,38 @@
   }
   // ---- v20.73 note 段3：記事にする（企画 → 本文 → 図 → 確かめ）------------------------
   // 実際に書くのはチャット。アプリは依頼文を渡し、返事を受け、選ぶ・数える・コピーするだけ。記録は調べたことの月ファイルの kiji
+  // v20.74：チャットの JSON が少し崩れていても読む。図の返事は長い依頼文を含み、文字列の中に改行をそのまま入れがち
+  function worldLooseJson(raw) {
+    const t = String(raw || '').trim();
+    const ok = shootParseJson(t);
+    if (ok) return { value: ok };
+    const start = t.search(/[{[]/);
+    if (start < 0) return { error: '「{」が見つかりません（JSON が貼られていないようです）' };
+    let out = '', depth = 0, inStr = false, esc = false, end = -1;
+    for (let i = start; i < t.length; i++) {
+      const c = t[i];
+      if (inStr) {
+        if (esc) { out += c; esc = false; continue; }
+        if (c === '\\') { out += c; esc = true; continue; }
+        if (c === '"') { out += c; inStr = false; continue; }
+        if (c === '\n') { out += '\\n'; continue; }
+        if (c === '\r') continue;
+        if (c === '\t') { out += '\\t'; continue; }
+        out += c; continue;
+      }
+      if (c === '"' || c === '“' || c === '”') { out += '"'; inStr = true; continue; }
+      if (c === ',') { const rest = t.slice(i + 1).match(/^\s*([}\]])/); if (rest) continue; }
+      if (c === '{' || c === '[') depth++;
+      if (c === '}' || c === ']') { depth--; if (depth === 0) { out += c; end = i; break; } }
+      out += c;
+    }
+    if (end < 0) return { error: 'JSON が途中で終わっています（返事が最後まで貼られていないかもしれません）' };
+    try { return { value: JSON.parse(out) }; } catch (e) {
+      const m = /position (\d+)/.exec(e.message);
+      const at = m ? Number(m[1]) : -1;
+      return { error: 'JSON の書き方が崩れています' + (at >= 0 ? '（「' + out.slice(Math.max(0, at - 15), at + 15).replace(/\s+/g, ' ') + '」のあたり）' : '') };
+    }
+  }
   function worldKijiAll() {
     const all = [];
     wdig.docs.forEach((doc) => (Array.isArray(doc.kiji) ? doc.kiji : []).forEach((k) => { if (k && k.id && k.eventId) all.push(k); }));
@@ -20834,7 +20869,8 @@
       '   - text：サムネの文字（15字以内）。picture：絵の中身（1〜2文）。prompt：画像生成AIに渡すプロンプト（絵の中の文字はできるだけ入れない）。why：なぜ目を引くか（1文）。\n' +
       '5. タイトル案（titles）を10〜20：型を混ぜる（食い違い型・逆説型・身近型・数字型・対立型）。26字以内を目安。type に型を書く。\n' +
       '6. Plot Promise（promise）：what＝何の食い違いか、who＝誰の思惑か、lens＝次のニュースで使える見方（各1文）。lens は毎回必ず書く。\n' +
-      '7. 冒頭案（intros）を2〜3：一番強い食い違いから入り、続けて読むのに要る前提を最低限（3つまで・1つ1文）。1案' + KIJI_INTRO_CHARS + '字以内。言い切らない。\n\n' +
+      '7. つかみ案（intros）を2〜3：記事の最初の1〜3行。一番強い食い違いを、やわらかい「です・ます」で短く。1行ずつ改行する。1案' + KIJI_INTRO_CHARS + '字以内。言い切らない。\n' +
+      '   前提の説明や思惑はここに書かない（本文の最初に箇条書きで置くため）。\n\n' +
       '■ 出力形式（JSON のみ。ほかの文章を返さない）\n' +
       '{"eventId":"' + ev.id + '",\n' +
       ' "jpNews":[{"name":"媒体名","headline":"見出し","url":"https://..."}],\n' +
@@ -20862,20 +20898,48 @@
     L.push('読者が知っていそうなこと：' + (p.gap.known || ''));
     L.push('読者が知らないこと：' + (p.gap.unknown || ''));
     if (p.jpNews.length) L.push('日本での報じられ方：' + p.jpNews.map((n) => n.name + '「' + n.headline + '」').join('／'));
-    if (pk.intro) L.push('冒頭（これを使う）：\n' + pk.intro.text);
+    if (pk.intro) L.push('つかみ（これを使う）：\n' + pk.intro.text);
     return 'この出来事の記事の本文を書いてください。企画は下のとおり決まっています。\n今日は ' + todayStr() + ' です。\n\n' +
       worldKijiRulesText() + L.join('\n') + '\n\n' + worldKijiSureText() + worldKijiEvBlock(ev) + worldKatariText(kt) +
       '■ 書き方の決まり\n' +
-      '- 本文は ' + KIJI_BODY_MIN + '〜' + KIJI_BODY_MAX + '字（出典の行・見出し・図の印は数えない）。この幅の中なら、長さは中身に合わせてよい。最初の行は「# タイトル」。見出しは「## 」だけ。太字と箇条書きは使ってよい。表は使わない。\n' +
-      '- 冒頭は、上で決めた冒頭をそのまま使う（言い回しの調整はよい）。\n' +
-      '- 流れ：冒頭 → 立場ごとの語り → 実際の動き → 思惑（推測） → 次のニュースで見ておきたいこと（Plot Promise の「次のニュースで使える見方」をここで回収する）。\n' +
-      '- 出典は、文章の塊ごとに、その塊の直後に1行で置く：（出典：媒体名・日付 url）。最後にまとめない。\n' +
+      worldKijiShapeText() + worldKijiStyleText() +
+      '■ 中身の決まり\n' +
+      '- 本文は ' + KIJI_BODY_MIN + '〜' + KIJI_BODY_MAX + '字（出典の行・見出し・図の印・最初の3つの箱は数えない）。この幅の中なら、長さは中身に合わせてよい。\n' +
+      '- 出典は、文章の塊ごとに、その塊の直後に1行で置く：（出典：媒体名 月/日 url）。最後にまとめない。\n' +
       '- 数字は url を開いて確かめてから使う。開けなければ「〜と報じられている」と書く。\n' +
-      '- 専門用語は、出てきた所で1文で説明する。\n' +
       '- 思惑は推測と分かる書き方にする。言い切らない。\n' +
       '- 「札」「確度」「語り方」「幹」「読む回」「取り込み」などアプリの中の言葉を使わない。\n' +
       '- 図を入れる場所に「［図1：型・何を見せるか］」を置く。塊2〜3つごとに1枚、全部で3〜4枚。型は グラフ・地図・構図・資料 のどれか。\n\n' +
       '■ 返事\n本文だけを返す（マークダウン）。前置きや説明の文を付けない。';
+  }
+  // v20.74 本人の感想「文章がずらりと並ぶと読む気が失せる・冒頭で何が得られるか分かるように・頻繁に改行・堅苦しくなく」
+  function worldKijiShapeText() {
+    return '■ 記事の形（この順番で書く）\n' +
+      '# タイトル\n\n' +
+      '（つかみ：上で決めたものを使う。1〜3行）\n\n' +
+      '**この記事でわかること**\n' +
+      '- 何の食い違いか（1行）\n' +
+      '- 誰のどんな思惑が見えるか（1行）\n' +
+      '- 次のニュースを見るときに使える見方（1行）\n\n' +
+      '**先に知っておきたいこと**\n' +
+      '- この記事を読むのに要る前提や言葉を、1つ1行で（3つまで）\n\n' +
+      '**思惑をざっくり言うと**\n' +
+      '- 主体：〜したいのかもしれない（1つ1行・3つまで。推測と分かる書き方）\n\n' +
+      '## 見出し（ここから本文。立場ごとの語り → 実際に動いたお金・人・物 → 思惑をくわしく）\n' +
+      '…\n\n' +
+      '## 次のニュースで見ておきたいこと\n' +
+      '- 箇条書きで2〜3つ（「この記事でわかること」の3つ目をここで回収する）\n\n';
+  }
+  function worldKijiStyleText() {
+    return '■ 読みやすさの決まり（いちばん大事）\n' +
+      '- 語り口は、やわらかい「です・ます」。友だちに説明するような平たい言葉にする。硬い書き言葉や漢語を続けない。\n' +
+      '- 1つの段落は1〜2文。段落ごとに空行を入れる。文章をずらりと並べない。\n' +
+      '- 1文は60字以内を目安。長くなったら2文に分ける。\n' +
+      '- 1つの段落に数字は2つまで。細かい数字の内訳は図に回す。\n' +
+      '- 専門用語は、本文の途中に（）で長い説明を入れない。「先に知っておきたいこと」で1行説明し、本文では言い換える。\n' +
+      '- 3つ以上並ぶものは箇条書きにする。\n' +
+      '- 見出しのすぐ後の1文で、その節で言いたいことを先に言う。\n' +
+      '- 太字は1つの節に1か所まで。いちばん大事なところだけ。\n\n';
   }
   function worldKijiFigPromptText(kj) {
     return '下の記事の本文にある「［図N：…］」ごとに、図の作り方を決めてください。\n\n' +
@@ -20901,7 +20965,9 @@
       '- 下の材料に無い数字・媒体が本文に出ていないか。\n' +
       '- アプリの中の言葉（札・確度・語り方・幹・読む回・取り込み）が混ざっていないか。\n' +
       '- タイトルの約束と、本文の中身がずれていないか。「次のニュースで見ておきたいこと」が最後にあるか。\n' +
-      '- 図の数値が本文の数字と合っているか。\n\n' +
+      '- 図の数値が本文の数字と合っているか。\n' +
+      '- 読みやすさ：下の「記事の形」と「読みやすさの決まり」に合っているか。長い段落は分け、長い文は切り、硬い言い回しはやわらかくする。\n\n' +
+      worldKijiShapeText() + worldKijiStyleText() +
       '■ 本文\n' + kj.body + '\n\n' +
       (figs ? '■ 図\n' + figs + '\n\n' : '') +
       worldKijiSureText() + worldKijiEvBlock(ev) + worldKatariText(kt) +
@@ -20918,8 +20984,9 @@
 
   // 返事を受ける
   function worldKijiImportPlan(ev, kj, raw) {
-    const parsed = shootParseJson(raw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { error: 'JSON として読めませんでした。{"eventId":"...","thumbs":[...]} の形で貼ってください。' };
+    const lj = worldLooseJson(raw);
+    const parsed = lj.value;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { error: 'JSON として読めませんでした' + (lj.error ? '：' + lj.error : '') + '。{"eventId":"...","thumbs":[...]} の形で貼ってください。' };
     const eid = typeof parsed.eventId === 'string' ? parsed.eventId.trim() : '';
     if (eid && eid !== ev.id) return { error: '別の出来事（' + eid + '）の企画です。この出来事の番号は ' + ev.id + ' です。' };
     let cut = 0;
@@ -20952,8 +21019,17 @@
     const figs = [...body.matchAll(/［図(\d+)[：:][^］]*］/g)].map((m) => Number(m[1]));
     const srcRe = /^[（(]出典[：:]/;
     const srcLines = lines.filter((l) => srcRe.test(l.trim())).length;
-    let plain = 0;
-    lines.forEach((l) => { const t = l.trim(); if (!t || srcRe.test(t) || /^#/.test(t) || /^［図\d+/.test(t)) return; plain += t.replace(/\*\*/g, '').replace(/^[-・]\s*/, '').length; });
+    let plain = 0, longPara = 0, longSent = 0;
+    const firstH2 = lines.findIndex((l) => /^##\s/.test(l.trim()));
+    lines.forEach((l, i) => {
+      const t = l.trim(); if (!t || srcRe.test(t) || /^#/.test(t) || /^［図\d+/.test(t)) return;
+      const x = t.replace(/\*\*/g, '').replace(/^[-・]\s*/, '');
+      if (firstH2 < 0 || i > firstH2) plain += x.length;   // v20.74：最初の3つの箱とつかみは数えない
+      if (/^[-・]/.test(t)) return;
+      if (x.length > KIJI_LONG_PARA) longPara++;
+      x.split('。').forEach((sen) => { if (sen.length > KIJI_LONG_SENT) longSent++; });
+    });
+    const boxes = /この記事でわかること/.test(body) && /先に知っておきたいこと/.test(body);
     // 見出しで区切った塊のうち、文があるのに出典の行が無いもの（冒頭の区切りは前提の説明だけのこともあるので数えるが、目安）
     let noSrc = 0, hasText = false, hasSrc = false;
     const flush = () => { if (hasText && !hasSrc) noSrc++; hasText = false; hasSrc = false; };
@@ -20968,12 +21044,15 @@
       words[m[0]] = (words[m[0]] || 0) + 1;
     });
     const hard = [...body.matchAll(/はずだ|はずです|に違いない|間違いなく|確実に/g)].map((m) => m[0]);
-    return { title, titleOk: /^#\s/.test(title), plain, figs, srcLines, noSrc, words, hard };
+    return { title, titleOk: /^#\s/.test(title), plain, figs, srcLines, noSrc, words, hard, longPara, longSent, boxes };
   }
   function worldKijiLintText(l) {
     const parts = ['本文 約' + l.plain + '字', '図の印 ' + l.figs.length, '出典の行 ' + l.srcLines];
     const notes = [];
     if (!l.titleOk) notes.push('最初の行が「# タイトル」ではない');
+    if (l.boxes === false) notes.push('最初の「この記事でわかること・先に知っておきたいこと」が無い');
+    if (l.longPara) notes.push(KIJI_LONG_PARA + '字を超える段落 ' + l.longPara);
+    if (l.longSent) notes.push(KIJI_LONG_SENT + '字を超える文 ' + l.longSent);
     if (l.noSrc) notes.push('出典の行が無い見出しの区切り ' + l.noSrc);
     const w = Object.entries(l.words);
     if (w.length) notes.push('アプリの言葉かもしれない語：' + w.map(([k, n]) => k + '×' + n).join('・'));
@@ -20992,9 +21071,10 @@
     return { text: '取り込みました：' + worldKijiLintText(l) };
   }
   function worldKijiImportFigs(kj, raw) {
-    const parsed = shootParseJson(raw);
-    const list = parsed && (Array.isArray(parsed) ? parsed : Array.isArray(parsed.figs) ? parsed.figs : null);
-    if (!list) return { error: 'JSON として読めませんでした。{"figs":[...]} の形で貼ってください。' };
+    const lj = worldLooseJson(raw);
+    const parsed = lj.value;
+    const list = parsed && (Array.isArray(parsed) ? parsed : Array.isArray(parsed.figs) ? parsed.figs : Array.isArray(parsed.figures) ? parsed.figures : null);
+    if (!list) return { error: (parsed ? '「figs」の並びが見つかりません' : 'JSON として読めませんでした' + (lj.error ? '：' + lj.error : '')) + '。{"figs":[...]} の形で貼ってください。' };
     let cut = 0;
     const s = (v, max) => { const r = digStr(v, max); if (r.cut) cut++; return r.t; };
     const figs = list.filter((f) => f && typeof f === 'object').map((f, i) => ({
@@ -21119,7 +21199,7 @@
       sec.appendChild(el('div', 'kjLine', 'Plot Promise：' + [p.promise.what, p.promise.who, p.promise.lens].filter(Boolean).join('／')));
       pickRows(sec, 'サムネ案', p.thumbs, kj.pick.thumb, 'thumb', (t) => ['「' + t.text + '」', '絵：' + t.picture + (t.why ? '（' + t.why + '）' : '')]);
       pickRows(sec, 'タイトル案', p.titles, kj.pick.title, 'title', (t) => [t.text + '（' + t.text.length + '字）', t.type]);
-      pickRows(sec, '冒頭案', p.intros, kj.pick.intro, 'intro', (t) => [t.text]);
+      pickRows(sec, 'つかみ案', p.intros, kj.pick.intro, 'intro', (t) => [t.text]);
     });
     step('body', '2. 本文', picksDone, !!kj.body, () => worldKijiBodyPromptText(ev, kt, kj), (raw) => worldKijiImportBody(kj, raw), '返ってきた本文（# タイトル から）をそのまま貼る', (sec) => {
       sec.appendChild(el('div', 'kjLine', worldKijiLintText(worldKijiLint(kj.body))));
