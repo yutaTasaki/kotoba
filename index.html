@@ -1334,6 +1334,9 @@
   .worldMapBox.worldEdaMap .wmAimHead { fill: none; stroke: #e0a060; stroke-width: 2.2; }
   .worldMapBox.worldEdaMap .wmPlace { fill: #cfc8bb; stroke: #111; stroke-width: 1; }   /* v20.59 海峡などの場所の点（ひし形） */
   .worldMapBox.worldEdaMap .wmPlaceLabel { fill: #cfc8bb; font-size: 9px; paint-order: stroke; stroke: #111; stroke-width: 3px; stroke-linejoin: round; }
+  /* v20.68：この数字はいつまでの分か */
+  .worldValidTo { margin: 6px 0 0; font-size: 12px; color: var(--text-dim); }
+  .worldValidTo.over { color: var(--warn, #e0a060); }
   /* v20.67 見せ方 段3-2：時間（前の値 → 今の値と差） */
   .worldTimePair { margin: 8px 0 2px; font-size: 13px; color: var(--text-dim); }
   .worldTimePair .wtpNow { color: var(--text); }
@@ -3216,7 +3219,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.67';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.68';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -16346,6 +16349,8 @@
       confidenceWhy: worldStr(e.confidenceWhy, 80),
       // v19.11：この出典が新しい数字を出す周期の推定。出典をソースに昇格するときの初期値
       srcCadence: (WORLD_CADENCE_SRC_DAYS[e.srcCadence] ? e.srcCadence : ''),
+      // v20.68：この数字が「いつまでの分」か。置き換わらない数字（出来事・累計・決算）は空
+      validTo: isDateStr(e.validTo) ? e.validTo : '',
       url: typeof e.url === 'string' ? (shootSafeUrl(e.url.trim()) || '') : '',
       concepts: (Array.isArray(e.concepts) ? e.concepts : []).map((x) => worldStr(x, 80)).filter(Boolean).slice(0, 8),
       related: (Array.isArray(e.related) ? e.related : []).map((x) => worldStr(x, 80)).filter(Boolean).slice(0, 5),
@@ -18627,8 +18632,21 @@
         opened: c.opened === true || c.opened === 'true',
         picked: Math.max(0, parseInt(c.picked, 10) || 0),
         note: worldStr(c.note, 40),
+        at: worldStr(c.at, 20),   // v20.68：自己申告の日時（確かめられないが、後から見返せるように残す）
       };
     });
+  }
+  // v20.68：自己申告を捨てずに残す。書いてあることと実際に開いたことは別（確かめられない）が、
+  // 後から「毎回 opened:true と言っているのに picked が常に0」のような癖を見返せるようにする
+  const WORLD_CHECKS_KEY = 'checks';
+  function worldChecksAddRec(checked, batchId) {
+    if (!Array.isArray(checked) || !checked.length) return null;
+    const at = nowIso();
+    const rec = { id: digNewId('ck'), type: 'import', at, createdAt: at, updatedAt: at, batchId: batchId || '',
+      said: checked.map((c) => ({ id: c.id, short: c.short, opened: !!c.opened, picked: c.picked, note: c.note, at: c.at })) };
+    try { digMutate((doc) => { doc[WORLD_CHECKS_KEY] = (Array.isArray(doc[WORLD_CHECKS_KEY]) ? doc[WORLD_CHECKS_KEY] : []).concat([rec]); }); }
+    catch (e) { recordFeatureError('必ず見るものの報告の記録', e); return null; }
+    return rec;
   }
   // 「必ず見るもの：H.4.1 2件／日銀旬報 開けず（理由）」。報告が抜けた源は「報告なし」
   function worldCheckedText(checked, ids, secIds) {
@@ -18755,7 +18773,8 @@
           '  source：上の「：」の前の名前をそのまま書く（' + daily.map((d) => d.label).join('／') + '）。\n' +
           '  opened：最新の回を開いて、数字まで読めたら true。開けない・中身が読めないなら false。\n' +
           '  picked：そこから札にした件数。大きな動きが無ければ 0。\n' +
-          '  note：どこから読んだか（一次資料でない場所を使ったときは必ず）。開けなかったときはその理由。無ければ空。\n\n'
+          '  note：どこから読んだか（一次資料でない場所を使ったときは必ず）。開けなかったときはその理由。無ければ空。\n' +
+          '  at：最新の回を開いて確かめた日時（YYYY-MM-DD HH:MM）。開けなかったときは空。\n\n'
         : '') +
       // v19.13：今日の数字は材料なので上に置く（最近のお金の動きは候補なので末尾のまま）
       ((opts && opts.figures) ? opts.figures + '\n' : '') +
@@ -18955,6 +18974,12 @@
       '- srcCadence：この出典（url のページを出している組織）が、新しい数字をどのくらいの周期で出すか。\n' +
       '  day（毎日出る報道・日次統計）／week（週次の統計・週報）／month（月次統計・月報）／quarter（決算・四半期統計・年次報告）。\n' +
       '  迷ったら quarter。\n' +
+      // v20.68：置き換わる数字を、置き換わった後に取り込んだ事故（ガソリン補助 36.0円）への直し
+      '- validTo：この数字が「いつまでの分」か（YYYY-MM-DD）。次の回で置き換わる数字だけ書く。\n' +
+      '  例：週ごとに決まる支給単価・補助率、その日の残高、その週の在庫、今月の見通し。\n' +
+      '  置き換わらない数字（起きた出来事・累計・決算・契約額）は null。\n' +
+      '- **価格・補助率・為替・金利・在庫量のように決まった周期で置き換わる数字は、その場で最新の回を開き直す。**\n' +
+      '  前に見た値や、まとめサイトに載っている値をそのまま使わない。今日より前で終わる回は札にしない。\n' +
       '- confidence：この札の確かさを 1〜' + WORLD_CONF_MAX + ' の整数で。\n' +
       '  10＝一次資料の本文で、数字・日付・主体まで確かめた。7＝一次資料だが一部を確かめきれていない。\n' +
       '  4＝報道だけ。1＝噂・未確認。\n' +
@@ -18987,6 +19012,7 @@
       '  "eventDate":"YYYY-MM-DD",\n' +
       '  "wants":"...",\n' +
       '  "srcCadence":"quarter",\n' +
+      '  "validTo":null,\n' +
       '  "confidence":8,\n' +
       '  "confidenceWhy":""' + (seed ? '' : ',\n  "follows":null' + worldMikiFormatEvent() + worldAimsFormatEvent() + worldViewFormatEvent() + worldCmpFormatEvent()) + '\n' +   // v20.48・v20.51
       '}]' + (seed ? '' : ',\n"same":[{"id":"w_...","fact":"...","why":"...","url":"https://..."}]' + worldMikiFormatTop()) +   // v20.48・v20.51
@@ -18997,6 +19023,7 @@
         '  {"kind":"relation","a":"既知の概念1","b":"既知の概念2","line":"..."}\n') +
       'どの地層にも乗らないとき： "strata": []\n' +
       '動いたものが無い・書けないとき： "flow": null\n' +
+      '次の回で置き換わらない数字のとき： "validTo": null\n' +
       '前の動きの続きでないとき： "after": null\n' +
       (seed ? '' : '今日見るべきものが無いとき： "today": []\n') +   // v20.47
       (seed ? '' : 'すでにある札と同じ出来事が無いとき： "same": []\nすでにある札の続きでないとき： "follows": null\n' + worldMikiFormatRules() + worldAimsFormatRules() + worldCmpFormatRules()) +   // v20.48・v20.51
@@ -20248,7 +20275,7 @@
     const parsed = shootParseJson(raw);
     const items = parsed ? (Array.isArray(parsed) ? parsed : Array.isArray(parsed.events) ? parsed.events : null) : null;
     if (!items) return { error: 'JSON として読めませんでした。{"events":[...]} の形で貼ってください。' };
-    const checked = worldReadChecked(parsed);   // v19.1：保存しない。結果の1行に出すだけ
+    const checked = worldReadChecked(parsed);   // v19.1：結果の1行に出す。v20.68：自己申告として保存もする
     // v20.2：初期投入の印。JSON の一番上の "seed" が地域のキーのときだけ。印の無い JSON（毎朝の分）には付けない
     const seedRegion = (parsed && !Array.isArray(parsed) && WORLD_SEED_REGIONS.some((x) => x[0] === parsed.seed)) ? parsed.seed : '';
 
@@ -20278,6 +20305,7 @@
     const touchedMonths = new Set();
     let old = 0, forks = 0, leans = 0, droppedForks = 0, onStrata = 0, droppedStrata = 0, unknownConcepts = 0, withActors = 0, withRead = 0, withFlow = 0;
     let outside = 0, lowConf = 0, sunkConf = 0, noConf = 0, tracked = 0;   // v19.3
+    let staleNum = 0;   // v20.68：期限切れの数字
     const outsideMap = new Map();   // v19.11
     const createdActors = [];
     const lv = { levelsFilled: 0, levelsDup: 0, levelsUnknown: 0 };   // v15
@@ -20309,6 +20337,7 @@
         fact, why: it.why, premise: it.premise, detail: it.detail, source: it.source, url,
         wants: it.wants, confidence: it.confidence, confidenceWhy: it.confidenceWhy,   // v19.3
         srcCadence: it.srcCadence,   // v19.11
+        validTo: it.validTo,   // v20.68
         seed: seedRegion || undefined,   // v20.2
         terms: it.terms,   // v20.18 第2段：fork・reason は朝から外した（読む回で書く）
         actors: worldStripMorningRead(it.actors), flow: it.flow,   // v12: ここで渡さないと normalize に届かない
@@ -20376,6 +20405,7 @@
           if (ev.srcCadence) o.cadences[ev.srcCadence] = (o.cadences[ev.srcCadence] || 0) + 1;
         }
       }
+      if (isDateStr(ev.validTo) && ev.validTo < today) staleNum++;   // v20.68：置き換わる数字が、もう期限切れ
       if (ev.confidence && ev.confidence <= WORLD_CONF_WHY_BELOW) lowConf++;
       if (worldIsLowConf(ev)) sunkConf++;
       if (!ev.confidence) noConf++;
@@ -20420,7 +20450,8 @@
     const mikiRec = (seedRegion || viaAsk || selfMade) ? null : worldMikiRecordImport(parsed, mikiPend, added, idAt, batchId);
     const aimsRec = aimsPend.length ? await worldAimsRecordImport(aimsPend, batchId) : null;   // v20.58 地図 直し②
     const viewRec = viewPend.length ? worldViewRecordImport(viewPend, batchId) : null;   // v20.62 見せ方 段1
-    const cmpRec = cmpPend.length ? worldCmpRecordImport(cmpPend, batchId) : null;   // v20.65 見せ方 段2-2   // v20.51（続報の記録の後に。候補の数え方が続報を見るため）
+    const cmpRec = cmpPend.length ? worldCmpRecordImport(cmpPend, batchId) : null;   // v20.65 見せ方 段2-2
+    if (!seedRegion && !viaAsk && !selfMade) worldChecksAddRec(checked, batchId);   // v20.68：必ず見るものの自己申告を残す   // v20.51（続報の記録の後に。候補の数え方が続報を見るため）
 
     if (added.length) {
       worldSaveConcepts();
@@ -20453,6 +20484,7 @@
       aimsRec,   // v20.58
       viewRec,   // v20.62
       cmpRec,   // v20.65
+      staleNum,   // v20.68
       added: added.length, rejected, old, forks, leans, droppedForks, onStrata, droppedStrata, unknownConcepts,
       createdConcepts, createdTerms, createdActors, batchId, linked, partnerIds: [...partnerIds],
       addedIds: added.map((e) => e.id),
@@ -26820,7 +26852,18 @@
   }
   // なぜ の下に置く。文字を先に出し、地図は部品を読んでから入れる
   // v20.57 直し①：地図を出すのは線が描ける札だけ。v20.58 直し②：効かせた線も線に数え、1行は「お金：」「効かせた：」に分ける
+  // v20.68：この数字は「いつまでの分」か。期限が過ぎていたら、次の回がもう出ていると書く
+  function worldValidToInsert(box, ev) {
+    const v = ev && isDateStr(ev.validTo) ? ev.validTo : '';
+    if (!v) return;
+    const over = v < todayStr();
+    const p = document.createElement('p'); p.className = 'worldValidTo' + (over ? ' over' : '');
+    const md = /^\d{4}-(\d{2})-(\d{2})$/.exec(v);
+    p.textContent = 'この数字は ' + (md ? Number(md[1]) + '月' + Number(md[2]) + '日' : v) + 'までの分' + (over ? '（すでに次の回が出ている）' : '');
+    box.appendChild(p);
+  }
   function worldEdaMapInsert(box, ev) {
+    worldValidToInsert(box, ev);   // v20.68
     const mapBox = document.createElement('div'); mapBox.className = 'worldMapBox worldEdaMap';
     const lines = document.createElement('div'); lines.className = 'worldEdaLines';
     const note = document.createElement('span'); note.className = 'worldEdaNote';
@@ -29415,6 +29458,7 @@
     if (res.aimsRec) msg += '　' + worldAimsImportNote(res.aimsRec);   // v20.58
     if (res.viewRec) msg += '　' + worldViewImportNote(res.viewRec);   // v20.62
     if (res.cmpRec) msg += '　' + worldCmpImportNote(res.cmpRec);   // v20.65
+    if (res.staleNum) msg += '　※ もう次の回が出ている数字 ' + res.staleNum + '件（札に「すでに次の回が出ている」と出ます）。';   // v20.68
     if (res.todayStartSkipped) msg += '　※ 根の札 ' + res.todayStartSkipped + '件は今日見るべき件から外しました。';
     worldState.lastImportRecId = res.importRec ? res.importRec.id : '';
     worldState.sameOpen = '';
