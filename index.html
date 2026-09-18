@@ -3309,7 +3309,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.79';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.80';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -15476,7 +15476,7 @@
 
   // ---- 取り込み
   function toruImportJudge(deck, raw) {
-    const lj = worldLooseJson(raw);
+    const lj = worldLooseJsonPick(raw, ['genshou', 'kaishuu', 'ok', 'zure']);
     const p = lj.value;
     if (!p || typeof p !== 'object' || Array.isArray(p)) return { error: 'JSON として読めませんでした' + (lj.error ? '：' + lj.error : '') + '。' };
     const s = (v, n) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
@@ -15496,13 +15496,13 @@
     return { text: judge.ok ? '通りました：' + judge.genshou : '通りませんでした：' + (judge.missing || judge.why) + (notes.length ? '（' + notes.join('・') + '）' : '') };
   }
   function toruImportMats(deck, raw) {
-    const lj = worldLooseJson(raw);
+    const lj = worldLooseJsonPick(raw, ['mats', 'materials', '材料']);
     const p = lj.value;
-    const list = p && (Array.isArray(p) ? p : Array.isArray(p.mats) ? p.mats : null);
-    if (!list) return { error: 'JSON として読めませんでした' + (lj.error ? '：' + lj.error : '') + '。{"mats":[...]} の形で貼ってください。' };
+    const list = p && (Array.isArray(p) ? p : Array.isArray(p.mats) ? p.mats : Array.isArray(p.materials) ? p.materials : Array.isArray(p.材料) ? p.材料 : null);
+    if (!list) return { error: (p ? '「mats」の並びが見つかりません' + worldJsonKeysNote(p) : 'JSON として読めませんでした' + (lj.error ? '：' + lj.error : '')) + '。{"mats":[...]} の形で貼ってください。' };
     const s = (v, n) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
     let badUrl = 0;
-    const mats = list.filter((x) => x && typeof x === 'object' && s(x.fact, 400)).map((x, i) => {
+    const mats = list.filter((x) => x && typeof x === 'object' && !Array.isArray(x) && s(x.fact, 400)).map((x, i) => {
       const u = shootSafeUrl(s(x.url, 400));
       if (s(x.url, 400) && !u) badUrl++;
       return {
@@ -15523,11 +15523,11 @@
     return { text: '取り込みました：材料 ' + mats.length + '（' + Object.entries(kinds).map(([k, n]) => k + n).join('・') + '）' + (notes.length ? '（' + notes.join('・') + '）' : '') };
   }
   function toruImportBlocks(deck, raw) {
-    const lj = worldLooseJson(raw);
+    const lj = worldLooseJsonPick(raw, ['blocks', 'opening']);
     const p = lj.value;
-    if (!p || typeof p !== 'object' || Array.isArray(p) || !Array.isArray(p.blocks)) return { error: 'JSON として読めませんでした' + (lj.error ? '：' + lj.error : '') + '。{"blocks":[...]} の形で貼ってください。' };
+    if (!p || typeof p !== 'object' || Array.isArray(p) || !Array.isArray(p.blocks)) return { error: (p ? '「blocks」の並びが見つかりません' + worldJsonKeysNote(p) : 'JSON として読めませんでした' + (lj.error ? '：' + lj.error : '')) + '。{"blocks":[...]} の形で貼ってください。' };
     const s = (v, n) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
-    const blocks = p.blocks.filter((b) => b && typeof b === 'object' && s(b.name, 60)).map((b) => ({
+    const blocks = p.blocks.filter((b) => b && typeof b === 'object' && !Array.isArray(b) && s(b.name, 60)).map((b) => ({
       name: s(b.name, 60), promise: s(b.promise, 300),
       mats: (Array.isArray(b.mats) ? b.mats : []).map((x) => Number(x)).filter((x) => x > 0).slice(0, 5),
       kaishuu: s(b.kaishuu, 300), bridge: s(b.bridge, 300),
@@ -15573,17 +15573,26 @@
     return { text: '取り込みました：' + toruScriptLintText(toruScriptLint(t), deck) };
   }
   function toruImportPack(deck, raw) {
-    const lj = worldLooseJson(raw);
+    const lj = worldLooseJsonPick(raw, ['thumbs', 'titles', 'thumbnails', 'サムネ', 'タイトル']);
     const p = lj.value;
-    if (!p || typeof p !== 'object' || Array.isArray(p)) return { error: 'JSON として読めませんでした' + (lj.error ? '：' + lj.error : '') + '。' };
-    const s = (v, n) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
+    if (!p || typeof p !== 'object' || Array.isArray(p)) return { error: 'JSON として読めませんでした' + (lj.error ? '：' + lj.error : '') + '。{"thumbs":[...],"titles":[...]} の形で貼ってください。' };
+    const s = (v, n) => {
+      if (typeof v === 'string') return v.trim().slice(0, n);
+      if (typeof v === 'number') return String(v).slice(0, n);
+      if (Array.isArray(v)) return v.filter((x) => typeof x === 'string').join('／').slice(0, n);   // v20.80：配列で返ってきた欄
+      return '';
+    };
+    const arr = (v) => (Array.isArray(v) ? v.filter((x) => x != null) : []);   // v20.80：null が混ざると前は止まっていた
+    const thumbsIn = arr(p.thumbs).length ? arr(p.thumbs) : arr(p.thumbnails).length ? arr(p.thumbnails) : arr(p['サムネ']);
+    const titlesIn = arr(p.titles).length ? arr(p.titles) : arr(p['タイトル']);
     const pack = {
-      thumbs: (Array.isArray(p.thumbs) ? p.thumbs : []).map((t) => ({ text: s(t.text, 40), picture: s(t.picture, 400), prompt: s(t.prompt, 2000), why: s(t.why, 300) })).filter((t) => t.text || t.picture).slice(0, 8),
-      titles: (Array.isArray(p.titles) ? p.titles : []).map((t) => (typeof t === 'string' ? { text: s(t, 80), type: '' } : { text: s(t.text, 80), type: s(t.type, 20) })).filter((t) => t.text).slice(0, 25),
-      opening: s(p.opening, 800), tags: (Array.isArray(p.tags) ? p.tags : []).map((x) => s(x, 30)).filter(Boolean).slice(0, 10),
+      thumbs: thumbsIn.map((t) => (typeof t === 'string' ? { text: s(t, 40), picture: '', prompt: '', why: '' }
+        : { text: s(t.text, 40), picture: s(t.picture, 400), prompt: s(t.prompt, 2000), why: s(t.why, 300) })).filter((t) => t.text || t.picture).slice(0, 8),
+      titles: titlesIn.map((t) => (typeof t === 'string' ? { text: s(t, 80), type: '' } : { text: s(t.text, 80), type: s(t.type, 20) })).filter((t) => t.text).slice(0, 25),
+      opening: s(p.opening, 800), tags: arr(p.tags).map((x) => s(x, 30)).filter(Boolean).slice(0, 10),
       pick: -1, at: nowIso(),
     };
-    if (!pack.thumbs.length && !pack.titles.length) return { error: 'サムネ案もタイトル案もありませんでした。' };
+    if (!pack.thumbs.length && !pack.titles.length) return { error: 'サムネ案もタイトル案もありませんでした' + worldJsonKeysNote(p) + '。' };
     deck.pack = pack;
     shootTouch(deck);
     const notes = [];
@@ -15630,7 +15639,7 @@
       imp.addEventListener('click', () => {
         let res;
         try { res = importFn(ta.value); } catch (e) { recordFeatureError('撮るの取り込み', e); res = { error: '取り込めませんでした（' + e.message + '）' }; }
-        if (res.error) { st.textContent = res.error; shootState.toruMsg[skey] = res.error; return; }
+        if (res.error) { st.textContent = res.error + '（貼った文はそのまま残してあります）'; shootState.toruMsg[skey] = st.textContent; return; }
         shootState.toruMsg[skey] = res.text;
         toruDraftSet(skey, '');
         if (shootState.toruOpen) delete shootState.toruOpen[skey];
@@ -21266,6 +21275,37 @@
       const at = m ? Number(m[1]) : -1;
       return { error: 'JSON の書き方が崩れています' + (at >= 0 ? '（「' + out.slice(Math.max(0, at - 15), at + 15).replace(/\s+/g, ' ') + '」のあたり）' : '') };
     }
+  }
+  // v20.80：返事に JSON がいくつも書いてあるとき（例つきの説明文など）、欲しい欄を持つものを選ぶ。
+  // 見つからなければ、いちばん長いものを返す。keys は「この欄があれば当たり」の並び
+  function worldLooseJsonPick(raw, keys) {
+    const t = String(raw || '');
+    const starts = [];
+    for (let i = 0; i < t.length; i++) if (t[i] === '{' || t[i] === '[') starts.push(i);
+    const cands = [];
+    const seen = new Set();
+    starts.slice(0, 40).forEach((i) => {
+      const r = worldLooseJson(t.slice(i));
+      if (!r.value || seen.has(JSON.stringify(r.value).slice(0, 200))) return;
+      seen.add(JSON.stringify(r.value).slice(0, 200));
+      cands.push(r.value);
+    });
+    if (!cands.length) return worldLooseJson(t);
+    const hit = cands.find((v) => v && typeof v === 'object' && !Array.isArray(v) && (keys || []).some((k) => v[k] != null));
+    if (hit) return { value: hit };
+    const wrapped = cands.find((v) => v && typeof v === 'object' && !Array.isArray(v) && Object.values(v).some((x) => x && typeof x === 'object' && (keys || []).some((k) => x[k] != null)));
+    if (wrapped) return { value: Object.values(wrapped).find((x) => x && typeof x === 'object' && (keys || []).some((k) => x[k] != null)) };
+    // 欲しい欄が無いときは、いちばん中身の多い「もの」を返す（配列しか無ければ、途中で切れている見込み）
+    const objs = cands.filter((v) => v && typeof v === 'object' && !Array.isArray(v));
+    if (!objs.length) return { error: 'JSON が途中で終わっているかもしれません（返事の最後まで貼れているか見てください）' };
+    objs.sort((a, b) => JSON.stringify(b).length - JSON.stringify(a).length);
+    return { value: objs[0], noKeys: true };
+  }
+  // 読めたけれど欲しい欄が無いときの知らせ（何が入っていたかを見せる）
+  function worldJsonKeysNote(v) {
+    if (!v || typeof v !== 'object') return '';
+    const ks = Array.isArray(v) ? ['（配列）'] : Object.keys(v).slice(0, 8);
+    return ks.length ? '（読めた欄：' + ks.join('・') + '）' : '';
   }
   function worldKijiAll() {
     const all = [];
