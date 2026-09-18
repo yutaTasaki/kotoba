@@ -3309,7 +3309,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.81';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.82';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -15766,9 +15766,29 @@
           b.addEventListener('click', async () => { const ok = await copyToClipboard(p.thumbs[p.pick].prompt); s.textContent = ok ? 'コピーしました（画像生成AIに貼る）' : 'コピーできませんでした'; });
           sec.appendChild(b); sec.appendChild(s);
         }
-        sec.appendChild(el('div', 'kjGroup', 'タイトル案'));
-        (p.titles || []).forEach((t) => sec.appendChild(el('div', 'kjSub', t.text + '（' + t.text.length + '字' + (t.type ? '・' + t.type : '') + '）')));
-        if (p.opening) sec.appendChild(el('div', 'kjLine', '開始数秒：' + p.opening));
+        // v20.82：タイトルも押して選ぶ（サムネと同じ）。選ぶとコピーできる
+        if (typeof p.titlePick !== 'number') p.titlePick = -1;
+        sec.appendChild(el('div', 'kjGroup', 'タイトル案（1つ選ぶ）'));
+        (p.titles || []).forEach((t, i) => {
+          const r = el('button', 'kjPick' + (p.titlePick === i ? ' on' : '')); r.type = 'button';
+          r.appendChild(el('div', 'kjPickMain', t.text));
+          r.appendChild(el('div', 'kjSub', t.text.length + '字' + (t.type ? '・' + t.type : '') + (t.text.length > KIJI_TITLE_CHARS ? '・長い（一覧で切れます）' : '')));
+          r.addEventListener('click', () => { p.titlePick = i; shootTouch(deck); rerender(); });
+          sec.appendChild(r);
+        });
+        if (p.titlePick >= 0 && p.titles[p.titlePick]) {
+          const b = el('button', 'secondaryBtn', 'タイトルをコピー'); b.type = 'button';
+          const st = el('span', 'kjSub', p.titles[p.titlePick].text);
+          b.addEventListener('click', async () => { const ok = await copyToClipboard(p.titles[p.titlePick].text); st.textContent = ok ? 'コピーしました' : 'コピーできませんでした'; });
+          sec.appendChild(b); sec.appendChild(st);
+        }
+        if (p.opening) {
+          sec.appendChild(el('div', 'kjLine', '開始数秒：' + p.opening));
+          const b = el('button', 'secondaryBtn', '開始数秒をコピー'); b.type = 'button';
+          const st = el('span', 'kjSub', '');
+          b.addEventListener('click', async () => { const ok = await copyToClipboard(p.opening); st.textContent = ok ? 'コピーしました' : 'コピーできませんでした'; });
+          sec.appendChild(b); sec.appendChild(st);
+        }
         if (p.tags && p.tags.length) {
           const b = el('button', 'secondaryBtn', 'タグをコピー'); b.type = 'button';
           const s = el('span', 'kjSub', p.tags.join('・'));
