@@ -3309,7 +3309,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.80';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.81';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -15465,7 +15465,8 @@
       '■ 頼むこと\n' +
       '- thumbs：サムネ案3〜5。text（サムネの文字・15字以内）、picture（絵の中身1〜2文）、prompt（画像生成AIへのプロンプト。絵の中の文字は入れない）、why（なぜ目を引くか1文）。\n' +
       '  **サムネ単体で興味を引く。** タイトルは補助。答えは見せず、「何が起きているんだ？」と思わせる。\n' +
-      '- titles：タイトル案10〜20。26字以内。**「【作業用】」「#番号」は絶対に使わない。** 型を混ぜる（体験型・逆説型・疑問型・数字型・不思議型）。\n' +
+      '- titles：タイトル案10〜15。26字以内。**「【作業用】」「#番号」は絶対に使わない。** 型を混ぜる（体験型・逆説型・疑問型・数字型・不思議型）。\n' +
+      '- **JSON は途中で切らずに最後まで書く。** 長くなりそうなら、prompt は英語で短くする。\n' +
       '- opening：開始数秒で言う2〜3文。サムネとタイトルの約束をここで回収する。\n' +
       '- tags：YouTube のタグを5〜8個（実際に台本で話している言葉）。\n\n' +
       '■ 台本（先頭2000字）\n' + s.slice(0, 2000) + '\n\n' +
@@ -15499,10 +15500,10 @@
     const lj = worldLooseJsonPick(raw, ['mats', 'materials', '材料']);
     const p = lj.value;
     const list = p && (Array.isArray(p) ? p : Array.isArray(p.mats) ? p.mats : Array.isArray(p.materials) ? p.materials : Array.isArray(p.材料) ? p.材料 : null);
-    if (!list) return { error: (p ? '「mats」の並びが見つかりません' + worldJsonKeysNote(p) : 'JSON として読めませんでした' + (lj.error ? '：' + lj.error : '')) + '。{"mats":[...]} の形で貼ってください。' };
+    const noList = !list;   // v20.81：並びが見つからなくても、読めた「もの」から拾い直す（下の salvage）
     const s = (v, n) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
     let badUrl = 0;
-    const mats = list.filter((x) => x && typeof x === 'object' && !Array.isArray(x) && s(x.fact, 400)).map((x, i) => {
+    const mats = (list || []).filter((x) => x && typeof x === 'object' && !Array.isArray(x) && s(x.fact, 400)).map((x, i) => {
       const u = shootSafeUrl(s(x.url, 400));
       if (s(x.url, 400) && !u) badUrl++;
       return {
@@ -15511,8 +15512,21 @@
         sure: TORU_SURE[s(x.sure, 20)] ? s(x.sure, 20) : 'report', why: s(x.why, 300),
       };
     }).slice(0, 20);
-    if (!mats.length) return { error: '材料がありませんでした。' };
-    deck.mats = mats;
+    let salvagedM = 0;
+    if (!mats.length) {   // v20.81
+      const objs = worldLooseObjects(raw);
+      const seen = new Set();
+      objs.forEach((o) => {
+        const fact = s(o.fact, 300);
+        if (!fact || seen.has(fact)) return;
+        seen.add(fact);
+        const u = shootSafeUrl(s(o.url, 400));
+        mats.push({ id: 'mt' + (mats.length + 1), kind: s(o.kind, 20) || '研究', fact, detail: s(o.detail, 600), source: s(o.source, 200), url: u, sure: TORU_SURE[s(o.sure, 20)] ? s(o.sure, 20) : 'report', why: s(o.why, 300) });
+      });
+      salvagedM = mats.length;
+    }
+    if (!mats.length) return { error: (noList ? '「mats」の並びが見つかりませんでした' + worldJsonKeysNote(p) : '材料がありませんでした') + '。返事が途中で切れていないか見てください。' };
+    deck.mats = mats.slice(0, 20);
     shootTouch(deck);
     const kinds = {};
     mats.forEach((m) => { kinds[m.kind] = (kinds[m.kind] || 0) + 1; });
@@ -15520,6 +15534,7 @@
     if (mats.length < 6) notes.push('6つに足りない');
     if (!mats.some((m) => m.sure === 'legend')) notes.push('「そう語られてきた」話が無い');
     if (badUrl) notes.push('url の形が正しくない ' + badUrl + '件（空にしました）');
+    if (salvagedM) notes.push('返事の JSON が途中で壊れていたので、読めたところだけ拾いました');
     return { text: '取り込みました：材料 ' + mats.length + '（' + Object.entries(kinds).map(([k, n]) => k + n).join('・') + '）' + (notes.length ? '（' + notes.join('・') + '）' : '') };
   }
   function toruImportBlocks(deck, raw) {
@@ -15532,7 +15547,16 @@
       mats: (Array.isArray(b.mats) ? b.mats : []).map((x) => Number(x)).filter((x) => x > 0).slice(0, 5),
       kaishuu: s(b.kaishuu, 300), bridge: s(b.bridge, 300),
     })).slice(0, 6);
-    if (!blocks.length) return { error: 'ブロックがありませんでした。' };
+    let salvagedB = 0;
+    if (!blocks.length) {   // v20.81
+      worldLooseObjects(raw).forEach((o) => {
+        const name = s(o.name, 60);
+        if (!name || !s(o.kaishuu, 300)) return;
+        blocks.push({ name, promise: s(o.promise, 300), mats: (Array.isArray(o.mats) ? o.mats : []).map((x) => Number(x)).filter((x) => x > 0).slice(0, 5), kaishuu: s(o.kaishuu, 300), bridge: s(o.bridge, 300) });
+      });
+      salvagedB = blocks.length;
+    }
+    if (!blocks.length) return { error: 'ブロックがありませんでした。返事が途中で切れていないか見てください。' };
     deck.blocks = blocks;
     deck.opening = s(p.opening, 1000);
     deck.ending = s(p.ending, 800);
@@ -15543,6 +15567,7 @@
     const ks = blocks.map((b) => b.kaishuu.slice(0, 12));
     if (new Set(ks).size < ks.length) notes.push('回収の言い方が同じブロックあり');
     if (!deck.opening) notes.push('冒頭が無い');
+    if (salvagedB) notes.push('返事の JSON が途中で壊れていたので、読めたところだけ拾いました');
     return { text: '取り込みました：ブロック ' + blocks.length + (notes.length ? '（' + notes.join('・') + '）' : '') };
   }
   function toruScriptLint(text) {
@@ -15592,10 +15617,28 @@
       opening: s(p.opening, 800), tags: arr(p.tags).map((x) => s(x, 30)).filter(Boolean).slice(0, 10),
       pick: -1, at: nowIso(),
     };
-    if (!pack.thumbs.length && !pack.titles.length) return { error: 'サムネ案もタイトル案もありませんでした' + worldJsonKeysNote(p) + '。' };
+    // v20.81：外側の JSON が閉じていない返事でも、読めた「もの」から拾い直す
+    let salvaged = 0;
+    if (!pack.thumbs.length && !pack.titles.length) {
+      const objs = worldLooseObjects(raw);
+      const seenT = new Set(), seenTi = new Set();
+      objs.forEach((o) => {
+        const text = s(o.text, 80);
+        if (!text) return;
+        const isThumb = !!(s(o.picture, 400) || s(o.prompt, 2000));
+        if (isThumb) { if (seenT.has(text)) return; seenT.add(text); pack.thumbs.push({ text: text.slice(0, 40), picture: s(o.picture, 400), prompt: s(o.prompt, 2000), why: s(o.why, 300) }); }
+        else if (text.length <= 80) { if (seenTi.has(text)) return; seenTi.add(text); pack.titles.push({ text, type: s(o.type, 20) }); }
+      });
+      pack.thumbs = pack.thumbs.slice(0, 8); pack.titles = pack.titles.slice(0, 25);
+      if (!pack.opening) { const o = objs.find((x) => s(x.opening, 800)); if (o) pack.opening = s(o.opening, 800); }
+      if (!pack.tags.length) { const o = objs.find((x) => Array.isArray(x.tags)); if (o) pack.tags = o.tags.filter((x) => x != null).map((x) => s(x, 30)).filter(Boolean).slice(0, 10); }
+      salvaged = pack.thumbs.length + pack.titles.length;
+    }
+    if (!pack.thumbs.length && !pack.titles.length) return { error: 'サムネ案もタイトル案もありませんでした' + worldJsonKeysNote(p) + '。返事が途中で切れていないか、最後まで貼れているか見てください。' };
     deck.pack = pack;
     shootTouch(deck);
     const notes = [];
+    if (salvaged) notes.push('返事の JSON が途中で壊れていたので、読めたところだけ拾いました');
     const bad = pack.titles.filter((t) => /作業用|#\d/.test(t.text)).length;
     if (bad) notes.push('【作業用】や番号の入ったタイトル ' + bad + '件');
     const long = pack.titles.filter((t) => t.text.length > 26).length;
@@ -21278,6 +21321,35 @@
   }
   // v20.80：返事に JSON がいくつも書いてあるとき（例つきの説明文など）、欲しい欄を持つものを選ぶ。
   // 見つからなければ、いちばん長いものを返す。keys は「この欄があれば当たり」の並び
+  // v20.81：返事の中で読めた JSON を全部集める（外側が途中で切れていても、中の1つずつは読める）
+  function worldLooseJsonAll(raw) {
+    const t = String(raw || '');
+    const out = [];
+    const seen = new Set();
+    for (let i = 0, n = 0; i < t.length && n < 400; i++) {
+      if (t[i] !== '{' && t[i] !== '[') continue;
+      n++;
+      const r = worldLooseJson(t.slice(i));
+      if (!r.value) continue;
+      const k = JSON.stringify(r.value).slice(0, 300);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(r.value);
+    }
+    return out;
+  }
+  // 集めた中から「もの」だけを平らに並べる（配列の中身も開く）
+  function worldLooseObjects(raw) {
+    const out = [];
+    const push = (v, depth) => {
+      if (!v || typeof v !== 'object' || depth > 3) return;
+      if (Array.isArray(v)) { v.forEach((x) => push(x, depth + 1)); return; }
+      out.push(v);
+      Object.values(v).forEach((x) => push(x, depth + 1));
+    };
+    worldLooseJsonAll(raw).forEach((v) => push(v, 0));
+    return out;
+  }
   function worldLooseJsonPick(raw, keys) {
     const t = String(raw || '');
     const starts = [];
