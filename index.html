@@ -3310,7 +3310,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.83';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.84';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -15446,7 +15446,7 @@
   function toruScriptPromptText(deck) {
     return SHOOT_PROMPT_HEAD.replace('返事は JSON だけ', '返事は台本だけ') +
       'この構成で、動画の台本を書いてください。**話し言葉の全文**です。\n\n' +
-      toruStyleText() + toruReaderText() + toruJudgeText(deck) + toruMatsText(deck) + toruBlocksText(deck) +
+      toruStyleText() + toruLearnedText() + toruReaderText() + toruJudgeText(deck) + toruMatsText(deck) + toruBlocksText(deck) +
       '■ 台本の決まり\n' +
       '- ' + TORU_SCRIPT_MIN + '〜' + TORU_SCRIPT_MAX + '字（約20分）。\n' +
       '- 構成の順に書く。ブロックの頭に「＃ ブロックの名前」の行を置く（読み上げない目印）。\n' +
@@ -15476,6 +15476,102 @@
       ' "titles":[{"text":"26字以内","type":"体験型"}],"opening":"2〜3文","tags":["タグ"]}';
   }
 
+  // ---- v20.84 台本を学ぶ：チャットが書いた版と、本人が直した版の差から「直しの型」をためる ----------
+  const TORU_RULES_KEY = 'torurules';      // 調べたことの月ファイルに相乗り（世界の記録と同じ置き方）
+  const TORU_RULES_MAX = 20;               // 依頼文に載せる型の数
+  const TORU_DIFF_MAX = 40;                // 1回に渡す直しの組
+  function toruRules() {
+    const out = [];
+    wdig.docs.forEach((doc) => (Array.isArray(doc[TORU_RULES_KEY]) ? doc[TORU_RULES_KEY] : []).forEach((r) => { if (r && r.id && r.text && !r.off) out.push(r); }));
+    return out.sort((p, q) => (p.at < q.at ? 1 : -1));
+  }
+  function toruRulesAdd(list, from) {
+    const at = nowIso();
+    const recs = list.map((t) => ({ id: digNewId('tr'), text: String(t).slice(0, 200), from: from || '', at, createdAt: at, updatedAt: at }));
+    if (!recs.length) return 0;
+    digMutate((doc) => { doc[TORU_RULES_KEY] = (Array.isArray(doc[TORU_RULES_KEY]) ? doc[TORU_RULES_KEY] : []).concat(recs); });
+    return recs.length;
+  }
+  function toruRuleOff(id) {
+    const at = nowIso();
+    wdig.docs.forEach((doc, m) => {
+      const r = (Array.isArray(doc[TORU_RULES_KEY]) ? doc[TORU_RULES_KEY] : []).find((x) => x.id === id);
+      if (!r) return;
+      r.off = true; r.updatedAt = at; doc.updatedAt = at;
+      wdig.dirty.add(m); persistDigDoc(m);
+    });
+    persistDigMeta(); scheduleSync();
+  }
+  // 行ごとの差（消した行と足した行を並べる）。長い台本でも数えられるように、まず同じ行を落とす
+  function toruDiffPairs(a, b) {
+    const A = String(a || '').split(/\n+/).map((x) => x.trim()).filter(Boolean);
+    const B = String(b || '').split(/\n+/).map((x) => x.trim()).filter(Boolean);
+    const same = new Set();
+    const bCount = new Map();
+    B.forEach((x) => bCount.set(x, (bCount.get(x) || 0) + 1));
+    A.forEach((x) => { if (bCount.get(x)) { same.add(x); bCount.set(x, bCount.get(x) - 1); } });
+    const gone = A.filter((x) => !same.has(x));
+    const came = B.filter((x) => !same.has(x));
+    // 近い行どうしを組にする。2文字ずつの重なりで似ぐあいを測り、似ている順に組む
+    const grams = (x) => { const g = new Set(); for (let i = 0; i < x.length - 1; i++) g.add(x.slice(i, i + 2)); return g; };
+    const sim = (x, y) => {
+      const gx = grams(x), gy = grams(y);
+      if (!gx.size || !gy.size) return 0;
+      let n = 0;
+      gx.forEach((t) => { if (gy.has(t)) n++; });
+      return (2 * n) / (gx.size + gy.size);
+    };
+    const cand = [];
+    gone.forEach((g, i) => came.forEach((c, k) => { const v = sim(g, c); if (v >= 0.3) cand.push({ i, k, v }); }));
+    cand.sort((a, b) => b.v - a.v);
+    const usedA = new Set(), usedB = new Set();
+    const paired = [];
+    cand.forEach((x) => { if (usedA.has(x.i) || usedB.has(x.k)) return; usedA.add(x.i); usedB.add(x.k); paired.push({ order: x.i, before: gone[x.i], after: came[x.k] }); });
+    gone.forEach((g, i) => { if (!usedA.has(i)) paired.push({ order: i, before: g, after: '（消した）' }); });
+    came.forEach((c, k) => { if (!usedB.has(k)) paired.push({ order: 999 + k, before: '（足した）', after: c }); });
+    const pairs = paired.sort((a, b) => a.order - b.order).map((x) => ({ before: x.before, after: x.after }));
+    return { pairs: pairs.slice(0, TORU_DIFF_MAX), gone: gone.length, came: came.length, lines: A.length };
+  }
+  function toruLearnPromptText(deck) {
+    const d = toruDiffPairs(deck.script.orig, deck.script.text);
+    const rules = toruRules();
+    return SHOOT_PROMPT_HEAD +
+      'あなたが書いた台本を、本人が手で直しました。**次からその直しが要らなくなるように、直しの型を短い決まりにしてください。**\n\n' +
+      (rules.length ? '■ すでにある直しの型（同じものは書かない）\n' + rules.map((r) => '- ' + r.text).join('\n') + '\n\n' : '') +
+      '■ 直されたところ（前：あなたが書いた／後：本人が直した）\n' +
+      d.pairs.map((p, i) => (i + 1) + '. 前：' + p.before + '\n   後：' + p.after).join('\n') + '\n\n' +
+      '■ 決まりにするときの約束\n' +
+      '- 3〜8個。1つ1文（60字以内）。「〜と書かず、〜と書く」の形にする。\n' +
+      '- その回かぎりの中身（固有名詞・その動画の話題）は入れない。**次の台本でも使える形**にする。\n' +
+      '- 直しの理由が読み取れないものは飛ばす。数合わせをしない。\n' +
+      '- すでにある型と同じことは書かない。\n\n' +
+      '■ 出力形式（JSON のみ）\n{"rules":["〜と書かず、〜と書く"]}';
+  }
+  function toruImportRules(deck, raw) {
+    const lj = worldLooseJsonPick(raw, ['rules']);
+    const p = lj.value;
+    const list = p && (Array.isArray(p) ? p : Array.isArray(p.rules) ? p.rules : null);
+    if (!list) {
+      const objs = worldLooseObjects(raw).filter((o) => typeof o.text === 'string' && o.text.trim());
+      if (!objs.length) return { error: 'JSON として読めませんでした' + (lj.error ? '：' + lj.error : '') + '。{"rules":["..."]} の形で貼ってください。' };
+      const n0 = toruRulesAdd(objs.map((o) => o.text), deck.id);
+      return { text: '取り込みました：直しの型 ' + n0 + '（読めたところだけ拾いました）' };
+    }
+    const texts = list.map((x) => (typeof x === 'string' ? x : (x && typeof x === 'object' ? String(x.text || x.rule || '') : ''))).map((x) => x.trim()).filter(Boolean);
+    if (!texts.length) return { error: '直しの型がありませんでした。' };
+    const have = new Set(toruRules().map((r) => r.text));
+    const add = texts.filter((t) => !have.has(t));
+    const n = toruRulesAdd(add, deck.id);
+    return { text: '取り込みました：直しの型 ' + n + (texts.length - add.length ? '（同じものが ' + (texts.length - add.length) + ' 件。入れていません）' : '') + '・ぜんぶで ' + toruRules().length };
+  }
+  // 台本の依頼文に足す：直しの型と、前回の直したあとの台本の一部
+  function toruLearnedText() {
+    const rules = toruRules().slice(0, TORU_RULES_MAX);
+    let t = rules.length ? '■ 前に直されたところ（同じ直しを繰り返さない）\n' + rules.map((r) => '- ' + r.text).join('\n') + '\n\n' : '';
+    const last = deckEntries().find((d) => d.script && d.script.text && d.script.editedAt);
+    if (last) t += '■ 前回の台本（本人が直したあとの一部。言い回しの見本。中身はまねしない）\n' + last.script.text.slice(0, 1200) + '\n\n';
+    return t;
+  }
   // ---- 取り込み
   function toruImportJudge(deck, raw) {
     const lj = worldLooseJsonPick(raw, ['genshou', 'kaishuu', 'ok', 'zure']);
@@ -15766,6 +15862,64 @@
         cp.addEventListener('click', async () => { const ok = await copyToClipboard(deck.script.text); cpSt.textContent = ok ? 'コピーしました' : 'コピーできませんでした'; });
         row.appendChild(cp); row.appendChild(cpSt);
         sec.appendChild(row);
+        // v20.84：直したところから型を学ぶ
+        if (deck.script.orig && deck.script.orig !== deck.script.text) {
+          const d0 = toruDiffPairs(deck.script.orig, deck.script.text);
+          sec.appendChild(el('div', 'kjGroup', '直したところから学ぶ（' + d0.pairs.length + 'か所・全' + d0.lines + '行のうち直したのは ' + d0.gone + '行）'));
+          const lcopy = el('button', 'secondaryBtn', '直しを学ぶ依頼文をコピー'); lcopy.type = 'button';
+          const lst = el('span', 'kjSub', '');
+          lcopy.addEventListener('click', async () => { const ok = await copyToClipboard(toruLearnPromptText(deck)); lst.textContent = ok ? 'コピーしました。チャットに貼り、返事を下に貼ります。' : 'コピーできませんでした。'; });
+          sec.appendChild(lcopy); sec.appendChild(lst);
+          const lta = el('textarea'); lta.rows = 3; lta.autocomplete = 'off'; lta.placeholder = '{"rules":["〜と書かず、〜と書く"]} をここに貼る';
+          const lkey = deck.id + ':rules';
+          lta.value = toruDrafts()[lkey] || '';
+          lta.addEventListener('input', () => toruDraftSet(lkey, lta.value));
+          const limp = el('button', 'secondaryBtn', '直しの型を取り込む'); limp.type = 'button';
+          const lmsg = el('p', 'fieldNote', (shootState.toruMsg && shootState.toruMsg[lkey]) || '');
+          limp.addEventListener('click', () => {
+            let res;
+            try { res = toruImportRules(deck, lta.value); } catch (e) { recordFeatureError('直しの型', e); res = { error: '取り込めませんでした（' + e.message + '）' }; }
+            shootState.toruMsg = shootState.toruMsg || {};
+            if (res.error) { lmsg.textContent = res.error + '（貼った文はそのまま残してあります）'; shootState.toruMsg[lkey] = lmsg.textContent; return; }
+            shootState.toruMsg[lkey] = res.text; toruDraftSet(lkey, ''); rerender();
+          });
+          sec.appendChild(lta); sec.appendChild(limp); sec.appendChild(lmsg);
+        }
+        if (!deck.script.orig) {   // v20.84：控えが無い台本（v20.83 より前に取り込んだもの）でも、チャットが書いた版を貼れば学べる
+          sec.appendChild(el('div', 'kjGroup', '直したところから学ぶ'));
+          sec.appendChild(el('div', 'kjSub', 'この台本にはチャットが書いた版の控えがありません。チャットの返事をもう一度ここに貼ると、直したところを学べます。'));
+          const ota = el('textarea'); ota.rows = 3; ota.autocomplete = 'off'; ota.placeholder = 'チャットが書いた台本をここに貼る';
+          const okey = deck.id + ':orig';
+          ota.value = toruDrafts()[okey] || '';
+          ota.addEventListener('input', () => toruDraftSet(okey, ota.value));
+          const ob = el('button', 'secondaryBtn', 'チャットが書いた版として控える'); ob.type = 'button';
+          const ost = el('p', 'fieldNote', '');
+          ob.addEventListener('click', () => {
+            const t = ota.value.trim();
+            if (t.length < 500) { ost.textContent = '短すぎます（' + t.length + '字）。台本の全文を貼ってください。'; return; }
+            deck.script.orig = t;
+            shootTouch(deck);
+            toruDraftSet(okey, '');
+            rerender();
+          });
+          sec.appendChild(ota); sec.appendChild(ob); sec.appendChild(ost);
+        }
+        { // v20.84：ためた型の一覧（消せる）
+          const rules = toruRules();
+          if (rules.length) {
+            const dd = el('details', 'kjPreview');
+            dd.appendChild(el('summary', '', '直しの型 ' + rules.length + '（次の台本の依頼文に入ります）'));
+            rules.forEach((r) => {
+              const row = el('div', 'kjMagRow');
+              row.appendChild(el('span', 'kjSub', r.text));
+              const x = el('button', 'linkLikeBtn', '消す'); x.type = 'button';
+              x.addEventListener('click', () => { toruRuleOff(r.id); rerender(); });
+              row.appendChild(x);
+              dd.appendChild(row);
+            });
+            sec.appendChild(dd);
+          }
+        }
         if (deck.script.orig && deck.script.orig !== deck.script.text) {
           const back = el('button', 'linkLikeBtn', 'チャットが書いた台本に戻す'); back.type = 'button';
           const st = el('span', 'kjSub', '手で直した分は消えます');
