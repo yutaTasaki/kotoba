@@ -841,7 +841,6 @@
     min-height: 40vh;
     cursor: pointer;
   }
-  .drawStage > .drawChoice, .drawStage > .drawShuffleText, .drawStage > .drawResult, .drawStage > .questionResult, .drawStage > #questionSearching { margin-top: auto; margin-bottom: auto; }
   .drawResult.pop { transform-origin: center top; }
   .drawShuffleText { font-size: 22px; line-height: 1.8; padding: 0 12px; white-space: pre-wrap; }
   .drawResult {
@@ -888,54 +887,11 @@
     transition: transform .15s ease;
   }
   .drawChoiceBtn:active { transform: scale(.97); }
-  .questionResult {
-    display: flex; flex-direction: column; gap: 18px; align-items: center; width: 100%;
-    transform: scale(1); transition: transform .25s ease;
-  }
-  .questionResult.pop { transform: scale(1.05); }
   .questionText { font-size: 23px; line-height: 1.95; white-space: pre-wrap; padding: 0 8px; }
-  .questionScene { font-size: 22px; line-height: 1.95; white-space: pre-wrap; padding: 0 8px; }
-  .questionAsk { font-size: 22px; line-height: 1.95; white-space: pre-wrap; padding: 0 8px; color: var(--accent); }
-  .questionCore { font-size: 13px; color: var(--text-dim); line-height: 1.75; padding: 0 12px; }
-  .questionTension { font-size: 13px; color: var(--text-dim); line-height: 1.75; padding: 0 12px; }
-  .questionWhyNow { font-size: 14px; color: var(--accent); line-height: 1.8; white-space: pre-wrap; padding: 0 12px; }
-  .questionFooter { flex-shrink: 0; padding-top: 16px; display: flex; flex-direction: column; gap: 12px; }
-  .questionFromCard {
-    background: var(--bg-card);
-    border-radius: 12px;
-    padding: 14px;
-    cursor: pointer;
-    text-align: left;
-  }
-  .questionFromText { font-size: 15px; line-height: 1.7; }
-  .questionFromSource { font-size: 12px; color: var(--text-dim); }
-  .questionFromMyWords { font-size: 12px; color: var(--text-faint); line-height: 1.7; margin-top: 4px; }
-  .questionUsedNote { font-size: 12px; color: var(--accent); text-align: center; }
   .detailHistory { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
   .detailHistoryRow { font-size: 12px; color: var(--text-dim); line-height: 1.7; white-space: pre-wrap; }
   .detailHistoryDate { color: var(--text-faint); margin-right: 6px; }
   #trashList .secondaryBtn { width: auto; flex-shrink: 0; margin: 0; padding: 8px 16px; align-self: center; }
-  .questionViewer { border-top: 1px solid var(--border); padding-top: 14px; display: flex; flex-direction: column; gap: 6px; }
-  .questionViewerHead { font-size: 11px; color: var(--text-faint); letter-spacing: .06em; }
-  .questionViewerText { font-size: 16px; line-height: 1.8; white-space: pre-wrap; }
-  .questionNone { display: flex; flex-direction: column; gap: 14px; align-items: center; }
-  .questionNoneText { font-size: 18px; color: var(--text-dim); line-height: 1.8; }
-  .drawChoiceHintDim { font-size: 12px; color: var(--text-faint); }
-  .unusedQuestionList { width: 100%; display: flex; flex-direction: column; gap: 6px; padding-top: 4px; }
-  .unusedQuestionHead { font-size: 11px; color: var(--text-faint); text-align: center; }
-  .unusedQuestionItem {
-    font-size: 12px;
-    line-height: 1.7;
-    color: var(--text-dim);
-    background: var(--bg-card);
-    border: none;
-    border-radius: 10px;
-    padding: 9px 12px;
-    text-align: left;
-    font-family: inherit;
-    cursor: pointer;
-  }
-  .unusedQuestionAge { color: var(--text-faint); }
   .questionRecordText { font-size: 15px; line-height: 1.8; }
   .questionRecordMeta { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
 
@@ -1980,11 +1936,6 @@
                 <input id="claudeModelChatInput" type="text" placeholder="claude-sonnet-5" autocomplete="off" spellcheck="false">
               </div>
               <div class="field">
-                <span class="fieldLabel">問いのモデル</span>
-                <p class="fieldNote">空欄なら「朝の言葉・相談のモデル」と同じ。</p>
-                <input id="claudeModelQuestionInput" type="text" placeholder="claude-sonnet-5" autocomplete="off" spellcheck="false">
-              </div>
-              <div class="field">
                 <span class="fieldLabel">この端末の名前</span>
                 <p class="fieldNote">使用量の内訳でこの端末を区別する表示名（例：PC、iPhone）。</p>
                 <input id="deviceLabelInput" type="text" placeholder="この端末" autocomplete="off">
@@ -2570,7 +2521,6 @@
         <button id="btnShootStart" class="primaryBtn">撮影表示をひらく</button>
         <p class="fieldNote" id="shootStartHint" hidden>台本があればそれを出します。無いときは「入り」と「仮の答え」を書くと開けます。</p>
         <div class="medRow">
-          <button type="button" id="btnShootDone" class="secondaryBtn" style="width:auto;">撮った印をつける</button>
           <button type="button" id="btnShootDelete" class="dangerBtn" style="width:auto;">このデッキを消す</button>
         </div>
         <p class="fieldNote" id="shootMeta"></p>
@@ -3113,7 +3063,6 @@
       <div class="topbarBtnGroup">
         <button id="btnDrawToGraph" class="drawIconBtn" type="button" hidden>網で見る</button>
         <button id="btnDrawAgain" class="drawIconBtn" type="button" hidden>もう一度</button>
-        <button id="btnQuestionAgain" class="drawIconBtn" type="button" hidden>もう一つ</button>
         <button id="btnDrawClose" class="drawIconBtn" type="button">×</button>
       </div>
     </div>
@@ -3121,7 +3070,6 @@
       <div id="drawChoice" class="drawChoice">
         <div class="drawChoiceRow">
           <button type="button" id="btnDrawWord" class="drawChoiceBtn">言葉を引く</button>
-          <button type="button" id="btnDrawQuestion" class="drawChoiceBtn">問いを引く</button>
         </div>
         <div id="drawModeRow" class="tagFilterRow drawModeRow">
           <button type="button" class="tagFilterBtn" data-mode="all">すべてから</button>
@@ -3134,10 +3082,8 @@
           <button type="button" class="tagFilterBtn" data-kind="self">自分</button>
         </div>
         <p class="fieldNote warn" id="drawChoiceHint" hidden></p>
-        <div id="unusedQuestions" class="unusedQuestionList" hidden></div>
       </div>
       <div id="drawShuffleText" class="drawShuffleText" hidden></div>
-      <div id="questionSearching" class="drawShuffleText" hidden>問いを探しています…</div>
       <div id="drawResult" class="drawResult" hidden>
         <div class="drawResultText" id="drawResultText"></div>
         <div class="drawResultSource" id="drawResultSource"></div>
@@ -3147,32 +3093,9 @@
         <div class="drawResultKeep" id="drawResultKeep" hidden></div>
         <div class="drawResultStar" id="drawResultStar"></div>
       </div>
-      <div id="questionResult" class="questionResult" hidden>
-        <div class="questionScene" id="questionScene" hidden></div>
-        <div class="questionAsk" id="questionAsk" hidden></div>
-        <div class="questionText" id="questionText"></div>
-        <div class="questionCore" id="questionCore" hidden></div>
-        <div class="questionCore" id="questionSides" hidden></div>
-        <div class="questionTension" id="questionTension" hidden></div>
-        <div class="questionWhyNow" id="questionWhyNow" hidden></div>
-      </div>
-      <div id="questionNone" class="questionNone" hidden>
-        <div class="questionNoneText">この組み合わせでは問いが立ちませんでした</div>
-        <div class="questionTension" id="questionNoneReason" hidden></div>
-        <div class="drawChoiceHintDim">右上の「もう一つ」で、別の組み合わせを試せます</div>
-      </div>
       <div id="drawEmpty" class="emptyMsg" hidden>まだ言葉がありません。</div>
     </div>
     <div id="drawLinks" class="drawLinks"></div>
-    <div id="questionFooter" class="questionFooter" hidden>
-      <div id="questionFrom" class="drawLinks"></div>
-      <div id="questionViewer" class="questionViewer" hidden>
-        <div class="questionViewerHead">視聴者に向けて</div>
-        <div class="questionViewerText" id="questionViewerText"></div>
-      </div>
-      <button type="button" id="btnQuestionUse" class="primaryBtn">この問いで話す</button>
-      <p class="questionUsedNote" id="questionUsedNote" hidden></p>
-    </div>
   </div>
 
   <div id="screen-graph" class="drawOverlay" hidden>
@@ -3297,7 +3220,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.95';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.96';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -5956,9 +5879,6 @@
   }
   // Spec: the 引く entry screen lists the still-unused questions, newest
   // first - a question that has sat there for weeks is itself information.
-  function unusedQuestionEntries(limit) {
-    return sortedQuestionEntriesDesc().filter((j) => !j.used).slice(0, limit);
-  }
   function questionUseStatsForNote(noteId) {
     if (journalMonthly()) { const s0 = indexStatsForNote(noteId); return { count: s0.q, lastDate: s0.last }; }
     let count = 0, lastDate = '';
@@ -6889,13 +6809,6 @@
   // question), with those few notes sent uncompressed. No cached note-list block here on purpose: the payload is
   // a handful of notes, and it changes every call anyway.
   const QUESTION_MODE_LABEL = { opposite: '対立から', core: '今月の核から', self: '自分の言葉から', far: '遠い対立から' };
-  const LAST_QUESTION_MODE_KEY = 'kotoba_lastQuestionMode';
-  const QUESTION_MODE_NOTE = {
-    opposite: 'この2枚は、本人自身が「反対」としてつないだ組である。どちらかを軸に決め、もう片方をその軸から照らす。どちらが正しいかは決めない。',
-    core: 'この2枚は直近1ヶ月で本人に最も多く届いた言葉である。届き続けていること自体が何かを示している。片方を軸に、もう片方か1ヶ月の記録を照らす。',
-    self: '1枚目は本人が自分の言葉として書いたもの、2枚目はそれに最も近い言葉。本人の言い切り（1枚目）を軸にして、2枚目か1ヶ月の記録をその軸から照らす。',
-    far: 'この2枚は直接はつながっていない。真ん中の「経由した言葉」を通じて食い違っている（構造は下に書く）。1枚目を軸にして、経由した言葉を通ってもう1枚を照らす。経由した言葉そのものを軸にしない。',
-  };
 
   // --- 遠い対立 (v3.6): two-hop paths whose relation changes in the middle --
   // A —似→ B —対立→ C means A and C disagree *through* B, even though no
@@ -6933,393 +6846,24 @@
   // A-C pair already produced a question, neither has ever been delivered.
   // Pull forward: A or C is in this month's core. Ties keep their random
   // input order, and the caller draws at random from the top tier anyway.
-  function rankFarTriples(triples) {
-    const core = new Set(topMonthlyPickedNoteIds(5));
-    const asked = new Set();
-    data.journal.forEach((j) => {
-      if (j.kind !== 'question' || !Array.isArray(j.from) || j.from.length < 2) return;
-      asked.add([j.from[0], j.from[1]].sort().join('|'));
-    });
-    const linked = (x, y) => (x.links || []).some((l) => l.id === y.id) || (y.links || []).some((l) => l.id === x.id);
-    const scored = shuffled(triples).map((t) => {
-      let score = 0;
-      if (linked(t.a, t.c)) score -= 3;
-      if (asked.has([t.a.id, t.c.id].sort().join('|'))) score -= 3;
-      if (journalPickStatsForNote(t.a.id).count === 0 && journalPickStatsForNote(t.c.id).count === 0) score -= 1;
-      if (core.has(t.a.id) || core.has(t.c.id)) score += 2;
-      return { t, score };
-    });
-    scored.sort((x, y) => y.score - x.score);
-    return scored.map((x) => x.t);
-  }
 
-  function allFarOppositionTriples() {
-    const seen = new Set();
-    const out = [];
-    data.notes.forEach((a) => {
-      farOppositionsFrom(a).forEach((p) => {
-        const key = [a.id, p.note.id].sort().join('|') + '|' + p.via.id;
-        if (seen.has(key)) return;
-        seen.add(key);
-        out.push({ a, via: p.via, c: p.note, rel1: p.rel1, rel2: p.rel2 });
-      });
-    });
-    return out;
-  }
 
-  function shuffled(arr) {
-    const a = [...arr];
-    for (let i = a.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [a[i], a[j]] = [a[j], a[i]];
-    }
-    return a;
-  }
 
   // Unordered opposite pairs (links are bidirectional, so each pair shows up
   // twice in the raw link data).
-  function oppositeNotePairs() {
-    const seen = new Set();
-    const pairs = [];
-    data.notes.forEach((n) => {
-      (n.links || []).forEach((l) => {
-        if (l.relation !== 'opposite') return;
-        const other = findNote(l.id);
-        if (!other) return;
-        const key = dupPairKey(n.id, other.id);
-        if (seen.has(key)) return;
-        seen.add(key);
-        pairs.push([n, other]);
-      });
-    });
-    return pairs;
-  }
 
-  function selfSourcedNotes() {
-    return data.notes.filter((n) => (n.kind || inferNoteKind(n.source)) === 'self');
-  }
 
   // "最も関連の強いリンク先": links carry no strength of their own, so this
   // scores them the way the app ranks relevance elsewhere:
   // shared tags count most, shared vocabulary a little, and a link the user
   // tied by hand outranks an automatic one. Array order breaks ties - auto
   // links were returned 関連の強い順 when they were made.
-  function strongestLinkedNote(note) {
-    const noteTags = new Set(note.tags || []);
-    const noteWords = new Set(((note.text || '') + (note.myWords || '')).toLowerCase().match(/[\p{L}\p{N}]+/gu) || []);
-    let best = null, bestScore = -Infinity;
-    (note.links || []).forEach((l, idx) => {
-      const t = findNote(l.id);
-      if (!t) return;
-      let score = 0;
-      (t.tags || []).forEach((tag) => { if (noteTags.has(tag)) score += 3; });
-      const tWords = ((t.text || '') + (t.myWords || '')).toLowerCase();
-      noteWords.forEach((w) => { if (w.length >= 2 && tWords.includes(w)) score += 1; });
-      if (l.kind === 'manual') score += 3;
-      score -= idx * 0.01;
-      if (score > bestScore) { bestScore = score; best = t; }
-    });
-    return best;
-  }
 
   // v3.3.1: fewer notes on purpose. Four notes from two unrelated threads
   // produced questions that welded the threads into one unreadable sentence
   // (「…焦りなのか、それとも…だけなのか」). Two notes - one axis, one thing
   // to shine it on - is what the prompt can actually turn into a question.
   // Three is the hard ceiling; nothing below reaches it today.
-  function buildQuestionMaterialsForMode(mode) {
-    let notes = [];
-    if (mode === 'opposite') {
-      const pairs = oppositeNotePairs();
-      if (!pairs.length) return null;
-      notes = pairs[Math.floor(Math.random() * pairs.length)];
-    } else if (mode === 'core') {
-      const w = noteWeightsInWindow();
-      notes = weightedSample(topMonthlyPickedNoteIds(5).map(findNote).filter(Boolean), (n) => weightWithKeep(w, n), 2);
-    } else if (mode === 'far') {
-      const ranked = rankFarTriples(allFarOppositionTriples());
-      if (!ranked.length) return null;
-      // random within the top tier, so the same pair does not come up every time
-      const tier = ranked.slice(0, Math.max(5, Math.ceil(ranked.length * 0.2)));
-      const t = tier[Math.floor(Math.random() * tier.length)];
-      return { mode, notes: [t.a, t.c], via: t.via, rel1: t.rel1, rel2: t.rel2 };
-    } else {
-      const pool = selfSourcedNotes();
-      if (!pool.length) return null;
-      const own = pool[Math.floor(Math.random() * pool.length)];
-      notes = [own, strongestLinkedNote(own)];
-    }
-    notes = notes.filter(Boolean).slice(0, 3);
-    return notes.length >= 2 ? { mode, notes } : null;
-  }
-
-  // Tries the available angles in random order, never repeating the previous
-  // call's angle while another one is usable, and skipping any angle that
-  // can't reach 2 notes with the current data. Returns null when none can.
-  function pickQuestionMaterials() {
-    const last = localStorage.getItem(LAST_QUESTION_MODE_KEY);
-    const all = shuffled(QUESTION_MODES);
-    const ordered = [...all.filter((m) => m !== last), ...all.filter((m) => m === last)];
-    for (const mode of ordered) {
-      const built = buildQuestionMaterialsForMode(mode);
-      if (built) return built;
-    }
-    return null;
-  }
-
-  // Body text only, newest first, per spec (max 10 entries, 80 chars each).
-  // The date rides along because 「なぜ今か」 is worth little without it.
-  function recentJournalTextsFor(kind, limit) {
-    const cutoff = addDays(todayStr(), -30);
-    return data.journal
-      .filter((j) => j.kind === kind && j.date >= cutoff && j.text && j.text.trim())
-      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
-      .slice(0, limit)
-      .map((j) => ({ date: j.date.slice(5), text: j.text.trim().slice(0, 80) }));
-  }
-
-  // 問い is made in two passes (v8.4). Pass 1 reads the materials and puts
-  // the 食い違い into one everyday scene as two VISIBLE sides (a / b). Pass 2
-  // never sees the materials: it writes the spoken question from the scene
-  // and a / b alone, so nothing from the materials can leak into it.
-  function buildQuestionSystemBlocks() {
-    const text =
-      'あなたは、この人が集めた言葉と、この人自身の言葉だけを材料に、この人が今日ひとりで動画で話すための「問い」の種を作る。問いの文そのものは、この後の別の工程が、ここで書いた場面だけを見て書く。だからこの工程の仕事は、材料の中の食い違いを、誰にでもある日常の一場面に「目に見える形で」置くことである。\n\n' +
-      '渡される材料：\n' +
-      '- 言葉（本や偉人の言葉、または本人が自分で書いた言葉）と、その言葉に本人が書いた解釈（myWords）\n' +
-      '- 本人がこの1ヶ月の朝に書いた一言と、相談で書いたこと\n' +
-      '- 最近この人に出した問い\n\n' +
-      '出力するもの：\n' +
-      '- sides.a / sides.b：食い違いの両側を、その場面で目に見えること（体の動き・目に見える物・起きている事実）として、それぞれ20字以内の話し言葉で書く。a は表に出ている行動（日記を開いて座っている、企画書を書き足している、返信を打っている、など）、b は同じ場面で同時に起きているもう一つの事実（一行も書けていない、同じ段落を消している、送らずに閉じている、など）。カメラで撮れることだけを書く。撮れないもの（苦しさ、不安、迷い、焦り、悩み、気持ち、心、疲れ、思う、感じる、考える、抱える、切り替える、引きずる、理由探し）は一語も入れない。\n' +
-      '- scene（場面）：a と b の両方が入った一場面。1文。30〜60字。動画の冒頭で口に出す。\n' +
-      '- core（芯）：その食い違いが材料のどこから来たかを、材料の言い回しをそのまま使って1文で書く。画面の下に小さく出す控えであり、口には出さない。材料の言葉を使うのはここだけ。30〜80字。\n' +
-      '- tension / why_now / from（下の厳守を参照）\n\n' +
-      '手順：\n' +
-      '1. まず材料の中の「食い違い」を1つ見つける。次のどれかである。\n' +
-      '   - 2つの言葉が反対のことを言っている\n' +
-      '   - 言葉そのものと、その言葉に本人が書いた解釈がずれている（自分の都合に引き寄せている、言葉より強く言い切っている、逆に弱めている）\n' +
-      '   - 本人の解釈どうしが噛み合っていない（別の言葉のところで逆のことを言っている）\n' +
-      '   - 本人が言い切っていることと、この1ヶ月の記録に書かれた実際の状態が食い違っている\n' +
-      '2. その食い違いを、どちらが正しいかを決めずに、そのまま中心に置く。\n' +
-      '3. 材料の1枚を「軸」に決める。芯は、その軸の言葉に対して、もう1枚（または本人の1ヶ月の記録）をその軸から照らす形にする。材料を横に並べて選ばせる形にしない。\n' +
-      '4. 食い違いの両側を、日常の場面で「カメラで撮れること」に置き換える → sides.a と sides.b。置き換えの方法：内面の語が出てきたら「その内面を持った人の体は、その場で何をしているか」を思い浮かべ、その動きか目に見える物で書く（「切り替えられない」→「同じ画面をまだ開いている」、「引きずる」→「昨日の一言をまだ言い返している」、「理由探し」→「うまくいかなかった訳を書き出している」、「苦しい」→「ため息をついて画面を閉じる」、「不安」→「同じページを何度も開き直す」、「迷い」→「返信を打ちかけて消す」）。a と b のどちらにも「何を」しているのかが分かる物を入れる（日記、仕事のメール、企画書、明日の予定、皿、布団、通勤の電車、など）。「作業」「何か」「こと」で済ませない。\n' +
-      '5. a と b が同じ一場面に同時にある場面を1文で書く → scene。\n' +
-      '6. 芯（core）を書く。\n' +
-      '7. 確かめる（3つ。どれか一つでも通らなければ書き直す）：\n' +
-      '   (1) a・b・scene を一語ずつ見て、カメラで撮れない語（苦しさ、不安、迷い、焦り、悩み、気持ち、心、疲れ、思う、感じる、考える、抱える、など）が残っていないか。残っていれば、その人の体がしていることに置き換える。\n' +
-      '   (2) scene に「何を」しているのかが分かる物が入っているか（日記なのか仕事のメールなのか）。無ければ入れる。\n' +
-      '   (3) scene を読んだ他人が、自分の一日の中の同じ場面を思い出せるか。a と b の両方をその文の中に見つけられるか。\n' +
-      '8. 材料の間に本当の食い違いや引っかかりが見つからない場合、または2枚が別の話で一本にならない場合は、無理に作らない。{"scene": null, "reason": "…"} を返す（reason は1行、なぜ立たなかったか）。無理に作った種より、立たなかったと言うほうが良い。\n\n' +
-      '場面（scene）の決まり：\n' +
-      '- 体が何をしているかが見えるように書く（スマホを見ている、布団の中で、皿を洗いながら、返信を打ちかけて消す、など）。内面は書かず、その行動に語らせる。「気持ち」「心」「状態」「同時に」「〜と感じる」のような内面を説明する語は使わない。\n' +
-      '- 具体的な行動・時間帯・場所のどれかを必ず含める（夜、休みの日、通勤中、寝る前、机の前、風呂で、など）。\n' +
-      '- 誰にでもある平凡な場面にする。特別な状況・劇的な出来事・大きな決断にしない。\n' +
-      '- 本人の記録の言葉、材料の言い回し、出典の名前は使わない。「〜と書いた自分」のような本人の話にしない。\n' +
-      '- 何をしているのかが分かる物を1つ入れる（日記、仕事のメール、企画書、明日の予定、皿、布団、通勤の電車、など）。「作業」「何か」「こと」だけで済ませない。聞いた人が「自分の一日のあの場面だ」と置き換えられる具体性が要る。\n' +
-      '- 言い切りの1文で終える。「〜のとき」「〜という状態」で終わらない。問いかけにしない（問いは次の工程が書く）。\n\n' +
-      '例（種と場面の3組。核心の落とし方の参考であり、場面・語・文の形はそのまま使わない）：\n' +
-      '  a「同じ作業を繰り返している」 b「思うような結果が出ない日が続いている」\n' +
-      '  scene「夜、机に向かって同じ作業を繰り返しているのに、思うような結果が出ない日が続いている。」\n' +
-      '  a「布団の中で体は動かない」 b「頭だけが同じ心配を何度も回している」\n' +
-      '  scene「布団の中で体は動かないのに、頭だけが同じ心配を何度も回している。」\n' +
-      '  a「休みの日に一日何もしなかった」 b「夕方、その一日を数えている」\n' +
-      '  scene「休みの日に一日何もしなかった夕方、カーテンを閉めながらその一日を数えている。」\n' +
-      '悪い例：\n' +
-      '  a「続けている」 b「理由探しをしている」（「理由探し」は目に見えない。体に起きることに置き換える）\n' +
-      '  a「気持ちを切り替えたい」 b「昨日のことを引きずっている」（両方とも内面の語。「同じ画面をまだ開いている」「昨日の一言をまだ言い返している」のように書く）\n' +
-      '  scene「夜、机の前に座って苦しさを抱えているのに、その苦しさについてはまだ何も書いていない。」（「苦しさを抱えている」は撮れない内面。何を書こうとしているのか（日記か仕事か）も無いので、聞いた人が自分に置き換えられない。直すなら a「夜、日記を開いて机に座っている」 b「一行も書けないまま閉じる」 scene「夜、日記を開いて机に座ったのに、一行も書けないまま閉じている。」）\n\n' +
-      '厳守すること：\n' +
-      '- tension は「「◯◯」と書いているのに「△△」では〜になっている」の形で、材料の言葉そのものを引いて1行で書く。抽象語でまとめない。\n' +
-      '- core・tension・why_now・reason の中で、材料を id や番号（n_20260907_014 も 014 も）で指さない。必ずその言葉を引く。\n' +
-      '- why_now は、この1ヶ月の朝の一言・相談に具体的な接点があるときだけ書く。その記録の言葉を引いて2行以内で書く。接点がなければ空文字にする。ないものを作らない。\n' +
-      '- 最近この人に出した問い（渡したもの）と、同じ切り口・同じ場面を使わない。\n' +
-      '- from には、その種が立っている材料の id を入れる（軸の1枚を先頭に）。渡された id 以外は書かない。\n' +
-      '- どの項目にも改行を使わない。\n\n' +
-      '返答は JSON のみ。前置きも説明も書かない：\n' +
-      '{"sides":{"a":"...","b":"..."},"scene":"...","core":"...","from":["id","id"],"why_now":"...","tension":"..."}\n' +
-      '種が立たなかったとき：\n' +
-      '{"scene":null,"reason":"..."}';
-    return [{ type: 'text', text }];
-  }
-
-  // pass 2: the spoken question, from the scene and a / b only
-  function buildQuestionAskSystemBlocks() {
-    const text =
-      'あなたは、動画の冒頭で本人が口に出す「問い」を書く。渡されるのは、場面（1文）と、その場面の中にある二つの側面 a / b だけである。それ以外の材料は無い。問いは、この場面と a / b の言葉だけで立てる。\n\n' +
-      '目指す問い：聞いた人が「それ、自分のことだ」と、自分の中の矛盾を言い当てられたと感じる問い。型は2つ。どちらかに当てはめる。\n' +
-      '(A) 建前と本音：「〜と思っている。でも本当は、〜と分かっている。」 a を建前の側、b を本音の側に置く。\n' +
-      '(B) 二択に見えて、どちらも自分の姿：「これは〜なのか、それとも〜なのか。」 a の見方と b の見方を二択にする。どちらの側にも心当たりがあり、簡単に答えが出ない二択にする。片方が明らかに正しい二択、片方が本人を責めるだけの二択にしない。\n\n' +
-      '決まり：\n' +
-      '- 名詞は、場面と a / b に出ているものと、その言い換え（同じ物を指す別の言い方）だけ。新しい名詞を持ち込まない。\n' +
-      '- 動詞は、場面と a / b の動きと、その反対（続ける↔やめる、開く↔閉じる、動く↔止まる）と、型の枠の語（思っている、分かっている）まで。その動きにかかる短い気持ちの向き（信じて、迷って、逃げて）は使ってよいが、場面に無い出来事や心の作業（理由探し、切り替える、引きずる、期待する、こだわる）を新しく足さない。\n' +
-      '- 責める調子を使わない。「いつまで〜するつもり」「なぜ〜しないのか」「まだ〜しているのか」「〜すべき」は禁止。自分に向けた問いとして書く。\n' +
-      '- 一般論・説教・助言・答えを書かない。はい/いいえで終わる問いにしない。\n' +
-      '- 普段の会話で言う日本語で書く。漢語の名詞（価値、意味、本質、状態、成長、自己、判断、選択、など）を使わない。読点は多くても1つ。\n' +
-      '- 長さ：型Bは25〜60字の1文、文末は「〜のか」「〜だろうか」。型Aは2文で合わせて30〜70字。\n' +
-      '- 最近出した問い（渡されたら）と同じ形・同じ言葉の組み合わせにしない。\n\n' +
-      '書いたら確かめる（3つ。どれか一つでも通らなければ書き直す）：\n' +
-      '1. 問いの中の名詞と動詞を一つずつ見て、場面か a / b に出ているか、その言い換えか反対か、型の枠の語か。それ以外があれば消す。\n' +
-      '2. 場面に続けて声に出して読み、普段言う日本語になっているか。\n' +
-      '3. 聞いた人が、責められた（防御）ではなく、言い当てられた（共感）と感じるか。両方の側に心当たりがあるか。\n\n' +
-      '例：\n' +
-      '  scene「夜、机に向かって同じ作業を繰り返しているのに、思うような結果が出ない日が続いている。」 a「同じ作業を繰り返している」 b「結果が出ない日が続いている」\n' +
-      '  → (A)「続けていればいつか実る、と思っている。でも本当は、実らないかもしれないと分かっている。」\n' +
-      '  → (B)「これは信じて続けているのか、それとも、やめる決断から逃げているだけなのか。」\n' +
-      '  scene「布団の中で体は動かないのに、頭だけが同じ心配を何度も回している。」 a「体は動かない」 b「同じ心配を何度も回している」\n' +
-      '  → (B)「これは考えるのをやめられていないのか、それとも休めというサインなのか。」\n' +
-      '  scene「休みの日に一日何もしなかった夕方、カーテンを閉めながらその一日を数えている。」 a「一日何もしなかった」 b「その一日を数えている」\n' +
-      '  → (B)「この一日は休めた一日なのか、それとも空いてしまった一日なのか。」\n' +
-      '悪い例（夜の机の場面で）：\n' +
-      '  「この繰り返しを、いつまで理由探しに使うつもりなんだろう。」（「理由探し」は場面に無い。「いつまで〜つもり」は詰問）\n' +
-      '  「この手間は価値に積み上がっているのか、それとも足踏みしているだけなのか。」（「価値」「手間」は場面に無い漢語。普段言わない）\n' +
-      '  「いつになったら気持ちを切り替えられるんだろう。」（「切り替える」は場面に無い心の作業。「いつになったら」は詰問）\n\n' +
-      '返答は JSON のみ。前置きも説明も書かない：\n' +
-      '{"question":"...","type":"A"}  または  {"question":"...","type":"B"}';
-    return [{ type: 'text', text }];
-  }
-  function buildQuestionAskUserPrompt(scene, sides, note) {
-    const recent = sortedQuestionEntriesDesc().slice(0, 5).map((j) => '- ' + (j.ask || j.text));
-    return '場面：' + scene + '\n' +
-      'a：' + (sides.a || '') + '\n' +
-      'b：' + (sides.b || '') + '\n\n' +
-      '最近出した問い（同じ形を避けるため）：\n' + (recent.length ? recent.join('\n') : '（まだない）') +
-      (note ? '\n\n前回の案は使えなかった：' + note + '\n書き直すこと。' : '');
-  }
-  // a question that scolds gets one rewrite; after that whatever came back is shown
-  const ASK_BANNED = /いつまで|いつになったら|なぜ[^。]*ない|つもり|すべき|べきだ/;
-  async function callQuestionAskApi(scene, sides, attempt) {
-    const note = attempt && attempt.note ? attempt.note : '';
-    const json = await aiFetch({ model: getClaudeQuestionModel(), max_tokens: 4096, system: buildQuestionAskSystemBlocks(), messages: [{ role: 'user', content: buildQuestionAskUserPrompt(scene, sides, note) }] }, { timeoutMs: 90000 });
-    recordApiUsage('question', json.usage);
-    const textOut = (json.content || []).map((b) => b.text || '').join('');
-    const parsed = parseQuestionResponseLoose(textOut);
-    if (!parsed || typeof parsed.question !== 'string' || !parsed.question.trim()) {
-      if (isTruncated(json)) throw truncatedResponseError();
-      if (!(attempt && attempt.parseRetried)) return callQuestionAskApi(scene, sides, { note, parseRetried: true, banRetried: attempt && attempt.banRetried });
-      throw new Error('invalid response shape');
-    }
-    const question = parsed.question.trim().replace(/\s+/g, ' ').slice(0, 200);
-    if (ASK_BANNED.test(question) && !(attempt && attempt.banRetried)) {
-      return callQuestionAskApi(scene, sides, { note: '「' + question + '」は責める調子（いつまで／なぜ〜ない／つもり／すべき）になっている。自分に向けた問いに。', banRetried: true, parseRetried: attempt && attempt.parseRetried });
-    }
-    return { question, type: parsed.type === 'A' ? 'A' : 'B' };
-  }
-
-  // words a camera cannot film: if pass 1 leaves one in the scene or a / b it gets one rewrite
-  const SCENE_BANNED = /苦し|不安|迷い|迷っ|焦り|焦っ|悩み|悩ん|気持ち|心の|心が|疲れ|思って|感じ|考えて|抱え/;
-  function buildQuestionUserPrompt(materials, note) {
-    const lines = (arr) => (arr.length ? arr.map((r) => '- ' + r.date + ' ' + r.text).join('\n') : '（記録なし）');
-    const recentQuestions = sortedQuestionEntriesDesc().slice(0, 5).map((j) => '- ' + j.text);
-    const notesJson = materials.notes.map((n) => ({
-      id: n.id,
-      text: n.text || '',
-      source: n.source || '',
-      myWords: n.myWords || '',
-      tags: n.tags || [],
-    }));
-    const viaBlock = materials.via
-      ? '経由した言葉（材料ではない。この言葉を通って2枚が食い違っている）：\n' +
-        JSON.stringify({ id: materials.via.id, text: materials.via.text || '', source: materials.via.source || '', myWords: materials.via.myWords || '' }, null, 1) + '\n' +
-        '構造：「' + (materials.notes[0].text || '') + '」は「' + (materials.via.text || '') + '」と' + relationShort(materials.rel1) + 'の関係、' +
-        '「' + (materials.via.text || '') + '」は「' + (materials.notes[1].text || '') + '」と' + relationShort(materials.rel2) + 'の関係。' +
-        'つまり「' + (materials.via.text || '') + '」を通じて、1枚目と2枚目が食い違っている。from には材料の2枚の id だけを入れる。\n\n'
-      : '';
-    return '材料の選び方: ' + QUESTION_MODE_LABEL[materials.mode] + '\n' +
-      QUESTION_MODE_NOTE[materials.mode] + '\n\n' +
-      '材料の言葉：\n' + JSON.stringify(notesJson, null, 1) + '\n\n' + viaBlock +
-      'この1ヶ月の朝に書いた一言：\n' + lines(recentJournalTextsFor('morning', 10)) + '\n\n' +
-      'この1ヶ月の相談で書いたこと：\n' + lines(recentJournalTextsFor('consult', 10)) + '\n\n' +
-      '最近この人に出した問い（同じ切り口を避けるため）：\n' +
-      (recentQuestions.length ? recentQuestions.join('\n') : '（まだない）') +
-      (note ? '\n\n前回の案は使えなかった：' + note + '\n書き直すこと。' : '');
-  }
-
-  // Same loose-parse posture as the other calls: try clean JSON, then fall
-  // back to the outermost {...} in case the model wrapped it in prose.
-  function parseQuestionResponseLoose(text) {
-    const cleaned = text.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
-    // question: null is a legitimate answer ("no question stands on these"),
-    // so the shape check is "has a question key", not "has a string there".
-    const ok = (p) => p && typeof p === 'object' && (typeof p.question === 'string' || p.question === null || typeof p.scene === 'string' || p.scene === null);
-    try {
-      const p = JSON.parse(cleaned);
-      if (ok(p)) return p;
-    } catch (e) {}
-    const start = cleaned.indexOf('{');
-    const end = cleaned.lastIndexOf('}');
-    if (start === -1 || end === -1 || end < start) return null;
-    try {
-      const p = JSON.parse(cleaned.slice(start, end + 1));
-      return ok(p) ? p : null;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  async function callQuestionApi(materials, is429Retry, isParseRetry, sceneNote) {
-    const json = await aiFetch({
-      model: getClaudeQuestionModel(),
-      // Sonnet 5 / Opus 5 run adaptive thinking by default, and those
-      // thinking tokens come out of max_tokens. Observed runs spend
-      // 400-1000+ tokens finding the 食い違い before writing anything, so a
-      // 1024 budget silently returned an empty text block (stop_reason
-      // max_tokens) about half the time. The JSON itself is ~250 tokens;
-      // the rest of this is headroom for the thinking pass, which is
-      // exactly the part that makes the question specific.
-      // v3.3.2: raised from 4096 after a real run spent 4095 tokens thinking
-      // and returned nothing - the for_viewer rules lengthened the pass, and
-      // the dedup against recent questions makes the fixed 今月の核 pair
-      // harder each time. Same budget as 相談 now.
-      max_tokens: 8192,
-      system: buildQuestionSystemBlocks(),
-      messages: [{ role: 'user', content: buildQuestionUserPrompt(materials, sceneNote) }],
-    }, { timeoutMs: 90000 });
-    recordApiUsage('question', json.usage);
-    const textOut = (json.content || []).map((b) => b.text || '').join('');
-    const parsed = parseQuestionResponseLoose(textOut);
-    const declined = parsed && (parsed.scene === null || parsed.question === null);
-    const hasScene = parsed && typeof parsed.scene === 'string' && parsed.scene.trim();
-    if (!parsed || (!declined && !hasScene)) {
-      if (isTruncated(json)) throw truncatedResponseError();
-      if (!isParseRetry) return callQuestionApi(materials, is429Retry, true, sceneNote);
-      throw new Error('invalid response shape');
-    }
-    // v3.3.1: the model may decline. That is a result, not an error - the
-    // caller shows it and offers 「もう一つ」; nothing is saved.
-    if (declined) {
-      return { question: null, reason: (typeof parsed.reason === 'string' ? parsed.reason : '').trim().replace(/\s+/g, ' ').slice(0, 160) };
-    }
-    const materialIds = materials.notes.map((n) => n.id);
-    const allowed = new Set(materialIds);
-    let from = (Array.isArray(parsed.from) ? parsed.from : []).map(String).filter((id) => allowed.has(id));
-    from = [...new Set(from)].slice(0, 3);
-    // A question always stands on at least two of the notes it was built
-    // from; if the model named fewer, fall back to the material order rather
-    // than showing a lone card under it.
-    for (const id of materialIds) {
-      if (from.length >= 2) break;
-      if (!from.includes(id)) from.push(id);
-    }
-    const one = (v, max) => (typeof v === 'string' ? v : '').trim().replace(/\s+/g, ' ').slice(0, max);
-    // v8.4: pass 1 gave the scene and its two visible sides; pass 2 writes the
-    // spoken question from those alone (no materials in sight).
-    const scene = one(parsed.scene, 120);
-    const sides = { a: one(parsed.sides && parsed.sides.a, 40), b: one(parsed.sides && parsed.sides.b, 40) };
-    { const m = SCENE_BANNED.exec(scene + '／' + sides.a + '／' + sides.b); if (m && !sceneNote) return callQuestionApi(materials, is429Retry, isParseRetry, '場面か a/b に、カメラで撮れない内面の語（「' + m[0] + '」）が残っている。その人の体がしていること・目に見える物に置き換え、何をしているのか分かる物（日記、メール、企画書など）を入れる。'); }
-    const ask = await callQuestionAskApi(scene, sides);
-    return {
-      question: ask.question,
-      qtype: ask.type,
-      sides,
-      scene,
-      core: one(parsed.core, 200),
-      for_viewer: scene,
-      from,
-      why_now: (typeof parsed.why_now === 'string' ? parsed.why_now : '').trim().slice(0, 160),
-      tension: (typeof parsed.tension === 'string' ? parsed.tension : '').trim().replace(/\s+/g, ' ').slice(0, 160),
-    };
-  }
-
   // --- Consult screen (v2.1) -------------------------------------------------
   // Screen state for 相談. Each answered round is saved as a journal entry
   // (kind 'consult') and today's entries are reloaded on open (resetConsult);
@@ -12362,6 +11906,7 @@
     const monthQuestions = data.journal.filter((j) => j.kind === 'question' && inMonth(j.date));
     const usedQuestions = monthQuestions.filter((j) => j.used).length;
     document.getElementById('summaryQuestionCount').textContent = `${monthQuestions.length}件 / 使った ${usedQuestions}件`;
+    document.getElementById('summaryQuestionCount').parentElement.hidden = !monthQuestions.length;   // v20.96：問いを引くは外した。問いのあった月だけ出す
     document.getElementById('summaryTrainingDays').textContent = `${trainingData.days.filter((d) => inMonth(d.date) && trDidWork(d)).length}日`;   // v20.11
     { const ms = medData.sessions.filter((x) => inMonth(x.date)); document.getElementById('summaryMeditation').textContent = ms.length ? `${new Set(ms.map((x) => x.date)).size}日 ／ ${ms.length}回 ${medSum(ms)}分` : '0日'; }
     {
@@ -12574,22 +12119,15 @@
     drawState.current = null;
     drawState.shuffling = false;
     drawState.sessionId = null;
-    questionState.entry = null;
     document.getElementById('drawChoice').hidden = data.notes.length === 0;
     document.getElementById('drawShuffleText').hidden = true;
-    document.getElementById('questionSearching').hidden = true;
     document.getElementById('drawResult').hidden = true;
-    document.getElementById('questionResult').hidden = true;
-    document.getElementById('questionNone').hidden = true;
-    document.getElementById('questionFooter').hidden = true;
     document.getElementById('drawLinks').innerHTML = '';
     document.getElementById('drawEmpty').hidden = data.notes.length > 0;
     document.getElementById('btnDrawToGraph').hidden = true;
     document.getElementById('btnDrawAgain').hidden = true;
-    document.getElementById('btnQuestionAgain').hidden = true;
     setDrawChoiceHint('');
     renderDrawModeRow();
-    renderUnusedQuestions();
   }
 
   function openDraw() {
@@ -12618,9 +12156,6 @@
     drawState.shuffling = true;
     drawState.sessionId = 'ds_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     document.getElementById('drawChoice').hidden = true;
-    document.getElementById('questionResult').hidden = true;
-    document.getElementById('questionNone').hidden = true;
-    document.getElementById('questionFooter').hidden = true;
     document.getElementById('drawResult').hidden = true;
     document.getElementById('drawLinks').innerHTML = '';
     const shuffleEl = document.getElementById('drawShuffleText');
@@ -12714,10 +12249,6 @@
     e.stopPropagation();
     startDrawShuffle();
   });
-  document.getElementById('btnDrawQuestion').addEventListener('click', (e) => {
-    e.stopPropagation();
-    startQuestionDraw();
-  });
   attachLongPress(document.getElementById('drawResult'), () => {
     if (drawState.current) { const id = drawState.current.id; closeDraw(); openDetail(id, 'list'); }
   }, null);
@@ -12739,225 +12270,12 @@
   });
 
 
-  // --- 問いを引く: 画面 (v3.3) --------------------------------------------
-  // Shares the 引く overlay (same black fullscreen), but with no shuffle
-  // animation - per spec a question is searched for, not dealt.
-  const questionState = { entry: null, busy: false };
-
+  // v20.96：問いを引くは外した（回答 Q2）。過去の問いの記録は記録タブに残る
   function setDrawChoiceHint(msg) {
     const el = document.getElementById('drawChoiceHint');
     el.textContent = msg || '';
     el.hidden = !msg;
   }
-
-  function daysSinceDate(dateStr) {
-    return Math.round((parseDateStr(todayStr()) - parseDateStr(dateStr)) / 86400000);
-  }
-
-  // Spec: the entry screen keeps the still-unused questions in view. A
-  // question that has been sitting there for weeks is the point, so the age
-  // is shown rather than hidden.
-  function renderUnusedQuestions() {
-    const el = document.getElementById('unusedQuestions');
-    el.innerHTML = '';
-    const list = unusedQuestionEntries(5);
-    el.hidden = list.length === 0;
-    if (!list.length) return;
-    const head = document.createElement('div');
-    head.className = 'unusedQuestionHead';
-    head.textContent = 'まだ使っていない問い';
-    el.appendChild(head);
-    list.forEach((j) => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'unusedQuestionItem';
-      btn.textContent = noteSnippet(j.text, 44);
-      const age = daysSinceDate(j.date);
-      const ageEl = document.createElement('span');
-      ageEl.className = 'unusedQuestionAge';
-      ageEl.textContent = age <= 0 ? '　今日' : '　' + age + '日前';
-      btn.appendChild(ageEl);
-      btn.addEventListener('click', (e) => { e.stopPropagation(); showQuestion(j, { pop: true }); });
-      el.appendChild(btn);
-    });
-  }
-
-  function renderQuestionFromCards(entry) {
-    const container = document.getElementById('questionFrom');
-    container.innerHTML = '';
-    (entry.from || []).forEach((id) => {
-      const note = findNote(id);
-      if (!note) return;
-      const card = document.createElement('div');
-      card.className = 'questionFromCard';
-      const t = document.createElement('div');
-      t.className = 'questionFromText';
-      t.textContent = note.text;
-      card.appendChild(t);
-      if (note.source) {
-        const src = document.createElement('div');
-        src.className = 'questionFromSource';
-        src.textContent = note.source;
-        card.appendChild(src);
-      }
-      if (note.myWords) {
-        const mw = document.createElement('div');
-        mw.className = 'questionFromMyWords';
-        mw.textContent = noteSnippet(note.myWords, 70);
-        card.appendChild(mw);
-      }
-      card.addEventListener('click', () => { closeDraw(); openDetail(note.id, 'list'); });
-      container.appendChild(card);
-    });
-    const via = entry.via ? findNote(entry.via) : null;
-    if (via) {
-      const card = document.createElement('div');
-      card.className = 'questionFromCard';
-      const head = document.createElement('div');
-      head.className = 'questionFromSource';
-      head.textContent = '経由した言葉';
-      card.appendChild(head);
-      const t = document.createElement('div');
-      t.className = 'questionFromText';
-      t.textContent = via.text;
-      card.appendChild(t);
-      if (via.source) { const sEl = document.createElement('div'); sEl.className = 'questionFromSource'; sEl.textContent = via.source; card.appendChild(sEl); }
-      card.addEventListener('click', () => { closeDraw(); openDetail(via.id, 'list'); });
-      container.appendChild(card);
-    }
-  }
-
-  function renderQuestionUseButton(entry) {
-    const btn = document.getElementById('btnQuestionUse');
-    const note = document.getElementById('questionUsedNote');
-    btn.textContent = entry.used ? 'この問いで話した ✓' : 'この問いで話す';
-    note.hidden = !entry.used;
-    note.textContent = entry.used ? '記録に印がつきました。もう一度押すと戻せます。' : '';
-  }
-
-  function showQuestion(entry, opts) {
-    opts = opts || {};
-    clearDrawTimers();
-    drawState.current = null;
-    questionState.entry = entry;
-    document.getElementById('drawChoice').hidden = true;
-    document.getElementById('drawShuffleText').hidden = true;
-    document.getElementById('questionSearching').hidden = true;
-    document.getElementById('questionNone').hidden = true;
-    document.getElementById('drawResult').hidden = true;
-    document.getElementById('drawLinks').innerHTML = '';
-    document.getElementById('btnDrawAgain').hidden = true;
-    document.getElementById('btnDrawToGraph').hidden = true;
-    document.getElementById('btnQuestionAgain').hidden = false;
-    { const sc = document.getElementById('questionScene'), ak = document.getElementById('questionAsk'), co = document.getElementById('questionCore'), qt = document.getElementById('questionText');
-      if (entry.scene) { qt.hidden = true; sc.hidden = false; sc.textContent = entry.scene; ak.hidden = !entry.ask; ak.textContent = entry.ask || ''; co.hidden = !entry.core; co.textContent = entry.core ? '芯 ・ ' + entry.core : '';
-        const sd = document.getElementById('questionSides'); const hasSides = !!(entry.sides && (entry.sides.a || entry.sides.b)); sd.hidden = !hasSides; sd.textContent = hasSides ? '種 ・ a「' + (entry.sides.a || '') + '」 b「' + (entry.sides.b || '') + '」' + (entry.qtype ? '　型' + entry.qtype : '') : ''; }
-      else { qt.hidden = false; qt.textContent = entry.text; sc.hidden = true; ak.hidden = true; co.hidden = true; document.getElementById('questionSides').hidden = true; } }
-    const tensionEl = document.getElementById('questionTension');
-    tensionEl.textContent = entry.tension || '';
-    tensionEl.hidden = !entry.tension;
-    const whyEl = document.getElementById('questionWhyNow');
-    whyEl.textContent = entry.why_now || '';
-    whyEl.hidden = !entry.why_now;
-    const resultEl = document.getElementById('questionResult');
-    resultEl.hidden = false;
-    if (opts.pop) {
-      resultEl.classList.remove('pop');
-      // eslint-disable-next-line no-unused-expressions
-      resultEl.offsetHeight; // force reflow so the transition re-triggers
-      resultEl.classList.add('pop');
-      setTimeout(() => resultEl.classList.remove('pop'), 260);
-    }
-    renderQuestionFromCards(entry);
-    const viewerEl = document.getElementById('questionViewer');
-    document.getElementById('questionViewerText').textContent = entry.for_viewer || '';
-    viewerEl.hidden = !entry.for_viewer || !!entry.scene; // older entries (pre-v3.3.2) simply have none; v8.3 entries already lead with the scene
-    renderQuestionUseButton(entry);
-    document.getElementById('questionFooter').hidden = false;
-  }
-
-  async function startQuestionDraw() {
-    if (questionState.busy || !data.notes.length) return;
-    if (!getClaudeApiKey()) {
-      document.getElementById('drawChoice').hidden = false;
-      setDrawChoiceHint(aiErrorText('問いを作れませんでした', { noKey: true }));
-      return;
-    }
-    if (isUsageOverBudget() && !confirm('上限を超えています。続けますか？')) return;
-    const materials = pickQuestionMaterials();
-    if (!materials) {
-      document.getElementById('drawChoice').hidden = false;
-      setDrawChoiceHint('問いを立てるための材料がまだ足りません。言葉が増えて、つながりや朝・相談の記録がたまってから試してください。');
-      return;
-    }
-    questionState.busy = true;
-    setDrawChoiceHint('');
-    document.getElementById('drawChoice').hidden = true;
-    document.getElementById('drawResult').hidden = true;
-    document.getElementById('questionResult').hidden = true;
-    document.getElementById('questionNone').hidden = true;
-    document.getElementById('questionFooter').hidden = true;
-    document.getElementById('drawLinks').innerHTML = '';
-    document.getElementById('btnDrawAgain').hidden = true;
-    document.getElementById('btnQuestionAgain').hidden = true;
-    document.getElementById('btnDrawToGraph').hidden = true;
-    document.getElementById('questionSearching').hidden = false;
-    try {
-      const result = await callQuestionApi(materials);
-      localStorage.setItem(LAST_QUESTION_MODE_KEY, materials.mode);
-      if (result.question === null) {
-        // Declined: nothing to save. Show why (if the model said) and hand
-        // the user 「もう一つ」, which rotates to a different angle.
-        questionState.entry = null;
-        document.getElementById('questionSearching').hidden = true;
-        const reasonEl = document.getElementById('questionNoneReason');
-        reasonEl.textContent = result.reason || '';
-        reasonEl.hidden = !result.reason;
-        document.getElementById('questionNone').hidden = false;
-        document.getElementById('btnQuestionAgain').hidden = false;
-        return;
-      }
-      const iso = nowIso();
-      const entry = {
-        id: generateJournalId(), date: todayStr(), kind: 'question',
-        text: result.scene ? result.scene + ' ' + result.question : result.question, picks: [], closing: '',
-        scene: result.scene || '', ask: result.scene ? result.question : '', core: result.core || '',
-        sides: result.sides || null, qtype: result.qtype || '',
-        from: result.from, why_now: result.why_now, tension: result.tension, for_viewer: result.for_viewer, via: materials.via ? materials.via.id : '',
-        source_mode: materials.mode, used: false,
-        createdAt: iso, updatedAt: iso,
-      };
-      saveJournalEntry(entry);
-      document.getElementById('questionSearching').hidden = true;
-      showQuestion(entry, { pop: true });
-    } catch (e) {
-      document.getElementById('questionSearching').hidden = true;
-      document.getElementById('drawChoice').hidden = false;
-      setDrawChoiceHint(aiErrorText('問いを作れませんでした', e));
-      if (!(e && e.noKey)) recordFeatureError('問い', e);
-    } finally {
-      questionState.busy = false;
-    }
-  }
-
-  document.getElementById('btnQuestionAgain').addEventListener('click', (e) => {
-    e.stopPropagation();
-    startQuestionDraw();
-  });
-
-  // Toggle rather than one-way: the mark is the user's own record of what
-  // they actually talked about, so a mis-tap has to be undoable.
-  document.getElementById('btnQuestionUse').addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (!questionState.entry) return;
-    const entry = findJournalEntry(questionState.entry.id);
-    if (!entry) return;
-    entry.used = !entry.used;
-    saveJournalEntry(entry);
-    questionState.entry = entry;
-    renderQuestionUseButton(entry);
-    renderUnusedQuestions();
-  });
 
   // --- 網 ("遠い対立", v3.6.2) -------------------------------------------
   // One picture on every width. Cards keep their size; the stage is what
@@ -13834,7 +13152,6 @@
     document.getElementById('claudeApiKeyInput').value = getClaudeApiKey();
     document.getElementById('claudeModelAutoLinkInput').value = getClaudeAutoLinkModel();
     document.getElementById('claudeModelChatInput').value = getClaudeChatModel();
-    document.getElementById('claudeModelQuestionInput').value = localStorage.getItem(CLAUDE_MODEL_QUESTION_KEY) || '';
     document.getElementById('usageBudgetInput').value = getUsageBudget().toFixed(2);
     document.getElementById('deviceLabelInput').value = getDeviceLabel();
     document.getElementById('autoLinkToggle').checked = getAutoLinkEnabled();
@@ -14012,12 +13329,9 @@
     const key = document.getElementById('claudeApiKeyInput').value.trim();
     const autoLinkModel = document.getElementById('claudeModelAutoLinkInput').value.trim();
     const chatModel = document.getElementById('claudeModelChatInput').value.trim();
-    const questionModel = document.getElementById('claudeModelQuestionInput').value.trim();
     if (key) localStorage.setItem(CLAUDE_API_KEY_KEY, key); else localStorage.removeItem(CLAUDE_API_KEY_KEY);
     localStorage.setItem(CLAUDE_MODEL_AUTOLINK_KEY, autoLinkModel || DEFAULT_AUTOLINK_MODEL);
     localStorage.setItem(CLAUDE_MODEL_CHAT_KEY, chatModel || DEFAULT_CHAT_MODEL);
-    if (questionModel) localStorage.setItem(CLAUDE_MODEL_QUESTION_KEY, questionModel);
-    else localStorage.removeItem(CLAUDE_MODEL_QUESTION_KEY);
     const budget = parseFloat(document.getElementById('usageBudgetInput').value);
     localStorage.setItem(USAGE_BUDGET_KEY, String(Number.isFinite(budget) && budget > 0 ? budget : DEFAULT_USAGE_BUDGET_USD));
     setDeviceLabel(document.getElementById('deviceLabelInput').value.trim() || getDeviceLabel());
@@ -14879,7 +14193,19 @@
     if (nav.screen !== 'shoot') showScreen('shoot');
     renderShoot();
   }
-  function closeDeckEditor() { shootFlush(); shootState.deckId = null; shootState.filledFor = null; shootState.pickerOpen = false; renderShoot(); }
+  // v20.96：前の形（v9まで）の中身があるか。無いデッキでは「前の形」の折りたたみを出さない
+  function deckHasOld(deck) {
+    return !!(deck && ((deck.questionText || '').trim() || (deck.hook || '').trim() || (deck.text || '').trim() || (deck.cards || []).length || (deck.flowNote || '').trim() || (deck.premises || []).length || (deck.consult && deck.consult.input)));
+  }
+  // v20.96：中身が何も無いデッキ（＋を押しただけ）。一覧に戻ったときに消す（中身が1つでもあれば消さない）
+  function deckIsEmpty(deck) {
+    if (!deck || deckHasOld(deck)) return false;
+    const p = deck.pack || {};
+    return !((deck.title || '').trim() || (deck.tane || '').trim() || deck.judge || (deck.mats || []).length || (deck.blocks || []).length
+      || (deck.opening || '').trim() || (deck.ending || '').trim() || (deck.script && deck.script.text) || (p.thumbs || []).length || (p.titles || []).length || (deck.after && Object.values(deck.after).some((v) => v && String(v).trim())));
+  }
+  function dropEmptyDecks() { deckEntries().filter(deckIsEmpty).forEach((d) => deleteJournalEntry(d.id)); }
+  function closeDeckEditor() { shootFlush(); shootState.deckId = null; shootState.filledFor = null; shootState.pickerOpen = false; dropEmptyDecks(); renderShoot(); }
   function renderShoot() {
     const deck = shootState.deckId ? findDeck(shootState.deckId) : null;
     if (shootState.deckId && !deck) { shootState.deckId = null; shootState.filledFor = null; }
@@ -14922,6 +14248,7 @@
 
   // ---- deck editor ----
   function renderDeckEditor(deck) {
+    document.getElementById('shootOldWrap').hidden = !deckHasOld(deck);   // v20.96
     if (shootState.filledFor !== deck.id) {
       shootState.filledFor = deck.id;
       document.getElementById('shootQuestionText').value = deck.questionText || '';
@@ -14976,7 +14303,6 @@
     document.getElementById('shootMeta').textContent =
       `カード ${deckLiveCards(deck).length}枚` + (dropped ? `（不採用 ${dropped}）` : '') +
       `　更新 ${formatDateTime(deck.updatedAt)}　${shootSyncLine()}`;
-    document.getElementById('btnShootDone').textContent = deck.status === 'shot' ? '撮った印を外す' : '撮った印をつける';
   }
   function renderShootQuestionChips(deck) {
     const row = document.getElementById('shootQuestionChips');
@@ -16779,12 +16105,6 @@
     document.getElementById('shootStageIntro').hidden = true;
     document.getElementById('shootStageHead').hidden = false;
     document.getElementById('shootStageCards').hidden = false;
-  });
-  document.getElementById('btnShootDone').addEventListener('click', () => {
-    const deck = findDeck(shootState.deckId); if (!deck) return;
-    deck.status = deck.status === 'shot' ? 'draft' : 'shot';
-    deck.shotAt = deck.status === 'shot' ? nowIso() : '';
-    shootTouch(deck);
   });
   document.getElementById('btnShootDelete').addEventListener('click', () => {
     const deck = findDeck(shootState.deckId); if (!deck) return;
