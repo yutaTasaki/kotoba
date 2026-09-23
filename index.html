@@ -3269,7 +3269,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.105';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.106';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -3676,7 +3676,10 @@
   function liveJournalMonths() { const t = todayStr(); const a = monthOfDate(addDays(t, -30)), b = monthOfDate(t); return a === b ? [b] : [a, b]; }
   await kvOpen();
   const bootKV = { months: {} };
-  for (const k of ['data', 'dataBackup', 'walk', 'walkBackup', 'training', 'journalIndex', 'journalDirty']) { try { bootKV[k] = await kvGet(k); } catch (e) { bootKV[k] = null; } }
+  // v20.106：月の日時の決まりを変えた最初の起動（一度だけ全部の月を取り直す）
+  let stampRuleFresh = false;
+  try { stampRuleFresh = localStorage.getItem('kotoba_stampRule') !== 'v20.106'; if (stampRuleFresh) localStorage.setItem('kotoba_stampRule', 'v20.106'); } catch (e) {}
+  for (const k of ['data', 'dataBackup', 'walk', 'walkBackup', 'training', 'journalIndex', 'journalDirty', 'journalStamps']) { try { bootKV[k] = await kvGet(k); } catch (e) { bootKV[k] = null; } }
   for (const m of liveJournalMonths()) { try { bootKV.months[m] = await kvGet('journal:' + m); } catch (e) { bootKV.months[m] = null; } }
   bootKV.noteDocs = {};
   try { (await kvGetAllPrefix('notes:')).forEach((v, k) => { bootKV.noteDocs[k.slice(6)] = v; }); } catch (e) {}
@@ -3908,13 +3911,24 @@
   function persistNotesDirty() { return kvSet('notesDirty', JSON.stringify([...nm.dirty])).catch(() => {}); }
   function persistNotesStamps() { return kvSet('notesStamps', JSON.stringify(nm.stamps)).catch(() => {}); }
   // write every year whose content differs from what is in kv (cheap diff on the JSON), and mark it for sync
+  // v20.106：言葉を月ごとに1回で分ける（前は月の数だけ全部の言葉をなめていた。5万枚で1回の保存に約1秒）
+  function notesGroupByMonth(d) {
+    const g = new Map();
+    const at = (y) => { let x = g.get(y); if (!x) { x = { notes: [], deletedIds: [] }; g.set(y, x); } return x; };
+    d.notes.forEach((n) => at(monthOfNote(n)).notes.push(n));
+    (d.deletedIds || []).forEach((t) => at(monthOfNoteId(t.id) || todayStr().slice(0, 7)).deletedIds.push(t));
+    Object.keys(nm.monthJson).forEach((y) => at(y));
+    return g;
+  }
   function persistNoteMonths(d) {
     let changed = false;
-    notesMonthsOf(d).forEach((y) => {
-      const doc = notesMonthDoc(d, y);
-      const body = noteMonthDocBody(doc);
+    const g = notesGroupByMonth(d);
+    [...g.keys()].sort().forEach((y) => {
+      const x = g.get(y);
+      const body = noteMonthDocBody(x);
       if (nm.monthJson[y] === body) return;
       nm.monthJson[y] = body;
+      const doc = { version: 1, month: y, updatedAt: nowIso(), notes: x.notes, deletedIds: x.deletedIds };
       kvSet('notes:' + y, JSON.stringify(doc)).catch(() => { localSaveError = '端末に保存できませんでした（クラウドには同期します）'; recordSyncError(LAST_SYNC_ERROR_KEY, localSaveError); });
       nm.dirty.add(y); bumpSyncGen('notes:' + y); changed = true;
     });
@@ -3987,7 +4001,8 @@
       let remoteIndex = emptyNotesIndex();
       try { if (ri.text) remoteIndex = normalizeNotesIndex(JSON.parse(ri.text)); } catch (e) {}
       const localIndex = emptyNotesIndex();
-      Object.keys(nm.monthJson).forEach((y) => { localIndex.months[y] = { updatedAt: nm.stamps[y] || '', count: data.notes.filter((n) => monthOfNote(n) === y).length }; });
+      const cnt = {}; data.notes.forEach((n) => { const y = monthOfNote(n); cnt[y] = (cnt[y] || 0) + 1; });   // v20.106：1回で数える
+      Object.keys(nm.monthJson).forEach((y) => { localIndex.months[y] = { updatedAt: nm.stamps[y] || '', count: cnt[y] || 0 }; });
       // years to touch: edited here, unknown here, or changed elsewhere since last seen
       const years = new Set([...nm.dirty]);
       Object.entries(remoteIndex.months).forEach(([y, row]) => { if (!(y in nm.monthJson) || row.updatedAt !== (nm.stamps[y] || '')) years.add(y); });
@@ -4673,9 +4688,10 @@
     try {
       const localHadNoNotes = data.notes.length === 0;
       const remote = await ghGetFile(token); // throws on failure -> no push is attempted below
+      const journalBefore = new Map(data.journal.map((j) => [j.id, j.updatedAt]));   // v20.106
       data = mergeData(data, remote.data || defaultData());
       notesEnsureMonthly();
-      adoptJournalMonths();
+      adoptJournalMonths(journalBefore);
       persistLocal(data);
       backupData(data);
       refreshCurrentScreen();
@@ -5546,10 +5562,11 @@
     data.journal = data.journal.filter((j) => monthOfDate(j.date) !== m).concat(doc.entries);
     jm.tombs.set(m, new Map(doc.deletedIds.map((t) => [t.id, t.deletedAt])));
     jm.loaded.add(m);
+    journalSigs().set(m, monthSignature(journalMonthDoc(m)));   // v20.106
   }
   // per-month, per-note counts: p = appeared in picks (any kind), h = ★,
   // q = stood under a question; last/lastHit = latest dates
-  function indexEntryForMonth(m) {
+  function indexEntryForMonth(m, bump) {
     const noteStats = {};
     const st = (id) => noteStats[id] || (noteStats[id] = { p: 0, h: 0, q: 0, last: '', lastHit: '' });
     const entries = journalEntriesOfMonth(m);
@@ -5559,15 +5576,20 @@
     });
     // keep the old stamp when nothing changed, so an untouched month does not look edited to other devices
     const prev = jm.index && jm.index.months[m];
-    if (prev && prev.count === entries.length && JSON.stringify(prev.noteStats) === JSON.stringify(noteStats)) return prev;
+    // v20.106：中身を直したとき（bump）は、数が同じでも日時を進める。進めないと、端末にある月を取りに行かない決まりで2台目に届かない
+    if (!bump && prev && prev.count === entries.length && JSON.stringify(prev.noteStats) === JSON.stringify(noteStats)) return prev;
     return { updatedAt: nowIso(), count: entries.length, noteStats };
   }
   function persistMonth(m) { return kvSet('journal:' + m, JSON.stringify(journalMonthDoc(m))).catch(() => { localSaveError = '端末に保存できませんでした（クラウドには同期します）'; recordSyncError(LAST_SYNC_ERROR_KEY, localSaveError); renderSyncBar(); }); }
   function persistIndex() { return kvSet('journalIndex', JSON.stringify(jm.index)).catch(() => {}); }
   function persistDirty() { return kvSet('journalDirty', JSON.stringify([...jm.dirty])).catch(() => {}); }
-  function updateIndexMonth(m) {
+  // v20.106：月の中身の署名。変わったときだけ索引の日時を進める（同じ中身で呼ばれても2台目に取りに行かせない）
+  function journalSigs() { return journalSigs.m || (journalSigs.m = new Map()); }
+  function journalSigChanged(m) { const sig = monthSignature(journalMonthDoc(m)); if (journalSigs().get(m) === sig) return false; journalSigs().set(m, sig); return true; }
+  function persistJournalStamps() { return kvSet('journalStamps', JSON.stringify(jm.stamps)).catch(() => {}); }   // v20.106
+  function updateIndexMonth(m, bump) {
     if (!jm.index) jm.index = emptyJournalIndex();
-    jm.index.months[m] = indexEntryForMonth(m);
+    jm.index.months[m] = indexEntryForMonth(m, bump);
     jm.index.updatedAt = nowIso();
     persistIndex();
   }
@@ -5575,7 +5597,7 @@
   function journalMonthChanged(m) {
     jm.loaded.add(m);
     persistMonth(m);
-    updateIndexMonth(m);
+    updateIndexMonth(m, journalSigChanged(m));
     jm.dirty.add(m); bumpSyncGen('journal:' + m); persistDirty();
     pendingChangeCount++;
     scheduleSync();
@@ -5583,19 +5605,22 @@
   // entries that reached data.journal without going through a month doc
   // (a merge from a device still in legacy mode, an import, the migration
   // itself): claim their months so they get written and synced
-  function adoptJournalMonths() {
+  function adoptJournalMonths(before) {
     if (!journalMonthly()) return;
     if (!jm.index) jm.index = emptyJournalIndex();
-    const months = new Set(data.journal.map((j) => monthOfDate(j.date)));
+    // v20.106：before（合わせる前の id→日時）があれば、新しく来た・変わった記録の月だけ
+    const months = new Set(data.journal.filter((j) => !before || before.get(j.id) !== j.updatedAt).map((j) => monthOfDate(j.date)));
     (data.deletedJournalIds || []).forEach((t) => { const m = monthOfJournalId(t.id) || monthOfDate(todayStr()); months.add(m); if (!jm.tombs.has(m)) jm.tombs.set(m, new Map()); if (!jm.tombs.get(m).has(t.id)) jm.tombs.get(m).set(t.id, t.deletedAt); });
     data.deletedJournalIds = [];
-    months.forEach((m) => { if (!jm.loaded.has(m) || !jm.dirty.has(m)) { jm.loaded.add(m); persistMonth(m); updateIndexMonth(m); jm.dirty.add(m); } bumpSyncGen('journal:' + m); });
+    months.forEach((m) => { if (!jm.loaded.has(m) || !jm.dirty.has(m)) { jm.loaded.add(m); persistMonth(m); updateIndexMonth(m, journalSigChanged(m)); jm.dirty.add(m); } bumpSyncGen('journal:' + m); });
     if (months.size) persistDirty();
   }
   function journalBoot() {
     if (!journalMonthly()) return;
     try { jm.index = normalizeJournalIndex(JSON.parse(bootKV.journalIndex || 'null')); } catch (e) { jm.index = emptyJournalIndex(); }
     try { JSON.parse(bootKV.journalDirty || '[]').forEach((m) => jm.dirty.add(m)); } catch (e) {}
+    try { jm.stamps = JSON.parse(bootKV.journalStamps || '{}') || {}; } catch (e) { jm.stamps = {}; }   // v20.106
+    if (stampRuleFresh) { jm.stamps = {}; persistJournalStamps(); }   // v20.106：前の版は数が変わらないと日時を進めなかったので、一度だけ全部取り直す
     // whatever data.json still carried (a not-yet-adopted legacy journal) is kept, then the cached live months are laid over it
     const stray = data.journal.slice();
     data.journal = [];
@@ -5610,6 +5635,9 @@
       let doc = null;
       try { const raw = await kvGet('journal:' + m); if (raw) doc = normalizeMonthDoc(JSON.parse(raw), m); } catch (e) {}
       if (!jm.loaded.has(m)) applyMonthToMemory(m, doc || emptyMonthDoc(m));
+      // v20.106：端末にあって、索引の日時が最後に合わせたときと同じなら取りに行かない（別の端末の直しは次の同期が拾う）
+      const row = jm.index && jm.index.months[m];
+      if (doc && row && !jm.dirty.has(m) && jm.stamps[m] === row.updatedAt) return;
       const token = getGhToken();
       if (token && navigator.onLine) { try { await syncJournalMonth(token, m); } catch (e) { recordSyncError(LAST_SYNC_ERROR_KEY, repoErrorMessage('記録（' + journalMonthPath(m) + '）', e)); renderSyncBar(); } }
     })().finally(() => jm.loading.delete(m));
@@ -5644,9 +5672,10 @@
     if ((!remote.text && !isEmpty) || (remote.text && monthSignature(rdoc) !== monthSignature(merged))) {
       try { await ghPutJson(journalMonthPath(m), merged, remote.sha, `journal ${m}: ${merged.entries.length} entries`); }
       catch (e) { if (e.status === 409 && !attempt) return syncJournalMonth(token, m, 1); throw e; }
+      updateIndexMonth(m, true);   // v20.106：送った版は別の端末に「変わった」と見せる
     }
     if (syncGenOf('journal:' + m) === gen0) { jm.dirty.delete(m); persistDirty(); }   // v20.90
-    jm.stamps[m] = jm.index.months[m].updatedAt;
+    jm.stamps[m] = jm.index.months[m].updatedAt; persistJournalStamps();
   }
   function mergeJournalIndex(a, b) {
     const out = emptyJournalIndex();
@@ -5664,10 +5693,12 @@
       try { if (ri.text) remoteIndex = normalizeJournalIndex(JSON.parse(ri.text)); } catch (e) {}
       // which months to touch: the live ones, anything edited locally, and
       // loaded months another device has changed since we last saw them
-      const months = new Set([...liveJournalMonths(), ...jm.dirty]);
-      jm.loaded.forEach((m) => { const r = remoteIndex.months[m]; if (r && r.updatedAt !== (jm.stamps[m] || '')) months.add(m); });
+      const months0 = new Set([...liveJournalMonths(), ...jm.dirty]);
+      jm.loaded.forEach((m) => { const r = remoteIndex.months[m]; if (r && r.updatedAt !== (jm.stamps[m] || '')) months0.add(m); });
+      // v20.106：端末にある月は、直した月か別の端末で変わった月だけ取りに行く（前は今月・先月を毎回）
+      const months = [...months0].filter((m) => !jm.loaded.has(m) || jm.dirty.has(m) || ((remoteIndex.months[m] || {}).updatedAt || '') !== (jm.stamps[m] || ''));
       jm.index = mergeJournalIndex(jm.index, remoteIndex);
-      for (const m of [...months].sort()) { if (!jm.loaded.has(m)) await loadJournalMonth(m); else await syncJournalMonth(token, m); }
+      for (const m of months.sort()) { if (!jm.loaded.has(m)) await loadJournalMonth(m); else await syncJournalMonth(token, m); }
       // the index: ours now carries fresh rows for every month we touched
       const indexSig = (ix) => JSON.stringify(Object.keys(ix.months).sort().map((m) => [m, ix.months[m].updatedAt]));
       if (indexSig(jm.index) !== indexSig(remoteIndex)) {
@@ -15497,11 +15528,13 @@
     return recs.length;
   }
   // 学びの依頼文：3種類を一度に作ってもらう（前は種類ごとに別の依頼文で、手間がかかっていた）
+  const TORU_HAVE_MAX = 60;
   function toruLearnAllPromptText(deck) {
     const r = toruFinalDiff(deck);
     const rew = r.reworded.filter((p) => !p.merged).sort((p, q) => p.sim - q.sim).slice(0, TORU_DIFF_MAX);
     const pastCuts = toruCuts().filter((c) => c.deckId !== deck.id).slice(0, 30).map((c) => c.text);
-    const have = (name, list) => (list.length ? '■ すでにある「' + name + '」（同じものは書かない）\n' + list.map((x) => '- ' + x.text).join('\n') + '\n\n' : '');
+    // v20.106：すでにある決まりは新しい順に TORU_HAVE_MAX 件まで（動画ごとに増えるので、全部だと数百本で数万字）
+    const have = (name, list) => (list.length ? '■ すでにある「' + name + '」（同じものは書かない' + (list.length > TORU_HAVE_MAX ? '。新しい ' + TORU_HAVE_MAX + '件。全 ' + list.length + '件' : '') + '）\n' + list.slice(0, TORU_HAVE_MAX).map((x) => '- ' + x.text).join('\n') + '\n\n' : '');
     const lines = (list) => list.map((x, i) => (i + 1) + '. ' + x).join('\n');
     return SHOOT_PROMPT_HEAD +
       'あなたが最初に書いた台本と、本人が実際に動画で話した中身を比べます。\n' +
@@ -17754,6 +17787,7 @@
     worldEvents = worldEvents.filter((e) => monthOfDate(e.eventDate) !== m).concat(doc.events.filter(worldAfterReset));
     wd.tombs.set(m, new Map(doc.deletedIds.map((t) => [t.id, t.deletedAt])));
     wd.loaded.add(m);
+    worldSigs().set(m, worldMonthSignature(worldMonthDoc(m)));   // v20.106
   }
   function worldMonthSignature(doc) {
     return doc.events.map((e) => e.id + ':' + e.updatedAt).sort().join('|') + '#' + doc.deletedIds.map((t) => t.id + ':' + t.deletedAt).sort().join('|');
@@ -17802,12 +17836,13 @@
   }
   // その月の索引の行を作り直す。due（期限の索引）もこの月の分だけ入れ替える
   // ので、読み込んだ月については放っておいても自己修復する。
-  function updateWorldIndexMonth(m) {
+  function updateWorldIndexMonth(m, bump) {
     if (!wd.index) wd.index = emptyWorldIndex();
     const events = worldEventsOfMonth(m);
     const prev = wd.index.months[m];
     const unread = events.filter((e) => !e.readDate && !e.hidden && !e.seed).length;   // v20.2
-    if (!prev || prev.count !== events.length || prev.unread !== unread) {
+    // v20.106：中身を直したとき（bump）は数が同じでも日時を進める（端末にある月を取りに行かない決まりの前提）
+    if (bump || !prev || prev.count !== events.length || prev.unread !== unread) {
       wd.index.months[m] = { updatedAt: nowIso(), count: events.length, unread };
     }
     Object.keys(wd.index.due).forEach((d) => {
@@ -17829,11 +17864,14 @@
   function worldMonthChanged(m) {
     wd.loaded.add(m);
     persistWorldMonth(m);
-    updateWorldIndexMonth(m);
+    updateWorldIndexMonth(m, worldSigChanged(m));
     wd.dirty.add(m); bumpSyncGen('world:' + m); persistWorldDirty();
     pendingChangeCount++;
     scheduleSync();
   }
+  // v20.106：月の中身の署名。変わったときだけ索引の日時を進める
+  function worldSigs() { return worldSigs.m || (worldSigs.m = new Map()); }
+  function worldSigChanged(m) { const sig = worldMonthSignature(worldMonthDoc(m)); if (worldSigs().get(m) === sig) return false; worldSigs().set(m, sig); return true; }
   function worldTouch(ev) {
     ev.updatedAt = nowIso();
     worldMonthChanged(monthOfDate(ev.eventDate));
@@ -18330,6 +18368,7 @@
     try { wd.index = normalizeWorldIndex(JSON.parse(bootKV.worldIndex || 'null')); } catch (e) { wd.index = emptyWorldIndex(); }
     try { JSON.parse(bootKV.worldDirty || '[]').forEach((m) => wd.dirty.add(m)); } catch (e) {}
     try { wd.stamps = JSON.parse(bootKV.worldStamps || '{}') || {}; } catch (e) { wd.stamps = {}; }
+    if (stampRuleFresh) { wd.stamps = {}; persistWorldStamps(); }   // v20.106：一度だけ全部取り直す
     try { wd.concepts = normalizeWorldConceptsDoc(JSON.parse(bootKV.worldConcepts || 'null')); } catch (e) { wd.concepts = emptyWorldConceptsDoc(); }
     try { wd.terms = normalizeWorldTermsDoc(JSON.parse(bootKV.worldTerms || 'null')); } catch (e) { wd.terms = emptyWorldTermsDoc(); }
     try { wd.strata = normalizeWorldStrataDoc(JSON.parse(bootKV.worldStrata || 'null')); } catch (e) { wd.strata = emptyWorldStrataDoc(); }
@@ -18499,6 +18538,9 @@
       let doc = null;
       try { const raw = await kvGet('world:' + m); if (raw) doc = normalizeWorldMonthDoc(JSON.parse(raw), m); } catch (e) {}
       if (!wd.loaded.has(m)) applyWorldMonthToMemory(m, doc || emptyWorldMonthDoc(m));
+      // v20.106：端末にあって、索引の日時が最後に合わせたときと同じなら GitHub に取りに行かない
+      const row = wd.index && wd.index.months[m];
+      if (doc && row && !wd.dirty.has(m) && wd.stamps[m] === row.updatedAt) return;
       const token = getGhToken();
       if (token && navigator.onLine) {
         try { await syncWorldMonth(token, m); }
@@ -18645,6 +18687,7 @@
     if ((!remote.text && !isEmpty) || (remote.text && remoteSig !== worldMonthSignature(merged))) {
       try { await ghPutJson(worldMonthPath(m), merged, remote.sha, `world ${m}: ${merged.events.length} events`); }
       catch (e) { if (e.status === 409 && !attempt) return syncWorldMonth(token, m, 1); throw e; }
+      updateWorldIndexMonth(m, true);   // v20.106
     }
     if (syncGenOf('world:' + m) === gen0) { wd.dirty.delete(m); persistWorldDirty(); }   // v20.90
     if (wd.index.months[m]) wd.stamps[m] = wd.index.months[m].updatedAt;
@@ -18821,10 +18864,12 @@
       const remoteFcAt = (remoteIndex.forecasts || {}).updatedAt || '';
       const forecastsChanged = !remoteFcAt || remoteFcAt > ((wd.index.forecasts || {}).updatedAt || '');
       const sourcesChanged = remoteIndex.sources.updatedAt > (wd.index.sources.updatedAt || '');
-      const months = new Set([...liveWorldMonths(), ...wd.dirty, ...worldBootMonths(remoteIndex)]);
-      wd.loaded.forEach((m) => { const r = remoteIndex.months[m]; if (r && r.updatedAt !== (wd.stamps[m] || '')) months.add(m); });
+      const months0 = new Set([...liveWorldMonths(), ...wd.dirty, ...worldBootMonths(remoteIndex)]);
+      wd.loaded.forEach((m) => { const r = remoteIndex.months[m]; if (r && r.updatedAt !== (wd.stamps[m] || '')) months0.add(m); });
+      // v20.106：端末にある月は、直した月か別の端末で変わった月だけ（前は今月・先月・未読の残る月を毎回）
+      const months = [...months0].filter((m) => !wd.loaded.has(m) || wd.dirty.has(m) || ((remoteIndex.months[m] || {}).updatedAt || '') !== (wd.stamps[m] || ''));
       wd.index = mergeWorldIndex(wd.index, remoteIndex);
-      for (const m of [...months].sort()) { if (!wd.loaded.has(m)) await loadWorldMonth(m); else await syncWorldMonth(token, m); }
+      for (const m of months.sort()) { if (!wd.loaded.has(m)) await loadWorldMonth(m); else await syncWorldMonth(token, m); }
       await syncWorldConcepts(token, conceptsChanged);
       await syncWorldTerms(token, termsChanged);
       worldTermSecFixOnce();   // v20.94
@@ -24123,6 +24168,16 @@
   function worldMikiDraftClear() { worldMikiDraft.mem = { plan: null, recut: false, runs: {}, cardIds: [] }; worldMikiDraftSave(); }
 
   // 段A・段B に渡す札（非表示でない全部の札。日付の古い順）
+  const WORLD_MIKI_PLAN_MAX = 300;   // v20.106：段A に渡す札は新しい順にここまで（全部だと1,000枚で約15万字）
+  const WORLD_MIKI_BATCH = 150;      // v20.106：段B は1回のコピーをここまでに分ける
+  function worldMikiPlanCards() { const c = worldMikiSplitCards(); return c.length > WORLD_MIKI_PLAN_MAX ? c.slice(-WORLD_MIKI_PLAN_MAX) : c; }
+  // 段B で次に渡す札（その回でまだ返事の無いもの。2回目は逆の並びから）
+  function worldMikiNextBatch(d, n) {
+    const run = d.runs[n];
+    const ids = n === 2 ? d.cardIds.slice().reverse() : d.cardIds;
+    const rest = ids.filter((c) => !run || !(c in run.assign));
+    return { ids: rest.slice(0, WORLD_MIKI_BATCH), rest: rest.length };
+  }
   function worldMikiSplitCards() {
     return worldLiveEvents().slice().sort((a, b) => (a.eventDate < b.eventDate ? -1 : a.eventDate > b.eventDate ? 1 : a.id < b.id ? -1 : 1));
   }
@@ -24137,7 +24192,8 @@
   }
 
   function worldMikiPlanPromptText() {
-    const cards = worldMikiSplitCards();
+    const all = worldMikiSplitCards().length;
+    const cards = worldMikiPlanCards();
     const strata = worldStrata().filter((s) => s.active !== 0).map((s) => s.id + '　' + s.name).join('\n');
     return SHOOT_PROMPT_HEAD +
       'あなたは、下に並ぶ出来事の札を読んで「幹」を立てる係です。新しい出来事を探しません。web 検索も使いません。\n\n' +
@@ -24161,7 +24217,7 @@
       ' "same":[["w_20260911_2","w_20260912_4"]]}\n' +
       '- JSON のみ。\n\n' +
       '■ 地層の一覧\n' + (strata || '（ありません）') + '\n\n' +
-      '■ 札（' + cards.length + '枚）\n' +
+      '■ 札（' + (all > cards.length ? '新しい ' + cards.length + '枚。全 ' + all + '枚のうち' : cards.length + '枚') + '）\n' +
       cards.map((e) => '[' + e.id + ']　' + e.eventDate + '　' + e.fact + '\n  なぜ：' + (e.why || '')).join('\n');
   }
   function worldMikiReadPlan(text) {
@@ -24361,7 +24417,7 @@
     if (!d.plan && !mk.trunks.length) {
       note('段A：幹を立てます。プロンプトをコピーして Claude に貼り、返ってきた JSON を下に貼ってください。');
       const copy = btn('段A のプロンプトをコピー', 'secondaryBtn', () => {
-        copyToClipboard(worldMikiPlanPromptText()).then((ok) => { status.textContent = ok ? '札 ' + worldMikiSplitCards().length + '枚ぶんをコピーしました。' : 'コピーできませんでした。'; });
+        copyToClipboard(worldMikiPlanPromptText()).then((ok) => { const a = worldMikiSplitCards().length, c = worldMikiPlanCards().length; status.textContent = ok ? '札 ' + c + '枚ぶんをコピーしました。' + (a > c ? '（全 ' + a + '枚のうち新しい方から。幹を立てるにはこれで足ります）' : '') : 'コピーできませんでした。'; });
       });
       copy.disabled = !loaded || !worldLiveEvents().length;
       const ta = document.createElement('textarea'); ta.rows = 4; ta.placeholder = '{"miki":[...]} をここに貼る'; ta.autocomplete = 'off'; ta.dataset.mikiKeep = '1'; ta.id = 'worldMikiPlanPaste';
@@ -24431,7 +24487,10 @@
       const copy = btn('段B ' + n + '回目のプロンプトをコピー', 'secondaryBtn', () => {
         const cards = worldMikiSplitCards();
         if (!d.cardIds.length) { d.cardIds = cards.map((e) => e.id); worldMikiDraftSave(); }
-        copyToClipboard(worldMikiSplitPromptText(n === 2 ? 'desc' : 'asc')).then((ok) => { status.textContent = ok ? n + '回目：札 ' + d.cardIds.length + '枚ぶんをコピーしました。' : 'コピーできませんでした。'; });
+        // v20.106：一度に渡すのは WORLD_MIKI_BATCH 枚まで。返事を貼って［読む］のあと、続きを同じボタンで
+        const b = worldMikiNextBatch(d, n);
+        if (!b.ids.length) { status.textContent = n + '回目：全部の札に返事があります。'; return; }
+        copyToClipboard(worldMikiSplitPromptText(n === 2 ? 'desc' : 'asc', b.ids)).then((ok) => { status.textContent = ok ? n + '回目：札 ' + b.ids.length + '枚ぶんをコピーしました' + (b.rest > b.ids.length ? '（全 ' + d.cardIds.length + '枚のうち。返事を貼って［読む］のあと、同じボタンで続きの ' + (b.rest - b.ids.length) + '枚）' : '') + '。' : 'コピーできませんでした。'; });
       });
       copy.disabled = !loaded || (n === 2 && !d.runs[1]);
       const ta = document.createElement('textarea'); ta.rows = 3; ta.placeholder = '{"assign":{...}} をここに貼る'; ta.autocomplete = 'off'; ta.dataset.mikiKeep = '1';
@@ -24451,8 +24510,9 @@
       if (run) {
         const missing = d.cardIds.filter((c) => !(c in run.assign));
         note(n + '回目：' + d.cardIds.length + '枚中 ' + Object.keys(run.assign).length + '枚に返事' + (missing.length ? '、' + missing.length + '枚は返事なし' : ''));
-        if (missing.length) btn('返事の無かった札だけもう一度コピー', 'linkLikeBtn', () => {
-          copyToClipboard(worldMikiSplitPromptText(n === 2 ? 'desc' : 'asc', missing)).then((ok) => { status.textContent = ok ? missing.length + '枚ぶんをコピーしました。返事は同じ ' + n + '回目の欄に貼って［読む］を押してください。' : 'コピーできませんでした。'; });
+        if (missing.length) btn(missing.length > WORLD_MIKI_BATCH ? '返事の無い札の続き（' + WORLD_MIKI_BATCH + '枚）をコピー' : '返事の無かった札だけもう一度コピー', 'linkLikeBtn', () => {
+          const b = worldMikiNextBatch(d, n);
+          copyToClipboard(worldMikiSplitPromptText(n === 2 ? 'desc' : 'asc', b.ids)).then((ok) => { status.textContent = ok ? b.ids.length + '枚ぶんをコピーしました（返事の無い札は残り ' + b.rest + '枚）。返事は同じ ' + n + '回目の欄に貼って［読む］を押してください。' : 'コピーできませんでした。'; });
         });
         btn(n + '回目をやり直す', 'linkLikeBtn', () => { delete d.runs[n]; if (n === 1) delete d.runs[2]; worldMikiDraftSave(); worldMikiSplitCards.lastMsg = ''; renderWorldMikiSplit(); });
       }
