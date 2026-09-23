@@ -888,6 +888,13 @@
     transition: transform .15s ease;
   }
   .drawChoiceBtn:active { transform: scale(.97); }
+  /* v20.100 言葉の一覧の「絞り込み・並び」 */
+  .listFilterWrap { margin: 6px 0 8px; }
+  .listFilterWrap > summary { cursor: pointer; list-style: none; padding: 10px 12px; background: var(--bg-card); border-radius: 10px; font-size: 14px; color: var(--text-dim); }
+  .listFilterWrap > summary::-webkit-details-marker { display: none; }
+  .listFilterWrap > summary::after { content: ' ▾'; }
+  .listFilterWrap[open] > summary::after { content: ' ▴'; }
+  .listFilterWrap[open] > summary { margin-bottom: 6px; }
   .questionText { font-size: 23px; line-height: 1.95; white-space: pre-wrap; padding: 0 8px; }
   .detailHistory { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
   .detailHistoryRow { font-size: 12px; color: var(--text-dim); line-height: 1.7; white-space: pre-wrap; }
@@ -1649,6 +1656,9 @@
     </header>
     <button type="button" id="draftBanner" class="draftBanner" hidden></button>
     <input id="listSearch" type="search" placeholder="検索（言葉・出典・自分の言葉）" autocomplete="off">
+    <!-- v20.100：切り替えの段とタグを1つに畳む（前は1枚目の言葉の前に6段とタグ全部が並んでいた） -->
+    <details id="listFilterWrap" class="listFilterWrap">
+    <summary id="listFilterSummary">絞り込み・並び</summary>
     <div id="listViewModeRow" class="tagFilterRow">
       <button type="button" class="tagFilterBtn" data-mode="all">すべて</button>
       <button type="button" class="tagFilterBtn" data-mode="source">出典別</button>
@@ -1672,8 +1682,9 @@
     <div id="listTagFilter" class="tagFilterRow"></div>
     <label class="checkboxRow">
       <input type="checkbox" id="noLinksFilter">
-      関連なし
+      つながりなし
     </label>
+    </details>
     <div id="listItems" class="listItems"></div>
     <div id="listEmpty" class="emptyMsg" hidden>該当する言葉がありません。</div>
   </section>
@@ -3228,7 +3239,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.99';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.100';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -8397,10 +8408,33 @@
     });
   }
 
+  const LIST_TAGS_SHOWN = 10;   // v20.100
+  const LIST_FILTER_OPEN_KEY = 'kotoba_listFilterOpen';
+  function listFilterSummaryText() {
+    const parts = [{ all: 'すべて', source: '出典別', tag: 'タグ別' }[listState.viewMode] || 'すべて'];
+    if (listState.viewMode === 'all') parts.push({ new: '新しい順', links: 'つながりが多い順', sleep: '眠っている順' }[listState.sortMode] || '新しい順');
+    if (listState.kind && listState.kind !== 'all') parts.push(NOTE_KIND_LABEL[listState.kind] || listState.kind);
+    if (listState.keepOnly) parts.push('残したいだけ');
+    if (listState.tags.size) parts.push('タグ：' + [...listState.tags].join('・'));
+    if (listState.noLinksOnly) parts.push('つながりなし');
+    if (listState.markMode) parts.push('印を付けている');
+    return '絞り込み・並び：' + parts.join('・');
+  }
   function renderList() {
     const tagRow = document.getElementById('listTagFilter');
     tagRow.innerHTML = '';
-    allTags().forEach((t) => {
+    { // v20.100：開いたかどうかを端末に覚える
+      const wrap = document.getElementById('listFilterWrap');
+      if (!wrap.dataset.wired) {
+        wrap.dataset.wired = '1';
+        try { wrap.open = localStorage.getItem(LIST_FILTER_OPEN_KEY) === '1'; } catch (e) {}
+        wrap.addEventListener('toggle', () => { try { localStorage.setItem(LIST_FILTER_OPEN_KEY, wrap.open ? '1' : '0'); } catch (e) {} });
+      }
+      document.getElementById('listFilterSummary').textContent = listFilterSummaryText();
+    }
+    const ranked = rankByUsage(tagUsageStats());
+    const shownTags = listState.tagsAll ? ranked : ranked.filter((t, i) => i < LIST_TAGS_SHOWN || listState.tags.has(t));
+    shownTags.forEach((t) => {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'tagFilterBtn' + (listState.tags.has(t) ? ' selected' : '');
@@ -8411,6 +8445,13 @@
       });
       tagRow.appendChild(btn);
     });
+    if (ranked.length > shownTags.length || listState.tagsAll) {   // v20.100：残りのタグ
+      const more = document.createElement('button');
+      more.type = 'button'; more.className = 'tagFilterBtn';
+      more.textContent = listState.tagsAll ? '少なくする' : 'ほか ' + (ranked.length - shownTags.length);
+      more.addEventListener('click', () => { listState.tagsAll = !listState.tagsAll; renderList(); });
+      tagRow.appendChild(more);
+    }
 
     document.querySelectorAll('#listViewModeRow button').forEach((b) => {
       b.classList.toggle('selected', b.dataset.mode === listState.viewMode);
