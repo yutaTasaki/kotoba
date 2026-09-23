@@ -1035,11 +1035,6 @@
   .worldRowBtns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
   .worldRowBtns .tagFilterBtn { padding: 5px 10px; font-size: 12px; }
 
-  .worldStale {
-    display: flex; align-items: center; justify-content: space-between; gap: 8px;
-    background: var(--bg-card); border-radius: 10px; padding: 8px 12px;
-    font-size: 12px; color: var(--text-dim);
-  }
   .worldSectionHead {
     display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
     font-size: 12px; color: var(--text-faint); margin-top: 4px;
@@ -2598,11 +2593,6 @@
     </header>
 
     <div class="editorBody" id="worldMainView">
-      <div class="worldStale" id="worldStaleBar" hidden>
-        <span id="worldStaleText"></span>
-        <button type="button" id="btnWorldDropStale" class="tagFilterBtn">まとめて捨てる</button>
-      </div>
-
       <!-- v20.50 幹 段1：幹の一覧への入口（幹が無いうちは「幹を立てる」） -->
       <button type="button" id="btnWorldMiki" class="linkLikeBtn" hidden></button>
 
@@ -3322,7 +3312,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.90';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.91';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -7306,7 +7296,6 @@
     const input = inputEl.value.trim();
     if (!input || consultBusy) return;
     if (isUsageOverBudget() && !confirm('上限を超えています。続けますか？')) return;
-    clearInputDraft();
     const historyForThisCall = consultTurns
       .filter((t) => t.status === 'done')
       .slice(-CONSULT_HISTORY_TURNS)
@@ -7328,9 +7317,13 @@
       saveJournalEntry(entry);
       turn.journalId = entry.id;
       consultInputOpen = false;   // the answer takes the top; the box folds away
+      clearInputDraft();   // v20.91：受け取れてから消す
     } catch (e) {
       turn.status = 'error';
-      turn.errorText = aiErrorText('言葉を探せませんでした', e);
+      // v20.91：書いた文を欄に戻す（前は送る前に欄と下書きを消していたので、失敗すると文が消えた）
+      if (!inputEl.value.trim()) inputEl.value = input;
+      consultInputOpen = true;
+      turn.errorText = aiErrorText('言葉を探せませんでした', e) + '　書いた文は欄に戻しました。';
       if (!(e && e.noKey)) recordFeatureError('相談', e);
     }
     consultBusy = false;
@@ -7658,6 +7651,11 @@
       warn.className = 'fieldNote warn';
       warn.textContent = morningLastError;
       container.appendChild(warn);
+      // v20.91：失敗した日は、書いた文が入ったままの入力欄に戻れる
+      const again = document.createElement('button');
+      again.type = 'button'; again.className = 'secondaryBtn'; again.textContent = 'もう一度受け取る';
+      again.addEventListener('click', () => { morningSkippedDate = null; morningLastError = ''; renderHome(); });
+      container.appendChild(again);
     }
     let picks = [], closing = '';
     if (morningEntry) {
@@ -7913,7 +7911,6 @@
   });
 
   document.getElementById('btnMorningAsk').addEventListener('click', async () => {
-    clearInputDraft();
     const btn = document.getElementById('btnMorningAsk');
     const skipBtn = document.getElementById('btnMorningSkip');
     const inputEl = document.getElementById('morningInput');
@@ -7936,6 +7933,8 @@
       const iso = nowIso();
       const entry = { id: generateJournalId(), date: today, kind: 'morning', mood: moodLevel, text: input, picks: result.picks, closing: result.closing, createdAt: iso, updatedAt: iso };
       saveJournalEntry(entry);
+      clearInputDraft();   // v20.91：受け取れてから消す
+      inputEl.value = '';
     } catch (e) {
       // network/parse failure (or no key, though that path is normally
       // short-circuited before this button is ever shown): fall back to the
@@ -7943,12 +7942,11 @@
       // v3.3: no longer silently. The fallback word is still shown; the
       // reason is shown above it and written to the settings error log.
       morningSkippedDate = today;
-      morningLastError = aiErrorText('今朝の言葉を受け取れませんでした', e) + '　下は代わりの一枚です。';
+      morningLastError = aiErrorText('今朝の言葉を受け取れませんでした', e) + '　下は代わりの一枚です。' + (input ? '書いた文は残してあります。' : '');
       if (!(e && e.noKey)) recordFeatureError('朝の言葉', e);
     }
     btn.disabled = false;
     skipBtn.disabled = false;
-    inputEl.value = '';
     renderHome();
   });
 
@@ -8813,8 +8811,7 @@
 
   document.getElementById('btnBulkDecompose').addEventListener('click', async () => {
     const text = stripTranscriptTimestamps(document.getElementById('bulkTextInput').value);
-    if (text) clearInputDraft();
-    const statusEl = document.getElementById('bulkStatus');
+    const statusEl = document.getElementById('bulkStatus');   // v20.91：下書きは取り込めた後に消す（待っている間にアプリが落ちても残る）
     if (!text) { statusEl.textContent = 'テキストを貼り付けてください。'; return; }
     if (text.length > BULK_MAX_CHARS) {
       statusEl.textContent = `${BULK_MAX_CHARS.toLocaleString('ja-JP')}字を超えています。分けて貼り付けてください。`;
@@ -13102,6 +13099,7 @@
     renderTagCandidates();
     updateSaveButtonState();
     showScreen('editor');
+    editorOpenSig = editorSig();   // v20.91
   }
 
   function blankEditorFields() { ['editText', 'editSource', 'editMyWords', 'editBookAuthor', 'editTagInput', 'editLinkSearch'].forEach((id) => { const el = document.getElementById(id); if (el) el.value = ''; }); }
@@ -13131,7 +13129,16 @@
   }
   editMyWordsEl.addEventListener('input', updateSaveButtonState);
 
-  document.getElementById('backFromEditor').addEventListener('click', closeEditor);
+  // v20.91：開いたときから中身が変わっていれば、捨てる前に聞く（前は黙って捨てた）
+  function editorSig() {
+    return ['editText', 'editSource', 'editMyWords', 'editBookAuthor', 'editTagInput'].map((id) => { const el = document.getElementById(id); return el ? el.value.trim() : ''; }).join('\u0001')
+      + '\u0001' + editorState.tags.join(',') + '\u0001' + editorState.links.join(',') + '\u0001' + editorState.kind + '\u0001' + (editorState.keep ? 1 : 0);
+  }
+  let editorOpenSig = '';
+  document.getElementById('backFromEditor').addEventListener('click', () => {
+    if (editorSig() !== editorOpenSig && !confirm('書きかけの内容を捨てて戻りますか？')) return;
+    closeEditor();
+  });
 
   // v3.6: same similarity check as the draft-review flow, run at save time
   // for the regular add/edit editor too. Editing a note without changing its
@@ -16578,7 +16585,6 @@
 
   const WORLD_PREDICT_CHOICES = [30, 90, 180];  // 予測期限の選択肢（日）
   const WORLD_PREDICT_DAYS    = 90;             // 既定
-  const WORLD_STALE_DAYS      = 14;             // 未読が「古い」になるまで
   const WORLD_KNOWN_MAX       = 120;            // プロンプトに差し込む既知概念の上限（v20.2.2：400→120。勝手に伸びる唯一の節なので天井を付ける）
   const WORLD_KNOWN_NOTE_FROM = 100;            // v20.2.2：概念がこれを超えたら、取り込み結果で知らせる
   const WORLD_QUEUE_WARN      = 30;             // 未読が溜まりすぎの警告
@@ -19732,10 +19738,6 @@
     return list.slice().sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.order - b.order));
   }
   function worldUnread() { return worldSortQueue(worldLiveEvents().filter((e) => !e.readDate && !e.seed)); }   // v20.2：初期投入の札は数えない
-  function worldStaleUnread() {
-    const cut = Date.now() - WORLD_STALE_DAYS * 86400000;
-    return worldUnread().filter((e) => new Date(e.createdAt).getTime() < cut);
-  }
   function worldReadOn(date) { return worldSortQueue(worldLiveEvents().filter((e) => e.readDate === date && !e.seed)); }
   // 今日の分を確定させる。**開いたときにだけ呼ぶ。** 描画からは呼ばない。
   // v18 A-1: 上限を外した。取り込んだ回の札は全部その日の分にする——3件ずつ
@@ -26588,10 +26590,6 @@
     // v20.51 幹 段2：幹があれば「今日動いた幹」の下に今日見るべき件を入れる。幹が無ければ今までどおり
     if (renderWorldMikiToday(document.getElementById('worldMikiToday'))) document.getElementById('worldTodayPick').hidden = true;
     else renderWorldTodayPick(document.getElementById('worldTodayPick'));   // v20.47
-    const stale = worldStaleUnread();
-    const bar = document.getElementById('worldStaleBar');
-    bar.hidden = !stale.length;
-    if (stale.length) document.getElementById('worldStaleText').textContent = '古い未読が ' + stale.length + ' 件あります';
 
     // v20.22 第2段A：予告への入口。期限が来たものは急ぐので先に言う。
     // 0本でも入口は出す（出さないと、最初の1本が入るまで予告の画面に辿り着けない）
@@ -31339,13 +31337,6 @@
   });
   document.getElementById('btnWorldImportOpen').addEventListener('click', () => { worldState.view = 'import'; renderWorld(); });
   document.getElementById('btnWorldImportBack').addEventListener('click', () => { worldState.view = 'main'; renderWorld(); });
-  document.getElementById('btnWorldDropStale').addEventListener('click', () => {
-    const stale = worldStaleUnread();
-    if (!stale.length) return;
-    if (!confirm('古い未読 ' + stale.length + ' 件を捨てます。読んだ分と予測は消えません。よろしいですか？')) return;
-    stale.forEach((e) => worldDeleteEvent(e.id));
-    renderWorldMain();
-  });
   // ---- v19.13 今日の数字（段階 A。API から取ってプロンプトに差し込むだけ。何も保存しない） ----
   // 数字は上積みであって、取り込みの前提ではない。取れなくても、今までどおりのプロンプトをコピーする
   const WORLD_DTS_HISTORY     = 60;    // 比べる営業日の数
