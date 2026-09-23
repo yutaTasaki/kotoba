@@ -3322,7 +3322,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.89';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.90';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -3746,6 +3746,11 @@
   const NOTES_INDEX_PATH = 'notes/index.json';
   const notesMonthPath = (y) => 'notes/' + y + '.json';
   const nm = { dirty: new Set(), stamps: {}, monthJson: {}, busy: false, legacyKeys: new Set() };
+  // v20.90：月（年）ファイルごとの「変わった回数」。送る直前と送った後で同じときだけ「未送信」の印を消す。
+  // 前は送り終わると必ず消したので、送っている間に同じ月へ入った変更が送られないまま残った
+  const syncGen = new Map();
+  function bumpSyncGen(k) { syncGen.set(k, (syncGen.get(k) || 0) + 1); }
+  function syncGenOf(k) { return syncGen.get(k) || 0; }
   function notesSplit() { return data.notesMode === 'monthly' || data.notesMode === 'yearly'; }
   function monthOfNote(n) { const c = (n && n.createdAt) || ''; if (/^\d{4}-\d{2}/.test(c)) return c.slice(0, 7); return monthOfNoteId(n && n.id) || todayStr().slice(0, 7); }
   function monthOfNoteId(id) { const m = /^n_(\d{4})(\d{2})\d{2}_/.exec(String(id || '')); return m ? m[1] + '-' + m[2] : null; }
@@ -3782,7 +3787,7 @@
       if (nm.monthJson[y] === body) return;
       nm.monthJson[y] = body;
       kvSet('notes:' + y, JSON.stringify(doc)).catch(() => { localSaveError = '端末に保存できませんでした（クラウドには同期します）'; recordSyncError(LAST_SYNC_ERROR_KEY, localSaveError); });
-      nm.dirty.add(y); changed = true;
+      nm.dirty.add(y); bumpSyncGen('notes:' + y); changed = true;
     });
     if (changed) persistNotesDirty();
   }
@@ -3820,6 +3825,7 @@
     const remote = await ghGetContents(GITHUB_REPO, notesMonthPath(y), token);
     let rdoc = emptyNoteMonthDoc(y);
     try { if (remote.text) rdoc = normalizeNoteMonthDoc(JSON.parse(remote.text), y); } catch (e) {}
+    const gen0 = syncGenOf('notes:' + y);   // v20.90
     const local = notesMonthDoc(data, y);
     const ms = mergeNoteSets(local.notes, local.deletedIds, rdoc.notes, rdoc.deletedIds);
     const merged = { version: 1, month: y, updatedAt: nowIso(), notes: ms.notes, deletedIds: ms.deleted };
@@ -3835,7 +3841,7 @@
       try { await ghPutJson(notesMonthPath(y), merged, remote.sha, `notes ${y}: ${merged.notes.length} notes`); }
       catch (e) { if (e.status === 409 && !attempt) return syncNotesMonth(token, y, 1); throw e; }
     }
-    nm.dirty.delete(y);
+    if (syncGenOf('notes:' + y) === gen0) nm.dirty.delete(y);   // v20.90：送っている間に変わっていたら、印を残して次に送る
     return { changed: noteMonthSignature(rdoc) !== noteMonthSignature(merged), count: merged.notes.length };
   }
   function mergeNotesIndex(a, b) {
@@ -4513,6 +4519,7 @@
   }
 
   let syncInFlight = false;
+  let syncAgain = false;   // v20.90：同期の最中に「同期して」と頼まれた（保存があった）
 
   // Always fetches remote and merges it in (per-note, see mergeData) - called
   // on startup, on every visibility-change back to foreground, after every
@@ -4524,10 +4531,12 @@
     const token = getGhToken();
     if (!token) { setSyncStatus('off'); return; }
     if (nav.screen === 'editor') return; // never clobber an in-progress edit
-    if (syncInFlight) return;
+    if (syncInFlight) { syncAgain = true; return; }
     if (!navigator.onLine) { setSyncStatus('offline'); return; }
     syncInFlight = true;
+    syncAgain = false;
     setSyncStatus('syncing');
+    const pendingAtStart = pendingChangeCount;   // v20.90：途中で入った分は残す
     try {
       const localHadNoNotes = data.notes.length === 0;
       const remote = await ghGetFile(token); // throws on failure -> no push is attempted below
@@ -4547,15 +4556,16 @@
       if (journalMonthly()) await journalSyncNow(token);
       await worldSyncNow(token);
       localStorage.setItem(LAST_SYNC_KEY, nowIso());
-      pendingChangeCount = 0;
+      pendingChangeCount = Math.max(0, pendingChangeCount - pendingAtStart);
       clearSyncError(LAST_SYNC_ERROR_KEY);
-      setSyncStatus('synced');
+      setSyncStatus(syncAgain || pendingChangeCount > 0 ? 'unsynced' : 'synced');
     } catch (e) {
       recordSyncError(LAST_SYNC_ERROR_KEY, repoErrorMessage('言葉データ（kotoba-data）', e));
       setSyncStatus('error');
     } finally {
       syncInFlight = false;
     }
+    if (syncAgain) { syncAgain = false; scheduleSync(); }   // v20.90：失敗したときも、頼まれた分はもう一度試す
   }
 
   // Unconditional overwrite for explicit user actions (import, delete-all
@@ -5431,7 +5441,7 @@
     jm.loaded.add(m);
     persistMonth(m);
     updateIndexMonth(m);
-    jm.dirty.add(m); persistDirty();
+    jm.dirty.add(m); bumpSyncGen('journal:' + m); persistDirty();
     pendingChangeCount++;
     scheduleSync();
   }
@@ -5444,7 +5454,7 @@
     const months = new Set(data.journal.map((j) => monthOfDate(j.date)));
     (data.deletedJournalIds || []).forEach((t) => { const m = monthOfJournalId(t.id) || monthOfDate(todayStr()); months.add(m); if (!jm.tombs.has(m)) jm.tombs.set(m, new Map()); if (!jm.tombs.get(m).has(t.id)) jm.tombs.get(m).set(t.id, t.deletedAt); });
     data.deletedJournalIds = [];
-    months.forEach((m) => { if (!jm.loaded.has(m) || !jm.dirty.has(m)) { jm.loaded.add(m); persistMonth(m); updateIndexMonth(m); jm.dirty.add(m); } });
+    months.forEach((m) => { if (!jm.loaded.has(m) || !jm.dirty.has(m)) { jm.loaded.add(m); persistMonth(m); updateIndexMonth(m); jm.dirty.add(m); } bumpSyncGen('journal:' + m); });
     if (months.size) persistDirty();
   }
   function journalBoot() {
@@ -5488,6 +5498,7 @@
     const remote = await ghGetContents(GITHUB_REPO, journalMonthPath(m), token);
     let rdoc = emptyMonthDoc(m);
     try { if (remote.text) rdoc = normalizeMonthDoc(JSON.parse(remote.text), m); } catch (e) {}
+    const gen0 = syncGenOf('journal:' + m);   // v20.90
     const local = journalMonthDoc(m);
     const mergedSets = mergeJournalSets(local.entries, local.deletedIds, rdoc.entries, rdoc.deletedIds);
     const merged = { version: 1, month: m, updatedAt: nowIso(), entries: mergedSets.entries, deletedIds: mergedSets.deleted };
@@ -5499,7 +5510,7 @@
       try { await ghPutJson(journalMonthPath(m), merged, remote.sha, `journal ${m}: ${merged.entries.length} entries`); }
       catch (e) { if (e.status === 409 && !attempt) return syncJournalMonth(token, m, 1); throw e; }
     }
-    jm.dirty.delete(m); persistDirty();
+    if (syncGenOf('journal:' + m) === gen0) { jm.dirty.delete(m); persistDirty(); }   // v20.90
     jm.stamps[m] = jm.index.months[m].updatedAt;
   }
   function mergeJournalIndex(a, b) {
@@ -9945,7 +9956,7 @@
     if (!res.ok) { const err = new Error('GitHub PUT failed: ' + res.status); err.status = res.status; throw err; }
     return res.json();
   }
-  let trainingSyncTimer = null, trainingSyncInFlight = false;
+  let trainingSyncTimer = null, trainingSyncInFlight = false, trainingSyncAgain = false;   // v20.90
   function scheduleTrainingSync() {
     if (!getGhToken()) return;
     if (trainingSyncTimer) clearTimeout(trainingSyncTimer);
@@ -9955,9 +9966,9 @@
   async function trainingSyncNow() {
     const token = getGhToken();
     if (!token) { setTrainingSyncStatus('off'); return; }
-    if (trainingSyncInFlight) return;
+    if (trainingSyncInFlight) { trainingSyncAgain = true; return; }
     if (!navigator.onLine) { setTrainingSyncStatus('offline'); return; }
-    trainingSyncInFlight = true;
+    trainingSyncInFlight = true; trainingSyncAgain = false;
     setTrainingSyncStatus('syncing');
     try {
       const localHadNoDays = trainingData.days.length === 0;
@@ -9982,13 +9993,14 @@
       }
       localStorage.setItem(TRAINING_LAST_SYNC_KEY, nowIso());
       clearSyncError(TRAINING_LAST_SYNC_ERROR_KEY);
-      setTrainingSyncStatus('synced');
+      setTrainingSyncStatus(trainingSyncAgain ? 'unsynced' : 'synced');
     } catch (e) {
       recordSyncError(TRAINING_LAST_SYNC_ERROR_KEY, repoErrorMessage('筋トレデータ（kotoba-data/training.json）', e));
       setTrainingSyncStatus('error');
     } finally {
       trainingSyncInFlight = false;
     }
+    if (trainingSyncAgain) { trainingSyncAgain = false; scheduleTrainingSync(); }   // v20.90
   }
 
   // --- derived -------------------------------------------------------------
@@ -14028,7 +14040,7 @@
   // (per entry, later updatedAt wins, deletions are tombstones).
   const md = { dirty: new Set(), stamps: {}, yearJson: {}, busy: false };
   let medData = { sessions: [], deletedIds: [] };
-  let meditationSyncTimer = null, meditationSyncInFlight = false;
+  let meditationSyncTimer = null, meditationSyncInFlight = false, meditationSyncAgain = false;   // v20.90
   let medNoteFor = null;               // session id whose memo is being turned into a 言葉
   const medForm = { stage: 'idle', mode: null, editId: null, min: null, focus: null, startAt: null, plannedMin: null, savedId: null, endAt: null };
   let medTimerTick = null, medWakeLock = null, medMemoTimer = null, medStatsShown = false;
@@ -14077,7 +14089,7 @@
       if (md.yearJson[y] === body) return;
       md.yearJson[y] = body;
       kvSet('meditation:' + y, JSON.stringify(doc)).catch(() => { recordSyncError(MEDITATION_LAST_SYNC_ERROR_KEY, '端末に保存できませんでした'); renderSyncBar(); });
-      md.dirty.add(y); changed = true;
+      md.dirty.add(y); bumpSyncGen('med:' + y); changed = true;
     });
     if (changed) persistMedDirty();
   }
@@ -14128,6 +14140,7 @@
     const remote = await ghGetContents(GITHUB_REPO, meditationYearPath(y), token);
     let rdoc = emptyMedYearDoc(y);
     try { if (remote.text) rdoc = normalizeMedYearDoc(JSON.parse(remote.text), y); } catch (e) {}
+    const gen0 = syncGenOf('med:' + y);   // v20.90
     const local = medYearDoc(y);
     const ms = mergeMedSets(local.sessions, local.deletedIds, rdoc.sessions, rdoc.deletedIds);
     const merged = { version: 1, year: y, updatedAt: nowIso(), sessions: ms.sessions, deletedIds: ms.deleted };
@@ -14140,7 +14153,7 @@
       try { await ghPutJson(meditationYearPath(y), merged, remote.sha, `meditation ${y}: ${merged.sessions.length} sessions`); }
       catch (e) { if (e.status === 409 && !attempt) return syncMeditationYear(token, y, 1); throw e; }
     }
-    md.dirty.delete(y);
+    if (syncGenOf('med:' + y) === gen0) md.dirty.delete(y);   // v20.90
     return { changed: medSignature(rdoc) !== medSignature(merged), count: merged.sessions.length };
   }
   function scheduleMeditationSync() {
@@ -14152,9 +14165,9 @@
   async function meditationSyncNow() {
     const token = getGhToken();
     if (!token) { setMeditationSyncStatus('off'); return; }
-    if (meditationSyncInFlight || md.busy) return;
+    if (meditationSyncInFlight || md.busy) { meditationSyncAgain = true; return; }
     if (!navigator.onLine) { setMeditationSyncStatus('offline'); return; }
-    meditationSyncInFlight = true; md.busy = true;
+    meditationSyncInFlight = true; md.busy = true; meditationSyncAgain = false;
     setMeditationSyncStatus('syncing');
     try {
       const ri = await ghGetContents(GITHUB_REPO, MEDITATION_INDEX_PATH, token);
@@ -14182,11 +14195,12 @@
       }
       localStorage.setItem(MEDITATION_LAST_SYNC_KEY, nowIso());
       clearSyncError(MEDITATION_LAST_SYNC_ERROR_KEY);
-      setMeditationSyncStatus('synced');
+      setMeditationSyncStatus(meditationSyncAgain || md.dirty.size ? 'unsynced' : 'synced');
     } catch (e) {
       recordSyncError(MEDITATION_LAST_SYNC_ERROR_KEY, repoErrorMessage('瞑想データ（kotoba-data/meditation/）', e));
       setMeditationSyncStatus('error');
     } finally { meditationSyncInFlight = false; md.busy = false; }
+    if (meditationSyncAgain) { meditationSyncAgain = false; scheduleMeditationSync(); }   // v20.90
   }
 
   // sessions
@@ -17957,36 +17971,41 @@
       recordSyncError(LAST_SYNC_ERROR_KEY, localSaveError); renderSyncBar();
     });
   }
+  // v20.90：1ファイル物を端末に保存できなかったときも、同期の行に出す（前は黙っていた）
+  function worldKvFail() {
+    localSaveError = '端末に保存できませんでした（クラウドには同期します）';
+    recordSyncError(LAST_SYNC_ERROR_KEY, localSaveError); renderSyncBar();
+  }
   function persistWorldIndex() { return kvSet('worldIndex', JSON.stringify(wd.index)).catch(() => {}); }
   function persistWorldDirty() { return kvSet('worldDirty', JSON.stringify([...wd.dirty])).catch(() => {}); }
   function persistWorldStamps() { return kvSet('worldStamps', JSON.stringify(wd.stamps)).catch(() => {}); }
   function persistWorldConcepts() {
     wd.concepts.updatedAt = nowIso();
-    return kvSet('worldConcepts', JSON.stringify(wd.concepts)).catch(() => {});
+    return kvSet('worldConcepts', JSON.stringify(wd.concepts)).catch(worldKvFail);   // v20.90
   }
   function persistWorldTerms() {
     wd.terms.updatedAt = nowIso();
-    return kvSet('worldTerms', JSON.stringify(wd.terms)).catch(() => {});
+    return kvSet('worldTerms', JSON.stringify(wd.terms)).catch(worldKvFail);   // v20.90
   }
   function persistWorldAsks() {
     wd.asks.updatedAt = nowIso();
-    return kvSet('worldAsks', JSON.stringify(wd.asks)).catch(() => {});
+    return kvSet('worldAsks', JSON.stringify(wd.asks)).catch(worldKvFail);   // v20.90
   }
   function persistWorldForecasts() {   // v20.21 予告 第1段
     wd.forecasts.updatedAt = nowIso();
-    return kvSet('worldForecasts', JSON.stringify(wd.forecasts)).catch(() => {});
+    return kvSet('worldForecasts', JSON.stringify(wd.forecasts)).catch(worldKvFail);   // v20.90
   }
   function persistWorldActors() {
     wd.actors.updatedAt = nowIso();
-    return kvSet('worldActors', JSON.stringify(wd.actors)).catch(() => {});
+    return kvSet('worldActors', JSON.stringify(wd.actors)).catch(worldKvFail);   // v20.90
   }
   function persistWorldStrata() {
     wd.strata.updatedAt = nowIso();
-    return kvSet('worldStrata', JSON.stringify(wd.strata)).catch(() => {});
+    return kvSet('worldStrata', JSON.stringify(wd.strata)).catch(worldKvFail);   // v20.90
   }
   function persistWorldSources() {
     wd.sources.updatedAt = nowIso();
-    return kvSet('worldSources', JSON.stringify(wd.sources)).catch(() => {});
+    return kvSet('worldSources', JSON.stringify(wd.sources)).catch(worldKvFail);   // v20.90
   }
   // その月の索引の行を作り直す。due（期限の索引）もこの月の分だけ入れ替える
   // ので、読み込んだ月については放っておいても自己修復する。
@@ -18018,7 +18037,7 @@
     wd.loaded.add(m);
     persistWorldMonth(m);
     updateWorldIndexMonth(m);
-    wd.dirty.add(m); persistWorldDirty();
+    wd.dirty.add(m); bumpSyncGen('world:' + m); persistWorldDirty();
     pendingChangeCount++;
     scheduleSync();
   }
@@ -18531,6 +18550,11 @@
     try { wd.asks = normalizeWorldAsksDoc(JSON.parse(bootKV.worldAsks || 'null')); } catch (e) { wd.asks = emptyWorldAsksDoc(); }
     try { wd.forecasts = normalizeWorldForecastsDoc(JSON.parse(bootKV.worldForecasts || 'null')); } catch (e) { wd.forecasts = emptyWorldForecastsDoc(); }   // v20.21
     try { wd.sources = normalizeWorldSourcesDoc(JSON.parse(bootKV.worldSources || 'null')); } catch (e) { wd.sources = emptyWorldSourcesDoc(); }
+    // v20.90：1ファイル物の「未送信」は端末に残していなかった。保存した時刻が索引の「最後に送った時刻」より新しければ未送信とみなす
+    ["concepts","terms","asks","forecasts","actors","strata","sources"].forEach((k) => {
+      const at = (wd[k] && wd[k].updatedAt) || '';
+      if (at && at > (((wd.index || {})[k] || {}).updatedAt || '')) wd[k + 'Dirty'] = true;
+    });
     digBoot();   // v20.43
     worldEvents = [];
     Object.entries(bootKV.worldDocs || {}).forEach(([m, raw]) => {
@@ -18823,6 +18847,7 @@
     try { if (remote.text) rdoc = normalizeWorldMonthDoc(JSON.parse(remote.text), m); } catch (e) {}
     const remoteSig = worldMonthSignature(rdoc);   // v19: 絞る前の相手の版
     rdoc.events = rdoc.events.filter(worldAfterReset);   // v19
+    const gen0 = syncGenOf('world:' + m);   // v20.90
     const local = worldMonthDoc(m);
     const ms = mergeWorldSets(local.events, local.deletedIds, rdoc.events, rdoc.deletedIds);
     const merged = { version: 1, month: m, updatedAt: nowIso(), events: ms.events, deletedIds: ms.deleted };
@@ -18834,7 +18859,7 @@
       try { await ghPutJson(worldMonthPath(m), merged, remote.sha, `world ${m}: ${merged.events.length} events`); }
       catch (e) { if (e.status === 409 && !attempt) return syncWorldMonth(token, m, 1); throw e; }
     }
-    wd.dirty.delete(m); persistWorldDirty();
+    if (syncGenOf('world:' + m) === gen0) { wd.dirty.delete(m); persistWorldDirty(); }   // v20.90
     if (wd.index.months[m]) wd.stamps[m] = wd.index.months[m].updatedAt;
   }
   // 概念とソースは署名が変わったときだけ書く（毎回の同期で GitHub 呼び出しが
@@ -18853,11 +18878,12 @@
     rdoc.concepts = rdoc.concepts.filter(worldAfterReset);   // v19
     wd.concepts = mergeWorldConceptDocs(wd.concepts, rdoc);
     await persistWorldConcepts();
+    const sentAt = wd.concepts.updatedAt;   // v20.90：送る中身の時刻
     if (worldConceptsSignature(wd.concepts) !== before) {
       await ghPutJson(WORLD_CONCEPTS_PATH, wd.concepts, got.sha, `world concepts: ${wd.concepts.concepts.length}`);
     }
-    wd.conceptsDirty = false;
-    wd.index.concepts = { updatedAt: wd.concepts.updatedAt, count: wd.concepts.concepts.length };
+    if (wd.concepts.updatedAt === sentAt) wd.conceptsDirty = false;   // v20.90：送っている間に変わっていたら、印を残して次に送る
+    wd.index.concepts = { updatedAt: sentAt, count: wd.concepts.concepts.length };
   }
   async function syncWorldTerms(token, remoteChanged) {
     if (!wd.termsDirty && !remoteChanged) return;
@@ -18868,11 +18894,12 @@
     rdoc.terms = rdoc.terms.filter(worldAfterReset);   // v19
     wd.terms = mergeWorldTermDocs(wd.terms, rdoc);
     await persistWorldTerms();
+    const sentAt = wd.terms.updatedAt;   // v20.90：送る中身の時刻
     if (worldTermsSignature(wd.terms) !== before) {
       await ghPutJson(WORLD_TERMS_PATH, wd.terms, got.sha, `world terms: ${wd.terms.terms.length}`);
     }
-    wd.termsDirty = false;
-    wd.index.terms = { updatedAt: wd.terms.updatedAt, count: wd.terms.terms.length };
+    if (wd.terms.updatedAt === sentAt) wd.termsDirty = false;   // v20.90：送っている間に変わっていたら、印を残して次に送る
+    wd.index.terms = { updatedAt: sentAt, count: wd.terms.terms.length };
   }
   function worldStrataSignature(doc) { return doc.strata.map((x) => x.id + ':' + x.updatedAt + ':' + x.levels.length).sort().join('|'); }
   function worldAsksSignature(doc) { return doc.asks.map((x) => x.id + ':' + x.updatedAt + ':' + x.runs.length).sort().join('|'); }
@@ -18885,11 +18912,12 @@
     rdoc.asks = rdoc.asks.filter(worldAfterReset);   // v19
     wd.asks = mergeWorldAskDocs(wd.asks, rdoc);
     await persistWorldAsks();
+    const sentAt = wd.asks.updatedAt;   // v20.90：送る中身の時刻
     if (worldAsksSignature(wd.asks) !== before) {
       await ghPutJson(WORLD_ASKS_PATH, wd.asks, got.sha, `world asks: ${wd.asks.asks.length}`);
     }
-    wd.asksDirty = false;
-    wd.index.asks = { updatedAt: wd.asks.updatedAt, count: wd.asks.asks.length };
+    if (wd.asks.updatedAt === sentAt) wd.asksDirty = false;   // v20.90：送っている間に変わっていたら、印を残して次に送る
+    wd.index.asks = { updatedAt: sentAt, count: wd.asks.asks.length };
   }
   // v20.21 予告：結果（state）は stateAt の新しい方を採る。それ以外は updatedAt の新しい方。
   // 2台で別々に押したとき、後から押した方が勝つ（主体の表と同じ考え方）
@@ -18916,11 +18944,12 @@
     const before = worldForecastsSignature(rdoc);
     wd.forecasts = mergeWorldForecastDocs(wd.forecasts, rdoc);
     await persistWorldForecasts();
+    const sentAt = wd.forecasts.updatedAt;   // v20.90：送る中身の時刻
     if (worldForecastsSignature(wd.forecasts) !== before) {
       await ghPutJson(WORLD_FORECASTS_PATH, wd.forecasts, got.sha, `world forecasts: ${wd.forecasts.forecasts.length}`);
     }
-    wd.forecastsDirty = false;
-    wd.index.forecasts = { updatedAt: wd.forecasts.updatedAt, count: wd.forecasts.forecasts.length };
+    if (wd.forecasts.updatedAt === sentAt) wd.forecastsDirty = false;   // v20.90：送っている間に変わっていたら、印を残して次に送る
+    wd.index.forecasts = { updatedAt: sentAt, count: wd.forecasts.forecasts.length };
   }
   async function syncWorldActors(token, remoteChanged) {
     if (!wd.actorsDirty && !remoteChanged) return;
@@ -18931,11 +18960,12 @@
     wd.actors = mergeWorldActorDocs(wd.actors, rdoc);
     worldAbsorbBracketActors();   // v20.2.1：別の端末から戻ってきた重複も、ここでまとめ直す
     await persistWorldActors();
+    const sentAt = wd.actors.updatedAt;   // v20.90：送る中身の時刻
     if (worldActorsSignature(wd.actors) !== before) {
       await ghPutJson(WORLD_ACTORS_PATH, wd.actors, got.sha, `world actors: ${wd.actors.actors.length}`);
     }
-    wd.actorsDirty = false;
-    wd.index.actors = { updatedAt: wd.actors.updatedAt, count: wd.actors.actors.length };
+    if (wd.actors.updatedAt === sentAt) wd.actorsDirty = false;   // v20.90：送っている間に変わっていたら、印を残して次に送る
+    wd.index.actors = { updatedAt: sentAt, count: wd.actors.actors.length };
   }
   async function syncWorldStrata(token, remoteChanged) {
     if (!wd.strataDirty && !remoteChanged) return;
@@ -18945,11 +18975,12 @@
     const before = worldStrataSignature(rdoc);
     wd.strata = mergeWorldStrataDocs(wd.strata, rdoc);
     await persistWorldStrata();
+    const sentAt = wd.strata.updatedAt;   // v20.90：送る中身の時刻
     if (worldStrataSignature(wd.strata) !== before) {
       await ghPutJson(WORLD_STRATA_PATH, wd.strata, got.sha, `world strata: ${wd.strata.strata.length}`);
     }
-    wd.strataDirty = false;
-    wd.index.strata = { updatedAt: wd.strata.updatedAt, count: wd.strata.strata.length };
+    if (wd.strata.updatedAt === sentAt) wd.strataDirty = false;   // v20.90：送っている間に変わっていたら、印を残して次に送る
+    wd.index.strata = { updatedAt: sentAt, count: wd.strata.strata.length };
   }
   async function syncWorldSources(token, remoteChanged) {
     if (!wd.sourcesDirty && !remoteChanged) return;
@@ -18959,11 +18990,12 @@
     const before = worldSourcesSignature(rdoc);
     wd.sources = mergeWorldSourceDocs(wd.sources, rdoc);
     await persistWorldSources();
+    const sentAt = wd.sources.updatedAt;   // v20.90：送る中身の時刻
     if (worldSourcesSignature(wd.sources) !== before) {
       await ghPutJson(WORLD_SOURCES_PATH, wd.sources, got.sha, `world sources: ${wd.sources.sources.length}`);
     }
-    wd.sourcesDirty = false;
-    wd.index.sources = { updatedAt: wd.sources.updatedAt, count: wd.sources.sources.length };
+    if (wd.sources.updatedAt === sentAt) wd.sourcesDirty = false;   // v20.90：送っている間に変わっていたら、印を残して次に送る
+    wd.index.sources = { updatedAt: sentAt, count: wd.sources.sources.length };
   }
   async function worldSyncNow(token) {
     if (wd.busy) return;
@@ -32470,6 +32502,19 @@
   journalBoot();
   meditationBoot();
   worldBoot();
+  // v20.90：一度だけ、端末に読み込んである月（年）と1ファイル物を全部「未送信」にして送り直す。
+  // 前の版では、同期の最中に入った変更が「同期済み」のまま送られずに残ることがあった。それを拾う（中身が同じなら GitHub には書かない）
+  try {
+    if (localStorage.getItem('kotoba_resendOnce') !== 'v20.90') {
+      if (notesSplit()) { Object.keys(nm.monthJson).forEach((y) => nm.dirty.add(y)); persistNotesDirty(); }
+      if (journalMonthly()) { jm.loaded.forEach((m) => jm.dirty.add(m)); persistDirty(); }
+      wd.loaded.forEach((m) => wd.dirty.add(m)); persistWorldDirty();
+      Object.keys(md.yearJson).forEach((y) => md.dirty.add(y)); persistMedDirty();
+      ['concepts', 'terms', 'asks', 'forecasts', 'actors', 'strata', 'sources'].forEach((k) => { wd[k + 'Dirty'] = true; });
+      wdig.docs.forEach((_, m) => wdig.dirty.add(m)); persistDigMeta();
+      localStorage.setItem('kotoba_resendOnce', 'v20.90');
+    }
+  } catch (e) { recordFeatureError('送り直し（v20.90）', e); }
   restoreLastScreen();   // v20.11：控えが4時間以内なら、その画面から始める
   restoreInputDraft();
   medResumeTimer();
