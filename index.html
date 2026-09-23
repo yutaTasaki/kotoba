@@ -2031,7 +2031,7 @@
               </div>
               <div class="field">
                 <span class="fieldLabel">全ノートを一括で関連づけ</span>
-                <p class="fieldNote">まだ自動関連づけをしていないノートだけを、古い順に。</p>
+                <p class="fieldNote">まだ自動関連づけをしていないノートだけを、古い順に。<span id="batchPendingCount"></span></p>
                 <button id="btnBatchAutoLink" class="secondaryBtn">一括で関連づけ</button>
                 <div id="batchProgress" class="fieldNote" hidden></div>
                 <button id="btnBatchStop" class="dangerBtn" hidden>停止</button>
@@ -3022,7 +3022,7 @@
       </div>
       <div class="field">
         <div class="bulkTextHeaderRow">
-          <span class="fieldLabel">テキスト<span class="fieldNote inlineNote">（最大20,000字）</span></span>
+          <span class="fieldLabel">テキスト<span class="fieldNote inlineNote">（最大20,000字。名言集は名言ごとに1枚、ほかは主題ごとに3枚まで）</span></span>
           <label class="secondaryBtn fileLabel bulkFilePickBtn" for="bulkFileInput">ファイルを選ぶ</label>
           <input id="bulkFileInput" type="file" accept=".txt,text/plain" hidden>
         </div>
@@ -3312,7 +3312,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.91';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.92';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -3383,7 +3383,19 @@
   // 'draw' (引く), or 'question' (問いを引く, v3.3). One per API response /
   // per 引く landing. Entry-level merge/tombstone, same pattern as notes.
   const JOURNAL_KINDS = ['morning', 'consult', 'draw', 'question', 'read', 'deck'];   // 'deck' (v8.5): one video's 撮る deck - question, provisional answer, cards   // 'read' (v8.2.1): a ★ given on the detail screen, no delivery behind it
-  function normalizeJournalEntry(j) {
+  // v20.92：読み込むときに、この版がまだ知らない欄（新しい版の端末が足した欄）を捨てずに持ち回す。
+  // 「知っている欄」は、正規化の関数の本文に「引数.欄」として出てくるもの（関数を直せば自動で追いつく）。
+  // 知っている欄は今までどおりの決まりで直し、知らない欄だけをそのまま残す。入れ子の中（★・カード・つながり）は対象外
+  const KNOWN_FIELDS = new Map();
+  function keepUnknownFields(raw, out, fn, param) {
+    if (!out || !raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+    let known = KNOWN_FIELDS.get(fn);
+    if (!known) { known = new Set([...fn.toString().matchAll(new RegExp('\\b' + param + '\\.(\\w+)', 'g'))].map((m) => m[1])); KNOWN_FIELDS.set(fn, known); }
+    Object.keys(raw).forEach((k) => { if (!known.has(k) && !(k in out)) out[k] = raw[k]; });
+    return out;
+  }
+  function normalizeJournalEntry(j) { return keepUnknownFields(j, normalizeJournalEntryBase(j), normalizeJournalEntryBase, 'j'); }
+  function normalizeJournalEntryBase(j) {
     if (!j || !j.id) return null;
     const kind = JOURNAL_KINDS.includes(j.kind) ? j.kind : 'morning';
     const out = {
@@ -3429,7 +3441,7 @@
       out.questionId = typeof j.questionId === 'string' ? j.questionId : '';
       out.questionText = typeof j.questionText === 'string' ? j.questionText : '';
       out.from = Array.isArray(j.from) ? j.from.filter(Boolean).map(String).slice(0, 8) : [];
-      out.cards = (Array.isArray(j.cards) ? j.cards : []).map(normalizeDeckCard).filter(Boolean).slice(0, 40);
+      out.cards = (Array.isArray(j.cards) ? j.cards : []).map(normalizeDeckCard).filter(Boolean);   // v20.92：40件の上限を外す
       // v8.7: what was asked in this deck's own consult, and which cards it
       // produced. The conversation itself is not stored (same posture as the
       // 相談 tab); the picks keep the model's one-line why, which is the only
@@ -3439,7 +3451,7 @@
       // kept, because that is the part that cannot be reconstructed later.
       out.premises = (Array.isArray(j.premises) ? j.premises : []).filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim().slice(0, 200)).slice(0, 5);
       out.conflicts = (Array.isArray(j.conflicts) ? j.conflicts : []).filter((x) => x && typeof x === 'object').map((x) => ({ premise: typeof x.premise === 'string' ? x.premise.slice(0, 200) : '', cardId: typeof x.cardId === 'string' ? x.cardId : '', what: typeof x.what === 'string' ? x.what.slice(0, 200) : '' })).slice(0, 10);
-      out.answers = (Array.isArray(j.answers) ? j.answers : []).filter((x) => x && typeof x.text === 'string').map((x) => ({ text: x.text.slice(0, 600), at: typeof x.at === 'string' ? x.at : '', stage: ['first', 'revised', 'after'].includes(x.stage) ? x.stage : 'first' })).slice(0, 40);
+      out.answers = (Array.isArray(j.answers) ? j.answers : []).filter((x) => x && typeof x.text === 'string').map((x) => ({ text: x.text.slice(0, 600), at: typeof x.at === 'string' ? x.at : '', stage: ['first', 'revised', 'after'].includes(x.stage) ? x.stage : 'first' }));   // v20.92：版は全部残す
       // v9.4: read once before shooting to get the shape of the talk into your
       // head. Never shown on the stage - a readable paragraph there would be a
       // script, which is the thing this whole feature avoids.
@@ -3531,7 +3543,8 @@
   function normalizeContextList(list) {
     return (Array.isArray(list) ? list : []).filter((c) => c && typeof c.text === 'string' && c.text.trim()).map((c) => ({ text: c.text.trim().slice(0, 4000), at: typeof c.at === 'string' ? c.at : '' }));
   }
-  function normalizeNote(n) {
+  function normalizeNote(n) { return keepUnknownFields(n, normalizeNoteBase(n), normalizeNoteBase, 'n'); }   // v20.92
+  function normalizeNoteBase(n) {
     const linksById = new Map();
     (Array.isArray(n.links) ? n.links : []).forEach((raw) => {
       const norm = normalizeLink(raw);
@@ -4058,15 +4071,19 @@
       }
       return entry;
     };
-    if (!a.links.some((l) => l.id === idB)) a.links.push(makeEntry(idB));
-    if (!b.links.some((l) => l.id === idA)) b.links.push(makeEntry(idA));
+    let changed = false;
+    if (!a.links.some((l) => l.id === idB)) { a.links.push(makeEntry(idB)); changed = true; }
+    if (!b.links.some((l) => l.id === idA)) { b.links.push(makeEntry(idA)); changed = true; }
+    if (changed) { a.updatedAt = iso; b.updatedAt = iso; }   // v20.92：更新時刻を進めないと、つながりだけの変化は同期で送られなかった
   }
 
   function removeLinkBidirectional(idA, idB) {
     const a = findNote(idA);
     const b = findNote(idB);
-    if (a) a.links = a.links.filter((l) => l.id !== idB);
-    if (b) b.links = b.links.filter((l) => l.id !== idA);
+    const iso = nowIso();
+    // v20.92：外したときも更新時刻を進める（進めないと、外したことが別の端末に届かず、つながりが戻ってきた）
+    if (a && a.links.some((l) => l.id === idB)) { a.links = a.links.filter((l) => l.id !== idB); a.updatedAt = iso; }
+    if (b && b.links.some((l) => l.id === idA)) { b.links = b.links.filter((l) => l.id !== idA); b.updatedAt = iso; }
   }
 
   // Reconciles only the manual-kind links against the editor's picker state;
@@ -4543,6 +4560,7 @@
         backupData(data);
       }
       if (notesSplit()) await notesSyncNow(token);
+      repairLinksOnce();   // v20.92：言葉が全部そろった後に一度だけ
       if (journalMonthly()) await journalSyncNow(token);
       await worldSyncNow(token);
       localStorage.setItem(LAST_SYNC_KEY, nowIso());
@@ -6455,6 +6473,20 @@
     const common =
       '同じ主題の文は1件にまとめ、主題が変わるところでだけ分けてください。文章全体が1つの主題なら1件にします。最大' + BULK_SUMMARY_MAX + '件。' +
       '細かく分けないでください（似た内容の件が並ぶと、あとで同じ話ばかり引かれます）。';
+    // v20.92：名言集は、名言ごとに1枚。上限なし（前は3枚までで、残りの名言は要約されて周辺のメモに入っていた）
+    if (kind === 'quotes') {
+      const text =
+        '以下はこの人が使っている既存タグの一覧である。\n' + JSON.stringify(allTags()) +
+        '\n\nこのあとユーザーメッセージで元のテキスト（名言集の抜き書き）を渡す。' +
+        '名言を1つずつ取り出して、1つの名言を1件にしてください。件数の上限はありません。' +
+        '同じことを言っている名言が続くときだけ、1件にまとめます（残りは context に要旨で）。' +
+        '各件の core は、名言そのものを原文のまま（言い換えない。200字以内。見出し・番号・解説文は含めない）。' +
+        '各件の context は、その名言に付いていた解説や前後の文の要旨を1〜2文（300字以内）。無ければ空文字。' +
+        '各件に既存タグ一覧から最大3つ選んでください。既存で合わなければ新しいタグを1つだけ提案してよいです。' +
+        'JSONのみを返してください。\n\n返答形式（JSON配列のみ、他の文章は含めない）:\n' +
+        '[{"core": "...", "context": "...", "tags": ["..."]}]';
+      return [{ type: 'text', text, cache_control: { type: 'ephemeral' } }];
+    }
     const bodyText = kind === 'transcript'
       ? '話し言葉を、本人の考えのまとまりごとにまとめてください。' + common +
         '各件の core は、そのまとまりで本人が言い切った考えを、本人の言い回しを残して1〜2文に要約したもの（150字以内）。' +
@@ -6499,7 +6531,7 @@
     const coreOf = (item) => (item && typeof item.core === 'string' && item.core.trim()) ? item.core : (item && typeof item.text === 'string' ? item.text : '');
     return parsed
       .filter((item) => item && coreOf(item).trim())
-      .slice(0, BULK_SUMMARY_MAX)
+      .slice(0, kind === 'quotes' ? Infinity : BULK_SUMMARY_MAX)   // v20.92：名言集は上限なし
       .map((item) => ({
         text: coreOf(item).trim().slice(0, maxLen),
         context: typeof item.context === 'string' ? item.context.trim().slice(0, 600) : '',
@@ -6563,7 +6595,8 @@
         addLinkBidirectional(note.id, r.id, { kind: 'auto', relation, reason });
         added++;
       });
-      if (opts.markLinkedAt) { note.autoLinkedAt = nowIso(); note.updatedAt = note.autoLinkedAt; } // bump updatedAt so the mark wins a merge
+      // v20.92：待っている間の同期で言葉は新しい写しに入れ替わる。今の方に印を付ける（前は古い方に付けて捨てられ、9/8 以降の151枚に印が無かった）
+      if (opts.markLinkedAt) { const live = findNote(note.id) || note; live.autoLinkedAt = nowIso(); live.updatedAt = live.autoLinkedAt; } // bump updatedAt so the mark wins a merge
       clearAutoLinkError();
       clearErrorNoteId(note.id);
       return { ok: true, added };
@@ -6615,6 +6648,27 @@
     el.hidden = false;
     el.textContent = done ? `完了（${processed} / ${total}）` : `${processed} / ${total}`;
     stopBtn.hidden = !!done;
+  }
+
+  // v20.92：一度だけの手当て。v20.91 までは、関連づけの印が同期で捨てられ（9/8 以降の151枚）、
+  // つながりを足しても更新時刻が進まず片側だけ残った（10本）。印を付け直し（課金し直さないため）、片側だけのつながりは両方向にする。
+  // 外した記録（却下）がある組には足さない。同期で言葉が全部そろった後に呼ぶ（古い写しで時刻を進めると、新しい直しに勝ってしまう）
+  function repairLinksOnce() {
+    try { if ((localStorage.getItem('kotoba_linkRepair') || '').startsWith('v20.92')) return; } catch (e) { return; }
+    if (!data.notes.length) return;
+    const iso = nowIso();
+    let marked = 0, mended = 0;
+    data.notes.forEach((n) => { if (!n.autoLinkedAt && n.links.length) { n.autoLinkedAt = iso; n.updatedAt = iso; marked++; } });
+    const byId = new Map(data.notes.map((n) => [n.id, n]));
+    data.notes.forEach((a) => a.links.forEach((l) => {
+      const b = byId.get(l.id);
+      if (!b || b.links.some((x) => x.id === a.id)) return;
+      if ((b.rejectedLinks || []).includes(a.id) || (a.rejectedLinks || []).includes(b.id)) return;
+      b.links.push(Object.assign({}, l, { id: a.id }));
+      b.updatedAt = iso; mended++;
+    }));
+    try { localStorage.setItem('kotoba_linkRepair', 'v20.92:' + marked + ':' + mended); } catch (e) {}
+    if (marked || mended) saveData(data);
   }
 
   async function runBatchAutoLink(opts) {
@@ -7490,12 +7544,13 @@
     recordApiUsage('postline', json.usage);   // 使用量は「投稿の説明」と同じ行に数える
     const out = (json.content || []).map((b) => b.text || '').join('').trim().replace(/^[「『]/, '').replace(/[」』]$/, '');
     if (!out) { const e = new Error('empty'); e.empty = true; throw e; }
-    note.postSummary = out.slice(0, CUT_MAX.postSave);
+    const live = findNote(note.id) || note;   // v20.92：待っている間に入れ替わっていたら今の方へ
+    live.postSummary = out.slice(0, CUT_MAX.postSave);
     if (out.length > CUT_MAX.postSave) recordWorldTruncation('自分の言葉の要約', out.length, CUT_MAX.postSave);
-    note.postSummaryOf = base;
-    note.updatedAt = nowIso();
+    live.postSummaryOf = base;
+    live.updatedAt = nowIso();
     saveData(data);
-    return note.postSummary;
+    return live.postSummary;
   }
   // 言葉1枚につき一度だけ作り、言葉に保存する（次に同じ言葉を載せるときは呼ばない）
   async function callPostLineApi(note) {
@@ -7522,8 +7577,9 @@
     const line = await callPostLineApi(note);
     if (!line) return '';
     if (line.length > CUT_MAX.postSave) recordWorldTruncation('投稿の説明', line.length, CUT_MAX.postSave);
-    note.postLine = line.slice(0, CUT_MAX.postSave);
-    note.updatedAt = nowIso();
+    const live = findNote(note.id) || note;   // v20.92
+    live.postLine = line.slice(0, CUT_MAX.postSave);
+    live.updatedAt = nowIso();
     saveData(data);   // 月ファイル方式でも persistLocal が月を書いて同期に乗せる
     return line;
   }
@@ -8831,7 +8887,7 @@
     btn.disabled = true;
     statusEl.textContent = '主題ごとにまとめています…';
     try {
-      const items = await callBulkDecomposeApi(text, bulkState.kind);
+      const items = await callBulkDecomposeApi(text, bulkState.kind === 'book' && bulkState.noteKind === 'quote' ? 'quotes' : bulkState.kind);   // v20.92
       if (!items.length) {
         statusEl.textContent = 'まとめられる内容が見つかりませんでした。';
         btn.disabled = false;
@@ -9845,7 +9901,8 @@
     if (c.kcal !== null) parts.push(Math.round(c.kcal) + 'kcal');
     return parts.join(' ・ ');
   }
-  function normalizeTrainingDay(d) {
+  function normalizeTrainingDay(d) { return keepUnknownFields(d, normalizeTrainingDayBase(d), normalizeTrainingDayBase, 'd'); }   // v20.92
+  function normalizeTrainingDayBase(d) {
     if (!d || !d.date || !/^\d{4}-\d{2}-\d{2}$/.test(d.date)) return null;
     const parts = (Array.isArray(d.parts) ? d.parts : []).map((p) => ({
       part: TRAINING_PARTS.includes(p && p.part) ? p.part : 'その他',
@@ -13620,6 +13677,7 @@
     document.getElementById('deviceLabelInput').value = getDeviceLabel();
     document.getElementById('autoLinkToggle').checked = getAutoLinkEnabled();
     document.getElementById('morningEnabledToggle').checked = getMorningEnabled();
+    document.getElementById('batchPendingCount').textContent = '（いま未処理 ' + data.notes.filter((n) => !n.autoLinkedAt).length + ' 件）';   // v20.92
     document.getElementById('compressThresholdInput').value = getCompressThreshold();
     renderSourceKindList();
     renderWorldSources();
@@ -14061,7 +14119,8 @@
   function medYearOfId(id) { const m = /^m_(\d{4})/.exec(String(id || '')); return m ? m[1] : todayStr().slice(0, 4); }
   function medMinutesOfDay(x) { const m = /T(\d{2}):(\d{2})/.exec(String(x.at || '')); return m ? Number(m[1]) * 60 + Number(m[2]) : null; }
   function medHm(x) { const m = /T(\d{2}:\d{2})/.exec(String(x.at || '')); return m ? m[1] : '--:--'; }
-  function normalizeMedSession(x) {
+  function normalizeMedSession(x) { return keepUnknownFields(x, normalizeMedSessionBase(x), normalizeMedSessionBase, 'x'); }   // v20.92
+  function normalizeMedSessionBase(x) {
     if (!x || typeof x !== 'object' || !x.id || typeof x.at !== 'string') return null;
     const min = Math.round(Number(x.min));
     if (!Number.isFinite(min) || min <= 0) return null;
@@ -17529,7 +17588,8 @@
       holdCount: Number.isFinite(src.holdCount) ? src.holdCount : 0,
     };
   }
-  function normalizeWorldEvent(e) {
+  function normalizeWorldEvent(e) { return keepUnknownFields(e, normalizeWorldEventBase(e), normalizeWorldEventBase, 'e'); }   // v20.92
+  function normalizeWorldEventBase(e) {
     if (!e || !e.id || !isDateStr(e.eventDate)) return null;
     const out = {
       id: String(e.id),
@@ -17612,7 +17672,7 @@
       name: worldStr(c.name, 80),
       aka: (Array.isArray(c.aka) ? c.aka : []).map((x) => worldStr(x, 80)).filter(Boolean).slice(0, 12),
       line: worldStr(c.line, 200),
-      eventIds: (Array.isArray(c.eventIds) ? c.eventIds : []).map(String).slice(0, 500),
+      eventIds: (Array.isArray(c.eventIds) ? c.eventIds : []).map(String),   // v20.92：500件で切ると新しい札が落ちた。上限を外す
       firstEventId: typeof c.firstEventId === 'string' ? c.firstEventId : '',
       createdAt: c.createdAt || nowIso(),
       updatedAt: c.updatedAt || c.createdAt || nowIso(),
@@ -18112,7 +18172,8 @@
     if (x.cut) o.cut = 1;
     return o;
   }
-  function normalizeDig(d) {
+  function normalizeDig(d) { return keepUnknownFields(d, normalizeDigBase(d), normalizeDigBase, 'd'); }   // v20.92
+  function normalizeDigBase(d) {
     if (!d || typeof d !== 'object' || !d.id || !d.eventId || !d.at) return null;
     const out = {
       id: String(d.id), eventId: String(d.eventId), at: String(d.at),
