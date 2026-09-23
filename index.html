@@ -3269,7 +3269,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.103';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.104';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -15234,7 +15234,9 @@
       '  **毎回ちがう言い方にする。同じ決まり文句を繰り返さない。**\n' +
       '- bridge：次のブロックへの橋。**前のブロックの足りないところから入る**（「でも、これだけじゃ説明がつかないことがある」のように）。最後のブロックは空。\n' +
       '- opening：冒頭（0〜60秒）。現象 → 呼びかけ → 常識 → でも → 今日わかること2つ → 最後まで見たらどうなるか、の順で3〜5文。\n' +
-      '- ending：最後。持ち帰り1つ → まとめ → 視聴者への問い、の順で2〜3文。\n\n' +
+      '  挨拶・自己紹介から始めない。**今日わかることは最初の30秒（約200字）までに言い切る。**\n' +
+      '- ending：最後。持ち帰り1つ → まとめ → 視聴者への問い、の順で2〜3文。\n' +
+      '  登録をお願いするなら、この動画の中身と結びついた理由を1文添える（無理に入れない）。\n\n' +
       '■ 出力形式（JSON のみ）\n' +
       '{"opening":"3〜5文","blocks":[{"name":"15字以内","promise":"1文","mats":[1,2],"kaishuu":"1文","bridge":"1文"}],"ending":"2〜3文"}';
   }
@@ -15258,6 +15260,8 @@
       '- 材料は、出どころを会話の形で言う。確かさを言い分ける（「研究で分かってる」「そう報じられてる」「そう語られてきた」「僕の感覚だけど」）。\n' +
       '- 伝承・オカルトは、断定も否定もしない。「なぜそう語られてきたのか」を考える形にする。\n' +
       '- 途中で1回、自分に反論する（「いや、それって気のせいじゃない？って思うよね」）。\n' +
+      '- 2〜3分（約800〜1100字）ごとに、見ている人への問い（「〜って思わない？」）か意外な展開を1つ置く。問いには「？」を付ける。\n' +
+      '- 挨拶・自己紹介・チャンネル説明から始めない。今日わかることは最初の約200字までに言う。\n' +
       '- 数字は1つの段落に2つまで。\n' +
       '- 最初の2〜3文で、タイトルの約束を回収する（何の話か・何が分かるか）。\n\n' +
       '■ 返事\n台本だけを返す。前置きや説明を付けない。';
@@ -15272,6 +15276,8 @@
       '- thumbs：サムネ案3〜5。text（サムネの文字・15字以内）、picture（絵の中身1〜2文）、prompt（画像生成AIへのプロンプト。絵の中の文字は入れない）、why（なぜ目を引くか1文）。\n' +
       '  **サムネ単体で興味を引く。** タイトルは補助。答えは見せず、「何が起きているんだ？」と思わせる。\n' +
       '- titles：タイトル案10〜15。26字以内。**「【作業用】」「#番号」は絶対に使わない。** 型を混ぜる（体験型・逆説型・疑問型・数字型・不思議型）。\n' +
+      '  半分以上は「なぜ、〜のか」のように、見る人の悩みの場面を問う形にする（説明する題名より、問いを生む題名）。\n' +
+      '  **台本の最初の約200字で約束していることと同じ中身にする。** 冒頭で触れていない話だけを約束する題名は出さない。煽らない。\n' +
       '- **JSON は途中で切らずに最後まで書く。** 長くなりそうなら、prompt は英語で短くする。\n' +
       '- opening：開始数秒で言う2〜3文。サムネとタイトルの約束をここで回収する。\n' +
       '- tags：YouTube のタグを5〜8個（実際に台本で話している言葉）。\n\n' +
@@ -15779,13 +15785,28 @@
     if (salvagedB) notes.push('返事の JSON が途中で壊れていたので、読めたところだけ拾いました');
     return { text: '取り込みました：ブロック ' + blocks.length + (notes.length ? '（' + notes.join('・') + '）' : '') };
   }
+  const TORU_GREET_RE = /こんにちは|こんばんは|どうも|はじめまして|夜ふかしユタ|チャンネル/;
+  const TORU_PROMISE_RE = /今日は|今回は|この動画|話そう|話して|紹介|分かる|わかる|見ていく|考えていく/;
+  const TORU_OPEN_CHARS = 200;     // 約30秒
+  const TORU_QGAP_CHARS = 1100;    // 約3分。これより長く問いが無いと知らせる
   function toruScriptLint(text) {
     const t = String(text || '');
     const chars = t.replace(/^＃[^\n]*$/gm, '').replace(/\s/g, '').length;
     const heads = (t.match(/^＃[^\n]*$/gm) || []).length;
     const bad = {};
     TORU_BAD_WORDS.forEach((w) => { const n = (t.split(w).length - 1); if (n) bad[w] = n; });
-    return { chars, heads, bad };
+    // v20.104（段1）：冒頭と問いの間隔。見出し行と空白を除いた本文で数える（約380字で1分）
+    const body = t.replace(/^＃[^\n]*$/gm, '').replace(/\s/g, '');
+    const greet = TORU_GREET_RE.test(body.slice(0, 40));
+    const promise = TORU_PROMISE_RE.test(body.slice(0, TORU_OPEN_CHARS));
+    const qs = [];
+    body.replace(/[？?]/g, (m, i) => { qs.push(i); return m; });
+    let gap = 0, gapAt = '';
+    [0].concat(qs).forEach((p, i, arr) => {
+      const next = i + 1 < arr.length ? arr[i + 1] : body.length;
+      if (next - p > gap) { gap = next - p; gapAt = body.slice(i ? p + 1 : 0, (i ? p + 1 : 0) + 16); }
+    });
+    return { chars, heads, bad, greet, promise, questions: qs.length, gap, gapAt };
   }
   function toruScriptLintText(l, deck) {
     const parts = ['台本 約' + l.chars + '字', 'ブロックの見出し ' + l.heads];
@@ -15796,6 +15817,9 @@
     if (want && l.heads !== want) notes.push('ブロックは ' + want + 'つのはず');
     const b = Object.entries(l.bad);
     if (b.length) notes.push('使わないはずの言い方：' + b.map(([k, n]) => k + '×' + n).join('・'));
+    if (l.greet) notes.push('挨拶かチャンネルの説明から始まっている');
+    if (l.chars >= 500 && !l.promise) notes.push('最初の約30秒（' + TORU_OPEN_CHARS + '字）に「今日は〜」のような約束が見当たらない');
+    if (l.chars >= 500 && l.gap > TORU_QGAP_CHARS) notes.push('問い（？）の無いところが約' + Math.round(l.gap / 380) + '分続く（「' + l.gapAt + '…」から）');
     return parts.join('・') + (notes.length ? '（' + notes.join('／') + '）' : '');
   }
   function toruImportScript(deck, raw) {
