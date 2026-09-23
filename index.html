@@ -1911,6 +1911,13 @@
                 <p class="fieldNote" id="journalMigrateStatus"></p>
               </div>
               <div class="field">
+                <div class="statRow"><span>撮るの保存方式</span><span id="statToruMode"></span></div>
+                <p class="fieldNote">「1本1ファイル」は撮るの動画を toru/番号.json に1本ずつ置く方式（v20.108 から。自動で移ります）。端末には新しい10本と開いた動画を置き、一覧は全部出ます。戻せます。</p>
+                <button id="btnToruMigrate" class="secondaryBtn">撮るを1本1ファイルに移す</button>
+                <button id="btnToruRevert" class="secondaryBtn">撮るを記録の月ファイルに戻す</button>
+                <p class="fieldNote" id="toruMigrateStatus"></p>
+              </div>
+              <div class="field">
                 <div class="statRow"><span>言葉の保存方式</span><span id="statNotesMode"></span></div>
                 <p class="fieldNote">「月ファイル」は言葉を作成月ごとに notes/YYYY-MM.json に置く方式。端末には全件を持つので、網・相談は変わりません。</p>
                 <button id="btnNotesMigrate" class="secondaryBtn">言葉を月ファイル方式に移行</button>
@@ -3269,7 +3276,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.107';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.108';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -3606,6 +3613,9 @@
       // v7.2: 'yearly' = notes live in notes/YYYY.json files (by creation year)
       notesMode: parsed.notesMode === 'monthly' ? 'monthly' : parsed.notesMode === 'yearly' ? 'yearly' : 'legacy',
       notesModeAt: typeof parsed.notesModeAt === 'string' ? parsed.notesModeAt : '',
+      // v20.108：'split' = 撮るの動画は toru/<番号>.json に1本ずつ。'journal' = 記録の月ファイルの中（戻したとき）。'' = まだ移していない
+      toruMode: parsed.toruMode === 'split' ? 'split' : parsed.toruMode === 'journal' ? 'journal' : '',
+      toruModeAt: typeof parsed.toruModeAt === 'string' ? parsed.toruModeAt : '',
     };
   }
 
@@ -3690,6 +3700,17 @@
   for (const k of ['worldIndex', 'worldDirty', 'worldStamps', 'worldConcepts', 'worldTerms', 'worldStrata', 'worldActors', 'worldAsks', 'worldSources', 'worldForecasts', 'worldDigIndex', 'worldDigDirty', 'worldDigStamps']) { try { bootKV[k] = await kvGet(k); } catch (e) { bootKV[k] = null; } }
   bootKV.worldDigDocs = {};   // v20.43 自分で調べたこと：全部の月を読む（1件1〜3KB の見込み。大きくなったら月ごとに読む形に直す）
   try { (await kvGetAllPrefix('worldDig:')).forEach((v, k) => { bootKV.worldDigDocs[k.slice(9)] = v; }); } catch (e) {}
+  // v20.108 撮る：索引と、新しい TORU_KEEP 本・まだ送っていない動画だけ
+  for (const k of ['toruIndex', 'toruDirty', 'toruStamps']) { try { bootKV[k] = await kvGet(k); } catch (e) { bootKV[k] = null; } }
+  bootKV.toruDocs = {};
+  {
+    let tix = null, tdirty = [];
+    try { tix = JSON.parse(bootKV.toruIndex || 'null'); } catch (e) { tix = null; }
+    try { tdirty = JSON.parse(bootKV.toruDirty || '[]') || []; } catch (e) { tdirty = []; }
+    const rows = Object.entries((tix && tix.decks) || {}).filter(([, r]) => r && !r.deletedAt).sort((p, q) => (String(p[1].createdAt) < String(q[1].createdAt) ? 1 : -1));
+    const want = new Set([...rows.slice(0, 10).map(([id]) => id), ...tdirty]);
+    for (const id of want) { try { bootKV.toruDocs[id] = await kvGet('toru:' + id); } catch (e) { bootKV.toruDocs[id] = null; } }
+  }
   bootKV.worldDocs = {};
   {
     let wix = null;
@@ -4463,6 +4484,10 @@
     const nA = { mode: a.notesMode || 'legacy', at: a.notesModeAt || '' }, nB = { mode: b.notesMode || 'legacy', at: b.notesModeAt || '' };
     const nW = pickMode(nA, nB);
     merged.notesMode = nW.mode; merged.notesModeAt = nW.at;
+    // v20.108：撮るの方式も後から切り替えた方。同じ時刻なら1本1ファイルを採る
+    const tA = { mode: a.toruMode || '', at: a.toruModeAt || '' }, tB = { mode: b.toruMode || '', at: b.toruModeAt || '' };
+    const tW = tB.at > tA.at ? tB : tA.at > tB.at ? tA : (tB.mode === 'split' ? tB : tA);
+    merged.toruMode = tW.mode; merged.toruModeAt = tW.at;
     pruneDanglingLinks(merged);
     return merged;
   }
@@ -4704,6 +4729,13 @@
       if (notesSplit()) await notesSyncNow(token);
       repairLinksOnce();   // v20.92：言葉が全部そろった後に一度だけ
       if (journalMonthly()) await journalSyncNow(token);
+      // v20.108 撮る：まだなら一度だけ移す。移してあれば、記録に来た動画を取り込んでから同期
+      if (journalMonthly()) {
+        try {
+          if (!toruSplit()) await toruMigrate(token);
+          else { toruAdoptFromJournal(); await toruSyncNow(token); }
+        } catch (e) { recordSyncError(LAST_SYNC_ERROR_KEY, repoErrorMessage('撮る（toru/）', e)); }
+      }
       await worldSyncNow(token);
       try { await useStatsSync(token); } catch (e) { recordFeatureError('使った回数の同期', e); }   // v20.93
       localStorage.setItem(LAST_SYNC_KEY, nowIso());
@@ -5418,7 +5450,7 @@
   }
 
   // --- journal (v3): entry-level CRUD (legacy: data.json; monthly: journal/YYYY-MM.json) -
-  function findJournalEntry(id) { return data.journal.find((j) => j.id === id) || null; }
+  function findJournalEntry(id) { return data.journal.find((j) => j.id === id) || tr.decks.get(id) || null; }   // v20.108：撮るの動画は tr にも
 
   function generateJournalId() {
     const d = new Date();
@@ -5497,6 +5529,7 @@
   }
   function saveJournalEntry(entry) {
     entry.updatedAt = nowIso();
+    if (entry.kind === 'deck' && toruSplit()) { toruSaveDeck(entry); return entry; }   // v20.108
     const idx = data.journal.findIndex((j) => j.id === entry.id);
     if (idx === -1) data.journal.push(entry); else data.journal[idx] = entry;
     if (journalMonthly()) journalMonthChanged(monthOfDate(entry.date)); else saveData(data);
@@ -5504,6 +5537,7 @@
   }
 
   function deleteJournalEntry(id) {
+    if (toruSplit() && (tr.decks.has(id) || (tr.index && tr.index.decks[id]))) { toruDeleteDeck(id); return; }   // v20.108
     const entry = data.journal.find((j) => j.id === id);
     data.journal = data.journal.filter((j) => j.id !== id);
     const at = nowIso();
@@ -5518,6 +5552,226 @@
     data.deletedJournalIds = data.deletedJournalIds.filter((d) => d.id !== id);
     data.deletedJournalIds.push({ id, deletedAt: at });
     saveData(data);
+  }
+
+  // --- v20.108 撮る：動画1本＝1ファイル（toru/<番号>.json ＋ toru/index.json） ---------
+  // 前は記録の月ファイルの中にあり、1本約100KBの台本を直すたびに月ファイル丸ごとを書き直していた。
+  // また撮るの画面は端末に開いている記録の月しか見ないので、2か月前の動画が一覧から消えて見えた。
+  // 端末には新しい TORU_KEEP 本と開いた動画だけを置く。一覧は索引（1本1行の短い要約）から出す。
+  const TORU_INDEX_PATH = 'toru/index.json';
+  const TORU_KEEP = 10;
+  const tr = { index: null, decks: new Map(), dirty: new Set(), stamps: {}, busy: false, loading: new Map() };
+  function toruSplit() { return data.toruMode === 'split'; }
+  function toruPath(id) { return 'toru/' + id + '.json'; }
+  function emptyToruIndex() { return { version: 1, updatedAt: '', decks: {} }; }
+  function normalizeToruIndex(raw) {
+    const out = emptyToruIndex();
+    if (!raw || typeof raw !== 'object') return out;
+    out.updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : '';
+    Object.entries(raw.decks || {}).forEach(([id, v]) => {
+      if (!/^j_[\w-]+$/.test(id) || !v || typeof v !== 'object') return;
+      out.decks[id] = { updatedAt: String(v.updatedAt || ''), createdAt: String(v.createdAt || ''), date: String(v.date || ''), deletedAt: typeof v.deletedAt === 'string' ? v.deletedAt : '', sum: (v.sum && typeof v.sum === 'object') ? v.sum : {} };
+    });
+    return out;
+  }
+  function toruRowAt(r) { return r ? (r.deletedAt > r.updatedAt ? r.deletedAt : r.updatedAt) : ''; }
+  function mergeToruIndex(a, b) {
+    const out = emptyToruIndex();
+    new Set([...Object.keys(a.decks), ...Object.keys(b.decks)]).forEach((id) => { const x = a.decks[id], y = b.decks[id]; out.decks[id] = (x && y) ? (toruRowAt(y) > toruRowAt(x) ? y : x) : (x || y); });
+    out.updatedAt = a.updatedAt > b.updatedAt ? a.updatedAt : b.updatedAt;
+    return out;
+  }
+  // 一覧に出す短い要約（開かなくても一覧と日の記録に出せるように）
+  function toruSum(d) { return { head: deckHeadline(d).slice(0, 80), cards: deckLiveCards(d).length, status: d.status === 'shot' ? 'shot' : 'draft', text: d.text ? noteSnippet(d.text, 40) : '' }; }
+  function toruRow(d) { return { updatedAt: d.updatedAt, createdAt: d.createdAt || d.updatedAt, date: d.date, deletedAt: '', sum: toruSum(d) }; }
+  function toruLiveRows() { return Object.entries((tr.index && tr.index.decks) || {}).filter(([, r]) => !r.deletedAt).map(([id, r]) => ({ id, ...r })).sort((p, q) => (p.createdAt < q.createdAt ? 1 : -1)); }
+  function toruRecentIds() { return new Set(toruLiveRows().slice(0, TORU_KEEP).map((r) => r.id)); }
+  // 一覧の1行：開いている動画はそのもの、ほかは要約から
+  function toruListItems(dateStr) {
+    return toruLiveRows().filter((r) => !dateStr || r.date === dateStr).map((r) => tr.decks.get(r.id) || { stub: true, id: r.id, date: r.date, head: r.sum.head || '（空のデッキ）', cards: r.sum.cards || 0, status: r.sum.status || 'draft', text: r.sum.text || '' });
+  }
+  function deckRowHead(d) { return d.stub ? d.head : deckHeadline(d); }
+  function deckRowCards(d) { return d.stub ? d.cards : deckLiveCards(d).length; }
+  function deckRowText(d) { return d.stub ? d.text : (d.text ? noteSnippet(d.text, 40) : ''); }
+  function persistToruIndex() { return kvSet('toruIndex', JSON.stringify(tr.index || emptyToruIndex())).catch(() => {}); }
+  function persistToruDirty() { return kvSet('toruDirty', JSON.stringify([...tr.dirty])).catch(() => {}); }
+  function persistToruStamps() { return kvSet('toruStamps', JSON.stringify(tr.stamps)).catch(() => {}); }
+  function toruPersistDeck(d) {
+    return kvSet('toru:' + d.id, JSON.stringify(d)).catch(() => { localSaveError = '端末に保存できませんでした（クラウドには同期します）'; recordSyncError(LAST_SYNC_ERROR_KEY, localSaveError); renderSyncBar(); });
+  }
+  // 直した（updatedAt はもう進めてある）
+  function toruSaveDeck(d, quiet) {
+    if (!tr.index) tr.index = emptyToruIndex();
+    tr.decks.set(d.id, d);
+    tr.index.decks[d.id] = toruRow(d);
+    tr.index.updatedAt = nowIso();
+    toruPersistDeck(d); persistToruIndex();
+    tr.dirty.add(d.id); bumpSyncGen('toru:' + d.id); persistToruDirty();
+    if (quiet) return;
+    pendingChangeCount++;
+    scheduleSync();
+  }
+  function toruDeleteDeck(id) {
+    if (!tr.index) tr.index = emptyToruIndex();
+    const at = nowIso();
+    const row = tr.index.decks[id] || { createdAt: at, date: todayStr(), sum: {} };
+    tr.index.decks[id] = { ...row, updatedAt: at, deletedAt: at };
+    tr.index.updatedAt = at;
+    tr.decks.delete(id); kvDel('toru:' + id).catch(() => {});
+    persistToruIndex();
+    tr.dirty.add(id); bumpSyncGen('toru:' + id); persistToruDirty();
+    pendingChangeCount++;
+    scheduleSync();
+  }
+  // 端末に無い動画を開く：端末の控え → 索引と日時が違えば GitHub
+  function loadToruDeck(id) {
+    if (tr.decks.has(id)) return Promise.resolve(tr.decks.get(id));
+    if (tr.loading.has(id)) return tr.loading.get(id);
+    const p = (async () => {
+      let d = null;
+      try { const raw = await kvGet('toru:' + id); if (raw) d = normalizeJournalEntry(JSON.parse(raw)); } catch (e) {}
+      const row = tr.index && tr.index.decks[id];
+      const token = getGhToken();
+      if (!(d && row && d.updatedAt === row.updatedAt) && token && navigator.onLine) {
+        try {
+          const r = await ghGetContents(GITHUB_REPO, toruPath(id), token);
+          if (r.text) { const rd = normalizeJournalEntry(JSON.parse(r.text)); if (!d || new Date(rd.updatedAt) > new Date(d.updatedAt)) d = rd; }
+        } catch (e) { recordSyncError(LAST_SYNC_ERROR_KEY, repoErrorMessage('撮る（' + toruPath(id) + '）', e)); renderSyncBar(); }
+      }
+      if (d && !tr.decks.has(id) && !(row && row.deletedAt)) { tr.decks.set(id, d); toruPersistDeck(d); tr.stamps[id] = d.updatedAt; persistToruStamps(); }
+      return tr.decks.get(id) || null;
+    })().finally(() => tr.loading.delete(id));
+    tr.loading.set(id, p);
+    return p;
+  }
+  function toruBoot() {
+    try { tr.index = normalizeToruIndex(JSON.parse(bootKV.toruIndex || 'null')); } catch (e) { tr.index = emptyToruIndex(); }
+    try { JSON.parse(bootKV.toruDirty || '[]').forEach((id) => tr.dirty.add(id)); } catch (e) {}
+    try { tr.stamps = JSON.parse(bootKV.toruStamps || '{}') || {}; } catch (e) { tr.stamps = {}; }
+    Object.entries(bootKV.toruDocs || {}).forEach(([id, raw]) => {
+      const row = tr.index.decks[id];
+      if (!raw || (row && row.deletedAt)) return;
+      try { tr.decks.set(id, normalizeJournalEntry(JSON.parse(raw))); } catch (e) {}
+    });
+    toruAdoptFromJournal();
+  }
+  // 1本：取って合わせて、違えば送る（新しい方が丸ごと勝つ。記録の1件と同じ決まり）
+  async function toruSyncDeck(token, id, attempt) {
+    const row = tr.index.decks[id];
+    const gen0 = syncGenOf('toru:' + id);
+    if (row && row.deletedAt) { if (syncGenOf('toru:' + id) === gen0) tr.dirty.delete(id); tr.stamps[id] = row.updatedAt; return; }
+    const remote = await ghGetContents(GITHUB_REPO, toruPath(id), token);
+    let rd = null;
+    try { if (remote.text) rd = normalizeJournalEntry(JSON.parse(remote.text)); } catch (e) {}
+    const ld = tr.decks.get(id) || null;
+    const w = ld && rd ? (new Date(ld.updatedAt) >= new Date(rd.updatedAt) ? ld : rd) : (ld || rd);
+    if (!w) { tr.dirty.delete(id); return; }
+    if (w !== ld) { tr.decks.set(id, w); await toruPersistDeck(w); }
+    tr.index.decks[id] = toruRow(w);
+    if (!rd || rd.updatedAt !== w.updatedAt) {
+      try { await ghPutJson(toruPath(id), w, remote.sha, 'toru ' + id); }
+      catch (e) { if (e.status === 409 && !attempt) return toruSyncDeck(token, id, 1); throw e; }
+    }
+    if (syncGenOf('toru:' + id) === gen0) tr.dirty.delete(id);
+    tr.stamps[id] = w.updatedAt;
+  }
+  async function toruSyncNow(token, force) {
+    if (tr.busy || (!toruSplit() && !force)) return;
+    tr.busy = true;
+    try {
+      if (!tr.index) tr.index = emptyToruIndex();
+      const ri = await ghGetContents(GITHUB_REPO, TORU_INDEX_PATH, token);
+      let remote = emptyToruIndex();
+      try { if (ri.text) remote = normalizeToruIndex(JSON.parse(ri.text)); } catch (e) {}
+      tr.index = mergeToruIndex(tr.index, remote);
+      // 触る動画：ここで直したもの、別の端末で変わって端末に置いているもの、新しい TORU_KEEP 本でまだ持っていないもの
+      const recent = toruRecentIds();
+      const ids = new Set([...tr.dirty]);
+      Object.entries(tr.index.decks).forEach(([id, r]) => {
+        if (r.deletedAt) { if (tr.decks.has(id)) { tr.decks.delete(id); kvDel('toru:' + id).catch(() => {}); } return; }
+        if ((tr.decks.has(id) || recent.has(id)) && r.updatedAt !== (tr.stamps[id] || '')) ids.add(id);
+      });
+      for (const id of [...ids].sort()) await toruSyncDeck(token, id);
+      persistToruIndex(); persistToruDirty(); persistToruStamps();
+      const sig = (ix) => JSON.stringify(Object.keys(ix.decks).sort().map((id) => [id, ix.decks[id].updatedAt, ix.decks[id].deletedAt]));
+      if (sig(tr.index) !== sig(remote)) {
+        tr.index.updatedAt = nowIso();
+        try { await ghPutJson(TORU_INDEX_PATH, tr.index, ri.sha, 'toru index'); }
+        catch (e) {
+          if (e.status !== 409) throw e;
+          const ri2 = await ghGetContents(GITHUB_REPO, TORU_INDEX_PATH, token);
+          let r2 = emptyToruIndex(); try { if (ri2.text) r2 = normalizeToruIndex(JSON.parse(ri2.text)); } catch (e2) {}
+          tr.index = mergeToruIndex(tr.index, r2);
+          await ghPutJson(TORU_INDEX_PATH, tr.index, ri2.sha, 'toru index');
+        }
+        persistToruIndex();
+      }
+      if (ids.size && nav.screen === 'shoot') renderShoot();
+    } finally { tr.busy = false; }
+  }
+  // 記録の月に残っている動画（前の版の端末が書いたもの・移す前のもの）を、新しければ取り込み、記録からは消す
+  function toruAdoptFromJournal() {
+    if (!toruSplit() || !journalMonthly()) return 0;
+    const decks = data.journal.filter((j) => j.kind === 'deck');
+    if (!decks.length) return 0;
+    const at = nowIso();
+    const months = new Set();
+    decks.forEach((j) => {
+      const cur = tr.decks.get(j.id), row = tr.index && tr.index.decks[j.id];
+      const curAt = cur ? cur.updatedAt : toruRowAt(row);
+      if (!curAt || new Date(j.updatedAt) > new Date(curAt)) toruSaveDeck(j, true);
+      const m = monthOfDate(j.date);
+      if (!jm.tombs.has(m)) jm.tombs.set(m, new Map());
+      jm.tombs.get(m).set(j.id, at > j.updatedAt ? at : j.updatedAt);
+      months.add(m);
+    });
+    data.journal = data.journal.filter((j) => j.kind !== 'deck');
+    months.forEach((m) => journalMonthChanged(m));
+    return decks.length;
+  }
+  function toruStatus(t) { const el = document.getElementById('toruMigrateStatus'); if (el) el.textContent = t; }
+  // 移す：記録の全部の月から動画を集めて1本ずつ送り、送れてから記録から消す
+  async function toruMigrate(token, manual) {
+    if (!journalMonthly() || toruSplit()) return;
+    if (!manual && data.toruMode === 'journal') return;   // 戻したあとは、ボタンを押すまで移さない
+    toruStatus('記録の月を読み込み中…');
+    await ensureJournalMonths(Object.keys((jm.index && jm.index.months) || {}));
+    const decks = data.journal.filter((j) => j.kind === 'deck');
+    toruStatus('動画 ' + decks.length + '本を送っています…');
+    if (!tr.index) tr.index = emptyToruIndex();
+    decks.forEach((j) => { const row = tr.index.decks[j.id]; if (!row || new Date(j.updatedAt) > new Date(toruRowAt(row))) toruSaveDeck(j, true); });
+    await toruSyncNow(token, true);
+    data.toruMode = 'split'; data.toruModeAt = nowIso();
+    saveData(data);
+    const n = toruAdoptFromJournal();
+    toruStatus('1本1ファイルにしました（' + decks.length + '本。記録から外した ' + n + '本）。');
+  }
+  // 戻す：全部の動画を読み込み、記録の月ファイルに入れ直す（toru/ のファイルは残す）
+  async function toruRevert() {
+    if (!toruSplit()) return;
+    if (!confirm('撮るの動画を、記録の月ファイルに戻します（toru/ のファイルは残ります）。よろしいですか？')) return;
+    try {
+      const rows = toruLiveRows();
+      toruStatus('動画 ' + rows.length + '本を読み込み中…');
+      for (const r of rows) await loadToruDeck(r.id);
+      const decks = rows.map((r) => tr.decks.get(r.id)).filter(Boolean);
+      if (decks.length < rows.length) throw new Error('読み込めなかった動画が ' + (rows.length - decks.length) + '本あります。通信を確かめてもう一度');
+      const months = [...new Set(decks.map((d) => monthOfDate(d.date)))];
+      await ensureJournalMonths(months);
+      data.toruMode = 'journal'; data.toruModeAt = nowIso();
+      const at = nowIso();
+      decks.forEach((d) => {
+        d.updatedAt = at;   // 記録の側の「消した」印より新しくする
+        const i = data.journal.findIndex((j) => j.id === d.id);
+        if (i >= 0) data.journal[i] = d; else data.journal.push(d);
+        const m = monthOfDate(d.date); if (jm.tombs.has(m)) jm.tombs.get(m).delete(d.id);
+      });
+      tr.decks.clear();
+      months.forEach((m) => journalMonthChanged(m));
+      saveData(data);
+      toruStatus('記録の月ファイルに戻しました（' + decks.length + '本）。');
+      if (nav.screen === 'settings') openSettings();
+    } catch (e) { toruStatus('戻せませんでした：' + e.message); }
   }
 
   // --- 記録の月ファイル (v6.0) ------------------------------------------------
@@ -5647,6 +5901,7 @@
   async function ensureJournalMonths(months) {
     if (!journalMonthly()) return;
     await Promise.all(months.filter((m) => !jm.loaded.has(m)).map((m) => loadJournalMonth(m)));
+    toruAdoptFromJournal();   // v20.108：古い月に残っていた動画
   }
   function monthSignature(doc) { return doc.entries.map((j) => j.id + ':' + j.updatedAt).sort().join('|') + '#' + doc.deletedIds.map((t) => t.id + ':' + t.deletedAt).sort().join('|'); }
   async function ghPutJson(path, obj, sha, message) {
@@ -12038,7 +12293,7 @@
     if (drawEntries.length) { any = true; body.appendChild(renderDayDrawCard(drawEntries)); }
     const readEntries = data.journal.filter((j) => j.kind === 'read' && j.date === dateStr);
     if (readEntries.length) { any = true; body.appendChild(renderDayReadCard(readEntries)); }
-    const deckEntriesToday = data.journal.filter((j) => j.kind === 'deck' && j.date === dateStr);
+    const deckEntriesToday = toruSplit() ? toruListItems(dateStr) : data.journal.filter((j) => j.kind === 'deck' && j.date === dateStr);   // v20.108
     if (deckEntriesToday.length) { any = true; body.appendChild(renderDayDeckCard(deckEntriesToday)); }
 
     const worldCard = renderDayWorldCard(dateStr);
@@ -13423,6 +13678,9 @@
     document.getElementById('statJournalMode').textContent = journalMonthly() ? `月ファイル（${jm.index ? Object.keys(jm.index.months).length : 0} か月、読み込み中 ${jm.loaded.size} か月）` : 'data.json（旧方式）';
     document.getElementById('btnJournalMigrate').hidden = journalMonthly();
     document.getElementById('btnJournalRevert').hidden = !journalMonthly();
+    { const rows = toruLiveRows(); document.getElementById('statToruMode').textContent = toruSplit() ? `1本1ファイル（${rows.length} 本、端末に ${tr.decks.size} 本、未同期 ${tr.dirty.size}）` : (data.toruMode === 'journal' ? '記録の月ファイル（戻した）' : '記録の月ファイル（次の同期で移ります）'); }   // v20.108
+    document.getElementById('btnToruMigrate').hidden = toruSplit() || !journalMonthly();
+    document.getElementById('btnToruRevert').hidden = !toruSplit();
     document.getElementById('statNotesMode').textContent = notesSplit() ? `月ファイル（${Object.keys(nm.monthJson).length} か月分、未同期 ${nm.dirty.size}）` : 'data.json（旧方式）';
     document.getElementById('btnNotesMigrate').hidden = notesSplit();
     document.getElementById('btnNotesRevert').hidden = !notesSplit();
@@ -13665,6 +13923,8 @@
   document.getElementById('btnNotesMigrate').addEventListener('click', () => migrateNotesToMonthly());
   document.getElementById('btnNotesRevert').addEventListener('click', () => revertNotesToLegacy());
   document.getElementById('btnJournalRevert').addEventListener('click', () => revertJournalToLegacy());
+  document.getElementById('btnToruMigrate').addEventListener('click', () => { const t = getGhToken(); if (!t || !navigator.onLine) { toruStatus('オンラインで押してください。'); return; } toruMigrate(t, true).catch((e) => toruStatus('移せませんでした：' + e.message)); });   // v20.108
+  document.getElementById('btnToruRevert').addEventListener('click', () => toruRevert());
   document.getElementById('btnClearLegacyStorage').addEventListener('click', () => {
     if (!confirm('localStorage に残っている古い形式のコピー（言葉・散歩・筋トレ）を消します。IndexedDB のデータはそのままです。よろしいですか？')) return;
     [STORAGE_KEY, BACKUP_KEY, WALK_STORAGE_KEY, WALK_BACKUP_KEY, TRAINING_STORAGE_KEY].forEach((k) => { try { localStorage.removeItem(k); } catch (e) {} });
@@ -14330,7 +14590,8 @@
     if (/^[a-z][a-z0-9+.-]*:/i.test(t)) return '';   // javascript:, data:, ... never
     return 'https://' + t;
   }
-  function deckEntries() { return data.journal.filter((j) => j.kind === 'deck').sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)); }
+  // v20.108：1本1ファイルのときは端末に置いている動画（新しい10本と開いた動画）。一覧は toruListItems から
+  function deckEntries() { return (toruSplit() ? [...tr.decks.values()] : data.journal.filter((j) => j.kind === 'deck')).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)); }
   function findDeck(id) { const j = findJournalEntry(id); return j && j.kind === 'deck' ? j : null; }
   function deckQuestionTextOf(q) { return q ? (q.scene ? q.scene + ' ' + (q.ask || '') : q.text || '') : ''; }
   function deckCards(deck) { return (deck.cards || []).slice().sort((a, b) => a.order - b.order || (a.id < b.id ? -1 : 1)); }
@@ -14377,7 +14638,14 @@
     syncAllNow().then(() => { if (nav.screen === 'shoot' && !shootState.deckId) renderShoot(); }).catch(() => {});
   }
   function openDeck(id) {
-    if (!findDeck(id)) return;
+    if (!findDeck(id)) {
+      // v20.108：端末に置いていない古い動画は読み込んでから開く
+      if (toruSplit() && tr.index && tr.index.decks[id]) {
+        const note = document.getElementById('shootSyncNote'); if (note) note.textContent = '動画を読み込んでいます…';
+        loadToruDeck(id).then((d) => { if (d) openDeck(id); else if (note) note.textContent = '動画を読み込めませんでした（通信を確かめてください）。'; });
+      }
+      return;
+    }
     if (shootState.deckId !== id) { shootState.consult = null; shootState.consultOpen = false; shootState.consultFilledFor = null; shootState.hookCandidates = []; shootState.labelMode = false; shootState.noteReadFor = null; }
     shootState.deckId = id; shootState.filledFor = null; shootState.pickerOpen = false;
     if (nav.screen !== 'shoot') showScreen('shoot');
@@ -14412,9 +14680,9 @@
     document.getElementById('shootSyncNote').textContent = shootSyncLine() + '　（他の端末で作ったデッキは「同期」で出ます）';
     const wrap = document.getElementById('shootDeckList');
     wrap.innerHTML = '';
-    const list = deckEntries();
+    const list = toruSplit() ? toruListItems() : deckEntries();   // v20.108：一覧は索引から（端末に無い古い動画も出る）
     document.getElementById('shootDeckEmpty').hidden = list.length > 0;
-    list.slice(0, 30).forEach((d) => {
+    list.slice(0, toruSplit() ? list.length : 30).forEach((d) => {
       const row = document.createElement('div');
       row.className = 'deckRow';
       const top = document.createElement('div');
@@ -14423,14 +14691,14 @@
       left.textContent = dotDate(d.date);
       top.appendChild(left);
       const right = document.createElement('span');
-      right.textContent = `カード ${deckLiveCards(d).length}枚` + (d.status === 'shot' ? '　撮った' : '');
+      right.textContent = `カード ${deckRowCards(d)}枚` + (d.status === 'shot' ? '　撮った' : '');
       top.appendChild(right);
       row.appendChild(top);
       const t = document.createElement('div');
       t.className = 'deckRowText';
-      t.textContent = deckHeadline(d);
+      t.textContent = deckRowHead(d);
       row.appendChild(t);
-      if (d.text) { const a = document.createElement('div'); a.className = 'deckRowAnswer'; a.textContent = '仮の答え ・ ' + noteSnippet(d.text, 40); row.appendChild(a); }
+      if (deckRowText(d)) { const a = document.createElement('div'); a.className = 'deckRowAnswer'; a.textContent = '仮の答え ・ ' + deckRowText(d); row.appendChild(a); }
       row.addEventListener('click', () => openDeck(d.id));
       wrap.appendChild(row);
     });
@@ -16297,9 +16565,9 @@
     entries.forEach((d) => {
       const row = document.createElement('div');
       row.className = 'listItem'; row.style.cursor = 'pointer';
-      const t = document.createElement('div'); t.className = 'liText'; t.textContent = deckHeadline(d); row.appendChild(t);
+      const t = document.createElement('div'); t.className = 'liText'; t.textContent = deckRowHead(d); row.appendChild(t);
       const b = document.createElement('div'); b.className = 'liBottomRow';
-      b.textContent = `カード ${deckLiveCards(d).length}枚` + (d.status === 'shot' ? ' ・ 撮った' : ' ・ 準備中');
+      b.textContent = `カード ${deckRowCards(d)}枚` + (d.status === 'shot' ? ' ・ 撮った' : ' ・ 準備中');
       row.appendChild(b);
       row.addEventListener('click', () => openDeck(d.id));
       item.appendChild(row);
@@ -32246,6 +32514,7 @@
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); } catch (e) {}   // v20.94
   notesBoot();
   journalBoot();
+  toruBoot();   // v20.108
   meditationBoot();
   worldBoot();
   // v20.90：一度だけ、端末に読み込んである月（年）と1ファイル物を全部「未送信」にして送り直す。
