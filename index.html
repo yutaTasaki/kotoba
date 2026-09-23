@@ -2217,6 +2217,10 @@
             <a href="https://platform.claude.com" target="_blank" rel="noopener" class="secondaryBtn usageConsoleLink">Anthropic コンソールで実際の使用量を見る</a>
           </div>
           <div class="field statsField">
+            <span class="fieldLabel">使った回数（画面とボタン）</span>
+            <div id="useStatsBox"></div>
+          </div>
+          <div class="field statsField">
             <span class="fieldLabel">数</span>
             <div class="statRow"><span>言葉の数</span><span id="statNoteCount"></span></div>
             <div class="statRow"><span>タグ数</span><span id="statTagCount"></span></div>
@@ -3312,7 +3316,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.92';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.93';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -3754,6 +3758,175 @@
   const syncGen = new Map();
   function bumpSyncGen(k) { syncGen.set(k, (syncGen.get(k) || 0) + 1); }
   function syncGenOf(k) { return syncGen.get(k) || 0; }
+
+  // ---- v20.93 使った回数（見直しの提案7） -------------------------------------
+  // 画面を開いた回数・世界の中の画面・ボタンを押した回数と、最後に使った日。中身（書いた文など）は記録しない。
+  // この端末の分を月ごとに持ち（直近3か月）、GitHub の stats/YYYY-MM.json の自分の欄だけに書く（相手の欄には触らない）。
+  // 送るのは同期のついでに、最大30分に1回（数えるたびに書くと、書き込みの記録が増えすぎる）
+  const USE_STATS_KEY = 'kotoba_useStats';
+  const USE_STATS_PUSH_MS = 30 * 60 * 1000;
+  const USE_STATS_UNUSED_DAYS = 30;
+  const useStatsPath = (m) => 'stats/' + m + '.json';
+  const useStats = (() => {
+    const st = { months: {}, dirty: new Set(), since: '', remote: {}, pushedAt: 0, fetched: new Set(), busy: false, timer: null, lastWorldView: null };
+    try {
+      const raw = JSON.parse(localStorage.getItem(USE_STATS_KEY) || 'null');
+      if (raw && typeof raw === 'object') {
+        if (raw.months && typeof raw.months === 'object') st.months = raw.months;
+        (Array.isArray(raw.dirty) ? raw.dirty : []).forEach((m) => st.dirty.add(m));
+        st.since = typeof raw.since === 'string' ? raw.since : '';
+        if (raw.remote && typeof raw.remote === 'object') st.remote = raw.remote;
+        st.pushedAt = Number(raw.pushedAt) || 0;
+      }
+    } catch (e) {}
+    return st;
+  })();
+  function saveUseStatsNow() {
+    try {
+      const keep = Object.keys(useStats.months).sort().slice(-3);
+      const months = {}; keep.forEach((m) => { months[m] = useStats.months[m]; });
+      useStats.months = months;
+      const rkeep = Object.keys(useStats.remote).sort().slice(-2);
+      const remote = {}; rkeep.forEach((m) => { remote[m] = useStats.remote[m]; });
+      useStats.remote = remote;
+      localStorage.setItem(USE_STATS_KEY, JSON.stringify({ months, dirty: [...useStats.dirty], since: useStats.since, remote, pushedAt: useStats.pushedAt }));
+    } catch (e) {}
+  }
+  function countUse(key) {
+    try {
+      const d = todayStr(), m = d.slice(0, 7);
+      const mo = useStats.months[m] || (useStats.months[m] = { counts: {}, last: {} });
+      mo.counts[key] = (mo.counts[key] || 0) + 1;
+      mo.last[key] = d;
+      if (!useStats.since) useStats.since = d;
+      useStats.dirty.add(m); bumpSyncGen('use:' + m);
+      if (useStats.timer) clearTimeout(useStats.timer);
+      useStats.timer = setTimeout(saveUseStatsNow, 1500);
+    } catch (e) {}
+  }
+  // 押したボタン：名前（id）があれば1つずつ、無ければ置き場所と種類でまとめて
+  document.addEventListener('click', (e) => {
+    const b = e.target && e.target.closest ? e.target.closest('button') : null;
+    if (!b) return;
+    if (b.id) { countUse('b:' + b.id); return; }
+    const host = b.parentElement && b.parentElement.closest('[id]');
+    countUse('d:' + (host ? host.id : '') + '.' + (b.classList[0] || 'button'));
+  }, true);
+  async function useStatsSync(token) {
+    if (useStats.busy) return;
+    useStats.busy = true;
+    try {
+      const cur = todayStr().slice(0, 7), prev = monthOfDate(addDays(todayStr(), -USE_STATS_UNUSED_DAYS));
+      const pushNow = Date.now() - useStats.pushedAt >= USE_STATS_PUSH_MS;
+      const months = new Set(pushNow ? [...useStats.dirty] : []);
+      [cur, prev].forEach((m) => { if (!useStats.fetched.has(m)) months.add(m); });   // 表示のために、開いてから一度だけ取りに行く
+      let pushed = false;
+      for (const m of [...months].sort()) {
+        const gen0 = syncGenOf('use:' + m);
+        const got = await ghGetContents(GITHUB_REPO, useStatsPath(m), token);
+        let doc = { version: 1, month: m, devices: {} };
+        try { if (got.text) { const p = JSON.parse(got.text); if (p && p.devices && typeof p.devices === 'object') doc = { version: 1, month: m, devices: p.devices }; } } catch (e) {}
+        const mine = useStats.months[m];
+        if (pushNow && mine && useStats.dirty.has(m)) {
+          const id = getDeviceId();
+          const next = { label: getDeviceLabel(), counts: mine.counts, last: mine.last };
+          const had = doc.devices[id] ? { label: doc.devices[id].label, counts: doc.devices[id].counts, last: doc.devices[id].last } : null;
+          if (JSON.stringify(had) !== JSON.stringify(next)) {
+            doc.devices[id] = Object.assign({}, next, { at: nowIso() });
+            try { await ghPutJson(useStatsPath(m), doc, got.sha, 'stats ' + m); }
+            catch (e) {
+              if (e.status !== 409) throw e;
+              const g2 = await ghGetContents(GITHUB_REPO, useStatsPath(m), token);
+              let d2 = { version: 1, month: m, devices: {} };
+              try { if (g2.text) { const p2 = JSON.parse(g2.text); if (p2 && p2.devices) d2.devices = p2.devices; } } catch (e2) {}
+              d2.devices[id] = doc.devices[id]; doc = d2;
+              await ghPutJson(useStatsPath(m), doc, g2.sha, 'stats ' + m);
+            }
+            pushed = true;
+          }
+          if (syncGenOf('use:' + m) === gen0) useStats.dirty.delete(m);
+        }
+        useStats.remote[m] = doc;
+        useStats.fetched.add(m);
+      }
+      if (pushNow && (pushed || !useStats.dirty.size)) useStats.pushedAt = Date.now();
+      saveUseStatsNow();
+    } finally { useStats.busy = false; }
+  }
+  // 2台ぶんを合わせる（自分の欄は、送る前の新しい手元の数を使う）
+  function useStatsCombined() {
+    const id = getDeviceId();
+    const counts = {}, monthCounts = {}, last = {};
+    const months = new Set([...Object.keys(useStats.remote), ...Object.keys(useStats.months)]);
+    months.forEach((m) => {
+      const devs = Object.assign({}, ((useStats.remote[m] || {}).devices) || {});
+      if (useStats.months[m]) devs[id] = useStats.months[m];
+      monthCounts[m] = {};
+      Object.values(devs).forEach((d) => {
+        Object.entries((d && d.counts) || {}).forEach(([k, n]) => { monthCounts[m][k] = (monthCounts[m][k] || 0) + (Number(n) || 0); counts[k] = (counts[k] || 0) + (Number(n) || 0); });
+        Object.entries((d && d.last) || {}).forEach(([k, day]) => { if (!last[k] || day > last[k]) last[k] = day; });
+      });
+    });
+    return { counts, monthCounts, last };
+  }
+  const USE_WORLD_VIEW_LABEL = { main: '最初の画面', import: '取り込む', concept: '概念', stratum: '地層', ask: '知りたいこと', cards: '札の一覧', actors: '主体', dig: '調べたこと', forecast: '予告', kiji: '記事づくり', mags: 'マガジン', map: '地図', miki: '幹', net: '国どうしのお金', tidy: '整理' };
+  function useScreenTitle(el) {
+    if (el && el.closest('#globalBottomNav')) return '下のナビ';
+    const sc = el && el.closest('section.screen, .drawOverlay');
+    const t = sc && sc.querySelector('.topbar-title');
+    return t ? t.textContent.trim() : (sc ? sc.id.replace(/^screen-/, '') : '');
+  }
+  function useKeyLabel(key) {
+    const t = key.slice(0, 2), rest = key.slice(2);
+    if (t === 's:') { const h = document.querySelector('#screen-' + rest + ' .topbar-title'); return '画面：' + (h ? h.textContent.trim() : rest); }
+    if (t === 'w:') return '世界：' + (USE_WORLD_VIEW_LABEL[rest] || rest);
+    if (t === 'b:') {
+      const b = document.getElementById(rest);
+      const name = b ? ((b.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 24) || b.title || rest) : rest;
+      const where = b ? useScreenTitle(b) : '';
+      return (where ? where + '　' : '') + name;
+    }
+    return 'ほかのボタン：' + rest;
+  }
+  function useStatsText() {
+    const c = useStatsCombined();
+    const L = ['使った回数（数え始め ' + (useStats.since || '—') + '・' + todayStr() + ' 時点・2台の合計）'];
+    Object.keys(c.counts).sort((a, b) => c.counts[b] - c.counts[a]).forEach((k) => L.push(c.counts[k] + '\t' + (c.last[k] || '') + '\t' + useKeyLabel(k) + '\t' + k));
+    return L.join('\n');
+  }
+  function renderUseStats() {
+    const box = document.getElementById('useStatsBox');
+    if (!box) return;
+    box.innerHTML = '';
+    const el = (tag, cls, text) => { const x = document.createElement(tag); if (cls) x.className = cls; if (text != null) x.textContent = text; return x; };
+    const c = useStatsCombined();
+    const cur = todayStr().slice(0, 7);
+    const since = useStats.since;
+    const days = since ? Math.round((parseDateStr(todayStr()) - parseDateStr(since)) / 86400000) : 0;
+    box.appendChild(el('p', 'fieldNote', since
+      ? '数え始め：' + since + '（' + days + '日目）。' + (days < USE_STATS_UNUSED_DAYS ? USE_STATS_UNUSED_DAYS + '日たつまでは「使っていない」は判断材料になりません。' : '')
+      : 'まだ数えていません。'));
+    const top = Object.entries(c.monthCounts[cur] || {}).sort((a, b) => b[1] - a[1]).slice(0, 15);
+    box.appendChild(el('div', 'kjGroup', '今月よく使ったもの'));
+    if (!top.length) box.appendChild(el('div', 'kjSub', 'まだありません'));
+    top.forEach(([k, n]) => { const r = el('div', 'statRow'); r.appendChild(el('span', '', useKeyLabel(k))); r.appendChild(el('span', '', n + '回')); box.appendChild(r); });
+    // 名前の付いたボタンと画面のうち、30日使っていないもの（画面ごとにまとめる）
+    const cut = addDays(todayStr(), -USE_STATS_UNUSED_DAYS);
+    const unused = new Map();
+    const push = (group, label) => { if (!unused.has(group)) unused.set(group, []); unused.get(group).push(label); };
+    document.querySelectorAll('button[id]').forEach((b) => { const k = 'b:' + b.id; if (!c.last[k] || c.last[k] < cut) push(useScreenTitle(b) || 'そのほか', useKeyLabel(k).replace(/^.*?　/, '')); });
+    document.querySelectorAll('section.screen[id^="screen-"]').forEach((sc) => { const k = 's:' + sc.id.slice(7); if (!c.last[k] || c.last[k] < cut) push('画面', useKeyLabel(k).replace(/^画面：/, '')); });
+    Object.keys(USE_WORLD_VIEW_LABEL).forEach((v) => { const k = 'w:' + v; if (!c.last[k] || c.last[k] < cut) push('世界の中の画面', USE_WORLD_VIEW_LABEL[v]); });
+    const total = [...unused.values()].reduce((a, x) => a + x.length, 0);
+    const det = el('details', 'kjPreview');
+    det.appendChild(el('summary', '', USE_STATS_UNUSED_DAYS + '日使っていないもの ' + total + '（画面ごと）'));
+    [...unused.entries()].sort((a, b) => b[1].length - a[1].length).forEach(([g, list]) => { det.appendChild(el('div', 'kjGroup', g + '（' + list.length + '）')); det.appendChild(el('div', 'kjSub', list.join('・'))); });
+    box.appendChild(det);
+    const copy = el('button', 'secondaryBtn', '一覧をコピー'); copy.type = 'button';
+    const st = el('p', 'fieldNote', '');
+    copy.addEventListener('click', async () => { const ok = await copyToClipboard(useStatsText()); st.textContent = ok ? 'コピーしました。' : 'コピーできませんでした。'; });
+    box.appendChild(copy); box.appendChild(st);
+  }
   function notesSplit() { return data.notesMode === 'monthly' || data.notesMode === 'yearly'; }
   function monthOfNote(n) { const c = (n && n.createdAt) || ''; if (/^\d{4}-\d{2}/.test(c)) return c.slice(0, 7); return monthOfNoteId(n && n.id) || todayStr().slice(0, 7); }
   function monthOfNoteId(id) { const m = /^n_(\d{4})(\d{2})\d{2}_/.exec(String(id || '')); return m ? m[1] + '-' + m[2] : null; }
@@ -4563,6 +4736,7 @@
       repairLinksOnce();   // v20.92：言葉が全部そろった後に一度だけ
       if (journalMonthly()) await journalSyncNow(token);
       await worldSyncNow(token);
+      try { await useStatsSync(token); } catch (e) { recordFeatureError('使った回数の同期', e); }   // v20.93
       localStorage.setItem(LAST_SYNC_KEY, nowIso());
       pendingChangeCount = Math.max(0, pendingChangeCount - pendingAtStart);
       clearSyncError(LAST_SYNC_ERROR_KEY);
@@ -7398,7 +7572,8 @@
   };
 
   function showScreen(name) {
-    if (nav.screen !== name) captureInputDraftNow();
+    if (nav.screen !== name) { captureInputDraftNow(); countUse('s:' + name); }   // v20.93
+    if (name !== 'world') useStats.lastWorldView = null;
     if (nav.screen === 'training' && name !== 'training') trFlush();
     if (nav.screen === 'shoot' && name !== 'shoot') shootFlush();
     ['home', 'list', 'consult', 'detail', 'editor', 'settings', 'records', 'bulk', 'draftreview', 'training', 'meditation', 'shoot', 'world'].forEach((s) => {
@@ -13677,6 +13852,7 @@
     document.getElementById('deviceLabelInput').value = getDeviceLabel();
     document.getElementById('autoLinkToggle').checked = getAutoLinkEnabled();
     document.getElementById('morningEnabledToggle').checked = getMorningEnabled();
+    renderUseStats();   // v20.93
     document.getElementById('batchPendingCount').textContent = '（いま未処理 ' + data.notes.filter((n) => !n.autoLinkedAt).length + ' 件）';   // v20.92
     document.getElementById('compressThresholdInput').value = getCompressThreshold();
     renderSourceKindList();
@@ -26477,6 +26653,7 @@
   }
   function renderWorld() {
     worldNavTrack();   // v20.53
+    if (useStats.lastWorldView !== worldState.view) { useStats.lastWorldView = worldState.view; countUse('w:' + worldState.view); }   // v20.93
     try { worldAimsTidyOnce(); } catch (e) {}   // v20.59 直し③：残した返事を比べ直して消す（1回だけ）。起動の途中で呼ばれても止めない
     document.getElementById('worldMainView').hidden = worldState.view !== 'main';
     document.getElementById('worldImportView').hidden = worldState.view !== 'import';
