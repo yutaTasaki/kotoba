@@ -3322,7 +3322,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.88';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.89';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -4300,11 +4300,14 @@
       trash: [...mergedTrash.values()],
     };
     // the later mode switch wins (so a rollback on one device is not undone by another)
+    // v20.89：時刻が同じなら、月ファイル方式を採る。前は自分の方式を残したので、
+    // 同じ時刻で方式の違う2台（9/8 から PC が旧方式・言葉0枚、iPhone が月ファイル）が、いつまでも相手に合わせなかった
+    const pickMode = (x, y) => (y.at > x.at ? y : x.at > y.at ? x : (y.mode !== 'legacy' ? y : x));
     const modeA = { mode: a.journalMode || 'legacy', at: a.journalModeAt || '' }, modeB = { mode: b.journalMode || 'legacy', at: b.journalModeAt || '' };
-    const modeW = modeB.at > modeA.at ? modeB : modeA;
+    const modeW = pickMode(modeA, modeB);
     merged.journalMode = modeW.mode; merged.journalModeAt = modeW.at;
     const nA = { mode: a.notesMode || 'legacy', at: a.notesModeAt || '' }, nB = { mode: b.notesMode || 'legacy', at: b.notesModeAt || '' };
-    const nW = nB.at > nA.at ? nB : nA;
+    const nW = pickMode(nA, nB);
     merged.notesMode = nW.mode; merged.notesModeAt = nW.at;
     pruneDanglingLinks(merged);
     return merged;
