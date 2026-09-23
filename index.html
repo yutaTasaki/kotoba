@@ -1627,7 +1627,7 @@
         <div class="morningInputRow">
           <textarea id="morningInput" rows="2" placeholder="今朝はどんな感じ？（任意）" autocomplete="off"></textarea>
           <button id="btnMorningAsk" class="primaryBtn">言葉を受け取る</button>
-          <button id="btnMorningSkip" type="button" class="linkLikeBtn">今日はいい</button>
+          <button id="btnMorningSkip" type="button" class="linkLikeBtn">今日は受け取らない</button>
         </div>
       </div>
       <div id="morningCardsStage" class="morningStage" hidden>
@@ -1662,7 +1662,7 @@
           <button type="button" id="btnPostExplain" class="tagFilterBtn">説明を作る</button>
         </div>
         <p class="fieldNote" id="postExplainStatus"></p>
-        <button id="btnWalkShare" class="primaryBtn">Xで投稿</button>
+        <button id="btnWalkShare" class="primaryBtn">共有</button>
         <div id="walkShareStatus"></div>
       </div>
 
@@ -1788,11 +1788,11 @@
         <div id="detailVideosFromList" class="detailLinksList"></div>
       </div>
       <div class="detailLinksSection">
-        <h3>関連ノート</h3>
-        <p class="fieldNote" id="detailLinkingStatus" hidden>関連を探しています…</p>
+        <h3>つながり</h3>
+        <p class="fieldNote" id="detailLinkingStatus" hidden>つながりを探しています…</p>
         <div id="detailLinks" class="detailLinksList"></div>
-        <div id="detailLinksEmpty" class="emptyMsg" hidden>関連ノートはありません。</div>
-        <button id="btnRelinkNote" class="secondaryBtn">関連を探し直す</button>
+        <div id="detailLinksEmpty" class="emptyMsg" hidden>つながりはありません。</div>
+        <button id="btnRelinkNote" class="secondaryBtn">つながりを探し直す</button>
         <p class="fieldNote" id="detailRelinkStatus" hidden></p>
         <button id="btnDetailGraph" class="secondaryBtn">網で見る（遠い対立）</button>
       </div>
@@ -1856,8 +1856,8 @@
         <div id="tagCandidates" class="chipRow candidateChipRow"></div>
       </div>
       <div class="field">
-        <span class="fieldLabel">関連ノート</span>
-        <p class="fieldNote">保存すると自動で関連ノートを探します。自分で結びたいものはここで追加</p>
+        <span class="fieldLabel">つながり</span>
+        <p class="fieldNote">保存すると自動でつながりを探します。自分で結びたいものはここで追加</p>
         <input id="editLinkSearch" type="text" placeholder="検索して追加" autocomplete="off">
         <div id="linkSearchResults" class="linkResultsList" hidden></div>
         <div id="editLinkChips" class="chipRow"></div>
@@ -1894,6 +1894,9 @@
         <summary><span class="sgTitle">同期</span><span class="sgSub" id="setSubSync"></span></summary>
         <div class="setBody">
           <div class="field">
+            <button id="btnAppReloadFresh" class="linkLikeBtn">最新の版を読み込む</button>
+          </div>
+          <div class="field">
             <span class="fieldLabel">GitHub トークン</span>
             <p class="fieldNote">同期先は yutaTasaki/kotoba-data と walk10000-data（どちらも private）。両方に Contents: Read and write を持つトークンを1つ。</p>
             <input id="ghTokenInput" type="text" placeholder="github_pat_..." autocomplete="off" spellcheck="false">
@@ -1914,7 +1917,7 @@
               </div>
               <div class="field">
                 <span class="fieldLabel">書き出し／読み込み</span>
-                <button id="btnExport" class="secondaryBtn">言葉のデータを書き出す（ダウンロード）</button>
+                <button id="btnExport" class="secondaryBtn">言葉と記録を書き出す（ダウンロード）</button>
                 <button id="btnExportWalk" class="secondaryBtn">散歩のデータを書き出す（ダウンロード）</button>
                 <label class="secondaryBtn fileLabel" for="importFileInput">言葉を読み込む</label>
                 <input id="importFileInput" type="file" accept="application/json" hidden>
@@ -1937,7 +1940,6 @@
               </div>
               <div class="field">
                 <div class="statRow"><span>瞑想の保存方式</span><span id="statMeditationMode"></span></div>
-                <p class="fieldNote">瞑想の記録は最初から meditation/YYYY.json（年ごと）＋ index.json です。</p>
               </div>
               <div class="field">
                 <button id="btnClearLegacyStorage" class="secondaryBtn">古い保存形式のコピーを消す（localStorage）</button>
@@ -2010,7 +2012,7 @@
           </div>
           <div class="field">
             <span class="fieldLabel">消した言葉（<span id="trashCount"></span>件）</span>
-            <p class="fieldNote">本文ごと残ります。復元すると一覧に戻り、残っている関連ノートとのリンクもつなぎ直します。</p>
+            <p class="fieldNote">本文ごと残ります。復元すると一覧に戻り、残っている言葉とのつながりも結び直します。</p>
             <div id="trashList" class="detailLinksList"></div>
             <p class="emptyMsg" id="trashEmptyMsg" hidden>消した言葉はありません。</p>
             <p class="fieldNote" id="trashStatus"></p>
@@ -2030,19 +2032,19 @@
                 <button id="btnSaveCompressThreshold" class="secondaryBtn">保存</button>
               </div>
               <div class="field">
-                <span class="fieldLabel">全ノートを一括で関連づけ</span>
-                <p class="fieldNote">まだ自動関連づけをしていないノートだけを、古い順に。<span id="batchPendingCount"></span></p>
+                <span class="fieldLabel">全部の言葉を一括で関連づけ</span>
+                <p class="fieldNote">まだ自動関連づけをしていない言葉だけを、古い順に。<span id="batchPendingCount"></span></p>
                 <button id="btnBatchAutoLink" class="secondaryBtn">一括で関連づけ</button>
                 <div id="batchProgress" class="fieldNote" hidden></div>
                 <button id="btnBatchStop" class="dangerBtn" hidden>停止</button>
               </div>
               <div class="field" id="errorNotesSection" hidden>
-                <span class="fieldLabel">エラーが出たノート（<span id="errorNoteCount"></span>件）</span>
+                <span class="fieldLabel">エラーが出た言葉（<span id="errorNoteCount"></span>件）</span>
                 <div id="errorNotesList" class="detailLinksList"></div>
               </div>
               <div class="field">
                 <span class="fieldLabel">重複を探す</span>
-                <p class="fieldNote">全ノートを比べて似ている組を一覧にします（API は使いません）。</p>
+                <p class="fieldNote">全部の言葉を比べて似ている組を一覧にします（API は使いません）。</p>
                 <button id="btnFindDuplicates" class="secondaryBtn">重複を探す</button>
                 <div id="duplicateProgress" class="fieldNote" hidden></div>
                 <div id="duplicateResults"></div>
@@ -2050,8 +2052,8 @@
               </div>
               <div class="field setDanger">
                 <span class="fieldLabel">全件やり直し</span>
-                <p class="fieldNote">既存の自動リンクをすべて消して、全ノートを今の基準で関連づけ直します。手動リンクと却下済みは残ります。進捗と停止は上の欄に出ます。</p>
-                <button id="btnRelinkAll" class="dangerBtn">全件やり直し（自動リンクを消して再生成）</button>
+                <p class="fieldNote">既存の自動のつながりをすべて消して、全部の言葉を今の基準で関連づけ直します。手で結んだつながりと却下済みは残ります。進捗と停止は上の欄に出ます。</p>
+                <button id="btnRelinkAll" class="dangerBtn">全件やり直し（自動のつながりを消して作り直す）</button>
               </div>
             </div>
           </details>
@@ -2106,7 +2108,6 @@
         <div class="setBody">
           <div class="field">
             <p class="fieldNote" id="worldEpochLine"></p>
-            <button id="btnAppReloadFresh" class="linkLikeBtn">最新の版を読み込む</button>
           </div>
           <!-- v20.50 幹 段1：幹を立てる（割り直し）。中身は開いたときに組み立てる -->
           <div class="field" id="worldMikiSplitField">
@@ -2199,8 +2200,6 @@
             <div class="statRow"><span>筋肉の対応</span><span id="statUsageMonthMuscle"></span></div>
             <div class="statRow"><span>読書メモ</span><span id="statUsageMonthReading"></span></div>
             <div class="statRow"><span>投稿の説明</span><span id="statUsageMonthPostline"></span></div>
-            <div class="statRow"><span>撮るのカード（v9.0 で終了）</span><span id="statUsageMonthCards"></span></div>
-            <div class="statRow"><span>答えを壊す（v9.0 で終了）</span><span id="statUsageMonthBreak"></span></div>
             <div class="statRow"><span>今月・合計</span><span id="statUsageMonthTotal"></span></div>
             <div class="statRow"><span>言葉1枚の保存あたり</span><span id="statUsagePerSave"></span></div>
             <div class="statRow"><span>最後の API 呼び出し</span><span id="statLastApiCall"></span></div>
@@ -2224,8 +2223,8 @@
             <span class="fieldLabel">数</span>
             <div class="statRow"><span>言葉の数</span><span id="statNoteCount"></span></div>
             <div class="statRow"><span>タグ数</span><span id="statTagCount"></span></div>
-            <div class="statRow"><span>自動リンク数</span><span id="statAutoLinkCount"></span></div>
-            <div class="statRow"><span>手動リンク数</span><span id="statManualLinkCount"></span></div>
+            <div class="statRow"><span>自動のつながりの数</span><span id="statAutoLinkCount"></span></div>
+            <div class="statRow"><span>手で結んだつながりの数</span><span id="statManualLinkCount"></span></div>
             <div class="statRow"><span>散歩日数</span><span id="statWalkDays"></span></div>
             <div class="statRow"><span>連続</span><span id="statWalkStreak"></span></div>
             <div class="statRow"><span>関連づけの最終エラー</span><span id="statLastAutoLinkError"></span></div>
@@ -2248,7 +2247,7 @@
       </div>
       <div class="field">
         <span class="fieldLabel">体重（kg・任意）</span>
-        <input type="number" id="trWeight" step="0.1" inputmode="decimal" placeholder="例 68.5">
+        <input type="number" id="trWeight" step="0.1" inputmode="decimal" placeholder="kg">
       </div>
       <div class="field">
         <span class="fieldLabel">部位（複数可）</span>
@@ -2623,7 +2622,7 @@
       <div id="worldMoneyTop"></div>
 
       <div class="field" id="worldTodayField">
-        <span class="fieldLabel" id="worldTodayLabel">今日動いた主体</span>
+        <span class="fieldLabel" id="worldTodayLabel">最近動いた主体</span>
         <div id="worldTodayList"></div>
         <p class="emptyMsg" id="worldTodayEmpty" hidden>新しい分がありません。右上の「取り込む」から入れます。</p>
         <button type="button" id="btnWorldOpenToday" class="secondaryBtn" hidden>今日の分をひらく</button>
@@ -3316,7 +3315,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.93';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.94';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -4062,7 +4061,7 @@
     if (!token) { alert('同期トークンが必要です'); return; }
     if (!navigator.onLine) { alert('オンラインで実行してください'); return; }
     if (notesSplit()) { alert('すでに月ファイル方式です'); return; }
-    if (!confirm('言葉（ノート）を作成月ごとのファイルに移します。先に kotoba-data のバックアップを取りましたか？')) return;
+    if (!confirm('言葉を作成月ごとのファイルに移します。先に kotoba-data のバックアップを取りましたか？')) return;
     if (!confirm('移行を始めます。完了まで画面を閉じないでください。')) return;
     try {
       notesMigrationStatus('最新の状態を取得中…');
@@ -4602,7 +4601,7 @@
     const detail = (e && e.message && e.message !== 'Failed to fetch') ? '：' + String(e.message).slice(0, 120) : '';
     return `${repoLabel}に同期できませんでした（通信できません${detail}）`;
   }
-  function recordSyncError(key, message) { localStorage.setItem(key, JSON.stringify({ message, at: nowIso() })); }
+  function recordSyncError(key, message) { try { localStorage.setItem(key, JSON.stringify({ message, at: nowIso() })); } catch (e) { console.warn('recordSyncError', message); } }   // v20.94：置き場が満杯でも落ちない
   function clearSyncError(key) { localStorage.removeItem(key); }
   function getSyncError(key) {
     try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
@@ -6850,8 +6849,8 @@
     if (batchState.running) return;
     if (!getClaudeApiKey()) { alert('先に設定で Claude API キーを入れてください'); return; }
     const pending = data.notes.filter((n) => !n.autoLinkedAt).sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
-    if (!pending.length) { alert('未処理のノートはありません（全ノートが処理済みです）'); return; }
-    if (!opts.skipConfirm && !confirm(`未処理のノート ${pending.length} 件に自動関連づけを実行します（API 呼び出しは約 ${pending.length} 回）。よろしいですか？`)) return;
+    if (!pending.length) { alert('未処理の言葉はありません（全部処理済みです）'); return; }
+    if (!opts.skipConfirm && !confirm(`未処理の言葉 ${pending.length} 件に自動関連づけを実行します（API 呼び出しは約 ${pending.length} 回）。よろしいですか？`)) return;
 
     batchState.running = true;
     batchState.stop = false;
@@ -6890,8 +6889,8 @@
     if (batchState.running) return;
     if (!getClaudeApiKey()) { alert('先に設定で Claude API キーを入れてください'); return; }
     const autoEnds = data.notes.reduce((a, n) => a + n.links.filter((l) => l.kind === 'auto').length, 0);
-    if (!confirm(`自動リンク約 ${Math.round(autoEnds / 2)} 本を消して、${data.notes.length} 枚すべてを関連づけ直します。手動リンクと却下済みは残ります。よろしいですか？`)) return;
-    if (!confirm(`本当に実行しますか？ API 呼び出しは約 ${data.notes.length} 回（自動関連づけのモデル）です。消した自動リンクは、やり直しの結果でしか戻りません。`)) return;
+    if (!confirm(`自動のつながり約 ${Math.round(autoEnds / 2)} 本を消して、${data.notes.length} 枚すべてを関連づけ直します。手で結んだつながりと却下済みは残ります。よろしいですか？`)) return;
+    if (!confirm(`本当に実行しますか？ API 呼び出しは約 ${data.notes.length} 回（自動関連づけのモデル）です。消した自動のつながりは、やり直しの結果でしか戻りません。`)) return;
     const iso = nowIso();
     data.notes.forEach((n) => {
       n.links = n.links.filter((l) => l.kind !== 'auto');
@@ -7425,12 +7424,12 @@
     } else if (turn.status === 'done' && turn.picks.length === 0) {
       const s2 = document.createElement('p');
       s2.className = 'emptyMsg';
-      s2.textContent = 'まだ、これに応える言葉はノートにありません';
+      s2.textContent = 'まだ、これに応える言葉はありません';
       wrap.appendChild(s2);
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'secondaryBtn';
-      btn.textContent = 'この気持ちをノートに書く';
+      btn.textContent = 'この気持ちを言葉として残す';
       btn.addEventListener('click', () => openEditorFromConsult(turn.input));
       wrap.appendChild(btn);
     } else if (turn.status === 'done') {
@@ -8086,7 +8085,11 @@
     // v20.21 予告 第1段：待っている予告はホームの一番上に置く（並び替えの本体は第4段）。
     // 0本のときは renderHomeForecastRow が自分で隠すので、ここでは並びにだけ積む
     renderHomeForecastRow();
-    if (worldWaitingForecasts().length || worldOverdueForecasts().length) order.unshift('homeForecastRow');   // v20.40：聞き直しだけの日も出す
+    // v20.40：聞き直しだけの日も出す。v20.94：今朝の体調の下に置く（一番上だと、朝いちばんに押す体調より先に出ていた）
+    if (worldWaitingForecasts().length || worldOverdueForecasts().length) {
+      const wi = Math.max(order.lastIndexOf('wakeMoodField'), order.lastIndexOf('wakeMoodCollapsedRow'));
+      order.splice(wi + 1, 0, 'homeForecastRow');
+    }
 
     const stepsContainer = document.getElementById('homeStepsContainer');
     order.forEach((id) => {
@@ -8724,7 +8727,7 @@
         mergeBtn.addEventListener('click', () => {
           const keep = a.createdAt <= b.createdAt ? a : b;
           const drop = keep === a ? b : a;
-          if (!confirm(`同じ言葉・出典のノートを統合します。「${noteSnippet(drop.text, 30)}」の方を削除し、タグとリンクは残す方に合流します。よろしいですか？`)) return;
+          if (!confirm(`同じ言葉・出典の2枚を1枚にまとめます。「${noteSnippet(drop.text, 30)}」の方を削除し、タグとつながりは残す方に合流します。よろしいですか？`)) return;
           mergeDuplicateNotes(a.id, b.id);
           renderDuplicateResults(pairs.filter((p) => p !== pair));
         });
@@ -8804,7 +8807,7 @@
       deleteBtn.className = 'dangerBtn';
       deleteBtn.textContent = `このタグを削除（${count}件から外す）`;
       deleteBtn.addEventListener('click', () => {
-        if (!confirm(`タグ「${label}」を${count}件のノートから外します。ノート自体は削除されません。よろしいですか？`)) return;
+        if (!confirm(`タグ「${label}」を${count}件の言葉から外します。言葉そのものは削除されません。よろしいですか？`)) return;
         deleteTagEverywhere(label);
         groupRenameOpenFor = null;
         renderList();
@@ -9630,7 +9633,7 @@
     const draft = findDraft(draftQueue[draftQueueIndex]);
     const note = draftSimilarMatchNoteId ? findNote(draftSimilarMatchNoteId) : null;
     if (!draft || !note) return;
-    if (!confirm(draftTypedWords() ? '既存のノートを、この下書きの内容で置き換えます。打った自分の言葉は使われず、既存のノートの自分の言葉のままになります。よろしいですか？' : '既存のノートを、この下書きの内容で置き換えます。よろしいですか？')) return;   // v20.53
+    if (!confirm(draftTypedWords() ? 'すでにある言葉を、この下書きの内容で置き換えます。打った自分の言葉は使われず、すでにある言葉の自分の言葉のままになります。よろしいですか？' : 'すでにある言葉を、この下書きの内容で置き換えます。よろしいですか？')) return;   // v20.53
     if (note.text !== draft.text) pushHistory(note, 'textHistory', note.text, nowIso());
     note.text = draft.text;
     note.source = draft.source;
@@ -9947,7 +9950,7 @@
   document.getElementById('btnDeleteNote').addEventListener('click', () => {
     const note = findNote(nav.detailId);
     if (!note) return;
-    if (!confirm('このノートを消しますか？関連ノートとのリンクは解除されます。本文は設定の「消した言葉」に残り、そこから復元できます。')) return;
+    if (!confirm('この言葉を消しますか？つながりは外れます。本文は設定の「消した言葉」に残り、そこから復元できます。')) return;
     deleteNoteById(note.id);
     saveData(data);
     backFromDetail();
@@ -12211,7 +12214,7 @@
     del.className = 'recordEntryDelete';
     del.textContent = '消す';
     del.addEventListener('click', async () => {
-      if (!confirm(`${dotDate(dateStr)}の散歩の記録を消しますか？`)) return;
+      if (!confirm(`${dotDate(dateStr)}の散歩の記録を消しますか？（その日の今朝の体調・散歩後の体調・歩数も消えます）`)) return;
       await deleteWalkDayRecord(dateStr);
       refreshAfterDayRecordChange();
     });
@@ -12474,7 +12477,7 @@
   });
   document.getElementById('btnDeleteDayRecord').addEventListener('click', async () => {
     if (!editingDate) return;
-    if (!confirm(`${dotDate(editingDate)}の散歩の記録を消しますか？`)) return;
+    if (!confirm(`${dotDate(editingDate)}の散歩の記録を消しますか？（その日の今朝の体調・散歩後の体調・歩数も消えます）`)) return;
     await deleteWalkDayRecord(editingDate);
     closeDayEditor();
   });
@@ -13882,8 +13885,6 @@
     document.getElementById('statUsageMonthMuscle').textContent = formatUsageRow(monthUsage.muscle, modelForUsageKind('muscle'));
     document.getElementById('statUsageMonthReading').textContent = formatUsageRow(monthUsage.reading, modelForUsageKind('reading'));
     document.getElementById('statUsageMonthPostline').textContent = formatUsageRow(monthUsage.postline, modelForUsageKind('postline'));   // v20.12
-    document.getElementById('statUsageMonthCards').textContent = formatUsageRow(monthUsage.cards, modelForUsageKind('cards'));
-    document.getElementById('statUsageMonthBreak').textContent = formatUsageRow(monthUsage.break, modelForUsageKind('break'));
     const monthCost = totalCostForKindStats(monthUsage);
     const budget = getUsageBudget();
     document.getElementById('statUsageMonthTotal').textContent = `約$${monthCost.toFixed(3)}（上限 $${budget.toFixed(2)} の${Math.round((monthCost / budget) * 100)}%）`;
@@ -19240,6 +19241,13 @@
     if (wd.sources.updatedAt === sentAt) wd.sourcesDirty = false;   // v20.90：送っている間に変わっていたら、印を残して次に送る
     wd.index.sources = { updatedAt: sentAt, count: wd.sources.sources.length };
   }
+  // v20.94：用語「シリア電力公社」の別名に「SEC」が入っていて、米国の SEC（証券取引委員会）と区別されなかった。一度だけ外す
+  function worldTermSecFixOnce() {
+    try { if (localStorage.getItem('kotoba_termSecFix') === '1') return; } catch (e) { return; }
+    const t = wd.terms.terms.find((x) => x.name === 'シリア電力公社' && (x.aka || []).includes('SEC'));
+    if (t) { t.aka = t.aka.filter((a) => a !== 'SEC'); t.updatedAt = nowIso(); worldSaveTerms(); }
+    if (wd.terms.terms.length) { try { localStorage.setItem('kotoba_termSecFix', '1'); } catch (e) {} }
+  }
   async function worldSyncNow(token) {
     if (wd.busy) return;
     wd.busy = true;
@@ -19267,6 +19275,7 @@
       for (const m of [...months].sort()) { if (!wd.loaded.has(m)) await loadWorldMonth(m); else await syncWorldMonth(token, m); }
       await syncWorldConcepts(token, conceptsChanged);
       await syncWorldTerms(token, termsChanged);
+      worldTermSecFixOnce();   // v20.94
       await syncWorldStrata(token, strataChanged);
       await syncWorldActors(token, actorsChanged);
       await syncWorldAsks(token, asksChanged);
@@ -22587,7 +22596,7 @@
     worldState.kijiStatus = worldState.kijiStatus || {};
     const el = (tag, cls, text) => { const x = document.createElement(tag); if (cls) x.className = cls; if (text != null) x.textContent = text; return x; };
     const head = el('div', 'kjFact', ev.fact); box.appendChild(head);
-    { const ml = el('button', 'linkLikeBtn kjAgain', 'マガジンの一覧 ▸'); ml.type = 'button'; ml.addEventListener('click', () => { worldState.view = 'mags'; renderWorld(); }); box.appendChild(ml); }   // v20.77
+    // v20.94：「マガジンの一覧 ▸」は、できあがりのマガジンの欄にだけ置く（上にもあって2つ並んでいた）
     if (kt.toi) box.appendChild(el('div', 'kjSub', '問い：' + kt.toi));
 
     // 1段ぶんの枠：コピー → 貼る → 取り込む。済んでいれば中身と［貼り直す］
@@ -26527,10 +26536,7 @@
     box.innerHTML = '';
     const due = worldDueSources();
     if (!due.length) {
-      const p = document.createElement('div');
-      p.className = 'homePullNone';
-      p.textContent = '今日は取り込むものがありません';
-      box.appendChild(p);
+      // v20.94：「今日は取り込むものがありません」は毎日出るので出さない
       renderHomeReadRow(box);   // v20.49 幹 段0：取り込むものが無い日も、読む札（切れた推定）があれば1行出す
       return;
     }
@@ -26855,7 +26861,7 @@
     const bg = worldBackgroundCards(todayList);
     renderWorldTodayActors(document.getElementById('worldTodayList'), todayList, actorRows, bg);
     document.getElementById('worldTodayLabel').textContent =
-      '今日動いた主体' + (actorRows.length ? '（' + actorRows.length + '）' : '');
+      '最近動いた主体' + (actorRows.length ? '（' + actorRows.length + '）' : '');   // v20.94：8日前の札まで入るので「今日」と呼ばない
     const unread = worldUnread().length;
     const emptyEl = document.getElementById('worldTodayEmpty');
     emptyEl.hidden = !!todayList.length;
@@ -32727,6 +32733,7 @@
   document.getElementById('screen-settings').addEventListener('click', (e) => { if (e.target.closest('button')) { clearInputDraft(); setTimeout(captureInputDraftNow, 100); } });
 
   // --- boot ---------------------------------------------------------------
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); } catch (e) {}   // v20.94
   notesBoot();
   journalBoot();
   meditationBoot();
