@@ -3322,7 +3322,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.86';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.87';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -7530,7 +7530,7 @@
   // was received, only the day-count line and a trailing blank line are kept.
   function computeDefaultShareText(derived, morningEntry) {
     const dayLine = `【${derived.n}日目 / 10000】`;
-    const pick = morningEntry && morningEntry.picks && morningEntry.picks[0];
+    const pick = morningPostPick(morningEntry);   // v20.87
     const note = pick ? findNote(pick.id) : null;
     if (!note) return `${dayLine}\n\n`;
     const sourceDisplay = (note.source || '').startsWith('自分') ? '自分の言葉' : (note.source || '');
@@ -7556,13 +7556,37 @@
     return source[Math.floor(Math.random() * source.length)].id;
   }
 
+  // v20.87：朝の相談をしなかった日の言葉は「引く」と同じ選び方（★したばかりを休ませる・眠っている言葉の番・種類の絞り）で選ぶ。
+  // 1日1回だけ選び、この端末に日付ごと控える（読み直すたびに言葉が変わると、投稿文と食い違うため）
+  const MORNING_RANDOM_PICK_KEY = 'kotoba_morningRandomPick';
   function getMorningRandomNote() {
     const today = todayStr();
     if (morningRandomNoteDate !== today || !morningRandomNoteId || !findNote(morningRandomNoteId)) {
-      morningRandomNoteId = pickRandomNoteId(null);
+      let saved = null;
+      try { saved = JSON.parse(localStorage.getItem(MORNING_RANDOM_PICK_KEY) || 'null'); } catch (e) {}
+      if (saved && saved.date === today && findNote(saved.id)) {
+        morningRandomNoteId = saved.id;
+      } else {
+        const keepSleep = drawState.sleepPick;   // 引くの画面に出ている「眠っていた言葉」の印を消さない
+        let note = null;
+        try { note = pickDrawTargetNote(); } catch (e) {}
+        drawState.sleepPick = keepSleep;
+        morningRandomNoteId = note ? note.id : pickRandomNoteId(null);
+        try { localStorage.setItem(MORNING_RANDOM_PICK_KEY, JSON.stringify({ date: today, id: morningRandomNoteId })); } catch (e) {}
+      }
       morningRandomNoteDate = today;
     }
     return morningRandomNoteId ? findNote(morningRandomNoteId) : null;
+  }
+  // v20.87：投稿に載せる言葉。朝の相談があれば ★ を付けた最初の言葉（★が無ければ一番上）。
+  // 朝の相談が無い日は、上の「引く」で選んだ言葉（要約して投稿文に入れる）
+  function morningPostPick(morningEntry) {
+    if (morningEntry && morningEntry.picks && morningEntry.picks.length) {
+      const hit = morningEntry.picks.find((p) => p.hit && findNote(p.id));
+      return hit || morningEntry.picks[0];
+    }
+    const n = getMorningRandomNote();
+    return n ? { id: n.id, why: '' } : null;
   }
 
   // ★ toggle for one pick of one journal entry (consult / morning / records)
@@ -7578,7 +7602,7 @@
     b.addEventListener('click', (e) => { e.stopPropagation(); toggleJournalHit(journalId, noteId); paint(); if (onChange) onChange(); });
     return b;
   }
-  function renderPickCard(container, note, why, journalId) {
+  function renderPickCard(container, note, why, journalId, onHit) {
     const card = document.createElement('div');
     card.className = 'consultCard';
     const t = document.createElement('div');
@@ -7601,11 +7625,16 @@
       w.textContent = why;
       card.appendChild(w);
     }
-    if (journalId) card.appendChild(makeHitButton(journalId, note.id));
+    if (journalId) card.appendChild(makeHitButton(journalId, note.id, onHit));
     card.addEventListener('click', () => openDetail(note.id, 'home'));
     container.appendChild(card);
   }
 
+  // v20.87：★で投稿に載せる言葉が変わる。投稿文を手で直していなければ、次に描くときに作り直す（直した文は触らない）
+  function onMorningHitChange() {
+    const box = document.getElementById('walkShareTextInput');
+    if (getShareTextEdit(todayStr()) == null) { delete box.dataset.loadedDate; renderHome(); }
+  }
   function renderMorningCards(morningEntry) {
     const container = document.getElementById('morningCards');
     container.innerHTML = '';
@@ -7633,7 +7662,7 @@
     }
     picks.forEach((pick) => {
       const note = findNote(pick.id);
-      if (note) renderPickCard(container, note, pick.why, morningEntry ? morningEntry.id : null);
+      if (note) renderPickCard(container, note, pick.why, morningEntry ? morningEntry.id : null, morningEntry ? onMorningHitChange : null);
     });
     if (closing) {
       const c = document.createElement('div');
@@ -7681,11 +7710,9 @@
   }
 
   function getDisplayedMorningFirstNote(morningEntry) {
-    if (morningEntry && morningEntry.picks.length) {
-      const note = findNote(morningEntry.picks[0].id);
-      if (note) return note;
-    }
-    return getMorningRandomNote();
+    const pick = morningPostPick(morningEntry);   // v20.87：★の言葉を先に
+    const note = pick && findNote(pick.id);
+    return note || getMorningRandomNote();
   }
 
   function morningWordsCollapsedLabel(morningEntry) {
@@ -7999,7 +8026,7 @@
     box.dataset.autoExplain = text;
   }
   function startPostSummary(derived, morningEntry, before) {
-    const pick = morningEntry && morningEntry.picks && morningEntry.picks[0];
+    const pick = morningPostPick(morningEntry);   // v20.87
     const note = pick ? findNote(pick.id) : null;
     const info = notePostExplainInfo(note, pick);
     if (!info.needSummary) return;
@@ -8029,9 +8056,9 @@
     const st = document.getElementById('postExplainStatus');
     const box = document.getElementById('walkShareTextInput');
     const morningEntry = todaysMorningJournalEntry();
-    const pick = morningEntry && morningEntry.picks && morningEntry.picks[0];
+    const pick = morningPostPick(morningEntry);   // v20.87
     const note = pick ? findNote(pick.id) : null;
-    if (!note) { st.textContent = '今日の言葉がまだ届いていません。'; return; }
+    if (!note) { st.textContent = '今日の言葉がまだありません。'; return; }
     if (isUsageOverBudget()) { st.textContent = '説明を作れませんでした。理由：' + postFailReason(postOverBudgetError()) + '。'; return; }
     btn.disabled = true;
     st.textContent = '説明を作っています…';
@@ -9110,7 +9137,7 @@
       input.value = '';
       renderDraftTagChips();
       renderDraftTagCandidates();
-    });
+    }, Infinity);   // v20.87
   }
 
   document.getElementById('draftTagInput').addEventListener('input', renderDraftTagCandidates);
@@ -13229,9 +13256,9 @@
       .map(([key]) => key);
   }
 
-  function renderCandidateChips(container, candidates, onPick) {
+  function renderCandidateChips(container, candidates, onPick, max) {
     container.innerHTML = '';
-    candidates.slice(0, 24).forEach((value) => {
+    candidates.slice(0, max == null ? 24 : max).forEach((value) => {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'candidateChip';
@@ -13330,7 +13357,7 @@
       renderTagChips();
       renderTagCandidates();
       editTagInputEl.focus();
-    });
+    }, Infinity);   // v20.87：タグは全部出す（24個で切れて、使ったことのあるタグが出ていなかった）
   }
 
   // Live delimiter commit: typing 、/,/，/whitespace confirms whatever comes
@@ -16892,6 +16919,7 @@
   const KIJI_MAG_NAME_MAX = 30;
   const KIJI_OMO_SHARE = 40;      // v20.76 思惑の節は本文の何%以上か（ここがメイン）
   const KIJI_LONG_PARA = 120;     // v20.74 これを超える段落は長いと知らせる（決まりは1段落1〜2文）
+  const KIJI_FIG_GAP = 450;       // v20.87 図の無いまま続く文の上限の目安（字）。これを超える所を知らせる
   const KIJI_LONG_SENT = 80;      // これを超える文は長いと知らせる（決まりは60字目安。少し余裕を見る）
   const KIJI_TITLE_CHARS = 26;     // note の一覧で切れにくい長さ（検証記事の最小値。要確認）
   const KIJI_DRAFT_KEY = 'kotoba_kijiDraft';   // 貼った返事を取り込むまで持つ
@@ -22042,7 +22070,11 @@
       '- 思惑は推測と分かる書き方にする。言い切らない。\n' +
       '- 「札」「確度」「語り方」「幹」「読む回」「取り込み」などアプリの中の言葉を使わない。\n' +
       '- 図を入れる場所に「［図N：型・何を見せるか］」を置く。**［図1］は必ずタイトルのすぐ次（本文のいちばん上）に置き、記事全体を1枚で表す絵にする。**\n' +
-      '  そのあとは塊2〜3つごとに1枚、全部で3〜5枚。型は グラフ・地図・構図・資料 のどれか。\n' +
+      '- **図2から先は「先に見せる図」にする。** 読む前に、この先の文の中身を1枚の表か絵で見せ、文を読みやすくするための図。\n' +
+      '  - 置く場所は、見出し（## と ###）のすぐ次、その節の文より前。図は、次の図までの文に書いてあることを1枚にまとめる。\n' +
+      '  - 図の無いまま続く文は ' + KIJI_FIG_GAP + '字まで。長い節は途中にもう1枚置く。全部で5〜8枚。\n' +
+      '  - 型は 表・グラフ・地図・構図・資料 のどれか。比べる・並べる・誰が何を言ったか は表にする。\n' +
+      '  - 図と文は同じことを言ってよい（図で先につかみ、文で確かめる）。ただし文を図の説明にしない（「上の図のように」と書かない）。\n' +
       '\n' +
       '■ 返事\n本文だけを返す（マークダウン）。前置きや説明の文を付けない。';
   }
@@ -22086,7 +22118,9 @@
   function worldKijiFigPromptText(kj) {
     return '下の記事の本文にある「［図N：…］」ごとに、図の作り方を決めてください。\n\n' +
       '■ 決まり\n' +
-      '- type：グラフ・地図・構図・資料 のどれか。show：読者に何を一目で分からせるか（1文）。\n' +
+      '- type：表・グラフ・地図・構図・資料 のどれか。show：読者に何を一目で分からせるか（1文）。\n' +
+      '- **図2から先は「先に見せる図」**：その印から次の図の印までの文を、読む前に1枚でつかめるようにまとめる。5秒で「この先に何が書いてあるか」が分かる絵か表にする。\n' +
+      '- 表：data に行を書く（label＝行の名前、value＝中身。数でなくてよい。source＝出典）。prompt は「Claude に、この表を1枚の画像にさせる依頼文」にする（縦の行は6つまで、1マス15字まで、見出しの色は1色）。\n' +
       '- グラフ：data に数値（label・value・unit・source）を本文と同じ数字で書く。prompt は「Claude にグラフを描かせる依頼文」にする（数値はデータのまま使わせ、日本語の文字は短く）。\n' +
       '- 地図・構図・資料：prompt は「画像生成AIに渡すプロンプト」にする。絵の中の文字はできるだけ少なく、数字は入れない。入れる文字は text に並べる。\n' +
       '- 本文に無い数字を足さない。\n' +
@@ -22110,6 +22144,7 @@
       '- アプリの中の言葉（札・確度・語り方・幹・読む回・取り込み）が混ざっていないか。\n' +
       '- タイトルの約束と、本文の中身がずれていないか。「次のニュースで見ておきたいこと」が最後にあるか。\n' +
       '- 図の数値が本文の数字と合っているか。\n' +
+      '- 図2から先が、見出しのすぐ次（文より前）にあり、その先の文を1枚にまとめるものになっているか。図の無いまま ' + KIJI_FIG_GAP + '字を超えて文が続く所が無いか（あれば図の印を足す）。\n' +
       '- 読みやすさ：下の「記事の形」と「読みやすさの決まり」に合っているか。長い段落は分け、長い文は切り、硬い言い回しはやわらかくする。\n' +
       '- 言葉の説明：大人が知っている基本の言葉に説明を付けすぎていないか（付けすぎなら削る）。専門家しか使わない言葉と「なんで？」は、その話題が出た所で答えているか。記事の最初に説明がまとめて並んでいないか。\n' +
       '- 最初：タイトルの次に［図1］があるか。思惑の予告は1行であいまいか（答えを言っていないか）。「この記事でわかること」は問いの形か。\n' +
@@ -22210,7 +22245,19 @@
       words[m[0]] = (words[m[0]] || 0) + 1;
     });
     const hard = [...body.matchAll(/はずだ|はずです|に違いない|間違いなく|確実に/g)].map((m) => m[0]);
-    return { title, titleOk: /^#\s/.test(title), plain, figs, srcLines, noSrc, words, hard, longPara, longSent, topFig, omoShare, hasOmo: omo > 0, urlGlued };
+    // v20.87：図の無いまま続く文（最初の ## から後）と、見出しのすぐ次に図が無い節
+    let run = 0, maxRun = 0, longRuns = 0, secNoFig = 0;
+    const endRun = () => { if (run > KIJI_FIG_GAP) longRuns++; if (run > maxRun) maxRun = run; run = 0; };
+    lines.forEach((l, i) => {
+      const t = l.trim();
+      if (firstH2 < 0 || i < firstH2) return;
+      if (/^##+\s/.test(t)) { const nx = lines.slice(i + 1).find((x) => x.trim()) || ''; if (!/^［図\d+/.test(nx.trim()) && !/^##+\s/.test(nx.trim())) secNoFig++; return; }
+      if (/^［図\d+/.test(t)) { endRun(); return; }
+      if (!t || srcRe.test(t) || /^#/.test(t)) return;
+      run += t.replace(/\*\*/g, '').replace(/^[-・]\s*/, '').length;
+    });
+    endRun();
+    return { title, titleOk: /^#\s/.test(title), plain, figs, srcLines, noSrc, words, hard, longPara, longSent, topFig, omoShare, hasOmo: omo > 0, urlGlued, maxRun, longRuns, secNoFig };
   }
   function worldKijiLintText(l) {
     const parts = ['本文 約' + l.plain + '字', '図の印 ' + l.figs.length, '出典の行 ' + l.srcLines].concat(l.hasOmo ? ['思惑の節 約' + l.omoShare + '%'] : []);
@@ -22220,6 +22267,8 @@
     if (l.hasOmo === false) notes.push('「思惑」の見出しの節が無い');
     else if (l.omoShare < KIJI_OMO_SHARE) notes.push('思惑の節が本文の約' + l.omoShare + '%（' + KIJI_OMO_SHARE + '%より少ない）');
     if (l.urlGlued) notes.push('url の直後に文字が付いた所 ' + l.urlGlued + '（コピーするときに空けます）');
+    if (l.longRuns) notes.push('図の無いまま ' + KIJI_FIG_GAP + '字を超えて続く所 ' + l.longRuns + '（いちばん長くて約' + l.maxRun + '字）');   // v20.87
+    if (l.secNoFig) notes.push('見出しのすぐ次に図が無い節 ' + l.secNoFig);
     if (l.longPara) notes.push(KIJI_LONG_PARA + '字を超える段落 ' + l.longPara);
     if (l.longSent) notes.push(KIJI_LONG_SENT + '字を超える文 ' + l.longSent);
     if (l.noSrc) notes.push('出典の行が無い見出しの区切り ' + l.noSrc);
@@ -22268,6 +22317,8 @@
     if (marks !== figs.length) notes.push('本文の図の印は ' + marks + '、図は ' + figs.length + ' で数が合いません');
     const noData = figs.filter((f) => f.type === 'グラフ' && !f.data.length).length;
     if (noData) notes.push('数値の無いグラフ ' + noData);
+    const noRows = figs.filter((f) => f.type === '表' && !f.data.length).length;   // v20.87
+    if (noRows) notes.push('行の無い表 ' + noRows);
     if (cut) notes.push('長くて切った欄 ' + cut + 'か所');
     return { text: '取り込みました：図 ' + figs.length + (notes.length ? '（' + notes.join('・') + '）' : '') };
   }
@@ -22413,7 +22464,7 @@
         copyRow(sec, 'サムネのプロンプトをコピー', pk.thumb.prompt, '画像生成AIに貼る');
       }
       copyRow(sec, '本文を全部コピー', worldKijiNoteText(bodyNoTitle), '約' + worldKijiLint(body).plain + '字（タイトルの行は除く。url の後ろは空けてある）');
-      (kj.figs || []).forEach((f) => copyRow(sec, '図' + f.n + '（' + f.type + '）をコピー', f.prompt, f.type === 'グラフ' ? 'Claude に貼る' : '画像生成AIに貼る'));
+      (kj.figs || []).forEach((f) => copyRow(sec, '図' + f.n + '（' + f.type + '）をコピー', f.prompt, f.type === 'グラフ' || f.type === '表' ? 'Claude に貼る' : '画像生成AIに貼る'));   // v20.87：表も Claude
       const posted = el('button', 'secondaryBtn', kj.postedAt ? worldShortDate(kj.postedAt.slice(0, 10)) + ' に note に出した（取り消す）' : 'note に出した'); posted.type = 'button';
       posted.addEventListener('click', () => { worldKijiUpdate(kj.id, (k) => { k.postedAt = k.postedAt ? '' : nowIso(); }); rerender(); });
       sec.appendChild(posted);
