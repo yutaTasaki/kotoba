@@ -2569,7 +2569,6 @@
         <span class="fieldLabel" id="worldTodayLabel">最近動いた主体</span>
         <div id="worldTodayList"></div>
         <p class="emptyMsg" id="worldTodayEmpty" hidden>新しい分がありません。右上の「取り込む」から入れます。</p>
-        <button type="button" id="btnWorldOpenToday" class="secondaryBtn" hidden>今日の分をひらく</button>
       </div>
 
       <div id="worldMainBody"></div>
@@ -2844,6 +2843,11 @@
           <button type="button" id="btnWorldActorCountrySave" class="secondaryBtn">決める</button>
           <p class="fieldNote" id="worldActorCountryStatus"></p>
         </div>
+      </div>
+      <!-- v20.97：この主体の予告（予告の画面と同じ行） -->
+      <div class="field" id="worldActorForecastField" hidden>
+        <span class="fieldLabel" id="worldActorForecastLabel">この主体の予告</span>
+        <div id="worldActorForecastList"></div>
       </div>
       <div class="field" id="worldActorMoneyField" hidden>
         <span class="fieldLabel">この主体が動かしたお金</span>
@@ -3220,7 +3224,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.96';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.97';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -18552,6 +18556,15 @@
     if (t) { t.aka = t.aka.filter((a) => a !== 'SEC'); t.updatedAt = nowIso(); worldSaveTerms(); }
     if (wd.terms.terms.length) { try { localStorage.setItem('kotoba_termSecFix', '1'); } catch (e) {} }
   }
+  // v20.97：「未読」を1つの意味にする。いま未読（朝の世界の行から開いていない）の札に、取り込んだ日を一度だけ付ける
+  function worldReadDateOnce() {
+    try { if (localStorage.getItem('kotoba_worldReadDateFix') === '1') return; } catch (e) { return; }
+    if (!wd.loaded.size) return;
+    const months = new Set();
+    worldUnread().forEach((e) => { e.readDate = localDateOfIso(e.createdAt) || e.eventDate; e.updatedAt = nowIso(); months.add(monthOfDate(e.eventDate)); });
+    months.forEach((m) => worldMonthChanged(m));
+    try { localStorage.setItem('kotoba_worldReadDateFix', '1'); } catch (e) {}
+  }
   async function worldSyncNow(token) {
     if (wd.busy) return;
     wd.busy = true;
@@ -18580,6 +18593,7 @@
       await syncWorldConcepts(token, conceptsChanged);
       await syncWorldTerms(token, termsChanged);
       worldTermSecFixOnce();   // v20.94
+      worldReadDateOnce();   // v20.97
       await syncWorldStrata(token, strataChanged);
       await syncWorldActors(token, actorsChanged);
       await syncWorldAsks(token, asksChanged);
@@ -22126,6 +22140,11 @@
       const tag = document.createElement('span'); tag.className = 'tpType';
       tag.textContent = c.from === 'both' ? '今日見るべき件・ずれあり' : c.from === 'today' ? '今日見るべき件' : 'ずれあり';
       f.appendChild(tag);
+      { // v20.97：その札のマガジン（幹）の名前を添える（下の「今日動いたマガジン」に重ねて出さない代わり）
+        const mk = worldMikiState();
+        const tid = (mk.cardMiki.get(c.cardId) || []).find((id) => worldMikiTrunk(id));
+        if (tid) { const m = document.createElement('span'); m.className = 'tpType'; m.textContent = worldMikiTrunk(tid).name; f.appendChild(m); }
+      }
       f.appendChild(document.createTextNode(c.fact || '（何が起きたかが書かれていません）'));
       row.appendChild(f);
       if (c.from !== 'zure') {
@@ -22231,7 +22250,7 @@
       const ev = normalizeWorldEvent({
         id: worldGenEventId(it.eventDate, taken),
         eventDate: it.eventDate,
-        readDate: (it.self && isDateStr(it.readDate)) ? it.readDate : '',   // v20.45：自分で作った札は、作った日に読んだ
+        readDate: (it.self && isDateStr(it.readDate)) ? it.readDate : (seedRegion ? '' : todayStr()),   // v20.45：自分で作った札は、作った日に読んだ。v20.97：取り込んだ札は、取り込んだ日の分
         self: it.self,   // v20.45
         field: WORLD_FIELDS.includes(it.field) ? it.field : (worldImportField || 'finance'),
         fact, why: it.why, premise: it.premise, detail: it.detail, source: it.source, url,
@@ -23037,6 +23056,16 @@
     box.appendChild(copyNote);
     box.appendChild(deep);
     { const kt = worldKatariSecEl(ev); if (kt) box.appendChild(kt); }   // v20.72 語り方
+    { // v20.97：この札から出た予告（予告の画面と同じ行）
+      const fcs = worldForecasts().filter((f) => f.fromEventId === ev.id).sort((a, b) => (a.due > b.due ? 1 : a.due < b.due ? -1 : 0));
+      if (fcs.length) {
+        const sec = document.createElement('div'); sec.className = 'field';
+        const h = document.createElement('span'); h.className = 'fieldLabel'; h.textContent = 'ここから出た予告（' + fcs.length + '）';
+        sec.appendChild(h);
+        fcs.forEach((f) => sec.appendChild(worldFcRowEl(f, false)));
+        box.appendChild(sec);
+      }
+    }
     { const sec = worldDigSectionEl(ev, () => { renderWorldDetail(box, ev, paintRight); repaint(); }); if (sec) box.appendChild(sec); }   // v20.43
 
     // 分かれ目の1行。v19.5 段階2 から予測の枠（3択・一言・期限）は出さない（prediction のデータは残す）
@@ -24728,6 +24757,8 @@
       return row;
     };
     const items = pick ? pick.items : [];
+    // v20.97：「今日、深く見るなら」に候補として並んでいる件は、ここに重ねて出さない（選んだ後は今までどおり出す）
+    const inChoice = new Set(worldChoiceToday() ? [] : worldChoiceCandidates().map((c) => c.cardId));
     model.rows.forEach((r) => {
       const b = document.createElement('button'); b.type = 'button'; b.className = 'worldDigListRow mikiRow';
       const n = document.createElement('span'); n.className = 'mkName'; n.textContent = r.t.name;
@@ -24738,11 +24769,11 @@
       items.forEach((x, k) => {
         if (placed.has(k) || !x.cardId) return;
         const first = (mk.cardMiki.get(x.cardId) || []).find((id) => worldMikiTrunk(id));
-        if (first === r.t.id) { placed.add(k); box.appendChild(pickRow(x)); }
+        if (first === r.t.id) { placed.add(k); if (!inChoice.has(x.cardId)) box.appendChild(pickRow(x)); }
       });
     });
     if (pick && !items.length) { const e = document.createElement('div'); e.className = 'tpEmpty'; e.textContent = (pick.date === todayStr() ? '今日' : worldShortDate(pick.date) + ' ') + 'の取り込みでは、見るべき件は選ばれませんでした'; box.appendChild(e); }
-    const rest = items.filter((_, k) => !placed.has(k));
+    const rest = items.filter((x, k) => !placed.has(k) && !inChoice.has(x.cardId));
     if (rest.length) {
       const h = document.createElement('div'); h.className = 'tpHead'; h.textContent = '今日の葉（新しい話かもしれない件）'; box.appendChild(h);
       rest.forEach((x) => box.appendChild(pickRow(x)));
@@ -26036,7 +26067,6 @@
       ? '今日の分はまだ出していません。'
       : '新しい分がありません。右上の「取り込む」から入れます。';
     // 消費するのはここを押したときだけ（朝のステップを開くのと同じ扱い）
-    document.getElementById('btnWorldOpenToday').hidden = !!todayList.length || !unread;
 
     // 12〜15行の1本の導線。ここから下は、押した結果でしか広がらない
     // v19.6 段階6：お金の鎖と単発を「今日動いた主体」の上に
@@ -29997,6 +30027,14 @@
     }
     document.getElementById('worldActorCountryField').hidden = !isActor;   // v20
     if (isActor) worldPaintActorCountry(c);
+    { // v20.97：この主体の予告（主体の名前か別名で合わせる）
+      const names = isActor ? new Set([c.name].concat(c.aka || []).map(worldNormName)) : null;
+      const fcs = isActor ? worldForecasts().filter((f) => names.has(worldNormName(f.actor))).sort((a, b) => (a.due > b.due ? 1 : a.due < b.due ? -1 : 0)) : [];
+      document.getElementById('worldActorForecastField').hidden = !fcs.length;
+      document.getElementById('worldActorForecastLabel').textContent = 'この主体の予告（' + fcs.length + '）';
+      const list = document.getElementById('worldActorForecastList'); list.innerHTML = '';
+      fcs.forEach((f) => list.appendChild(worldFcRowEl(f, false)));
+    }
 
     // v18 A-3: お金を一番上に。flow が1件も無い主体では、この段を出さない
     const moneyField = document.getElementById('worldActorMoneyField');
@@ -30737,7 +30775,6 @@
     showScreen('world');
     renderWorld();
   });
-  document.getElementById('btnWorldOpenToday').addEventListener('click', () => { worldPickToday(); renderWorldMain(); });
   document.getElementById('btnWorldStrataOpen').addEventListener('click', () => {
     // 一覧にいるときに押すと何も起きなかった。押して何も起きないボタンは、
     // 壊れているのと見分けがつかない。一覧にいるときだけ戻る側にする。
