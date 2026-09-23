@@ -1265,12 +1265,7 @@
   .wfSection { margin: 14px 0 0; }
   /* v20.21 予告 第1段：待っている予告。第1段では押せない（答え合わせは第2段） */
   .homeForecastRow { margin: 10px 0 0; }
-  .homeForecastRow .hfHead { font-size: 12px; color: var(--text-dim); }
-  .homeForecastRow .hfItem { font-size: 13px; color: var(--text); line-height: 1.6; margin-top: 2px; }
-  .homeForecastRow .hfDue { color: var(--text-faint); font-size: 11px; margin-right: 6px; }
-  .homeForecastRow .hfMore { font-size: 11px; color: var(--text-faint); margin-top: 2px; }
   .homePullRow { padding: 2px 0 10px; }
-  .homePullRow .homePullNone { font-size: 12px; color: var(--text-faint); }
   /* 出来事の行のタグ。概念タグより弱くして、押し合わないようにする */
   .worldRow .wTag.isStratum { color: var(--text-faint); border-color: transparent; background: var(--bg-card); font: inherit; font-size: 10px; cursor: pointer; }
   .stratumPill {
@@ -1368,7 +1363,6 @@
   .worldMapBox .wmLegendText { fill: var(--text-dim); font-size: 8px; }
   .wmUsd { color: var(--text-faint); font-size: 11px; margin-left: 4px; }
   /* v20.3.1 札を開いたとき、動かした側のすぐ下に出すドル換算の1行 */
-  .worldUsdLine { color: var(--text-dim); font-size: 12px; margin: 2px 0 8px; }
   #worldMapChooser { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
   /* v20.5 M5 小さな地図：押すと大きな地図。指でなぞればページが動く */
   .worldMiniMap { margin: 0 0 10px; cursor: pointer; min-height: 20px; }
@@ -2767,18 +2761,6 @@
         <div id="worldOutsideList"></div>
         <button type="button" id="btnWorldImportShow" class="tagFilterBtn" hidden>入れた札を見る</button>
       </div>
-      <!-- v19 段階4：データを捨てるので対象が無い。画面から外す（処理は残す） -->
-      <div class="field" hidden>
-        <span class="fieldLabel">既存の札に付け直す（主語・お金・地層の値）</span>
-        <p class="fieldNote">主語がまだ付いていない札に主語を、金額が書かれている札から地層の値を、あとから拾います。出典を開き直さないぶん縛りは通常より厳しく、材料が足りない札は空のままになります。足すだけで、置き換えません。地層の値は同じ日付が既にあれば落とします。</p>
-        <div class="medRow">
-          <button type="button" id="btnWorldRetroPrompt" class="tagFilterBtn">プロンプトをコピー</button>
-          <span class="fieldNote" id="worldRetroCount" style="margin:0;"></span>
-        </div>
-        <textarea id="worldRetroPaste" rows="3" placeholder='{"actors":{...},"flow":{...},"levels":{...}} をここに貼る' autocomplete="off"></textarea>
-        <button type="button" id="btnWorldRetroImport" class="secondaryBtn">取り込む</button>
-        <p class="fieldNote" id="worldRetroStatus"></p>
-      </div>
       <!-- v20.17 第1段：集めることと読むことを分ける。ここは「読む」側 -->
       <div class="field" id="worldReadField">
         <span class="fieldLabel">読む（溜まった札の思惑と分かれ目）</span>
@@ -3207,7 +3189,7 @@
         <svg id="graphSvg" class="graphSvg"></svg>
         <div id="graphCards"></div>
       </div>
-      <div class="graphHint">ドラッグで移動 ・ ピンチ／ホイールで拡大</div>
+      <div class="graphHint">札を押すとその札が真ん中に ・ 真ん中の札を押すか長押しで詳しく ・ ドラッグで移動 ・ ピンチ／ホイールで拡大</div>
     </div>
     <div id="graphFar" class="graphFar">
       <div class="graphFarHead">遠い対立 — 経由する言葉ごと</div>
@@ -3315,7 +3297,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.94';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.95';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -6550,7 +6532,6 @@
   // per-call exclusion - identical across calls whenever the note set itself
   // hasn't changed, which is exactly what makes it safe to cache. Only used
   // below the threshold; above it see notesInlineMode.
-  function stableCompactNotesList() { return data.notes.map(buildCompactNote); }
   // v7.0: above the threshold the whole list no longer goes to the model.
   // Each call picks the notes closest to its seed (the consult input or the
   // note being linked) and sends them in the user message instead. Before
@@ -9690,6 +9671,8 @@
       renderDetail();
     } else if (nav.detailOrigin === 'list') {
       openList();
+    } else if (nav.detailOrigin === 'graph') {
+      openList(); openGraph(graphState.centerId);   // v20.95：網から開いた詳しくは、網に戻る（前は言葉の一覧に戻っていた）
     } else if (nav.detailOrigin === 'consult') {
       showScreen('consult');
       renderConsultTurns();
@@ -13235,7 +13218,7 @@
         cardId = card ? card.dataset.noteId : null;
         startX = e.clientX; startY = e.clientY; moved = false; holdFired = false;
         clearHold();
-        if (cardId) holdTimer = setTimeout(() => { holdTimer = null; if (!moved && pointers.size === 1) { holdFired = true; const id = cardId; closeGraph(); openDetail(id, 'list'); } }, 600);
+        if (cardId) holdTimer = setTimeout(() => { holdTimer = null; if (!moved && pointers.size === 1) { holdFired = true; const id = cardId; closeGraph(); openDetail(id, 'graph'); } }, 600);   // v20.95：戻ると網へ
         vp.classList.add('dragging');
       } else if (pointers.size === 2) {
         clearHold(); moved = true; cardId = null;
@@ -13265,6 +13248,7 @@
         clearHold();
         vp.classList.remove('dragging');
         if (!cancelled && !moved && !holdFired && cardId && cardId !== graphState.centerId) openGraph(cardId);
+        else if (!cancelled && !moved && !holdFired && cardId && cardId === graphState.centerId) { const id = cardId; closeGraph(); openDetail(id, 'graph'); }   // v20.95：真ん中の札は押すと詳しく（前は何も起きなかった）
         cardId = null; moved = false; holdFired = false;
       } else { moved = true; clearHold(); pinchDist = 0; }
       try { vp.releasePointerCapture(e.pointerId); } catch (err) {}
@@ -14983,7 +14967,7 @@
     shootGate(['btnShootHookPrompt', 'btnShootHookImport'], live >= 1, 'shootHookHint', 'カードが1枚でもあると、候補を出せます。');
     shootGate(['btnShootNotePrompt'], live >= 2, 'shootNoteHint', 'カードが2枚そろうと使えます。（いま ' + live + '枚）');
     { const n = document.getElementById('shootFlowNote').value.trim().length; document.getElementById('shootNoteStatus').textContent = n ? n + '字' : ''; }
-    const canShoot = !!answer && !!hook;
+    const canShoot = !!(deck && deck.script && deck.script.text) || (!!answer && !!hook);   // v20.95
     document.getElementById('btnShootStart').disabled = !canShoot;
     document.getElementById('shootStartHint').hidden = canShoot;
   }
@@ -16344,6 +16328,14 @@
       salvaged = pack.thumbs.length + pack.titles.length;
     }
     if (!pack.thumbs.length && !pack.titles.length) return { error: 'サムネ案もタイトル案もありませんでした' + worldJsonKeysNote(p) + '。返事が途中で切れていないか、最後まで貼れているか見てください。' };
+    // v20.95：貼り直したとき、前に選んだものと同じ文の案があれば選んだままにする（前は外れて選び直しだった）
+    const old = deck.pack || null;
+    if (old) {
+      const ot = old.pick >= 0 ? (old.thumbs || [])[old.pick] : null;
+      if (ot) pack.pick = pack.thumbs.findIndex((t) => t.text === ot.text);
+      const oti = old.titlePick >= 0 ? (old.titles || [])[old.titlePick] : null;
+      pack.titlePick = oti ? pack.titles.findIndex((t) => t.text === oti.text) : -1;
+    }
     deck.pack = pack;
     shootTouch(deck);
     const notes = [];
@@ -17041,7 +17033,6 @@
   const WORLD_FLOW_KIND_MARK  = { money: '', goods: '［物］', people: '［人］' };
   const WORLD_FLOW_KIND_LABEL = { money: 'お金の動き', goods: '物の動き', people: '人の動き' };
   const WORLD_EVENT_ID_RE     = /^w_\d{8}_\d+$/;
-  const WORLD_RETRO_MAX        = 40;    // 遡及プロンプトに載せる札の数
   // v20.17 第1段：読むプロンプト。集める（探す・書き写す）と読む（思惑・分かれ目）を分ける。
   // 20枚で約11,600字（実測。1枚464字）。朝のプロンプトは第1段では変えない
   const WORLD_READ_MAX     = 20;   // 一度に読ませる札の数
@@ -18288,15 +18279,6 @@
     ev.updatedAt = nowIso();
     worldMonthChanged(monthOfDate(ev.eventDate));
   }
-  function worldDeleteEvent(id) {
-    const ev = worldLiveEvents().find((e) => e.id === id);
-    if (!ev) return;
-    const m = monthOfDate(ev.eventDate);
-    worldEvents = worldEvents.filter((e) => e.id !== id);
-    if (!wd.tombs.has(m)) wd.tombs.set(m, new Map());
-    wd.tombs.get(m).set(id, nowIso());
-    worldMonthChanged(m);
-  }
   // ---- v20.43 自分で調べたこと（world/dig/）---------------------------------
   // 月は「押した・戻した日の月」。札の日付の月ではない（古い月のファイルが後から書き換わらない）
   const wdig = { index: { version: 1, updatedAt: '', months: {} }, docs: new Map(), dirty: new Set(), stamps: {}, busy: false, byEvent: null };
@@ -18322,8 +18304,10 @@
   }
   function normalizeDigAsked(a) {
     if (!a || typeof a !== 'object' || !a.id || !a.at) return null;
+    // v20.95：前の版で event に書き換えられた語り方の記録（key が ch_）も語り方に戻す
+    if (a.target === 'event' && /^ch_/.test(String(a.key || ''))) a = Object.assign({}, a, { target: 'katari' });
     return {
-      id: String(a.id), target: ['event', 'concept', 'term', 'actor'].includes(a.target) ? a.target : 'event',
+      id: String(a.id), target: ['event', 'concept', 'term', 'actor', 'katari'].includes(a.target) ? a.target : (/^ch_/.test(String(a.key || '')) ? 'katari' : 'event'),   // v20.95：語り方も記録の対象
       targetId: String(a.targetId || ''), key: String(a.key || '').slice(0, 20), at: String(a.at),
       createdAt: String(a.createdAt || a.at), updatedAt: String(a.updatedAt || a.at),
     };
@@ -20140,17 +20124,6 @@
     return '必ず見るもの：' + parts.join('／');
   }
   // after の候補。直近 WORLD_RECENT_FLOWS_DAYS 日のうち、お金を先に、新しい順
-  function worldRecentFlowLines() {
-    const cut = addDays(todayStr(), -WORLD_RECENT_FLOWS_DAYS);
-    const byDate = (a, b) => (a.eventDate > b.eventDate ? -1 : a.eventDate < b.eventDate ? 1 : 0);
-    const recent = worldLiveEvents().filter((e) => e.flow && e.eventDate >= cut);
-    return recent.filter(worldIsMoneyFlow).sort(byDate)
-      .concat(recent.filter((e) => !worldIsMoneyFlow(e)).sort(byDate))
-      .slice(0, WORLD_RECENT_FLOWS_MAX)
-      .map((e) => e.id + '　' + worldEvDateShort(e) + '　' + WORLD_FLOW_KIND_MARK[e.flow.kind]
-        + (e.flow.from || '？') + '→' + (e.flow.to || '？') + '　' + (e.flow.what || '')
-        + (e.flow.amount ? '　' + e.flow.amount : '') + (e.flow.span ? '（' + e.flow.span + 'の累計）' : ''));
-  }
   // v20.2 M2：初期投入の節。規則の文は毎朝と同じにし、ここで地域・期間・主体・国・印だけを足す
   function worldSeedPromptPart(seed) {
     return '■ 初期投入（' + seed[1] + '）\n' +
@@ -21364,76 +21337,6 @@
       (knownActors.length ? knownActors.join(' / ') : '（まだありません）') +
       mkp.tail;   // v20.52：幹がまだの札があるときだけ、幹の一覧
   }
-  function worldRetroTargets() {
-    return worldLiveEvents()
-      .sort((a, b) => (a.eventDate > b.eventDate ? -1 : 1)).slice(0, WORLD_RETRO_MAX);
-  }
-  function worldRetroPromptText() {
-    const cards = worldRetroTargets();
-    const knownActors = worldKnownActorLines();
-    const strataLines = worldStrataPromptLines();
-    return SHOOT_PROMPT_HEAD +
-      'あなたは、すでに取り込んである出来事の札に「動かした主体」を付け直す係です。\n' +
-      '新しい出来事を探しません。web 検索も使いません。\n' +
-      '下に並ぶ札の文章だけを材料にします。\n\n' +
-      '■ 材料の限界を先に言っておきます\n' +
-      '- 出典のページは開けません。fact・why・detail に書かれていることが全部です。\n' +
-      '- だから、通常の生成より厳しく縛ります。書かれていないことを書かないでください。\n' +
-      '- 全部の札に主体が要るわけではありません。材料が足りない札は actors を空の配列にしてください。\n\n' +
-      '■ それぞれの札に書くこと\n' +
-      '- actors：この出来事を動かした主体を 0〜' + WORLD_ACTORS_PER_EVENT + 'つ。\n' +
-      '  - 組織を主体にする。個人は、組織と立場が違うと明記されているときだけ（kind を "person"）。\n' +
-      '  - 末尾の「すでに知っているアクター」に当たる名前があればそれを使う。無ければ新しく書いてよい。\n' +
-      '  - 行動が fact か detail に書かれていない主体を書かない。why にだけ出てくる主体は書かない。\n' +
-      '  - 統計・論文・報告書の公表そのものを行動としない。公表した機関は、それだけではアクターにならない。\n' +
-      '    行動とは、決定・合意・介入・融資・買い入れ・制裁・提案・撤回など、何かを動かす意思の表れ。\n' +
-      '    統計の札で動かした主体が特定できなければ、actors は空でよい。\n' +
-      '  - did：fact か detail に書かれた行動だけ。数字・金額はここにだけ。\n' +
-      '        1文。途中で止めない。目安は20〜60字（数字を削って短くしない）。\n' +
-      '        why の文章から行動を作らない。\n' +
-      '  - said：why か detail に、その主体が「述べた」「説明した」「表明した」「掲げた」と\n' +
-      '        分かる形で書かれているときだけ。無ければ空。\n' +
-      '  - read：あなたが読んだ思惑。推定であることを前提に書く。\n' +
-      '        said と同じ内容なら空。書くなら述べたことと違うことを。書けなければ空。\n' +
-      '  - kind：state／cb／intl／industry／person／group。すでに知っているアクターには書かなくてよい。\n' +
-      '  - 札に「※ 主語は付いています」と書いてあるものは、actors を [] にしてください。\n' +
-      '- flow：detail に金額が書かれているときだけ。amount は書かれた文字列のまま。無ければ null。\n' +
-      '  span：その金額が期間の累計・合計だと detail に書かれていれば、その期間（「2022年以降」）。\n' +
-      '        1回の動きなら空。書かれていなければ空。\n' +
-      '        span には期間だけを書き、「累計」とは書かない（「2026年1〜8月」。「2026年1〜8月の累計」としない）。\n' +
-      '  strata：その金が動かした地層の id を0〜' + WORLD_FLOW_STRATA_MAX + '個。末尾の一覧にあるものだけ。\n' +
-      '\n' +
-      // v15: 残高は flow に入れない。器は地層の levels のほうにある。
-      '- levels：末尾の地層の一覧にある量について、その時点の値が detail に書かれていたら。\n' +
-      '  無ければ空の配列。0件でよい。ほとんどの札は0件になります。\n' +
-      '  - detail に数字が書かれているときだけ。fact や why から作らない。推測・概算を書かない。\n' +
-      '  - value は書かれた文字列のまま（「1兆2075億ドル」）。換算しない。\n' +
-      '  - at は detail に基準日が書かれているときだけ（YYYY-MM-DD）。無ければ省略する。\n' +
-      '  - stratumId は末尾の一覧にある id だけ。一覧に無い量は書かない。\n' +
-      '  - 出典は札のものを使うので、ここには書かない。\n\n' +
-      '■ 札\n' +
-      (cards.length ? cards.map((e) =>
-        '[' + e.id + ']' + (e.actors.length ? '　※ 主語は付いています（actors は [] に）' : '') + '\n' +
-        'fact：' + e.fact + '\n' +
-        'why：' + (e.why || '') + '\n' +
-        'detail：' + (e.detail || '') + '\n' +
-        'source：' + (e.source || '')).join('\n\n') : '（対象の札がありません）') + '\n\n' +
-      '■ 出力形式\n' +
-      '{"actors":{"w_20260902_1":[{"name":"日本銀行","did":"...","said":"...","read":"...","kind":"cb"}],\n' +
-      '           "w_20260901_1":[]},\n' +
-      ' "flow":{"w_20260902_1":null,\n' +
-      '         "w_20260901_1":{"from":"...","to":"...","what":"...","amount":"...","span":"","strata":[]}},\n' +
-      ' "levels":{"w_20260902_1":[{"stratumId":"st_jp_fx_reserve","value":"1兆2075億ドル"}],\n' +
-      '           "w_20260901_1":[]}}\n\n' +
-      '- id は上の札のものだけを使う。\n' +
-      '- 材料が足りない札は actors を [] に、flow を null に、levels を [] にする。無理に埋めない。\n' +
-      '- JSON のみ。\n\n' +
-      '────────────────────────────────────────\n' +
-      '■ 地層の一覧（strata・levels はこの id から選ぶ。ここに無いものを作らない）\n' +
-      (strataLines.length ? strataLines.join('\n') : '（まだありません）') + '\n\n' +
-      '■ すでに知っているアクター（name はここから探す。無ければ新しく書いてよい。先頭の名前だけを書き、［別名：…］は書かない）\n' +
-      (knownActors.length ? knownActors.join(' / ') : '（まだありません）');
-  }
   // v20.17 第1段：読んだ結果を入れる。同じ入口（遡及）に枝を足した。
   // 足すだけ：空いている read・fork・reason だけを埋め、既にある値は上書きしない。
   // confidence は下げるときだけ通す（出典を開いていない側が上げるのは筋が通らない）
@@ -21558,62 +21461,6 @@
     if (touched.size) touched.forEach((m) => worldMonthChanged(m));
     try { out.miki = worldMikiImportRead(parsed); } catch (e) { recordFeatureError('幹の答え', e); out.miki = null; }   // v20.52
     return out;
-  }
-  // 足すだけ。主語は actors が空の札にだけ、flow の空欄と地層の値はどの札にも。id が端末に無い札は無視。
-  function worldImportRetroJson(raw) {
-    const parsed = shootParseJson(raw);
-    const hasActors = parsed && typeof parsed === 'object' && parsed.actors && typeof parsed.actors === 'object';
-    const hasLevels = parsed && typeof parsed === 'object' && parsed.levels && typeof parsed.levels === 'object';
-    if (!hasActors && !hasLevels) {
-      return { error: 'JSON として読めませんでした。{"actors":{...},"flow":{...},"levels":{...}} の形で貼ってください。' };
-    }
-    const flows = (parsed.flow && typeof parsed.flow === 'object') ? parsed.flow : {};
-    let filled = 0, withRead = 0, withFlow = 0, skipped = 0, unknown = 0;
-    const lv = { levelsFilled: 0, levelsDup: 0, levelsUnknown: 0 };   // v15
-    const createdActors = [];
-    const touched = new Set();
-    const byId = (id) => worldLiveEvents().find((e) => e.id === id) || null;
-    Object.entries(hasActors ? parsed.actors : {}).forEach(([id, list]) => {
-      const ev = byId(id);
-      if (!ev) { unknown++; return; }
-      const already = ev.actors.length > 0;
-      if (already) skipped++;
-      const actors = already ? ev.actors : normalizeWorldActorList(list);
-      // 足すだけ。すでにある flow は置き換えず、空いている span・strata だけ埋める
-      const incoming = normalizeWorldFlow(flows[id]);
-      let changed = false;
-      if (!ev.flow && incoming) { ev.flow = incoming; changed = true; }
-      else if (ev.flow && incoming) {
-        if (!ev.flow.span && incoming.span) { ev.flow.span = incoming.span; changed = true; }
-        if (!ev.flow.strata.length && incoming.strata.length) { ev.flow.strata = incoming.strata; changed = true; }
-      }
-      if (ev.flow) ev.flow.strata = ev.flow.strata.filter((x) => worldStratumById(x));
-      if (!already && actors.length) {
-        ev._actorMeta = {};
-        (Array.isArray(list) ? list : []).forEach((a) => { if (a && a.name) ev._actorMeta[worldNormName(a.name)] = WORLD_ACTOR_KINDS.includes(a.kind) ? a.kind : ''; });
-        ev.actors = actors;
-        const created = { actor: [] };
-        worldApplyActors(ev, created);
-        delete ev._actorMeta;
-        created.actor.forEach((x) => createdActors.push(x));
-        changed = true;
-        if (ev.actors.length) filled++;
-        if (ev.actors.some((a) => a.read)) withRead++;
-      }
-      if (ev.flow) withFlow++;
-      if (!changed) return;
-      ev.updatedAt = nowIso();
-      touched.add(monthOfDate(ev.eventDate));
-    });
-    // v15: 地層の値。主語がもう付いている札からも拾えるので、actors とは別に回す
-    Object.entries(hasLevels ? parsed.levels : {}).forEach(([id, list]) => {
-      const ev = byId(id);
-      if (!ev) { if (!hasActors) unknown++; return; }
-      worldApplyLevels(ev, list, lv);
-    });
-    if (touched.size) { worldSaveActors(); touched.forEach((m) => worldMonthChanged(m)); }
-    return { filled, withRead, withFlow, skipped, unknown, createdActors, ...lv,
-      candidates: worldMergeCandidatesIn(WORLD_STORES.actor, createdActors) };
   }
 
   // ---- 取り込み ------------------------------------------------------------
@@ -27967,7 +27814,6 @@
   }
   function worldIsCountry(code, lib) { return !!code && !WORLD_MAP_SLOTS.includes(code) && code !== 'SAME' && lib.nameOf.has(code); }
   // 動きの両端。一般名は、もう片方が国なら同じ国（言い切れないとき＝もう片方が枠や場所不明のときは場所不明）
-  function worldFlowPlaces(f, lib) { return worldFlowPlacesHow(f, lib).places; }
   // v20.24：両端の決め方も返す（「・」で決めた・一般名で推し量った動きを、地図の下に件数で出すため）
   function worldFlowPlacesHow(f, lib) {
     const ha = worldPlaceHow(f.from, lib), hb = worldPlaceHow(f.to, lib);
@@ -31032,7 +30878,6 @@
     document.getElementById('worldImportStatus').textContent = worldState.lastResult;
     renderWorldSameBoxes();   // v20.48
     renderWorldMikiImportBox();   // v20.51
-    document.getElementById('worldRetroCount').textContent = '対象 ' + worldRetroTargets().length + '件（端末にある札のうち新しい順）';
     document.getElementById('btnWorldImportShow').hidden = !worldState.lastBatch;
     const field = document.getElementById('worldMergeField');
     const box = document.getElementById('worldMergeList');
@@ -32302,34 +32147,6 @@
     worldState.lastResult = msg;
     worldState.lastBatch = res.added ? { id: res.batchId, partnerIds: res.partnerIds, linked: res.linked } : null;
     status.textContent = msg;
-    renderWorldImport();
-  });
-  document.getElementById('btnWorldRetroPrompt').addEventListener('click', () => {
-    copyToClipboard(worldRetroPromptText()).then((ok) => {
-      document.getElementById('worldRetroStatus').textContent = ok ? 'コピーしました。Claude のチャットに貼ってください。' : 'コピーできませんでした。';
-    });
-  });
-  document.getElementById('btnWorldRetroImport').addEventListener('click', () => {
-    const box = document.getElementById('worldRetroPaste');
-    const st = document.getElementById('worldRetroStatus');
-    const cutSnap = worldCutSnap();   // v20.33
-    const res = worldImportRetroJson(box.value);
-    if (res.error) { st.textContent = res.error; return; }
-    // 主語だけ／地層の値だけ、どちらか片方の JSON も来る。0件の行を先頭に出さない
-    let msg = '';
-    if (res.filled || res.withFlow || res.skipped || !res.levelsFilled) {
-      msg += res.filled + '件に動かした側を付けました。推定を書いた札 ' + res.withRead + '件／' + res.filled + '件、お金の動きつき ' + res.withFlow + '件。';
-    }
-    if (res.createdActors.length) msg += '　新しいアクター ' + res.createdActors.length + '件。';
-    if (res.levelsFilled) msg += '　地層の値 ' + res.levelsFilled + '件を入れました。';
-    if (res.levelsDup) msg += '　※ 同じ日付で重なった地層の値 ' + res.levelsDup + '件は落としました。';
-    if (res.levelsUnknown) msg += '　※ 一覧に無い地層の値 ' + res.levelsUnknown + '件を落としました。';
-    if (res.skipped) msg += '　既に主語が付いていた ' + res.skipped + '件はそのまま。';
-    if (res.unknown) msg += '　端末に無い札 ' + res.unknown + '件は無視。';
-    msg += worldCutNote(cutSnap);   // v20.33：切ったら必ず1行
-    if (res.filled || res.withFlow || res.levelsFilled) box.value = '';
-    st.textContent = msg.trim();
-    worldState.candidates = res.candidates;
     renderWorldImport();
   });
   // A-1: 取り込んだ直後に、入れたものを確認できないのは片手落ち
