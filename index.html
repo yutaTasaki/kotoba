@@ -238,6 +238,15 @@
     color: var(--text-faint);
   }
   .fieldNote.warn { color: var(--danger); }
+  /* v20.111 データの知らせ（ホームの一番上に1行。押すと手順） */
+  .dataNotice { margin: 8px 0 4px; padding: 10px 12px; border: 1px solid var(--guess); border-radius: 10px; background: var(--bg-card); }
+  .dataNotice.strong { border-color: var(--danger); }
+  .dataNotice .dnLine { font-size: 15px; line-height: 1.5; cursor: pointer; color: var(--text); }
+  .dataNotice.strong .dnLine { color: var(--danger); }
+  .dataNotice .dnMore { font-size: 13px; color: var(--text-dim); margin-top: 4px; }
+  .dataNotice ol { margin: 8px 0 4px 20px; padding: 0; font-size: 14px; line-height: 1.6; color: var(--text-dim); }
+  .dataNotice .dnRow { display: flex; gap: 12px; margin-top: 6px; flex-wrap: wrap; }
+  .dataNotice .dnItem { border-top: 1px solid var(--border); padding-top: 8px; margin-top: 8px; }
   .fieldNote.inlineNote { display: inline; margin-left: 6px; font-size: 11px; }
   .autocompleteField { position: relative; }
   .tagInputRow { display: flex; gap: 8px; align-items: stretch; }
@@ -1582,6 +1591,7 @@
     <header class="topbar">
       <div class="topbar-title" style="text-align:left;">朝</div>
     </header>
+    <div id="dataNotice" class="dataNotice" hidden></div>
     <p class="fieldNote warn" id="usageThresholdBanner" hidden></p>
     <div class="dayCount" id="dayCountLabel"></div>
     <div id="homeEmpty" class="emptyMsg" hidden>まだ言葉がありません。「言葉」画面の「＋」から最初の1枚を書いてみましょう。</div>
@@ -1885,6 +1895,7 @@
             <div class="statRow"><span>同期状態</span><span id="statSyncState"></span></div>
             <div class="statRow"><span>最終同期</span><span id="statLastSync"></span></div>
             <div class="statRow"><span>最終エラー</span><span id="statLastSyncError"></span></div>
+            <div class="statRow"><span>データの置き場所の大きさ</span><span id="statRepoSize"></span></div>
             <button id="btnSyncNow" class="secondaryBtn">今すぐ同期</button>
           </div>
           <details class="setMore">
@@ -3285,7 +3296,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.110';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.111';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -4549,13 +4560,158 @@
   // into an error (and a retry on the next sync) instead of a sync bar stuck
   // on 同期中… for minutes.
   const GH_TIMEOUT_MS = 30000;
+  // v20.111：GitHub の仕組みの版を明示して送る（送らないと、GitHub が既定の版を変えた日に知らせも無く動きが変わる）
+  const GH_API_VERSION = '2022-11-28';
   async function ghFetch(url, opts) {
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), GH_TIMEOUT_MS);
-    try { return await fetch(url, Object.assign({}, opts || {}, { signal: ctl.signal })); }
+    const o = Object.assign({}, opts || {}, { signal: ctl.signal });
+    if (String(url).startsWith('https://api.github.com/')) o.headers = Object.assign({ 'X-GitHub-Api-Version': GH_API_VERSION }, o.headers || {});
+    try { const res = await fetch(url, o); try { dnWatchResponse(res, url); } catch (e) {} return res; }
     catch (e) { if (e && e.name === 'AbortError') { const err = new Error('GitHub timeout'); err.status = 0; throw err; } throw e; }
     finally { clearTimeout(t); }
   }
+  // ---- v20.111 データの知らせ（仕様書 sekai_10000days.md 第3段）-------------------
+  // 値と「あとで」の日数はここだけ
+  const DN = {
+    stopDays: 3,                 // ア 同期が止まって
+    repoWarnKB: 800 * 1024,      // エ 知らせる
+    repoStrongKB: 1024 * 1024,   // エ 強く（1GB）
+    repoStickyKB: 3 * 1024 * 1024, // エ 消せない（3GB）
+    repoMonths: 6,               // エ 1GB に届くのがこれ以内なら知らせる
+    growthMinDays: 30,           // エ 伸び方を出すのに要る日数
+    fileKB: 50 * 1024,           // オ 1ファイル（GitHub が警告する大きさ）
+    snooze: { stop: 1, sunset: 30, sunsetNear: 7, repo: 30, repoStrong: 7, file: 30, repoUnknown: 30 },
+  };
+  const DN_KEY = 'kotoba_dataNotice';   // { unauth, sunset, sunsetAt, gone, sizes:[{d,k,w}], sizeFail, files:{path:{kb,at}}, snooze:{id:until} }
+  function dnGet() { try { const o = JSON.parse(localStorage.getItem(DN_KEY) || '{}'); return o && typeof o === 'object' ? o : {}; } catch (e) { return {}; } }
+  function dnSet(fn) { try { const o = dnGet(); fn(o); localStorage.setItem(DN_KEY, JSON.stringify(o)); } catch (e) {} }
+  function dnWatchResponse(res, url) {
+    if (!res || !String(url || '').startsWith('https://api.github.com/')) return;
+    const st = res.status;
+    const dep = res.headers.get('Deprecation'), sun = res.headers.get('Sunset');
+    if (st === 401) dnSet((o) => { if (!o.unauth) o.unauth = nowIso(); });
+    else if (st >= 200 && st < 300) { const o = dnGet(); if (o.unauth) dnSet((x) => { delete x.unauth; }); }
+    if (st === 410) dnSet((o) => { o.gone = nowIso(); });
+    if (dep || sun) dnSet((o) => { o.sunset = sun || dep || ''; o.sunsetAt = nowIso(); });
+  }
+  // オ：取りに行ったファイルの大きさ（KB）を覚える。50MB を超えたものだけ残す
+  function dnNoteFileSize(path, bytes) {
+    const kb = Math.round((Number(bytes) || 0) / 1024);
+    if (kb < DN.fileKB) { const o = dnGet(); if (o.files && o.files[path]) dnSet((x) => { delete x.files[path]; }); return; }
+    dnSet((o) => { o.files = o.files || {}; o.files[path] = { kb, at: nowIso() }; });
+  }
+  // エ：1日1回、2つの置き場所の大きさを取る
+  async function dnMeasureRepos(token) {
+    const today = todayStr();
+    const o0 = dnGet();
+    if ((o0.sizes || []).some((x) => x.d === today) || o0.sizeTriedOn === today) return;
+    dnSet((o) => { o.sizeTriedOn = today; });
+    try {
+      const one = async (repo) => { const r = await ghFetch(`https://api.github.com/repos/${GITHUB_OWNER}/${repo}`, { headers: ghHeaders(token), cache: 'no-store' }); if (!r.ok) throw new Error(String(r.status)); const j = await r.json(); if (!Number.isFinite(j.size)) throw new Error('size'); return j.size; };
+      const k = await one(GITHUB_REPO), w = await one(GITHUB_REPO_WALK);
+      dnSet((o) => {
+        const list = (o.sizes || []).filter((x) => x.d !== today).concat([{ d: today, k, w }]).sort((p, q) => (p.d < q.d ? -1 : 1));
+        // 90日より古いものは、週に1つだけ残す
+        const cut = addDays(today, -90), seenWeek = new Set();
+        o.sizes = list.filter((x) => { if (x.d >= cut) return true; const wk = x.d.slice(0, 4) + '-' + Math.floor(dayOfYearOf(x.d) / 7); if (seenWeek.has(wk)) return false; seenWeek.add(wk); return true; });
+        delete o.sizeFail;
+      });
+    } catch (e) { dnSet((o) => { if (!o.sizeFail) o.sizeFail = nowIso(); }); }
+  }
+  function dayOfYearOf(d) { const t = parseDateStr(d), y = parseDateStr(d.slice(0, 4) + '-01-01'); return Math.round((t - y) / 86400000); }
+  function dnDaysBetween(a, b) { return Math.round((parseDateStr(b) - parseDateStr(a)) / 86400000); }
+  // 直近90日の伸び（KB/日）。30日分たまるまでは null
+  function dnRepoGrowth(o, today) {
+    const list = (o.sizes || []).filter((x) => x.d >= addDays(today, -90));
+    if (list.length < 2) return null;
+    const a = list[0], b = list[list.length - 1];
+    const days = dnDaysBetween(a.d, b.d);
+    if (days < DN.growthMinDays) return null;
+    return Math.max(0, ((b.k + b.w) - (a.k + a.w)) / days);
+  }
+  function dnMB(kb) { return Math.round(kb / 1024).toLocaleString('ja-JP') + 'MB'; }
+  // 今出す知らせ（急ぐ順）。now は試しのために渡せる
+  function dataNotices(now) {
+    const nowD = now ? new Date(now) : new Date();
+    const today = todayStr();
+    const o = dnGet();
+    const out = [];
+    const snoozed = (id) => { const u = (o.snooze || {})[id]; return u && new Date(u) > nowD; };
+    const token = getGhToken();
+    const ghPage = { token: 'https://github.com/settings/personal-access-tokens', repo: 'https://github.com/' + GITHUB_OWNER + '/' + GITHUB_REPO };
+    // イ 鍵が使えない（あとで無し）
+    if (token && o.unauth) out.push({ id: 'unauth', strong: true, snooze: 0,
+      line: '同期の鍵が使えなくなりました。期限が切れたのかもしれません。',
+      steps: [['GitHub の鍵の画面を開く', ghPage.token], ['「Generate new token」で作り直す。Repository access で kotoba-data と walk10000-data を選び、Permissions の「Contents」を「Read and write」にする', ''], ['できた鍵を写して、このアプリの 設定 → 同期 → GitHub トークン に貼り、［保存］を押す', ''], ['もう1台の端末にも同じ鍵を貼る', '']] });
+    // ア 同期が止まっている（あとで1日）
+    const last = localStorage.getItem(LAST_SYNC_KEY);
+    if (token && last && (nowD - new Date(last)) >= DN.stopDays * 86400000 && !snoozed('stop')) out.push({ id: 'stop', strong: true, snooze: DN.snooze.stop,
+      line: Math.floor((nowD - new Date(last)) / 86400000) + '日間、記録を GitHub に送れていません。この端末にしか無い記録があります。',
+      steps: [['電波（Wi-Fi・モバイル通信）がつながっているか確かめる', ''], ['設定 → 同期 の［今すぐ同期］を押す。「最終エラー」に何か出ていれば、それを写して Claude に渡す', ''], ['「同期の鍵が使えなくなりました」と出ていれば、そちらの手順を先に', '']] });
+    // エ 置き場所の大きさ
+    const sz = (o.sizes || []).slice(-1)[0];
+    if (sz) {
+      const kb = sz.k + sz.w, g = dnRepoGrowth(o, today);
+      const monthsLeft = g && g > 0 ? (DN.repoStrongKB - kb) / g / 30 : null;
+      const move = [['この画面を写して、アプリを直す人（Claude）に渡してください。新しい置き場所へ引っ越す作業（15〜40分）の手順を一緒に進めます', ''], ['データの置き場所（GitHub）を開く', ghPage.repo]];
+      if (kb >= DN.repoStickyKB) out.push({ id: 'repo', strong: true, snooze: 0, line: 'データの置き場所が目安を超えました（今 ' + dnMB(kb) + '）。引っ越しの作業をしてください。データは消えていません。', steps: move });
+      else if (kb >= DN.repoStrongKB) { if (!snoozed('repoStrong')) out.push({ id: 'repoStrong', strong: true, snooze: DN.snooze.repoStrong, line: 'データの置き場所が目安を超えました（今 ' + dnMB(kb) + '）。引っ越しの作業をしてください。データは消えていません。', steps: move }); }
+      else if ((kb >= DN.repoWarnKB || (monthsLeft != null && monthsLeft <= DN.repoMonths)) && !snoozed('repo')) out.push({ id: 'repo', strong: false, snooze: DN.snooze.repo,
+        line: 'データの置き場所がいっぱいに近づいています（今 ' + dnMB(kb) + '・目安1,000MB）。' + (monthsLeft != null ? 'この伸び方だとあと約' + Math.max(0, Math.round(monthsLeft)) + 'か月。' : '') + '新しい置き場所に引っ越す作業（15〜40分）をしてください。', steps: move });
+    } else if (token && o.sizeFail && (nowD - new Date(o.sizeFail)) >= 30 * 86400000 && !snoozed('repoUnknown')) out.push({ id: 'repoUnknown', strong: false, snooze: DN.snooze.repoUnknown,
+      line: 'データの置き場所の大きさを30日以上測れていません。', steps: [['この画面を写して、アプリを直す人（Claude）に渡してください（同期の鍵に「Metadata」を読む権限が無いのかもしれません）', '']] });
+    // オ 1ファイルが大きすぎる
+    const big = Object.entries(o.files || {}).sort((p, q) => q[1].kb - p[1].kb)[0];
+    if (big && !snoozed('file')) out.push({ id: 'file', strong: false, snooze: DN.snooze.file,
+      line: big[0] + ' のファイルが大きくなりすぎています（' + dnMB(big[1].kb) + '）。100MB を超えると書き込めなくなります。', steps: [['この画面を写して、アプリを直す人（Claude）に渡してください。ファイルを分ける直しが要ります', '']] });
+    // ウ GitHub の仕組みが変わる
+    if (o.gone || o.sunset) {
+      const at = o.sunset ? new Date(o.sunset) : null;
+      const near = at && !isNaN(at) && (at - nowD) <= 60 * 86400000;
+      const id = near || o.gone ? 'sunsetNear' : 'sunset';
+      if (!snoozed(id)) out.push({ id, strong: !!(near || o.gone), snooze: near || o.gone ? DN.snooze.sunsetNear : DN.snooze.sunset,
+        line: o.gone ? 'GitHub の仕組みが変わり、アプリの一部が使えなくなりました。' : 'GitHub の仕組みが' + (at && !isNaN(at) ? at.getFullYear() + '年' + (at.getMonth() + 1) + '月' + at.getDate() + '日に' : 'いずれ') + '変わります。それまでにアプリを直す必要があります。',
+        steps: [['この画面を写して、アプリを直す人（Claude）に渡してください（知らせの元：GitHub の返事の Sunset・Deprecation）', '']] });
+    }
+    return out;
+  }
+  function dnSnooze(id, days) { dnSet((o) => { o.snooze = o.snooze || {}; o.snooze[id] = new Date(Date.now() + days * 86400000).toISOString(); }); }
+  function renderDataNotice() {
+    const box = document.getElementById('dataNotice');
+    if (!box) return;
+    const list = dataNotices();
+    box.hidden = !list.length;
+    box.innerHTML = '';
+    if (!list.length) return;
+    box.classList.toggle('strong', list[0].strong);
+    const open = !!renderDataNotice.open;
+    const item = (n, first) => {
+      const w = document.createElement('div'); if (!first) w.className = 'dnItem';
+      const line = document.createElement('div'); line.className = 'dnLine'; line.textContent = n.line + (first && !open ? '　▸' : '');
+      line.addEventListener('click', () => { renderDataNotice.open = !renderDataNotice.open; renderDataNotice(); });
+      w.appendChild(line);
+      if (open) {
+        const ol = document.createElement('ol');
+        n.steps.forEach(([t, url]) => { const li = document.createElement('li'); if (url) { const a = document.createElement('a'); a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = t; li.appendChild(a); } else li.textContent = t; ol.appendChild(li); });
+        w.appendChild(ol);
+        if (n.snooze) { const r = document.createElement('div'); r.className = 'dnRow'; const b = document.createElement('button'); b.type = 'button'; b.className = 'linkLikeBtn'; b.textContent = 'あとで（' + n.snooze + '日出さない）'; b.addEventListener('click', () => { dnSnooze(n.id, n.snooze); renderDataNotice.open = false; renderDataNotice(); }); r.appendChild(b); w.appendChild(r); }
+      }
+      return w;
+    };
+    box.appendChild(item(list[0], true));
+    if (list.length > 1) {
+      if (open) list.slice(1).forEach((n) => box.appendChild(item(n, false)));
+      else { const m = document.createElement('div'); m.className = 'dnMore'; m.textContent = 'ほかに' + (list.length - 1) + '件'; box.appendChild(m); }
+    }
+  }
+  function repoSizeLine() {
+    const o = dnGet(), sz = (o.sizes || []).slice(-1)[0];
+    if (!sz) return o.sizeFail ? '測れていません（' + formatDateTime(o.sizeFail) + ' から）' : 'まだ測っていません';
+    const g = dnRepoGrowth(o, todayStr());
+    return dnMB(sz.k + sz.w) + '（言葉 ' + dnMB(sz.k) + '・散歩 ' + dnMB(sz.w) + '、' + dotDate(sz.d) + '）' + (g != null ? '・1日 ' + Math.round(g) + 'KB' : '');
+  }
+
   // GET of one file as text + sha. The Contents API only inlines files up to
   // 1 MB; beyond that the object form still carries the sha and the raw
   // media type carries the bytes (up to 100 MB), so this reads both ways.
@@ -4565,6 +4721,7 @@
     if (res.status === 404) return { text: null, sha: null, size: 0 };
     if (!res.ok) { const err = new Error('GitHub GET failed: ' + res.status); err.status = res.status; throw err; }
     const json = await res.json();
+    try { dnNoteFileSize(repo + '/' + path, json.size); } catch (e) {}   // v20.111 オ
     if (json.content && json.encoding === 'base64') return { text: base64ToUtf8(json.content), sha: json.sha, size: json.size || 0 };
     const raw = await ghFetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.raw+json' }, cache: 'no-store' });
     if (!raw.ok) { const err = new Error('GitHub GET(raw) failed: ' + raw.status); err.status = raw.status; throw err; }
@@ -4767,6 +4924,8 @@
       await worldSyncNow(token);
       try { await useStatsSync(token); } catch (e) { recordFeatureError('使った回数の同期', e); }   // v20.93
       localStorage.setItem(LAST_SYNC_KEY, nowIso());
+      dnMeasureRepos(token).then(() => { if (nav.screen === 'home') renderDataNotice(); }).catch(() => {});   // v20.111 エ：1日1回
+      if (nav.screen === 'home') { try { renderDataNotice(); } catch (e) {} }
       pendingChangeCount = Math.max(0, pendingChangeCount - pendingAtStart);
       clearSyncError(LAST_SYNC_ERROR_KEY);
       setSyncStatus(syncAgain || pendingChangeCount > 0 ? 'unsynced' : 'synced');
@@ -7873,6 +8032,7 @@
   function renderHome() {
     document.getElementById('homeEmpty').hidden = data.notes.length > 0;
 
+    try { renderDataNotice(); } catch (e) { recordFeatureError('データの知らせ', e); }   // v20.111
     const usageBanner = document.getElementById('usageThresholdBanner');
     const usageMsg = getClaudeApiKey() ? usageThresholdMessage() : null;
     usageBanner.hidden = !usageMsg;
@@ -13702,6 +13862,7 @@
     const lastWalkSync = localStorage.getItem(WALK_LAST_SYNC_KEY);
     const latestSync = [lastSync, lastWalkSync, localStorage.getItem(TRAINING_LAST_SYNC_KEY), localStorage.getItem(MEDITATION_LAST_SYNC_KEY)].filter(Boolean).sort().pop();
     document.getElementById('statLastSync').textContent = latestSync ? formatDateTime(latestSync) : '-';
+    document.getElementById('statRepoSize').textContent = repoSizeLine();   // v20.111
     { const r = dataSizeReport(); document.getElementById('statDataSize').textContent = r.line; document.getElementById('statDataSizeNote').textContent = r.note; }
     document.getElementById('statJournalMode').textContent = journalMonthly() ? `月ファイル（${jm.index ? Object.keys(jm.index.months).length : 0} か月、読み込み中 ${jm.loaded.size} か月）` : 'data.json（旧方式）';
     document.getElementById('btnJournalMigrate').hidden = journalMonthly();
