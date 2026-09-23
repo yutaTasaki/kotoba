@@ -1558,6 +1558,19 @@
   .worldConceptRow.isChild { padding-left: 14px; }
   .worldForkText { font-size: 13px; line-height: 1.6; color: var(--text-dim); margin-bottom: 6px; }
   .hitBtn.worldHit { font-size: 14px; }
+
+  /* ---- v20.102 iPhone で押しやすく・見やすく（見直しの提案12）----------------------------
+     小さな札ボタンと文字だけのボタンは最低36px、記録と世界の入口は44px。
+     入力欄は16px（それ未満だと iPhone が勝手に拡大する）。説明の字は12→13px。
+     もっと細かい場所の決まり（.worldRowBtns .tagFilterBtn など）は、そちらが勝つので変わらない */
+  .tagFilterBtn { min-height: 36px; padding: 7px 14px; font-size: 13px; }
+  .linkLikeBtn { min-height: 36px; }
+  .subEntryRow .tagFilterBtn { min-height: 44px; padding: 10px 18px; font-size: 15px; }
+  #worldMainView > .linkLikeBtn { min-height: 44px; font-size: 15px; }
+  .fieldNote { font-size: 13px; }
+  .kjSub { font-size: 13px; }
+  input[type="url"], input[type="email"], input:not([type]), select { font-size: 16px; }
+  .trDropRow input[type=number], .trSetNoteRow input, .shootCardEdit textarea, .shootCardEdit input[type="text"] { font-size: 16px; }
 </style>
 </head>
 <body>
@@ -3256,7 +3269,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.101';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.102';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
