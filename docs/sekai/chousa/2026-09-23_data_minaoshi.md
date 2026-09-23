@@ -2,7 +2,7 @@
 
 日付：2026-09-23　元の相談：「今の機能だといずれ持たなくなるのでは。調べて、どうすべきか・問題点を洗い出して」
 前の調査：[../houkoku/2026-09-14_datalyou.md](../houkoku/2026-09-14_datalyou.md)・[../houkoku/2026-09-14_database.md](../houkoku/2026-09-14_database.md)・[../houkoku/2026-09-14_kaitou_10000days.md](../houkoku/2026-09-14_kaitou_10000days.md)
-**直していない。** 今のコード（v20.105）と kotoba-data の本物（手元に写して読むだけ）で測った。
+**直していない（この調査の時点）。** → 1〜5・7・8 は [../houkoku/2026-09-23_data_naoshi.md](../houkoku/2026-09-23_data_naoshi.md) で v20.106〜v20.109 として直した。今のコード（v20.105）と kotoba-data の本物（手元に写して読むだけ）で測った。
 
 ---
 
