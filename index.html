@@ -888,6 +888,9 @@
     transition: transform .15s ease;
   }
   .drawChoiceBtn:active { transform: scale(.97); }
+  .trWeightLine { width: 100%; height: 64px; margin-top: 6px; display: block; }
+  .trWeightLine[hidden] { display: none; }
+  .trOddRow { display: block; width: 100%; text-align: left; padding: 10px 12px; margin: 4px 0; background: var(--bg-card); border: none; border-radius: 10px; color: var(--text); font: inherit; font-size: 14px; cursor: pointer; }
   /* v20.100 言葉の一覧の「絞り込み・並び」 */
   .listFilterWrap { margin: 6px 0 8px; }
   .listFilterWrap > summary { cursor: pointer; list-style: none; padding: 10px 12px; background: var(--bg-card); border-radius: 10px; font-size: 14px; color: var(--text-dim); }
@@ -2206,6 +2209,9 @@
       <div class="field">
         <span class="fieldLabel">体重（kg・任意）</span>
         <input type="number" id="trWeight" step="0.1" inputmode="decimal" placeholder="kg">
+        <p class="fieldNote warn" id="trWeightWarn" hidden></p>
+        <svg id="trWeightLine" class="trWeightLine" viewBox="0 0 300 64" preserveAspectRatio="none" hidden></svg>
+        <p class="fieldNote" id="trWeightLineNote" hidden></p>
       </div>
       <div class="field">
         <span class="fieldLabel">部位（複数可）</span>
@@ -2220,6 +2226,11 @@
         <button id="btnTrImage" class="secondaryBtn">ログ画像を保存</button>
         <p class="fieldNote" id="trImageStatus"></p>
         <canvas id="trCanvas" width="1080" height="1920" hidden></canvas>
+      </div>
+      <!-- v20.101：過去の記録で気になる値（打ち間違いかもしれないもの）。押すとその日を開く -->
+      <div class="field" id="trOddField" hidden>
+        <span class="fieldLabel">気になる値（押すとその日を開いて直せます）</span>
+        <div id="trOddList"></div>
       </div>
       <div class="detailActions" id="trDeleteRow" hidden>
         <button id="btnTrDelete" class="dangerBtn">この日の記録を消す</button>
@@ -2273,6 +2284,7 @@
       <div class="reviewSection" id="monthSummarySection">
         <h3>この月のまとめ</h3>
         <div class="statRow"><span>散歩日数</span><span id="summaryWalkDays"></span></div>
+        <div class="statRow"><span>散歩で体調が上がった日</span><span id="summaryMoodUp"></span></div>
         <div class="statRow"><span>朝の言葉を受け取った日数</span><span id="summaryMorningDays"></span></div>
         <div class="statRow"><span>相談した回数</span><span id="summaryConsultCount"></span></div>
         <div class="statRow"><span>生成した問い</span><span id="summaryQuestionCount"></span></div>
@@ -2283,6 +2295,11 @@
           <span class="fieldLabel">その月に最も多く届いた言葉</span>
           <div id="summaryTopNotes" class="listItems"></div>
           <p class="emptyMsg" id="summaryTopNotesEmpty" hidden>まだありません。</p>
+        </div>
+        <div class="field">
+          <span class="fieldLabel">その月に★の多かった言葉</span>
+          <div id="summaryHitNotes" class="listItems"></div>
+          <p class="emptyMsg" id="summaryHitNotesEmpty" hidden>まだありません。</p>
         </div>
       </div>
     </div>
@@ -3239,7 +3256,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.100';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.101';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -10059,7 +10076,54 @@
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && nav.screen === 'training') trFlush(); });
   window.addEventListener('pagehide', () => { if (nav.screen === 'training') trFlush(); });
 
+  // v20.101：体重の推移（直近30回）・前回から離れた知らせ・気になる値
+  const TR_WEIGHT_JUMP = 3;    // kg。前回からこれ以上離れたら知らせる
+  const TR_ODD_REPS = 30;      // 重さのあるセットで、回数がこれ以上なら「気になる値」
+  function trWeights() { return trainingData.days.filter((d) => d.weight != null).map((d) => ({ date: d.date, w: d.weight })).sort((a, b) => (a.date < b.date ? -1 : 1)); }
+  function renderTrWeightExtras() {
+    const ws = trWeights();
+    const v = parseFloat(trState.weight);
+    const prevs = ws.filter((x) => x.date < trState.date);
+    const prev = prevs.length ? prevs[prevs.length - 1].w : null;
+    const warn = document.getElementById('trWeightWarn');
+    const off = Number.isFinite(v) && prev != null && Math.abs(v - prev) >= TR_WEIGHT_JUMP;
+    warn.hidden = !off;
+    if (off) warn.textContent = '前回 ' + prev + 'kg から ' + (Math.round(Math.abs(v - prev) * 10) / 10) + 'kg 離れています。打ち間違いでなければ、そのままで大丈夫です。';
+    const svg = document.getElementById('trWeightLine'), note = document.getElementById('trWeightLineNote');
+    const pts = ws.slice(-30);
+    svg.hidden = note.hidden = pts.length < 2;
+    svg.innerHTML = '';
+    if (pts.length >= 2) {
+      const lo = Math.min(...pts.map((p) => p.w)), hi = Math.max(...pts.map((p) => p.w)), span = Math.max(hi - lo, 1);
+      const xy = pts.map((p, i) => [(i / (pts.length - 1)) * 296 + 2, 60 - ((p.w - lo) / span) * 56]);
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+      line.setAttribute('points', xy.map((q) => q[0].toFixed(1) + ',' + q[1].toFixed(1)).join(' '));
+      line.setAttribute('fill', 'none'); line.setAttribute('stroke', 'currentColor'); line.setAttribute('stroke-width', '1.5'); line.setAttribute('vector-effect', 'non-scaling-stroke');
+      svg.appendChild(line);
+      note.textContent = '体重の推移（直近' + pts.length + '回）：' + pts[0].date.slice(5).replace('-', '/') + ' ' + pts[0].w + 'kg → ' + pts[pts.length - 1].date.slice(5).replace('-', '/') + ' ' + pts[pts.length - 1].w + 'kg（いちばん低い ' + lo + '・高い ' + hi + '）';
+    }
+    const odd = [];
+    { // 体重：全部の記録の真ん中の値から3kg 以上離れたもの（前後の日と比べると、打ち間違いの隣の日まで拾ってしまう）
+      const sorted = ws.map((x) => x.w).sort((p, q) => p - q);
+      const mid = sorted.length ? (sorted.length % 2 ? sorted[(sorted.length - 1) / 2] : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2) : null;
+      if (ws.length >= 3) ws.forEach((x) => { if (Math.abs(x.w - mid) >= TR_WEIGHT_JUMP) odd.push({ date: x.date, text: '体重 ' + x.w + 'kg（ふだんの ' + (Math.round(mid * 10) / 10) + 'kg から ' + TR_WEIGHT_JUMP + 'kg 以上ちがう）' }); });
+    }
+    trainingData.days.forEach((d) => d.parts.forEach((p) => p.exercises.forEach((e) => {
+      const seen = new Set();
+      (e.sets || []).forEach((st) => { if (st.w != null && st.r != null && st.r >= TR_ODD_REPS) { const t = e.name + ' ' + fmtSet(st); if (!seen.has(t)) { seen.add(t); odd.push({ date: d.date, text: t + '（回数が' + TR_ODD_REPS + '回以上）' }); } } });
+    })));
+    odd.sort((a, b) => (a.date < b.date ? 1 : -1));
+    document.getElementById('trOddField').hidden = !odd.length;
+    const list = document.getElementById('trOddList'); list.innerHTML = '';
+    odd.forEach((o) => {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'trOddRow';
+      b.textContent = o.date.slice(5).replace('-', '/') + '　' + o.text;
+      b.addEventListener('click', () => { trLoadDate(o.date); renderTraining(); window.scrollTo(0, 0); });
+      list.appendChild(b);
+    });
+  }
   function renderTraining() {
+    renderTrWeightExtras();   // v20.101
     const row = document.getElementById('trPartRow');
     row.innerHTML = '';
     TRAINING_PARTS.forEach((part) => {
@@ -10415,7 +10479,7 @@
   document.getElementById('btnOpenShoot').addEventListener('click', () => openShoot());
   document.getElementById('backFromTraining').addEventListener('click', () => { trFlush(); openRecords(); });
   document.getElementById('trDate').addEventListener('change', (e) => { trLoadDate(e.target.value || todayStr()); renderTraining(); });
-  document.getElementById('trWeight').addEventListener('input', (e) => { trState.weight = e.target.value.trim(); trScheduleSave(); });
+  document.getElementById('trWeight').addEventListener('input', (e) => { trState.weight = e.target.value.trim(); trScheduleSave(); renderTrWeightExtras(); });   // v20.101：打ったその場で知らせる（欄は描き直さない）
   document.getElementById('trWeight').addEventListener('change', () => { trFlush(); });
   document.getElementById('btnTrDelete').addEventListener('click', () => {
     const day = findTrainingDay(trState.date);
@@ -11947,6 +12011,11 @@
     const inMonth = (d) => typeof d === 'string' && d.startsWith(prefix);
 
     document.getElementById('summaryWalkDays').textContent = `${walkData.walkedDates.filter(inMonth).length}日`;
+    { // v20.101：今朝の体調と散歩後の体調の両方がある日のうち、散歩後の方が高かった日
+      const both = Object.entries(walkData.dailyStats).filter(([d, st]) => inMonth(d) && st && st.wakeMood != null && st.afterMood != null);
+      const up = both.filter(([, st]) => st.afterMood > st.wakeMood).length, down = both.filter(([, st]) => st.afterMood < st.wakeMood).length;
+      document.getElementById('summaryMoodUp').textContent = both.length ? up + '日 ／ ' + both.length + '日' + (down ? '（下がった日 ' + down + '）' : '') : '—';
+    }
 
     const morningDates = new Set(data.journal.filter((j) => j.kind === 'morning' && inMonth(j.date)).map((j) => j.date));
     document.getElementById('summaryMorningDays').textContent = `${morningDates.size}日`;
@@ -11998,6 +12067,24 @@
       row.addEventListener('click', () => openDetail(id, 'records'));
       topEl.appendChild(row);
     });
+    { // v20.101：その月に★の多かった言葉（朝・相談・引く、どこで付けた★も数える）
+      const hits = new Map();
+      data.journal.forEach((j) => { if (!inMonth(j.date)) return; (j.picks || []).forEach((p) => { if (p.hit && findNote(p.id)) hits.set(p.id, (hits.get(p.id) || 0) + 1); }); });
+      const hitTop = [...hits.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3);
+      const hitEl = document.getElementById('summaryHitNotes');
+      hitEl.innerHTML = '';
+      document.getElementById('summaryHitNotesEmpty').hidden = hitTop.length > 0;
+      hitTop.forEach(([id, count]) => {
+        const note = findNote(id);
+        const row = document.createElement('div'); row.className = 'listItem';
+        const textEl = document.createElement('div'); textEl.className = 'liText'; textEl.textContent = noteSnippet(note.text, 60); row.appendChild(textEl);
+        const bottomRow = document.createElement('div'); bottomRow.className = 'liBottomRow';
+        const srcEl = document.createElement('span'); srcEl.className = 'liSource'; srcEl.textContent = (note.source || '') + ' ・ ★' + count; bottomRow.appendChild(srcEl);
+        row.appendChild(bottomRow);
+        row.addEventListener('click', () => openDetail(id, 'records'));
+        hitEl.appendChild(row);
+      });
+    }
   }
 
   async function deleteWalkDayRecord(dateStr) {
