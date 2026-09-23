@@ -3269,7 +3269,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.104';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.105';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -15822,11 +15822,21 @@
     if (l.chars >= 500 && l.gap > TORU_QGAP_CHARS) notes.push('問い（？）の無いところが約' + Math.round(l.gap / 380) + '分続く（「' + l.gapAt + '…」から）');
     return parts.join('・') + (notes.length ? '（' + notes.join('／') + '）' : '');
   }
+  // v20.105：台本を「、。？！」の後ろで改行する（撮影中、目を左右に動かさずに読めるように。前は手で入れていた）。
+  // 見出し（＃）と空行はそのまま。何度かけても同じ結果になる。「〜？」って のように引用のすぐ後に続く所は割らない
+  function toruBreakLines(text) {
+    return String(text || '').split(/\r?\n/).map((line) => {
+      const t = line.trim();
+      if (!t || /^[＃#■]/.test(t)) return t;
+      const out = t.replace(/([、。！？!?]+[」』）)]*)(?=(.))/g, (m, p, next) => (/[」』）)]$/.test(p) && /[とっ]/.test(next) ? p : p + '\n'));
+      return out.split('\n').map((x) => x.trim()).filter(Boolean).join('\n');
+    }).join('\n');
+  }
   function toruImportScript(deck, raw) {
     let t = String(raw || '').trim().replace(/^```\w*\s*\n/, '').replace(/\n```\s*$/, '').trim();
     if (t.length < 500) return { error: '台本が短すぎます（' + t.length + '字）。返事の全文を貼ってください。' };
     if (t[0] === '{') return { error: 'JSON が貼られています。台本の往復の返事を貼ってください。' };
-    deck.script = { text: t, at: nowIso(), orig: t, editedAt: '' };   // v20.83：orig はチャットが書いた版（手で直しても残す）
+    deck.script = { text: toruBreakLines(t), at: nowIso(), orig: t, editedAt: '' };   // v20.83：orig はチャットが書いた版（手で直しても残す）。v20.105：text だけ句読点で改行
     shootTouch(deck);
     return { text: '取り込みました：' + toruScriptLintText(toruScriptLint(t), deck) };
   }
@@ -16001,6 +16011,19 @@
         const b = el('button', 'secondaryBtn', '本番の画面をひらく'); b.type = 'button';
         b.addEventListener('click', () => { shootFlush(); openShootStage(deck.id); });
         row.appendChild(b);
+        const br = el('button', 'secondaryBtn', '句読点で改行する'); br.type = 'button';
+        const brSt = el('span', 'kjSub', '');
+        br.addEventListener('click', () => {
+          const nt = toruBreakLines(deck.script.text);
+          if (nt === deck.script.text) { brSt.textContent = 'もう改行されています'; return; }
+          const before = deck.script.text.split('\n').length;
+          deck.script.text = nt;
+          deck.script.editedAt = nowIso();
+          ta.value = nt;
+          shootTouch(deck);
+          brSt.textContent = '改行を入れました（' + before + '行 → ' + nt.split('\n').length + '行）';
+        });
+        row.appendChild(br); row.appendChild(brSt);
         const cp = el('button', 'secondaryBtn', '台本をコピー'); cp.type = 'button';
         const cpSt = el('span', 'kjSub', '');
         cp.addEventListener('click', async () => { const ok = await copyToClipboard(deck.script.text); cpSt.textContent = ok ? 'コピーしました' : 'コピーできませんでした'; });
@@ -16030,13 +16053,13 @@
           const t = toruLearnedSummaryText();
           if (t) sec.appendChild(el('div', 'kjSub', t));
         }
-        if (deck.script.orig && deck.script.orig !== deck.script.text) {
+        if (deck.script.orig && toruBreakLines(deck.script.orig) !== deck.script.text && deck.script.orig !== deck.script.text) {
           const back = el('button', 'linkLikeBtn', 'チャットが書いた台本に戻す'); back.type = 'button';
           const st = el('span', 'kjSub', '手で直した分は消えます');
           back.addEventListener('click', () => {
             if (shootState.toruBack !== deck.id) { shootState.toruBack = deck.id; st.textContent = 'もう一度押すと戻します（手で直した分は消えます）'; return; }
             shootState.toruBack = '';
-            deck.script.text = deck.script.orig;
+            deck.script.text = toruBreakLines(deck.script.orig);
             deck.script.editedAt = '';
             shootTouch(deck);
             rerender();
