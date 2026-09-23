@@ -1896,6 +1896,8 @@
               </div>
               <div class="field">
                 <span class="fieldLabel">書き出し／読み込み</span>
+                <button id="btnExportAll" class="secondaryBtn">全部を書き出す（ダウンロード）</button>
+                <p class="fieldNote" id="exportAllStatus">GitHub にある全部のファイル（言葉・記録・撮る・世界・筋トレ・瞑想・散歩）を1つのファイルにして保存します。GitHub に入れなくなったときの控えです。</p>
                 <button id="btnExport" class="secondaryBtn">言葉と記録を書き出す（ダウンロード）</button>
                 <button id="btnExportWalk" class="secondaryBtn">散歩のデータを書き出す（ダウンロード）</button>
                 <label class="secondaryBtn fileLabel" for="importFileInput">言葉を読み込む</label>
@@ -3276,7 +3278,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.108';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.109';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -13970,6 +13972,55 @@
     alert(failed ? '一部を読み込めませんでした' : 'リモートの内容を読み込みました');
   });
 
+  // v20.109：全部を書き出す。GitHub の2つの保存庫の全ファイルを取り、{保存庫: {道: 中身}} の1つの JSON にする
+  async function exportAllData() {
+    const st = (t) => { const el = document.getElementById('exportAllStatus'); if (el) el.textContent = t; };
+    const token = getGhToken();
+    if (!token || !navigator.onLine) { st('オンラインで、同期の鍵を入れてから押してください。'); return; }
+    const btn = document.getElementById('btnExportAll');
+    btn.disabled = true;
+    try {
+      st('先に同期しています…');
+      await syncAllNow();
+      const out = { app: 'kotoba', build: APP_BUILD, exportedAt: nowIso(), repos: {} };
+      let got = 0, all = 0, cut = false;
+      for (const repo of [GITHUB_REPO, GITHUB_REPO_WALK]) {
+        const info = await ghFetch(`https://api.github.com/repos/${GITHUB_OWNER}/${repo}`, { headers: ghHeaders(token), cache: 'no-store' });
+        if (!info.ok) throw new Error(repo + ' を開けませんでした（' + info.status + '）');
+        const branch = (await info.json()).default_branch || 'main';
+        const tres = await ghFetch(`https://api.github.com/repos/${GITHUB_OWNER}/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`, { headers: ghHeaders(token), cache: 'no-store' });
+        if (!tres.ok) throw new Error(repo + ' の一覧を取れませんでした（' + tres.status + '）');
+        const tree = await tres.json();
+        if (tree.truncated) cut = true;
+        const files = (tree.tree || []).filter((x) => x.type === 'blob');
+        all += files.length;
+        const box = out.repos[repo] = {};
+        let i = 0;
+        const worker = async () => {
+          while (i < files.length) {
+            const f = files[i++];
+            const r = await ghGetContents(repo, f.path.split('/').map(encodeURIComponent).join('/'), token);
+            box[f.path] = r.text;
+            got++;
+            if (got % 5 === 0 || got === all) st('取っています ' + got + ' / ' + all + ' ファイル…');
+          }
+        };
+        await Promise.all(Array.from({ length: 6 }, worker));
+      }
+      const blob = new Blob([JSON.stringify(out)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const d = new Date();
+      a.href = url;
+      a.download = `kotoba_all_${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}.json`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      st('書き出しました：' + got + 'ファイル・' + fmtBytes(blob.size) + '（' + formatDateTime(out.exportedAt) + '）。' + (cut ? '※ ファイルが多すぎて GitHub が一覧を途中で切りました。全部は入っていません。' : ''));
+    } catch (e) {
+      st('書き出せませんでした：' + e.message);
+    } finally { btn.disabled = false; }
+  }
+  document.getElementById('btnExportAll').addEventListener('click', () => { exportAllData(); });
   document.getElementById('btnExport').addEventListener('click', () => {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
