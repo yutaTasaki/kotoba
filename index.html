@@ -673,8 +673,9 @@
   /* 瞑想 (v8.0) */
   .medRow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   .medRow .tagFilterBtn { min-width: 44px; text-align: center; }
-  .medFocusRow { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; }
-  .medFocusRow .tagFilterBtn { padding: 10px 0; min-width: 0; text-align: center; font-variant-numeric: tabular-nums; }
+  .medFocusRow { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+  .medFocusRow .tagFilterBtn { padding: 12px 0; min-width: 0; min-height: 48px; font-size: 18px; text-align: center; font-variant-numeric: tabular-nums; }   /* v20.98：1〜5、押しやすい大きさ */
+  #btnMedEntrySave { margin-top: 10px; }
   .medStage { display: flex; flex-direction: column; gap: 10px; }
   .medSaved { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 14px; color: var(--text-dim); }
   .medSession { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; border-bottom: 1px solid var(--border); }
@@ -1586,7 +1587,7 @@
 
       <button type="button" id="walkCollapsedRow" class="homeStepCollapsed" hidden></button>
       <div id="walkStage" class="morningStage" hidden>
-        <button id="btnWalkToday" class="primaryBtn">今日歩いた</button>
+        <button id="btnWalkToday" class="linkLikeBtn">体調は付けずに、歩いた印だけ付ける</button>
       </div>
       <div id="walkStatsStage" class="morningStage" hidden>
         <div class="field">
@@ -1600,6 +1601,7 @@
       <button type="button" id="afterMoodCollapsedRow" class="homeStepCollapsed" hidden></button>
       <div class="field" id="afterMoodStage" hidden>
         <span class="fieldLabel">散歩後の体調</span>
+        <p class="fieldNote" id="afterMoodWalkNote" hidden>歩いてきたら押す。押すと、今日歩いた日にもなります。</p>
         <div class="moodRow" id="afterMoodRow"></div>
       </div>
 
@@ -2339,8 +2341,10 @@
           </div>
         </div>
         <div id="medFocusField">
-          <span class="fieldLabel">集中できた？（1〜10）</span>
+          <span class="fieldLabel">集中できた？（1〜5）</span>
           <div class="medFocusRow" id="medFocusRow"></div>
+          <p class="fieldNote" id="medFocusOld" hidden></p>
+          <button type="button" id="btnMedEntrySave" class="primaryBtn" hidden>記録する</button>
         </div>
         <div id="medEditMemoField" hidden>
           <span class="fieldLabel">メモ</span>
@@ -3224,7 +3228,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.97';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.98';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -7550,6 +7554,7 @@
     const wordsResolved = !!morningEntry || skippedToday || !getClaudeApiKey() || !getMorningEnabled() || isUsageOverBudget();
 
     const todayWalked = derived.todayWalked;
+    document.getElementById('afterMoodWalkNote').hidden = todayWalked;   // v20.98
     const hasAfterMood = todayStats.afterMood != null;
     paintMoodRow(afterMoodButtons, hasAfterMood ? todayStats.afterMood : null);
     const statsSaved = todayStats.statsSavedAt != null;
@@ -7571,7 +7576,8 @@
 
         if (!todayWalked) {
           // "散歩前は言葉を眺めて歩き出す場面" - stays expanded, not collapsible yet
-          order.push('morningCardsStage', 'walkStage');
+          // v20.98：言葉の後はすぐ「散歩後の体調」。押すと歩いた日にもなる（前は「今日歩いた」を押して1〜8秒後に体調を押していた）
+          order.push('morningCardsStage', 'afterMoodStage', 'walkStage');
         } else {
           order.push(...homeStepRowIds('words', morningWordsCollapsedLabel(morningEntry), 'morningCardsStage', 'morningWordsCollapsedRow'));
 
@@ -7669,6 +7675,7 @@
     renderHome();
   });
   const afterMoodButtons = buildMoodRow(document.getElementById('afterMoodRow'), (m) => {
+    if (!new Set(walkData.walkedDates).has(todayStr())) recordWalkDate(todayStr());   // v20.98：体調を押したら歩いた日にも
     setWalkMood(todayStr(), 'afterMood', m);
     renderHome();
   });
@@ -7735,8 +7742,7 @@
     const steps = stepsRaw === '' ? null : parseInt(stepsRaw, 10);
     const distanceM = distRaw === '' ? null : parseFloat(distRaw);
     setWalkDailyStats(todayStr(), steps, distanceM);
-    renderHome();
-    alert('保存しました');
+    renderHome();   // v20.98：「保存しました」のダイアログはやめた（畳んだ行「歩いた ○歩」で分かる）
   });
 
   // Three-tier fallback: full files+text share -> files-only share with the
@@ -14015,7 +14021,10 @@
       document.querySelectorAll('.medMinBtn').forEach((b) => { const v = b.dataset.min; b.classList.toggle('selected', v === 'other' ? (medForm.min != null && !MED_MIN_PRESETS.includes(medForm.min)) : Number(v) === medForm.min); });
       document.getElementById('medMinOther').hidden = !(medForm.min != null && !MED_MIN_PRESETS.includes(medForm.min)) && !medForm.otherOpen;
       const row = document.getElementById('medFocusRow');
-      if (!row.children.length) for (let i = 1; i <= 10; i++) { const b = document.createElement('button'); b.type = 'button'; b.className = 'tagFilterBtn'; b.textContent = String(i); b.dataset.focus = String(i); b.addEventListener('click', () => { if (medForm.stage !== 'entry' && medForm.stage !== 'edit') return; if (medForm.min == null) { document.getElementById('medEntryTitle').textContent = '先に分数を選んでください'; return; } medForm.focus = i; if (medForm.stage === 'edit') renderMeditation(); else medCommit(); }); row.appendChild(b); }
+      // v20.98：1〜5。押しただけでは保存しない（押し間違いで記録ができ、すぐ消したものが10件あった）。「記録する」で保存
+      if (!row.children.length) for (let i = 1; i <= 5; i++) { const b = document.createElement('button'); b.type = 'button'; b.className = 'tagFilterBtn'; b.textContent = String(i); b.dataset.focus = String(i); b.addEventListener('click', () => { if (medForm.stage !== 'entry' && medForm.stage !== 'edit') return; if (medForm.min == null) { document.getElementById('medEntryTitle').textContent = '先に分数を選んでください'; return; } medForm.focus = i; renderMeditation(); }); row.appendChild(b); }
+      { const old = document.getElementById('medFocusOld'); const big = medForm.focus != null && medForm.focus > 5; old.hidden = !big; if (big) old.textContent = '前の点 ' + medForm.focus + '（1〜10 のころの点。選び直さなければそのまま残ります）'; }
+      { const sv = document.getElementById('btnMedEntrySave'); sv.hidden = st !== 'entry'; sv.disabled = medForm.min == null || medForm.focus == null; }
       row.querySelectorAll('button').forEach((b) => { b.classList.toggle('selected', Number(b.dataset.focus) === medForm.focus); b.style.opacity = medForm.min == null ? '0.45' : ''; });
       document.getElementById('medEditActions').hidden = st !== 'edit';
       document.getElementById('medEditMemoField').hidden = st !== 'edit';
@@ -14113,6 +14122,11 @@
     medForm.otherOpen = false; medForm.min = Number(b.dataset.min); document.getElementById('medMinOther').value = ''; renderMeditation();
   }));
   document.getElementById('medMinOther').addEventListener('input', (e) => { const n = Math.round(Number(e.target.value)); medForm.min = (Number.isFinite(n) && n > 0) ? n : null; document.querySelectorAll('.medMinBtn').forEach((b) => b.classList.toggle('selected', b.dataset.min === 'other' && medForm.min != null)); document.querySelectorAll('#medFocusRow button').forEach((x) => { x.style.opacity = medForm.min == null ? '0.45' : ''; }); });
+  document.getElementById('btnMedEntrySave').addEventListener('click', () => {   // v20.98
+    if (medForm.min == null) { document.getElementById('medEntryTitle').textContent = '分数を選んでください'; return; }
+    if (medForm.focus == null) { document.getElementById('medEntryTitle').textContent = '集中の点数を選んでください'; return; }
+    medCommit();
+  });
   document.getElementById('btnMedEditSave').addEventListener('click', () => { if (medForm.min == null) { document.getElementById('medEntryTitle').textContent = '分数を選んでください'; return; } if (medForm.focus == null) { document.getElementById('medEntryTitle').textContent = '集中の点数を選んでください'; return; } medCommit(); });
   document.getElementById('btnMedEditCancel').addEventListener('click', () => { clearInputDraft(); medForm.stage = 'idle'; medForm.editId = null; renderMeditation(); });
   document.getElementById('btnMedEditDelete').addEventListener('click', () => { const x = medFind(medForm.editId); if (!x) return; if (!confirm(`${dotDate(x.date)} ${medHm(x)} の瞑想の記録を消します。よろしいですか？`)) return; clearInputDraft(); medDeleteSession(x.id); medForm.stage = 'idle'; medForm.editId = null; renderMeditation(); });
