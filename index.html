@@ -3228,7 +3228,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.98';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.99';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -21428,7 +21428,7 @@
   function worldKijiButton(kt) {
     const kj = worldKijiForKatari(kt.id);
     const b = document.createElement('button'); b.type = 'button'; b.className = 'secondaryBtn';
-    b.textContent = !kj ? '記事にする ▸' : kj.postedAt ? '記事（' + worldShortDate(kj.postedAt.slice(0, 10)) + ' に note に出した）▸' : '記事づくりの続き ▸';
+    b.textContent = !kj ? '記事にする ▸' : kj.postedAt ? '記事（' + worldShortDate(kj.postedAt.slice(0, 10)) + ' に note に出した）▸' : kj.noteUrl ? '記事（note に出した）▸' : '記事づくりの続き ▸';   // v20.99
     b.addEventListener('click', (e) => { e.stopPropagation(); worldKijiOpen(kt); });
     return b;
   }
@@ -21593,8 +21593,10 @@
       '- 3つ以上並ぶものは箇条書きにする。\n' +
       '- 太字は1つの節に1か所まで。いちばん大事なところだけ。\n\n';
   }
-  function worldKijiCheckPromptText(ev, kt, kj) {
-    return '下の記事を、公開する前に確かめて直してください。\n今日は ' + todayStr() + ' です。\n\n' +
+  // v20.99：short＝本文を書いたのと同じチャットで続けるとき。材料（確かさの書き分け・札・語り方）を入れ直さない
+  function worldKijiCheckPromptText(ev, kt, kj, short) {
+    return (short ? 'さっき書いた記事を、公開する前に確かめて直してください。材料（確かさの書き分け・出来事・媒体の語り方）は、このチャットの前の依頼文のものを使ってください。\n今日は ' + todayStr() + ' です。\n\n'
+      : '下の記事を、公開する前に確かめて直してください。\n今日は ' + todayStr() + ' です。\n\n') +
       '■ 点検すること\n' +
       '- 本文の数字と媒体を、url を開き直して確かめる。開けなければ「〜と報じられている」の形になっているか。\n' +
       '- 言い切り（「〜になる」「〜に違いない」「〜はず」）。推測の書き方に直す。\n' +
@@ -21611,7 +21613,7 @@
       '\n' +
       worldKijiShapeText() + worldKijiStyleText() +
       '■ 本文\n' + kj.body + '\n\n' +
-      worldKijiSureText() + worldKijiEvBlock(ev) + worldKatariText(kt) +
+      (short ? '' : worldKijiSureText() + worldKijiEvBlock(ev) + worldKatariText(kt)) +
       '■ 返事の形（この形だけ。JSON にしない）\n' +
       '直した点：3\n' +
       '- 「〜になるはず」→「〜が見えてくるかもしれない」（言い切り）\n' +
@@ -21752,8 +21754,14 @@
     if (t.length < 200) return { error: '本文が短すぎます（' + t.length + '字）。返事の本文を全部貼ってください。' };
     if (t[0] === '{') return { error: 'JSON が貼られています。本文の往復の返事（マークダウンの本文）を貼ってください。' };
     const l = worldKijiLint(t);
-    worldKijiUpdate(kj.id, (k) => { k.body = t; k.bodyAt = nowIso(); });
-    return { text: '取り込みました：' + worldKijiLintText(l) };
+    let moved = false;
+    worldKijiUpdate(kj.id, (k) => {
+      k.body = t; k.bodyAt = nowIso();
+      // v20.99：確かめの後に本文を貼り直したら、前の確かめは控えに移す（前は残ったままで、「本文を全部コピー」が古い確かめの本文を出した）
+      if (k.check) { k.checkOld = (Array.isArray(k.checkOld) ? k.checkOld : []).concat([k.check]).slice(-5); k.check = null; moved = true; }
+    });
+    if (moved) kj.check = null;
+    return { text: '取り込みました：' + worldKijiLintText(l) + (moved ? '　※ 前の確かめは控えに移しました。確かめをやり直してください。' : '') };
   }
   function worldKijiImportCheck(kj, raw) {
     const t = String(raw || '').replace(/^```\w*\s*\n/, '').replace(/\n```\s*$/, '').trim();
@@ -21795,7 +21803,7 @@
     if (kt.toi) box.appendChild(el('div', 'kjSub', '問い：' + kt.toi));
 
     // 1段ぶんの枠：コピー → 貼る → 取り込む。済んでいれば中身と［貼り直す］
-    const step = (key, label, ready, done, promptFn, importFn, placeholder, renderDone) => {
+    const step = (key, label, ready, done, promptFn, importFn, placeholder, renderDone, extraCopy) => {
       const sec = el('div', 'kjStep' + (done ? ' done' : '') + (ready ? '' : ' wait'));
       sec.appendChild(el('div', 'kjStepHead', label + (done ? '（済）' : '')));
       if (!ready) { sec.appendChild(el('div', 'kjSub', '前の段が済むと始められます')); box.appendChild(sec); return; }
@@ -21833,7 +21841,13 @@
         if (worldState.kijiReopen) delete worldState.kijiReopen[skey];
         rerender();
       });
-      sec.appendChild(copy); sec.appendChild(copySt); sec.appendChild(ta); sec.appendChild(imp); sec.appendChild(st);
+      sec.appendChild(copy);
+      if (extraCopy) {   // v20.99：同じチャットで続けるときの短い依頼文
+        const x = el('button', 'secondaryBtn', extraCopy.label); x.type = 'button';
+        x.addEventListener('click', async () => { const ok = await copyToClipboard(extraCopy.fn()); copySt.textContent = worldState.kijiCopied[skey] = ok ? 'コピーしました（短い版）。本文を書いたチャットに貼り、返事をここに貼ります。' : 'コピーできませんでした。'; });
+        sec.appendChild(x);
+      }
+      sec.appendChild(copySt); sec.appendChild(ta); sec.appendChild(imp); sec.appendChild(st);
       box.appendChild(sec);
     };
     const pickRows = (sec, label, list, idx, key, textOf) => {
@@ -21876,7 +21890,7 @@
       () => worldKijiCheckPromptText(ev, kt, kj), (raw) => worldKijiImportCheck(kj, raw), '「直した点：N」から本文の最後までを貼る', (sec) => {
       sec.appendChild(el('div', 'kjLine', '直した点：' + kj.check.n));
       kj.check.fixes.forEach((x) => sec.appendChild(el('div', 'kjSub', '・' + x)));
-    });
+    }, { label: '同じチャットで続けるときの短い依頼文をコピー', fn: () => worldKijiCheckPromptText(ev, kt, kj, true) });   // v20.99
 
     // できあがり
     if (kj.check) {
@@ -21891,9 +21905,8 @@
         copyRow(sec, 'サムネのプロンプトをコピー', pk.thumb.prompt, '画像生成AIに貼る');
       }
       copyRow(sec, '本文を全部コピー', worldKijiNoteText(bodyNoTitle), '約' + worldKijiLint(body).plain + '字（タイトルの行は除く。url の後ろは空けてある）');
-      const posted = el('button', 'secondaryBtn', kj.postedAt ? worldShortDate(kj.postedAt.slice(0, 10)) + ' に note に出した（取り消す）' : 'note に出した'); posted.type = 'button';
-      posted.addEventListener('click', () => { worldKijiUpdate(kj.id, (k) => { k.postedAt = k.postedAt ? '' : nowIso(); }); rerender(); });
-      sec.appendChild(posted);
+      // v20.99：「note に出した」は URL の欄だけで付ける（押して付け外しするボタンは、URL を貼った後も押すと外れた）
+      sec.appendChild(el('div', 'kjLine', (kj.postedAt || kj.noteUrl) ? 'note に出した' + (kj.postedAt ? '（' + worldShortDate(kj.postedAt.slice(0, 10)) + '）' : '') : 'note に出したら、下の「note の記事の URL」に貼ると「出した」になります'));
       sec.appendChild(worldKijiMagSecEl(kj, ev, el, copyRow, rerender));   // v20.77
       box.appendChild(sec);
     }
@@ -22040,9 +22053,10 @@
       const v = url.value.trim();
       if (v === (kj.noteUrl || '')) return;
       if (v && !worldNoteUrl(v)) { urlSt.textContent = 'note の記事の URL（https://note.com/ で始まる）を貼ってください'; return; }
-      worldKijiUpdate(kj.id, (k) => { k.noteUrl = v; if (v && !k.postedAt) k.postedAt = nowIso(); });
+      worldKijiUpdate(kj.id, (k) => { k.noteUrl = v; if (v && !k.postedAt) k.postedAt = nowIso(); if (!v) k.postedAt = ''; });   // v20.99：URL を消したら「出した」も外す
       kj.noteUrl = v;
       urlSt.textContent = v ? '残しました' : '消しました';
+      if (rerender) setTimeout(rerender, 0);   // v20.99：「出した」の表示をすぐ変える
     };
     url.addEventListener('change', save);
     url.addEventListener('blur', save);
@@ -22067,7 +22081,7 @@
     const row = (k) => {
       const r = el('div', 'kjMagRow');
       const day = (k.postedAt || k.at || '').slice(0, 10);
-      r.appendChild(el('span', 'kjSub', (day ? worldShortDate(day) + ' ' : '') + (k.postedAt ? '' : '（まだ出していない）')));
+      r.appendChild(el('span', 'kjSub', (day ? worldShortDate(day) + ' ' : '') + ((k.postedAt || k.noteUrl) ? '' : '（まだ出していない）')));   // v20.99
       const open = el('button', 'linkLikeBtn', worldKijiTitleOf(k)); open.type = 'button';
       open.addEventListener('click', () => { worldState.kijiId = k.id; try { localStorage.setItem(KIJI_OPEN_KEY, k.id); } catch (e) {} worldState.view = 'kiji'; renderWorld(); });
       r.appendChild(open);
