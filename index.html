@@ -3322,7 +3322,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.87';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.88';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -22115,25 +22115,7 @@
       '- 3つ以上並ぶものは箇条書きにする。\n' +
       '- 太字は1つの節に1か所まで。いちばん大事なところだけ。\n\n';
   }
-  function worldKijiFigPromptText(kj) {
-    return '下の記事の本文にある「［図N：…］」ごとに、図の作り方を決めてください。\n\n' +
-      '■ 決まり\n' +
-      '- type：表・グラフ・地図・構図・資料 のどれか。show：読者に何を一目で分からせるか（1文）。\n' +
-      '- **図2から先は「先に見せる図」**：その印から次の図の印までの文を、読む前に1枚でつかめるようにまとめる。5秒で「この先に何が書いてあるか」が分かる絵か表にする。\n' +
-      '- 表：data に行を書く（label＝行の名前、value＝中身。数でなくてよい。source＝出典）。prompt は「Claude に、この表を1枚の画像にさせる依頼文」にする（縦の行は6つまで、1マス15字まで、見出しの色は1色）。\n' +
-      '- グラフ：data に数値（label・value・unit・source）を本文と同じ数字で書く。prompt は「Claude にグラフを描かせる依頼文」にする（数値はデータのまま使わせ、日本語の文字は短く）。\n' +
-      '- 地図・構図・資料：prompt は「画像生成AIに渡すプロンプト」にする。絵の中の文字はできるだけ少なく、数字は入れない。入れる文字は text に並べる。\n' +
-      '- 本文に無い数字を足さない。\n' +
-      '- **図1は記事のいちばん上に置く1枚。** 記事全体を1枚で表し、これだけ見て続きを読みたくなる絵にする（構図か資料。数字は入れない）。答え（思惑の中身）は描かず、「何が起きているのか？」と思わせる。\n' +
-      '\n' +
-      '■ 本文\n' + kj.body + '\n\n' +
-      '■ 出力形式（JSON のみ）\n' +
-      '{"figs":[{"n":1,"type":"グラフ","show":"1文",\n' +
-      '          "data":[{"label":"項目","value":"数","unit":"単位","source":"媒体名・日付"}],\n' +
-      '          "prompt":"依頼文かプロンプト","text":["絵の中に入れる文字"]}]}';
-  }
   function worldKijiCheckPromptText(ev, kt, kj) {
-    const figs = (kj.figs || []).map((f) => '図' + f.n + '（' + f.type + '）：' + f.show + (f.data && f.data.length ? '／数値：' + f.data.map((d) => d.label + ' ' + d.value + (d.unit || '')).join('、') : '')).join('\n');
     return '下の記事を、公開する前に確かめて直してください。\n今日は ' + todayStr() + ' です。\n\n' +
       '■ 点検すること\n' +
       '- 本文の数字と媒体を、url を開き直して確かめる。開けなければ「〜と報じられている」の形になっているか。\n' +
@@ -22143,7 +22125,6 @@
       '- 下の材料に無い数字・媒体が本文に出ていないか。\n' +
       '- アプリの中の言葉（札・確度・語り方・幹・読む回・取り込み）が混ざっていないか。\n' +
       '- タイトルの約束と、本文の中身がずれていないか。「次のニュースで見ておきたいこと」が最後にあるか。\n' +
-      '- 図の数値が本文の数字と合っているか。\n' +
       '- 図2から先が、見出しのすぐ次（文より前）にあり、その先の文を1枚にまとめるものになっているか。図の無いまま ' + KIJI_FIG_GAP + '字を超えて文が続く所が無いか（あれば図の印を足す）。\n' +
       '- 読みやすさ：下の「記事の形」と「読みやすさの決まり」に合っているか。長い段落は分け、長い文は切り、硬い言い回しはやわらかくする。\n' +
       '- 言葉の説明：大人が知っている基本の言葉に説明を付けすぎていないか（付けすぎなら削る）。専門家しか使わない言葉と「なんで？」は、その話題が出た所で答えているか。記事の最初に説明がまとめて並んでいないか。\n' +
@@ -22152,7 +22133,6 @@
       '\n' +
       worldKijiShapeText() + worldKijiStyleText() +
       '■ 本文\n' + kj.body + '\n\n' +
-      (figs ? '■ 図\n' + figs + '\n\n' : '') +
       worldKijiSureText() + worldKijiEvBlock(ev) + worldKatariText(kt) +
       '■ 返事の形（この形だけ。JSON にしない）\n' +
       '直した点：3\n' +
@@ -22297,31 +22277,6 @@
     worldKijiUpdate(kj.id, (k) => { k.body = t; k.bodyAt = nowIso(); });
     return { text: '取り込みました：' + worldKijiLintText(l) };
   }
-  function worldKijiImportFigs(kj, raw) {
-    const lj = worldLooseJson(raw);
-    const parsed = lj.value;
-    const list = parsed && (Array.isArray(parsed) ? parsed : Array.isArray(parsed.figs) ? parsed.figs : Array.isArray(parsed.figures) ? parsed.figures : null);
-    if (!list) return { error: (parsed ? '「figs」の並びが見つかりません' : 'JSON として読めませんでした' + (lj.error ? '：' + lj.error : '')) + '。{"figs":[...]} の形で貼ってください。' };
-    let cut = 0;
-    const s = (v, max) => { const r = digStr(v, max); if (r.cut) cut++; return r.t; };
-    const figs = list.filter((f) => f && typeof f === 'object').map((f, i) => ({
-      n: Number(f.n) || i + 1,
-      type: s(f.type, 20), show: s(f.show, 300), prompt: s(f.prompt, 3000),
-      data: (Array.isArray(f.data) ? f.data : []).filter((d) => d && typeof d === 'object').map((d) => ({ label: s(d.label, 80), value: s(d.value, 40), unit: s(d.unit, 20), source: s(d.source, 120) })),
-      text: (Array.isArray(f.text) ? f.text : []).map((x) => s(x, 60)).filter(Boolean),
-    })).filter((f) => f.prompt || f.show);
-    if (!figs.length) return { error: '図に中身がありませんでした。' };
-    worldKijiUpdate(kj.id, (k) => { k.figs = figs; });
-    const marks = worldKijiLint(kj.body).figs.length;
-    const notes = [];
-    if (marks !== figs.length) notes.push('本文の図の印は ' + marks + '、図は ' + figs.length + ' で数が合いません');
-    const noData = figs.filter((f) => f.type === 'グラフ' && !f.data.length).length;
-    if (noData) notes.push('数値の無いグラフ ' + noData);
-    const noRows = figs.filter((f) => f.type === '表' && !f.data.length).length;   // v20.87
-    if (noRows) notes.push('行の無い表 ' + noRows);
-    if (cut) notes.push('長くて切った欄 ' + cut + 'か所');
-    return { text: '取り込みました：図 ' + figs.length + (notes.length ? '（' + notes.join('・') + '）' : '') };
-  }
   function worldKijiImportCheck(kj, raw) {
     const t = String(raw || '').replace(/^```\w*\s*\n/, '').replace(/\n```\s*$/, '').trim();
     const i = t.indexOf('---本文---');
@@ -22439,14 +22394,8 @@
       sec.appendChild(el('div', 'kjLine', worldKijiLintText(worldKijiLint(kj.body))));
       const d = el('details', 'kjPreview'); d.appendChild(el('summary', '', '本文を見る')); d.appendChild(el('pre', 'kjBody', kj.body)); sec.appendChild(d);
     });
-    step('figs', '3. 図', !!kj.body, !!(kj.figs && kj.figs.length), () => worldKijiFigPromptText(kj), (raw) => worldKijiImportFigs(kj, raw), '{"figs":[...]} をここに貼る', (sec) => {
-      kj.figs.forEach((f) => {
-        sec.appendChild(el('div', 'kjGroup', '図' + f.n + '　' + f.type + '：' + f.show));
-        if (f.data.length) sec.appendChild(el('div', 'kjSub', '数値：' + f.data.map((d) => d.label + ' ' + d.value + (d.unit || '') + (d.source ? '（' + d.source + '）' : '')).join('／')));
-        if (f.text.length) sec.appendChild(el('div', 'kjSub', '絵の中の文字：' + f.text.join('・')));
-      });
-    });
-    step('check', '4. 確かめ', !!(kj.figs && kj.figs.length), !!kj.check, () => worldKijiCheckPromptText(ev, kt, kj), (raw) => worldKijiImportCheck(kj, raw), '「直した点：N」から本文の最後までを貼る', (sec) => {
+    step('check', '3. 確かめ', !!kj.body, !!kj.check,   // v20.88：図の往復は消した（図は本人が本文の印から作る）
+      () => worldKijiCheckPromptText(ev, kt, kj), (raw) => worldKijiImportCheck(kj, raw), '「直した点：N」から本文の最後までを貼る', (sec) => {
       sec.appendChild(el('div', 'kjLine', '直した点：' + kj.check.n));
       kj.check.fixes.forEach((x) => sec.appendChild(el('div', 'kjSub', '・' + x)));
     });
@@ -22464,7 +22413,6 @@
         copyRow(sec, 'サムネのプロンプトをコピー', pk.thumb.prompt, '画像生成AIに貼る');
       }
       copyRow(sec, '本文を全部コピー', worldKijiNoteText(bodyNoTitle), '約' + worldKijiLint(body).plain + '字（タイトルの行は除く。url の後ろは空けてある）');
-      (kj.figs || []).forEach((f) => copyRow(sec, '図' + f.n + '（' + f.type + '）をコピー', f.prompt, f.type === 'グラフ' || f.type === '表' ? 'Claude に貼る' : '画像生成AIに貼る'));   // v20.87：表も Claude
       const posted = el('button', 'secondaryBtn', kj.postedAt ? worldShortDate(kj.postedAt.slice(0, 10)) + ' に note に出した（取り消す）' : 'note に出した'); posted.type = 'button';
       posted.addEventListener('click', () => { worldKijiUpdate(kj.id, (k) => { k.postedAt = k.postedAt ? '' : nowIso(); }); rerender(); });
       sec.appendChild(posted);
