@@ -3269,7 +3269,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.102';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.103';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -15115,7 +15115,8 @@
   // 口調シート（フリートーク9本の実測から。台本の依頼文に毎回入れる）
   function toruStyleText() {
     return '■ 話し方（この形で書く。ここがいちばん大事）\n' +
-      '- 語尾：「〜なんだよ」「〜だよね」「〜じゃん」「〜なんだけどね」「〜と思うんだけど」。本編はタメ口寄り。冒頭の挨拶だけ「です・ます」。\n' +
+      '- 語尾：「〜なんだよ」「〜だよね」「〜じゃん」「〜なんだけどね」「〜と思うんだけど」。最初からタメ口寄り。\n' +
+      '- **挨拶・自己紹介・チャンネル説明から始めない。** 最初の一言から本題に入る。\n' +
       '- 文の切れ目に「ね、」を置いて間を取る。「〜っていう」で言い換えながら進む。\n' +
       '- つなぎは「だから」「でも」「やっぱり」。ぼかすときは「なんか」「ちょっと」「多分」。強めるときは「すごい」。\n' +
       '- **使わない言い方**：' + TORU_BAD_WORDS.join('・') + '。硬い書き言葉にしない。\n' +
@@ -15131,11 +15132,39 @@
       '- 伝承やオカルトは、否定も肯定もしない。「そう語られてきた」として置き、なぜそう語られたのかを考える。\n' +
       '- 事実・研究で確かめられたこと・語られてきた話・自分の実感を、言い方で分ける。\n\n';
   }
+  // v20.103：公開後の数字（冒頭60秒・平均再生率・離脱・気づき）を、次の依頼文に渡す。
+  // 前は CTR と平均視聴時間だけで、離脱とメモは保存されるだけだった
+  function toruAfterLine(d) {
+    const a = d.after || {};
+    const parts = [];
+    if (a.ctr) parts.push('CTR ' + a.ctr + '％');
+    if (a.keep60) parts.push('冒頭60秒で残った ' + a.keep60 + '％');
+    if (a.avgPct) parts.push('平均再生率 ' + a.avgPct + '％');
+    if (a.avgView) parts.push('平均視聴 ' + a.avgView);
+    if (a.drop) parts.push('離脱が大きかった所：' + String(a.drop).slice(0, 80));
+    if (a.note) parts.push('気づき：' + String(a.note).slice(0, 120));
+    return parts.join('・');
+  }
+  function toruDeckTitle(d) {
+    const p = d.pack || {};
+    const t = (typeof p.titlePick === 'number' && p.titles && p.titles[p.titlePick]) ? p.titles[p.titlePick].text : '';
+    return t || (d.judge && d.judge.genshou) || d.tane || '';
+  }
+  function toruResultsText(head, deck) {
+    const rows = [];
+    deckEntries().forEach((d) => {
+      if (rows.length >= 6 || (deck && d.id === deck.id)) return;
+      const line = toruAfterLine(d);
+      if (line) rows.push('- 「' + toruDeckTitle(d).slice(0, 40) + '」：' + line);
+    });
+    return rows.length ? head + '\n' + rows.join('\n') + '\n（数が少ないので、1本の数字で決めつけず傾向として見る）\n\n' : '';
+  }
   function toruJudgeHistoryText() {
     const rows = [];
     deckEntries().slice(0, 6).forEach((d) => {
       if (!d.judge || !d.judge.at) return;
-      const a = d.after && d.after.at ? '（公開後：CTR ' + (d.after.ctr || '？') + '％・平均視聴 ' + (d.after.avgView || '？') + '）' : '';
+      const line = toruAfterLine(d);
+      const a = line ? '（公開後：' + line + '）' : '';
       rows.push('- ' + (d.judge.genshou || d.tane || '').slice(0, 40) + '：' + (d.judge.ok ? '通った' : '捨てた') + a);
     });
     return rows.length ? '■ これまでの題材（同じ切り口を繰り返さないため）\n' + rows.join('\n') + '\n\n' : '';
@@ -15221,6 +15250,7 @@
     return SHOOT_PROMPT_HEAD.replace('返事は JSON だけ', '返事は台本だけ') +
       'この構成で、動画の台本を書いてください。**話し言葉の全文**です。\n\n' +
       toruStyleText() + toruLearnedText() + toruReaderText() + toruJudgeText(deck) + toruMatsText(deck) + toruBlocksText(deck) +
+      toruResultsText('■ これまでの動画の結果（離脱が大きかった所と同じ作りを避ける。冒頭60秒で残る割合を上げたい）', deck) +
       '■ 台本の決まり\n' +
       '- ' + TORU_SCRIPT_MIN + '〜' + TORU_SCRIPT_MAX + '字（約20分）。\n' +
       '- 構成の順に書く。ブロックの頭に「＃ ブロックの名前」の行を置く（読み上げない目印）。\n' +
@@ -15237,6 +15267,7 @@
     return SHOOT_PROMPT_HEAD +
       'この動画のサムネイルとタイトルの案を作ってください。\n\n' +
       toruReaderText() + toruJudgeText(deck) +
+      toruResultsText('■ これまでの動画の題名と結果（題名で約束したことと冒頭がずれると、冒頭で離れる）', deck) +
       '■ 頼むこと\n' +
       '- thumbs：サムネ案3〜5。text（サムネの文字・15字以内）、picture（絵の中身1〜2文）、prompt（画像生成AIへのプロンプト。絵の中の文字は入れない）、why（なぜ目を引くか1文）。\n' +
       '  **サムネ単体で興味を引く。** タイトルは補助。答えは見せず、「何が起きているんだ？」と思わせる。\n' +
@@ -16041,7 +16072,7 @@
     {
       const sec = el('div', 'kjStep' + (deck.after && deck.after.at ? ' done' : ''));
       sec.appendChild(el('div', 'kjStepHead', '6. 公開後' + (deck.after && deck.after.at ? '（済）' : '')));
-      sec.appendChild(el('div', 'kjSub', 'YouTube Studio → アナリティクス → リーチ の数字。次の題材の判定に渡します。'));
+      sec.appendChild(el('div', 'kjSub', 'YouTube Studio → この動画のアナリティクス。公開から7日後くらいの数字を入れる。次の題材の判定・タイトル・台本の依頼文に渡します。'));
       deck.after = deck.after || { url: '', ctr: '', avgView: '', drop: '', note: '', at: '', finalText: '', finalAt: '' };
       const f = (key, label, ph) => {
         const wrap = el('div', 'kjLine');
@@ -16053,6 +16084,8 @@
       };
       f('url', '動画の URL', 'https://youtu.be/...');
       f('ctr', 'クリック率（％）', '例：3.8');
+      f('keep60', '冒頭60秒で残った（％）', '維持率のグラフの1:00の値。例：45');
+      f('avgPct', '平均再生率（％）', 'エンゲージメント。例：30');
       f('avgView', '平均視聴時間', '例：2分40秒');
       f('drop', '離脱が大きかった所', '例：3分あたり');
       f('note', 'コメント・気づき', '');
