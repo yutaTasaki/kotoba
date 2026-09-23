@@ -1920,6 +1920,13 @@
                 <p class="fieldNote" id="toruMigrateStatus"></p>
               </div>
               <div class="field">
+                <div class="statRow"><span>記事・語り方の保存方式</span><span id="statDxMode"></span></div>
+                <p class="fieldNote">「1件1ファイル」は世界の記事と語り方を world/kiji/・world/katari/ に1件ずつ置く方式（v20.110 から。自動で移ります）。起動のときは要約と新しい10件だけ読みます。戻せます。</p>
+                <button id="btnDxMigrate" class="secondaryBtn">記事・語り方を1件1ファイルに移す</button>
+                <button id="btnDxRevert" class="secondaryBtn">記事・語り方を調べたことの月ファイルに戻す</button>
+                <p class="fieldNote" id="dxMigrateStatus"></p>
+              </div>
+              <div class="field">
                 <div class="statRow"><span>言葉の保存方式</span><span id="statNotesMode"></span></div>
                 <p class="fieldNote">「月ファイル」は言葉を作成月ごとに notes/YYYY-MM.json に置く方式。端末には全件を持つので、網・相談は変わりません。</p>
                 <button id="btnNotesMigrate" class="secondaryBtn">言葉を月ファイル方式に移行</button>
@@ -3278,7 +3285,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.109';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.110';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -3618,6 +3625,9 @@
       // v20.108：'split' = 撮るの動画は toru/<番号>.json に1本ずつ。'journal' = 記録の月ファイルの中（戻したとき）。'' = まだ移していない
       toruMode: parsed.toruMode === 'split' ? 'split' : parsed.toruMode === 'journal' ? 'journal' : '',
       toruModeAt: typeof parsed.toruModeAt === 'string' ? parsed.toruModeAt : '',
+      // v20.110：'split' = 記事・語り方は world/kiji/・world/katari/ に1件ずつ。'dig' = 調べたことの月ファイルの中（戻したとき）
+      digxMode: parsed.digxMode === 'split' ? 'split' : parsed.digxMode === 'dig' ? 'dig' : '',
+      digxModeAt: typeof parsed.digxModeAt === 'string' ? parsed.digxModeAt : '',
     };
   }
 
@@ -3700,8 +3710,21 @@
   try { (await kvGetAllPrefix('meditation:')).forEach((v, k) => { bootKV.medDocs[k.slice(11)] = v; }); } catch (e) {}
   // v10 世界: 全月は読まない。今月・先月と、索引が「未読が残っている」と言う月だけ。
   for (const k of ['worldIndex', 'worldDirty', 'worldStamps', 'worldConcepts', 'worldTerms', 'worldStrata', 'worldActors', 'worldAsks', 'worldSources', 'worldForecasts', 'worldDigIndex', 'worldDigDirty', 'worldDigStamps']) { try { bootKV[k] = await kvGet(k); } catch (e) { bootKV[k] = null; } }
-  bootKV.worldDigDocs = {};   // v20.43 自分で調べたこと：全部の月を読む（1件1〜3KB の見込み。大きくなったら月ごとに読む形に直す）
+  bootKV.worldDigDocs = {};   // v20.43 自分で調べたこと：全部の月を読む。v20.110：重い記事・語り方は別のファイルに移したので、残りは1日約12KB
   try { (await kvGetAllPrefix('worldDig:')).forEach((v, k) => { bootKV.worldDigDocs[k.slice(9)] = v; }); } catch (e) {}
+  // v20.110 記事・語り方：索引と、新しい10件・まだ送っていないものだけ
+  bootKV.dx = {};
+  for (const kind of ['kiji', 'katari']) {
+    const b = bootKV.dx[kind] = { docs: {} };
+    try { b.index = await kvGet('dxIndex:' + kind); } catch (e) { b.index = null; }
+    try { b.dirty = await kvGet('dxDirty:' + kind); } catch (e) { b.dirty = null; }
+    try { b.stamps = await kvGet('dxStamps:' + kind); } catch (e) { b.stamps = null; }
+    let ix = null, dirty = [];
+    try { ix = JSON.parse(b.index || 'null'); } catch (e) {}
+    try { dirty = JSON.parse(b.dirty || '[]') || []; } catch (e) {}
+    const rows = Object.entries((ix && ix.items) || {}).filter(([, r]) => r && !r.deletedAt).sort((p, q) => (String(p[1].at) > String(q[1].at) ? -1 : 1));
+    for (const id of new Set([...rows.slice(0, 10).map(([id]) => id), ...dirty])) { try { b.docs[id] = await kvGet('dx:' + kind + ':' + id); } catch (e) {} }
+  }
   // v20.108 撮る：索引と、新しい TORU_KEEP 本・まだ送っていない動画だけ
   for (const k of ['toruIndex', 'toruDirty', 'toruStamps']) { try { bootKV[k] = await kvGet(k); } catch (e) { bootKV[k] = null; } }
   bootKV.toruDocs = {};
@@ -4490,6 +4513,9 @@
     const tA = { mode: a.toruMode || '', at: a.toruModeAt || '' }, tB = { mode: b.toruMode || '', at: b.toruModeAt || '' };
     const tW = tB.at > tA.at ? tB : tA.at > tB.at ? tA : (tB.mode === 'split' ? tB : tA);
     merged.toruMode = tW.mode; merged.toruModeAt = tW.at;
+    const xA = { mode: a.digxMode || '', at: a.digxModeAt || '' }, xB = { mode: b.digxMode || '', at: b.digxModeAt || '' };   // v20.110
+    const xW = xB.at > xA.at ? xB : xA.at > xB.at ? xA : (xB.mode === 'split' ? xB : xA);
+    merged.digxMode = xW.mode; merged.digxModeAt = xW.at;
     pruneDanglingLinks(merged);
     return merged;
   }
@@ -13683,6 +13709,9 @@
     { const rows = toruLiveRows(); document.getElementById('statToruMode').textContent = toruSplit() ? `1本1ファイル（${rows.length} 本、端末に ${tr.decks.size} 本、未同期 ${tr.dirty.size}）` : (data.toruMode === 'journal' ? '記録の月ファイル（戻した）' : '記録の月ファイル（次の同期で移ります）'); }   // v20.108
     document.getElementById('btnToruMigrate').hidden = toruSplit() || !journalMonthly();
     document.getElementById('btnToruRevert').hidden = !toruSplit();
+    { const n = (k) => dxLiveRows(k).length, f = (k) => dx[k].full.size; document.getElementById('statDxMode').textContent = digSplit() ? `1件1ファイル（記事 ${n('kiji')}・語り方 ${n('katari')}、端末に ${f('kiji') + f('katari')}、未同期 ${dx.kiji.dirty.size + dx.katari.dirty.size}）` : (data.digxMode === 'dig' ? '調べたことの月ファイル（戻した）' : '調べたことの月ファイル（次の同期で移ります）'); }   // v20.110
+    document.getElementById('btnDxMigrate').hidden = digSplit();
+    document.getElementById('btnDxRevert').hidden = !digSplit();
     document.getElementById('statNotesMode').textContent = notesSplit() ? `月ファイル（${Object.keys(nm.monthJson).length} か月分、未同期 ${nm.dirty.size}）` : 'data.json（旧方式）';
     document.getElementById('btnNotesMigrate').hidden = notesSplit();
     document.getElementById('btnNotesRevert').hidden = !notesSplit();
@@ -13927,6 +13956,8 @@
   document.getElementById('btnJournalRevert').addEventListener('click', () => revertJournalToLegacy());
   document.getElementById('btnToruMigrate').addEventListener('click', () => { const t = getGhToken(); if (!t || !navigator.onLine) { toruStatus('オンラインで押してください。'); return; } toruMigrate(t, true).catch((e) => toruStatus('移せませんでした：' + e.message)); });   // v20.108
   document.getElementById('btnToruRevert').addEventListener('click', () => toruRevert());
+  document.getElementById('btnDxMigrate').addEventListener('click', () => { const t = getGhToken(); if (!t || !navigator.onLine) { dxStatus('オンラインで押してください。'); return; } dxMigrate(t, true).catch((e) => dxStatus('移せませんでした：' + e.message)); });   // v20.110
+  document.getElementById('btnDxRevert').addEventListener('click', () => dxRevert());
   document.getElementById('btnClearLegacyStorage').addEventListener('click', () => {
     if (!confirm('localStorage に残っている古い形式のコピー（言葉・散歩・筋トレ）を消します。IndexedDB のデータはそのままです。よろしいですか？')) return;
     [STORAGE_KEY, BACKUP_KEY, WALK_STORAGE_KEY, WALK_BACKUP_KEY, TRAINING_STORAGE_KEY].forEach((k) => { try { localStorage.removeItem(k); } catch (e) {} });
@@ -18400,7 +18431,237 @@
   function digTakenIds() {
     const taken = new Set();
     wdig.docs.forEach((doc) => { digAllRecords(doc).forEach((x) => taken.add(x.id)); doc.deletedIds.forEach((t) => taken.add(t.id)); });
+    Object.values(dx).forEach((st) => Object.keys(st.index.items).forEach((id) => taken.add(id)));   // v20.110
     return taken;
+  }
+
+  // ---- v20.110 記事（kiji）と語り方（katari）：1件1ファイル -----------------------
+  // 調べたことは起動のたびに全部の月を読む。その増え方の約4分の3が記事（1本35〜40KB）と語り方（1本16〜20KB）だった。
+  // この2つだけ world/kiji/<番号>.json・world/katari/<番号>.json に分け、起動時は索引（短い要約）と新しい10件だけ読む。
+  // 要約には重い欄を除いた全部を持つので、一覧・ボタン・選んだ候補の表示は開かなくても出る
+  const DIGX_KEEP = 10;
+  const DIGX = {
+    kiji: { dir: 'world/kiji', label: '記事', heavy: ['plan', 'body', 'figs', 'check'], extra: (k) => ({ title: worldKijiTitleOf(k), hasPlan: !!k.plan, hasBody: !!k.body }) },
+    katari: { dir: 'world/katari', label: '語り方', heavy: ['media', 'moves', 'omowaku', 'shikumi', 'utagai'], extra: (k) => ({ bodyKey: worldKatariBodyKey(k) }) },
+  };
+  function newDxStore() { return { index: { version: 1, updatedAt: '', items: {} }, full: new Map(), dirty: new Set(), stamps: {}, loading: new Map(), busy: false }; }
+  const dx = { kiji: newDxStore(), katari: newDxStore() };
+  function digSplit() { return data.digxMode === 'split'; }
+  function dxPath(kind, id) { return DIGX[kind].dir + '/' + id + '.json'; }
+  function dxIndexPath(kind) { return DIGX[kind].dir + '/index.json'; }
+  function normalizeDxIndex(raw) {
+    const out = { version: 1, updatedAt: '', items: {} };
+    if (!raw || typeof raw !== 'object') return out;
+    out.updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : '';
+    Object.entries(raw.items || {}).forEach(([id, v]) => {
+      if (!/^[\w-]+$/.test(id) || !v || typeof v !== 'object') return;
+      out.items[id] = { updatedAt: String(v.updatedAt || ''), at: String(v.at || ''), deletedAt: typeof v.deletedAt === 'string' ? v.deletedAt : '', lite: (v.lite && typeof v.lite === 'object') ? v.lite : {} };
+    });
+    return out;
+  }
+  function dxRowAt(r) { return r ? (r.deletedAt > r.updatedAt ? r.deletedAt : r.updatedAt) : ''; }
+  function mergeDxIndex(a, b) {
+    const out = { version: 1, updatedAt: a.updatedAt > b.updatedAt ? a.updatedAt : b.updatedAt, items: {} };
+    new Set([...Object.keys(a.items), ...Object.keys(b.items)]).forEach((id) => { const x = a.items[id], y = b.items[id]; out.items[id] = (x && y) ? (dxRowAt(y) > dxRowAt(x) ? y : x) : (x || y); });
+    return out;
+  }
+  function dxNormRec(raw) { return (raw && typeof raw === 'object' && raw.id) ? Object.assign({}, raw, { id: String(raw.id), updatedAt: String(raw.updatedAt || raw.at || ''), at: String(raw.at || raw.updatedAt || '') }) : null; }
+  function dxRowOf(kind, rec) {
+    const lite = {};
+    Object.keys(rec).forEach((k) => { if (!DIGX[kind].heavy.includes(k)) lite[k] = rec[k]; });
+    try { Object.assign(lite, DIGX[kind].extra(rec)); } catch (e) {}
+    return { updatedAt: rec.updatedAt, at: rec.at, deletedAt: '', lite };
+  }
+  function dxLiveRows(kind) { return Object.entries(dx[kind].index.items).filter(([, r]) => !r.deletedAt).map(([id, r]) => ({ id, ...r })).sort((p, q) => (p.at > q.at ? -1 : p.at < q.at ? 1 : 0)); }
+  // 全部：端末に読んだものはそのもの、ほかは要約（__lite）
+  function dxAll(kind) { return dxLiveRows(kind).map((r) => dx[kind].full.get(r.id) || Object.assign({}, r.lite, { id: r.id, __lite: true })); }
+  function persistDx(kind) {
+    const st = dx[kind];
+    kvSet('dxIndex:' + kind, JSON.stringify(st.index)).catch(() => {});
+    kvSet('dxDirty:' + kind, JSON.stringify([...st.dirty])).catch(() => {});
+    kvSet('dxStamps:' + kind, JSON.stringify(st.stamps)).catch(() => {});
+  }
+  function dxPersistRec(kind, rec) { return kvSet('dx:' + kind + ':' + rec.id, JSON.stringify(rec)).catch(() => { recordSyncError(LAST_SYNC_ERROR_KEY, '端末に保存できませんでした（' + DIGX[kind].label + '）'); renderSyncBar(); }); }
+  // 直した・足した（updatedAt はもう進めてある）
+  function dxSave(kind, rec, quiet) {
+    const st = dx[kind];
+    st.full.set(rec.id, rec);
+    st.index.items[rec.id] = dxRowOf(kind, rec);
+    st.index.updatedAt = nowIso();
+    dxPersistRec(kind, rec);
+    st.dirty.add(rec.id); bumpSyncGen('dx:' + kind + ':' + rec.id);
+    persistDx(kind);
+    wdig.byEvent = null;
+    if (quiet) return;
+    pendingChangeCount++;
+    scheduleSync();
+  }
+  // 端末に無い1件：端末の控え → 索引と日時が違えば GitHub
+  function dxLoad(kind, id) {
+    const st = dx[kind];
+    if (st.full.has(id)) return Promise.resolve(st.full.get(id));
+    if (st.loading.has(id)) return st.loading.get(id);
+    const p = (async () => {
+      let d = null;
+      try { const raw = await kvGet('dx:' + kind + ':' + id); if (raw) d = dxNormRec(JSON.parse(raw)); } catch (e) {}
+      const row = st.index.items[id];
+      const token = getGhToken();
+      if (!(d && row && d.updatedAt === row.updatedAt) && token && navigator.onLine) {
+        try {
+          const r = await ghGetContents(GITHUB_REPO, dxPath(kind, id), token);
+          if (r.text) { const rd = dxNormRec(JSON.parse(r.text)); if (rd && (!d || rd.updatedAt > d.updatedAt)) d = rd; }
+        } catch (e) { recordSyncError(LAST_SYNC_ERROR_KEY, repoErrorMessage(DIGX[kind].label + '（' + dxPath(kind, id) + '）', e)); renderSyncBar(); }
+      }
+      if (d && !st.full.has(id) && !(row && row.deletedAt)) { st.full.set(id, d); dxPersistRec(kind, d); st.stamps[id] = d.updatedAt; persistDx(kind); }
+      return st.full.get(id) || null;
+    })().finally(() => st.loading.delete(id));
+    st.loading.set(id, p);
+    return p;
+  }
+  function dxBoot() {
+    Object.keys(DIGX).forEach((kind) => {
+      const st = dx[kind], b = (bootKV.dx || {})[kind] || {};
+      try { st.index = normalizeDxIndex(JSON.parse(b.index || 'null')); } catch (e) {}
+      try { JSON.parse(b.dirty || '[]').forEach((id) => st.dirty.add(id)); } catch (e) {}
+      try { st.stamps = JSON.parse(b.stamps || '{}') || {}; } catch (e) { st.stamps = {}; }
+      Object.entries(b.docs || {}).forEach(([id, raw]) => {
+        const row = st.index.items[id];
+        if (!raw || (row && row.deletedAt)) return;
+        try { const r = dxNormRec(JSON.parse(raw)); if (r) st.full.set(id, r); } catch (e) {}
+      });
+    });
+    dxAdoptFromDig();
+  }
+  async function dxSyncItem(kind, token, id, attempt) {
+    const st = dx[kind];
+    const row = st.index.items[id];
+    const gen0 = syncGenOf('dx:' + kind + ':' + id);
+    if (row && row.deletedAt) { st.dirty.delete(id); st.stamps[id] = row.updatedAt; return; }
+    const remote = await ghGetContents(GITHUB_REPO, dxPath(kind, id), token);
+    let rd = null;
+    try { if (remote.text) rd = dxNormRec(JSON.parse(remote.text)); } catch (e) {}
+    const ld = st.full.get(id) || null;
+    const w = ld && rd ? (ld.updatedAt >= rd.updatedAt ? ld : rd) : (ld || rd);
+    if (!w) { st.dirty.delete(id); return; }
+    if (w !== ld) { st.full.set(id, w); await dxPersistRec(kind, w); }
+    st.index.items[id] = dxRowOf(kind, w);
+    if (!rd || rd.updatedAt !== w.updatedAt) {
+      try { await ghPutJson(dxPath(kind, id), w, remote.sha, kind + ' ' + id); }
+      catch (e) { if (e.status === 409 && !attempt) return dxSyncItem(kind, token, id, 1); throw e; }
+    }
+    if (syncGenOf('dx:' + kind + ':' + id) === gen0) st.dirty.delete(id);
+    st.stamps[id] = w.updatedAt;
+  }
+  async function dxSyncNow(kind, token, force) {
+    const st = dx[kind];
+    if (st.busy || (!digSplit() && !force)) return;
+    st.busy = true;
+    try {
+      const ri = await ghGetContents(GITHUB_REPO, dxIndexPath(kind), token);
+      let remote = normalizeDxIndex(null);
+      try { if (ri.text) remote = normalizeDxIndex(JSON.parse(ri.text)); } catch (e) {}
+      st.index = mergeDxIndex(st.index, remote);
+      // 触る：ここで直したもの、別の端末で変わって端末に置いているもの、新しい DIGX_KEEP 件でまだ持っていないもの
+      const recent = new Set(dxLiveRows(kind).slice(0, DIGX_KEEP).map((r) => r.id));
+      const ids = new Set([...st.dirty]);
+      Object.entries(st.index.items).forEach(([id, r]) => {
+        if (r.deletedAt) { if (st.full.has(id)) { st.full.delete(id); kvDel('dx:' + kind + ':' + id).catch(() => {}); } return; }
+        if ((st.full.has(id) || recent.has(id)) && r.updatedAt !== (st.stamps[id] || '')) ids.add(id);
+      });
+      for (const id of [...ids].sort()) await dxSyncItem(kind, token, id);
+      persistDx(kind);
+      const sig = (ix) => JSON.stringify(Object.keys(ix.items).sort().map((id) => [id, ix.items[id].updatedAt, ix.items[id].deletedAt]));
+      if (sig(st.index) !== sig(remote)) {
+        st.index.updatedAt = nowIso();
+        try { await ghPutJson(dxIndexPath(kind), st.index, ri.sha, kind + ' index'); }
+        catch (e) {
+          if (e.status !== 409) throw e;
+          const ri2 = await ghGetContents(GITHUB_REPO, dxIndexPath(kind), token);
+          let r2 = normalizeDxIndex(null); try { if (ri2.text) r2 = normalizeDxIndex(JSON.parse(ri2.text)); } catch (e2) {}
+          st.index = mergeDxIndex(st.index, r2);
+          await ghPutJson(dxIndexPath(kind), st.index, ri2.sha, kind + ' index');
+        }
+        persistDx(kind);
+      }
+      if (ids.size) wdig.byEvent = null;
+    } finally { st.busy = false; }
+  }
+  // 調べたことの月に残っている記事・語り方（移す前のもの・前の版の端末が書いたもの）を取り込み、月からは消す
+  function dxAdoptFromDig() {
+    if (!digSplit()) return 0;
+    let n = 0;
+    const at = nowIso();
+    wdig.docs.forEach((doc, m) => {
+      let hit = false;
+      Object.keys(DIGX).forEach((kind) => {
+        const arr = Array.isArray(doc[kind]) ? doc[kind] : [];
+        if (!arr.length) return;
+        arr.forEach((raw) => {
+          const rec = dxNormRec(raw);
+          if (!rec) return;
+          const st = dx[kind], cur = st.full.get(rec.id), row = st.index.items[rec.id];
+          const curAt = cur ? cur.updatedAt : dxRowAt(row);
+          if (!curAt || rec.updatedAt > curAt) dxSave(kind, rec, true);
+          doc.deletedIds = doc.deletedIds.filter((t) => t.id !== rec.id).concat([{ id: rec.id, deletedAt: at > rec.updatedAt ? at : rec.updatedAt }]);
+          n++;
+        });
+        delete doc[kind];
+        hit = true;
+      });
+      if (hit) { doc.updatedAt = at; wdig.dirty.add(m); persistDigDoc(m); }
+    });
+    if (n) { persistDigMeta(); scheduleSync(); }
+    return n;
+  }
+  function dxStatus(t) { const el = document.getElementById('dxMigrateStatus'); if (el) el.textContent = t; }
+  // 移す：送れてから月から消す
+  async function dxMigrate(token, manual) {
+    if (digSplit()) return;
+    if (!manual && data.digxMode === 'dig') return;   // 戻したあとは、ボタンを押すまで移さない
+    let n = 0;
+    wdig.docs.forEach((doc) => Object.keys(DIGX).forEach((kind) => (Array.isArray(doc[kind]) ? doc[kind] : []).forEach((raw) => {
+      const rec = dxNormRec(raw); if (!rec) return;
+      const row = dx[kind].index.items[rec.id];
+      if (!row || rec.updatedAt > dxRowAt(row)) dxSave(kind, rec, true);
+      n++;
+    })));
+    dxStatus('記事・語り方 ' + n + '件を送っています…');
+    for (const kind of Object.keys(DIGX)) await dxSyncNow(kind, token, true);
+    data.digxMode = 'split'; data.digxModeAt = nowIso();
+    saveData(data);
+    const m = dxAdoptFromDig();
+    dxStatus('1件1ファイルにしました（' + n + '件。調べたことの月から外した ' + m + '件）。');
+  }
+  // 戻す：全部を読み込み、調べたことの月ファイル（その記録の月）に入れ直す。world/kiji/・world/katari/ のファイルは残す
+  async function dxRevert() {
+    if (!digSplit()) return;
+    if (!confirm('記事と語り方を、調べたことの月ファイルに戻します（world/kiji/・world/katari/ のファイルは残ります）。よろしいですか？')) return;
+    try {
+      const all = [];
+      for (const kind of Object.keys(DIGX)) {
+        const rows = dxLiveRows(kind);
+        dxStatus(DIGX[kind].label + ' ' + rows.length + '件を読み込み中…');
+        for (const r of rows) { const rec = await dxLoad(kind, r.id); if (!rec) throw new Error('読み込めなかった' + DIGX[kind].label + 'があります（' + r.id + '）。通信を確かめてもう一度'); all.push([kind, rec]); }
+      }
+      data.digxMode = 'dig'; data.digxModeAt = nowIso();
+      const at = nowIso();
+      all.forEach(([kind, rec]) => {
+        const m = /^\d{4}-\d{2}/.test(rec.at) ? rec.at.slice(0, 7) : todayStr().slice(0, 7);
+        const doc = wdig.docs.get(m) || emptyDigDoc(m);
+        rec.updatedAt = at;   // 月の側の「消した」印より新しくする
+        if (!Array.isArray(doc[kind])) doc[kind] = [];
+        doc[kind] = doc[kind].filter((x) => x.id !== rec.id).concat([rec]);
+        doc.deletedIds = doc.deletedIds.filter((t) => t.id !== rec.id);
+        doc.updatedAt = at;
+        wdig.docs.set(m, doc); wdig.dirty.add(m); persistDigDoc(m);
+      });
+      Object.values(dx).forEach((st) => st.full.clear());
+      wdig.byEvent = null;
+      persistDigMeta();
+      saveData(data);
+      dxStatus('調べたことの月ファイルに戻しました（' + all.length + '件）。');
+      if (nav.screen === 'settings') openSettings();
+    } catch (e) { dxStatus('戻せませんでした：' + e.message); }
   }
   function digNewId(prefix) { return newIdWith(prefix + '_' + todayStr().replace(/-/g, '') + '_', digTakenIds()); }
   // ［Claude に聞く］の依頼を押してコピーできたとき
@@ -18706,6 +18967,7 @@
       if (at && at > (((wd.index || {})[k] || {}).updatedAt || '')) wd[k + 'Dirty'] = true;
     });
     digBoot();   // v20.43
+    dxBoot();   // v20.110
     worldEvents = [];
     Object.entries(bootKV.worldDocs || {}).forEach(([m, raw]) => {
       let doc = null;
@@ -19203,6 +19465,11 @@
       await syncWorldAsks(token, asksChanged);
       await syncWorldForecasts(token, forecastsChanged);   // v20.21 予告 第1段
       await syncWorldDig(token);   // v20.43 自分で調べたこと
+      // v20.110 記事・語り方：まだなら一度だけ移す。移してあれば、月に来た分を取り込んでから同期
+      try {
+        if (!digSplit()) await dxMigrate(token);
+        else { dxAdoptFromDig(); await dxSyncNow('kiji', token); await dxSyncNow('katari', token); }
+      } catch (e) { recordSyncError(LAST_SYNC_ERROR_KEY, repoErrorMessage('記事・語り方（world/kiji・world/katari）', e)); }
       await syncWorldSources(token, sourcesChanged);
       try { await syncWorldFigures(token); } catch (e) { worldFigLastCheck = 0; }   // v20.6 段階B
       const sig = (ix) => JSON.stringify([ix.epoch || 0, Object.keys(ix.months).sort().map((m) => [m, ix.months[m].updatedAt, ix.months[m].unread, ix.months[m].pend]), ix.concepts.updatedAt, ix.terms.updatedAt, ix.strata.updatedAt, ix.actors.updatedAt, ix.asks.updatedAt, ix.sources.updatedAt, (ix.forecasts || {}).updatedAt || '', Object.keys(ix.due).sort(), Object.keys(ix.pulls || {}).sort().map((k) => [k, ix.pulls[k]]), Object.keys(ix.seeds || {}).sort().map((k) => [k, ix.seeds[k].at, ix.seeds[k].n])]);
@@ -21626,7 +21893,14 @@
     } catch (e) { recordFeatureError('選び直す', e); }
   }
   // ---- v20.72 note 段2：語り方を集める ------------------------------------------
+  // v20.110：同じ語り方かを、中身を読み込まずに比べるための印
+  function worldKatariBodyKey(k) {
+    const t = JSON.stringify({ media: k.media, moves: k.moves, split: k.split, omowaku: k.omowaku, toi: k.toi, shikumi: k.shikumi, utagai: k.utagai, fit: k.fit });
+    let h = 5381; for (let i = 0; i < t.length; i++) h = ((h * 33) ^ t.charCodeAt(i)) >>> 0;
+    return h.toString(36) + '_' + t.length;
+  }
   function worldKatariAll() {
+    if (digSplit()) return dxAll('katari');   // v20.110
     const all = [];
     wdig.docs.forEach((doc) => (Array.isArray(doc.katari) ? doc.katari : []).forEach((k) => { if (k && k.id && k.eventId) all.push(k); }));
     return all.sort((p, q) => (p.at > q.at ? -1 : p.at < q.at ? 1 : 0));
@@ -21771,12 +22045,13 @@
     }
     if (!media.length && !omowaku.length) return { error: '語り方に中身がありませんでした（media と omowaku が空です）。' };
     const body = { media, moves, split, omowaku, toi, shikumi, utagai, fit };
-    const key = JSON.stringify(body);
-    const same = worldKatariFor(ev.id).find((k) => JSON.stringify({ media: k.media, moves: k.moves, split: k.split, omowaku: k.omowaku, toi: k.toi, shikumi: k.shikumi, utagai: k.utagai, fit: k.fit }) === key);
+    const key = worldKatariBodyKey(body);   // v20.110：読み込んでいない語り方は要約の印で比べる
+    const same = worldKatariFor(ev.id).find((k) => (k.__lite ? k.bodyKey : worldKatariBodyKey(k)) === key);
     if (same) return { error: 'この語り方はもう入っています（' + worldDigDay(same.at) + ' に取り込んだもの）。' };
     const at = nowIso();
     const rec = Object.assign({ id: digNewId('kt'), choiceId: choice ? choice.id : '', eventId: ev.id, at, createdAt: at, updatedAt: at }, body);
-    digMutate((doc) => { if (!Array.isArray(doc.katari)) doc.katari = []; doc.katari.push(rec); });
+    if (digSplit()) dxSave('katari', rec);   // v20.110
+    else digMutate((doc) => { if (!Array.isArray(doc.katari)) doc.katari = []; doc.katari.push(rec); });
     return { rec, c };
   }
   function worldKatariResultText(res) {
@@ -21846,6 +22121,11 @@
     const recs = worldKatariFor(ev.id);
     if (!recs.length) return null;
     const k = recs[0];
+    if (k.__lite) {   // v20.110：端末に無い語り方は読み込んでから、この場所に出す
+      const ph = document.createElement('div'); ph.className = 'fieldNote'; ph.textContent = '語り方を読み込んでいます…';
+      dxLoad('katari', k.id).then((full) => { if (!ph.isConnected) return; const el2 = full ? worldKatariSecEl(ev) : null; if (el2) ph.replaceWith(el2); else ph.textContent = '語り方を読み込めませんでした（通信を確かめてください）。'; });
+      return ph;
+    }
     const sec = document.createElement('div'); sec.className = 'katariSec';
     sec.addEventListener('click', (e) => e.stopPropagation());
     const lab = document.createElement('div'); lab.className = 'rowLabel';
@@ -21986,6 +22266,7 @@
     return ks.length ? '（読めた欄：' + ks.join('・') + '）' : '';
   }
   function worldKijiAll() {
+    if (digSplit()) return dxAll('kiji');   // v20.110
     const all = [];
     wdig.docs.forEach((doc) => (Array.isArray(doc.kiji) ? doc.kiji : []).forEach((k) => { if (k && k.id && k.eventId) all.push(k); }));
     return all.sort((p, q) => (p.at > q.at ? -1 : p.at < q.at ? 1 : 0));
@@ -21996,10 +22277,18 @@
     const at = nowIso();
     const rec = { id: digNewId('kj'), date: todayStr(), at, createdAt: at, updatedAt: at, choiceId: kt.choiceId || '', eventId: kt.eventId, katariId: kt.id,
       plan: null, pick: { thumb: -1, title: -1, intro: -1 }, body: '', bodyAt: '', figs: null, check: null, postedAt: '' };
-    digMutate((doc) => { if (!Array.isArray(doc.kiji)) doc.kiji = []; doc.kiji.push(rec); });
+    if (digSplit()) dxSave('kiji', rec);   // v20.110
+    else digMutate((doc) => { if (!Array.isArray(doc.kiji)) doc.kiji = []; doc.kiji.push(rec); });
     return rec;
   }
   function worldKijiUpdate(id, fn) {
+    if (digSplit()) {   // v20.110
+      const apply = (k) => { fn(k); k.updatedAt = nowIso(); dxSave('kiji', k); };
+      const k = dx.kiji.full.get(id);
+      if (k) apply(k);
+      else dxLoad('kiji', id).then((k2) => { if (k2) { apply(k2); if (nav.screen === 'world') renderWorld(); } });
+      return;
+    }
     const at = nowIso();
     let done = false;
     wdig.docs.forEach((doc, m) => {
@@ -22387,6 +22676,15 @@
       const m = monthOfWorldId(kj.eventId);
       if (m && wd.index && wd.index.months && wd.index.months[m] && !wd.loaded.has(m)) { ensureWorldMonths([m]).then(() => { if (nav.screen === 'world' && worldState.view === 'kiji') renderWorldKiji(); }); }
     }
+    if ((kj && kj.__lite) || (kt && kt.__lite)) {   // v20.110：記事・語り方の中身を読み込んでから
+      const p = document.createElement('p'); p.className = 'emptyMsg'; p.textContent = '記事を読み込んでいます…';
+      box.appendChild(p);
+      Promise.all([kj && kj.__lite ? dxLoad('kiji', kj.id) : null, kt && kt.__lite ? dxLoad('katari', kt.id) : null]).then((r) => {
+        if (r.some((x, i) => x === null && [kj && kj.__lite, kt && kt.__lite][i])) { p.textContent = '記事を読み込めませんでした（通信を確かめてください）。'; return; }
+        if (nav.screen === 'world' && worldState.view === 'kiji') renderWorldKiji();
+      });
+      return;
+    }
     if (!kj || !kt || !ev) {
       const p = document.createElement('p'); p.className = 'emptyMsg';
       p.textContent = !kj ? '記事が見つかりません。世界の画面で選んだ出来事の［記事にする］から始めます。' : '元の出来事か語り方がまだ端末に届いていません。少し待ってから開き直してください。';
@@ -22596,6 +22894,7 @@
     return [...new Set(card.concat(base.filter((id) => worldMikiTrunk(id))))];
   }
   function worldKijiTitleOf(kj) {
+    if (kj.__lite) return kj.title || '（タイトルはまだ）';   // v20.110
     const body = (kj.check && kj.check.body) || kj.body || '';
     const t = (body.split(/\r?\n/).find((l) => l.trim()) || '').replace(/^#\s*/, '').trim();
     if (t) return t;
@@ -22670,7 +22969,7 @@
     box.innerHTML = '';
     const el = (tag, cls, text) => { const x = document.createElement(tag); if (cls) x.className = cls; if (text != null) x.textContent = text; return x; };
     const mags = worldMags();
-    const kijis = worldKijiAll().filter((k) => k.plan || k.body);
+    const kijis = worldKijiAll().filter((k) => k.plan || k.body || k.hasPlan || k.hasBody);   // v20.110：要約は hasPlan・hasBody
     if (!worldMikiIsMag()) {   // v20.78
       const n = el('div', 'kjStep');
       n.appendChild(el('div', 'kjSub', 'マガジンはまだ幹になっていません。設定 → 世界 の「幹を立てる（割り直し）」で［マガジンを幹にする］を押し、段B で札を割り直します。'));
