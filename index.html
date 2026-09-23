@@ -3269,7 +3269,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.106';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.107';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -17563,6 +17563,7 @@
     Object.entries(raw.months || {}).forEach(([m, v]) => {
       if (!/^\d{4}-\d{2}$/.test(m) || !v || typeof v !== 'object') return;
       out.months[m] = { updatedAt: typeof v.updatedAt === 'string' ? v.updatedAt : '', count: Number(v.count) || 0, unread: Number(v.unread) || 0 };
+      if (Number.isFinite(v.pend)) out.months[m].pend = Math.max(0, Math.floor(v.pend));   // v20.107
     });
     Object.entries(raw.due || {}).forEach(([d, ids]) => { if (isDateStr(d) && Array.isArray(ids)) out.due[d] = ids.map(String).slice(0, 50); });
     // v19.4 段階5：ソースごとの最後に取り込んだ日。ソースの側に持たないのは、ソースは新しい側が丸ごと勝つので、
@@ -17788,6 +17789,9 @@
     wd.tombs.set(m, new Map(doc.deletedIds.map((t) => [t.id, t.deletedAt])));
     wd.loaded.add(m);
     worldSigs().set(m, worldMonthSignature(worldMonthDoc(m)));   // v20.106
+    // v20.107：読み込んだ月は、読む枠の候補の数を索引に入れ直す（日時は進めない。次の同期で索引ごと送る）
+    const row = wd.index && wd.index.months && wd.index.months[m];
+    try { if (row) { const p = worldEventsOfMonth(m).filter(worldReadCandidate).length; if (row.pend !== p) { row.pend = p; persistWorldIndex(); } } } catch (e) {}   // 起動の途中（決まりの値がまだ無い）でも止めない
   }
   function worldMonthSignature(doc) {
     return doc.events.map((e) => e.id + ':' + e.updatedAt).sort().join('|') + '#' + doc.deletedIds.map((t) => t.id + ':' + t.deletedAt).sort().join('|');
@@ -17841,10 +17845,11 @@
     const events = worldEventsOfMonth(m);
     const prev = wd.index.months[m];
     const unread = events.filter((e) => !e.readDate && !e.hidden && !e.seed).length;   // v20.2
+    const pend = events.filter(worldReadCandidate).length;   // v20.107
     // v20.106：中身を直したとき（bump）は数が同じでも日時を進める（端末にある月を取りに行かない決まりの前提）
     if (bump || !prev || prev.count !== events.length || prev.unread !== unread) {
-      wd.index.months[m] = { updatedAt: nowIso(), count: events.length, unread };
-    }
+      wd.index.months[m] = { updatedAt: nowIso(), count: events.length, unread, pend };
+    } else if (prev.pend !== pend) prev.pend = pend;   // 候補の数だけ変わったときは日時を進めない（中身は同じ）
     Object.keys(wd.index.due).forEach((d) => {
       const kept = wd.index.due[d].filter((id) => monthOfWorldId(id) !== m);
       if (kept.length) wd.index.due[d] = kept; else delete wd.index.due[d];
@@ -18580,7 +18585,7 @@
     if (ea !== eb) return JSON.parse(JSON.stringify(ea > eb ? a : b));
     const out = emptyWorldIndex();
     out.epoch = ea; out.resetAt = a.resetAt > b.resetAt ? a.resetAt : b.resetAt;
-    new Set([...Object.keys(a.months), ...Object.keys(b.months)]).forEach((m) => { const x = a.months[m], y = b.months[m]; out.months[m] = (x && y) ? ((y.updatedAt > x.updatedAt) ? y : x) : (x || y); });
+    new Set([...Object.keys(a.months), ...Object.keys(b.months)]).forEach((m) => { const x = a.months[m], y = b.months[m]; out.months[m] = (x && y) ? ((y.updatedAt > x.updatedAt || (y.updatedAt === x.updatedAt && !Number.isFinite(x.pend) && Number.isFinite(y.pend))) ? y : x) : (x || y); });   // v20.107：同じ日時なら候補の数を持つ方
     // due は日付ごとの id の和集合。片方を丸ごと勝たせると、別の端末で書かれた
     // 「まだ答え合わせしていない予測」が期限の一覧から静かに落ちる。読み込んだ
     // 月については updateWorldIndexMonth が作り直すので、多い側に倒して困らない。
@@ -18881,7 +18886,7 @@
       await syncWorldDig(token);   // v20.43 自分で調べたこと
       await syncWorldSources(token, sourcesChanged);
       try { await syncWorldFigures(token); } catch (e) { worldFigLastCheck = 0; }   // v20.6 段階B
-      const sig = (ix) => JSON.stringify([ix.epoch || 0, Object.keys(ix.months).sort().map((m) => [m, ix.months[m].updatedAt, ix.months[m].unread]), ix.concepts.updatedAt, ix.terms.updatedAt, ix.strata.updatedAt, ix.actors.updatedAt, ix.asks.updatedAt, ix.sources.updatedAt, (ix.forecasts || {}).updatedAt || '', Object.keys(ix.due).sort(), Object.keys(ix.pulls || {}).sort().map((k) => [k, ix.pulls[k]]), Object.keys(ix.seeds || {}).sort().map((k) => [k, ix.seeds[k].at, ix.seeds[k].n])]);
+      const sig = (ix) => JSON.stringify([ix.epoch || 0, Object.keys(ix.months).sort().map((m) => [m, ix.months[m].updatedAt, ix.months[m].unread, ix.months[m].pend]), ix.concepts.updatedAt, ix.terms.updatedAt, ix.strata.updatedAt, ix.actors.updatedAt, ix.asks.updatedAt, ix.sources.updatedAt, (ix.forecasts || {}).updatedAt || '', Object.keys(ix.due).sort(), Object.keys(ix.pulls || {}).sort().map((k) => [k, ix.pulls[k]]), Object.keys(ix.seeds || {}).sort().map((k) => [k, ix.seeds[k].at, ix.seeds[k].n])]);
       if (sig(wd.index) !== sig(remoteIndex)) {
         try { await ghPutJson(WORLD_INDEX_PATH, wd.index, ri.sha, 'world index'); }
         catch (e) {
@@ -20767,6 +20772,15 @@
   // からも拾えるので、対象を「端末にある札」に広げた。主語が付いている札は
   // プロンプト側で印を付けて、actors を空で返させる。
   // v20.17：まだ読んでいない札。新しい順。readAt を押した札は二度と出ない
+  // v20.107：読む枠のどれかに入りうる札（外れた・切れた推定・浅い読み・未読）。索引の月ごとの数に使う
+  function worldReadCandidate(e) {
+    if (!e || e.hidden) return false;
+    return !!(e.missAt && (!e.rereadAt || e.rereadAt < e.missAt)) || worldHasCutRead(e) || (e.readAt && !e.rereadAt && worldHasMorningRead(e)) || (!e.readAt && e.actors.length);
+  }
+  // 読む枠のために読み込む月：候補のある月と、候補の数がまだ分からない月だけ（前は索引の全部の月）
+  function worldReadMonths() {
+    return Object.entries((wd.index && wd.index.months) || {}).filter(([m, v]) => !wd.loaded.has(m) && (!Number.isFinite(v.pend) || v.pend > 0 || v.unread > 0)).map(([m]) => m);
+  }
   function worldUnreadCards() {
     return worldLiveEvents()
       .filter((e) => !e.readAt && e.actors.length && !worldEvSelf(e))   // v20.45：自分で作った札は読む回に入れない
@@ -24402,7 +24416,7 @@
     const btn = (t, cls, fn) => { const b = document.createElement('button'); b.type = 'button'; b.className = cls || 'secondaryBtn'; b.textContent = t; b.addEventListener('click', fn); box.appendChild(b); return b; };
     const status = document.createElement('p'); status.className = 'fieldNote'; status.id = 'worldMikiSplitStatus';
     if (worldMikiSplitCards.lastMsg) status.textContent = worldMikiSplitCards.lastMsg;
-    if (!loaded) note('札の月を読み込んでいます…（読み込み終わるまでコピーできません）');
+    if (!loaded) worldLoadAllMonthsBtn(box);   // v20.107
     if (mk.dupNames.length) note('※ 同じ名前の幹が2本あります：' + mk.dupNames.join('・'));
     // v20.78：マガジンを幹にする（2回押し）
     if (!worldMikiIsMag() && !d.plan) {
@@ -29767,7 +29781,7 @@
     const sum = worldAimsState().sum;
     if (sum) note('埋めた（' + worldShortDate(localDateOfIso(sum.at)) + '）：札 ' + sum.cards + '枚・2回とも同じ組 ' + sum.common + '（線にした）・片方だけ ' + (sum.only1 + sum.only2) + '（1回目だけ ' + sum.only1 + '・2回目だけ ' + sum.only2 + '、控え）・揺れた札 ' + sum.sway + '枚');
     const targets = loaded ? worldAimsFillCards() : [];
-    if (!loaded) { note('札の月を読み込んでいます…（読み込み終わるまでコピーできません）'); box.appendChild(status); return; }
+    if (!loaded) { worldLoadAllMonthsBtn(box); box.appendChild(status); return; }   // v20.107
     if (!targets.length && !d.cardIds.length) { if (!sum) note('埋める札はありません。'); box.appendChild(status); return; }
     if (!d.cardIds.length) note('効かせた相手の記録が無い札 ' + targets.length + '枚。1回目と2回目は、別のチャットに貼ってください（2回目は並びを逆にしてあります）。');
     const copyText = (n, onlyIds, label) => {
@@ -30538,7 +30552,8 @@
     paintWorldReadNote();   // v20.17 第1段
     // v20.35：切れた推定・予告の元の札は古い月にもある。読む枠は読み込んだ月からしか選べないので、
     // 索引にある月を全部読み込んでから数え直す（コピーのボタンは押したその場でコピーするため、ここで先に読む）
-    const needAll = Object.keys((wd.index && wd.index.months) || {}).filter((m) => !wd.loaded.has(m));
+    // v20.107：候補のある月だけ（候補の数は月の索引に持つ。読み込んだ月は数え直す）
+    const needAll = worldReadMonths();
     if (needAll.length) ensureWorldMonths(needAll).then(() => { if (nav.screen === 'world' && worldState.view === 'import') paintWorldReadNote(); });
     renderWorldSeedList();   // v20.2
     renderWorldOutside();   // v19.11
@@ -30981,9 +30996,21 @@
     paintWorldEpochLine();
     renderWorldMikiSplit();   // v20.50 幹 段1
     renderWorldAimsFill();   // v20.58
-    // v20.49 幹 段0：切れた推定は古い月にもあるので、索引の月を全部読み込んでから数え直す
-    const needAll = Object.keys((wd.index && wd.index.months) || {}).filter((m) => !wd.loaded.has(m));
-    if (needAll.length) ensureWorldMonths(needAll).then(() => { paintWorldEpochLine(); renderWorldMikiSplit(); renderWorldAimsFill(); }).catch(() => {});
+    // v20.107：開いただけでは全部の月を読まない（前は設定を開くたびに全部の月を GitHub から取っていた）。
+    // 全部の札が要る2つ（幹の割り直し・効かせた相手）は、その場のボタンで読む
+  }
+  function worldLoadAllMonthsBtn(box, after) {
+    const need = Object.keys((wd.index && wd.index.months) || {}).filter((m) => !wd.loaded.has(m));
+    const p = document.createElement('p'); p.className = 'fieldNote';
+    p.textContent = '全部の札を使います。まだ読み込んでいない月が ' + need.length + 'か月あります。';
+    box.appendChild(p);
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'secondaryBtn';
+    b.textContent = '全部の月を読み込む';
+    b.addEventListener('click', () => {
+      b.disabled = true; b.textContent = '読み込んでいます…';
+      ensureWorldMonths(need).then(() => { paintWorldEpochLine(); renderWorldMikiSplit(); renderWorldAimsFill(); }).catch(() => { b.disabled = false; b.textContent = '読み込めませんでした。もう一度'; });
+    });
+    box.appendChild(b);
   }
   function paintWorldEpochLine() {
     const el = document.getElementById('worldEpochLine');
