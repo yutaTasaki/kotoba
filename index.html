@@ -1959,6 +1959,28 @@
         </div>
       </details>
 
+      <details class="setGroup" data-group="leadKeys">
+        <summary><span class="sgTitle">調べ物の鍵（撮るの手がかり）</span><span class="sgSub" id="setSubLeadKeys"></span></summary>
+        <div class="setBody">
+          <p class="fieldNote">撮るの「手がかりを集める」で、見る人の声（YouTube のコメント・Bluesky の投稿）も集めるための鍵。どれも端末の localStorage にだけ保存され、同期しません。空なら、その資料は使いません。</p>
+          <div class="field">
+            <span class="fieldLabel">YouTube Data API のキー</span>
+            <input id="leadYtKeyInput" type="text" placeholder="AIza..." autocomplete="off" spellcheck="false">
+          </div>
+          <div class="field">
+            <span class="fieldLabel">Bluesky のハンドル</span>
+            <input id="leadBskyHandleInput" type="text" placeholder="yourname.bsky.social" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="field">
+            <span class="fieldLabel">Bluesky のアプリパスワード</span>
+            <p class="fieldNote">ふだんのパスワードではなく、設定 → プライバシーとセキュリティ → アプリパスワード で作ったもの。</p>
+            <input id="leadBskyPwInput" type="text" placeholder="xxxx-xxxx-xxxx-xxxx" autocomplete="off" spellcheck="false">
+          </div>
+          <button id="btnSaveLeadKeys" class="secondaryBtn" type="button">保存</button>
+          <p class="fieldNote" id="leadKeysNote"></p>
+        </div>
+      </details>
+
       <details class="setGroup" data-group="api">
         <summary><span class="sgTitle">Claude API</span><span class="sgSub" id="setSubApi"></span></summary>
         <div class="setBody">
@@ -3296,7 +3318,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.115';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.116';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -13786,6 +13808,11 @@
     paintSettingsSummaries();
     document.getElementById('ghTokenInput').value = getGhToken();
     document.getElementById('claudeApiKeyInput').value = getClaudeApiKey();
+    // v20.116：調べ物の鍵
+    document.getElementById('leadYtKeyInput').value = localStorage.getItem(LEAD_YT_KEY) || '';
+    document.getElementById('leadBskyHandleInput').value = localStorage.getItem(LEAD_BSKY_HANDLE) || '';
+    document.getElementById('leadBskyPwInput').value = localStorage.getItem(LEAD_BSKY_PW) || '';
+    document.getElementById('setSubLeadKeys').textContent = [localStorage.getItem(LEAD_YT_KEY) ? 'YouTube' : '', localStorage.getItem(LEAD_BSKY_PW) ? 'Bluesky' : ''].filter(Boolean).join('・') || '未設定';
     document.getElementById('claudeModelAutoLinkInput').value = getClaudeAutoLinkModel();
     document.getElementById('claudeModelChatInput').value = getClaudeChatModel();
     document.getElementById('usageBudgetInput').value = getUsageBudget().toFixed(2);
@@ -13967,6 +13994,16 @@
   }
 
   document.getElementById('backFromSettings').addEventListener('click', goHome);
+
+  document.getElementById('btnSaveLeadKeys').addEventListener('click', () => {
+    const put = (k, v) => { v = v.trim(); if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); };
+    put(LEAD_YT_KEY, document.getElementById('leadYtKeyInput').value);
+    put(LEAD_BSKY_HANDLE, document.getElementById('leadBskyHandleInput').value.replace(/^@/, ''));
+    put(LEAD_BSKY_PW, document.getElementById('leadBskyPwInput').value);
+    toruBskySession = null;
+    document.getElementById('setSubLeadKeys').textContent = [localStorage.getItem(LEAD_YT_KEY) ? 'YouTube' : '', localStorage.getItem(LEAD_BSKY_PW) ? 'Bluesky' : ''].filter(Boolean).join('・') || '未設定';
+    document.getElementById('leadKeysNote').textContent = '保存しました。撮るの「手がかりを集める」から使えます。';
+  });
 
   document.getElementById('btnSaveClaudeSettings').addEventListener('click', () => {
     const key = document.getElementById('claudeApiKeyInput').value.trim();
@@ -15747,7 +15784,7 @@
   // Reddit・Bluesky は登録が要り、GDELT・Semantic Scholar・J-STAGE はブラウザから呼べないので入れていない
   const TORU_LEAD_PER = 3;      // 1つの言葉・1つの資料から取る数
   const TORU_LEAD_SRC_MAX = 6;  // 1つの資料から取る数の上限
-  const TORU_LEAD_MAX = 45;     // 全部で
+  const TORU_LEAD_MAX = 60;     // 全部で（v20.116：人の声を足したので 45→60）
   async function toruLeadFetch(url, asText) {
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 15000);
@@ -15756,6 +15793,23 @@
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return asText ? await r.text() : await r.json();
     } finally { clearTimeout(t); }
+  }
+  // v20.116：見る人の声の鍵（この端末だけ）
+  const LEAD_YT_KEY = 'kotoba_leadYtKey';
+  const LEAD_BSKY_HANDLE = 'kotoba_leadBskyHandle';
+  const LEAD_BSKY_PW = 'kotoba_leadBskyPw';
+  let toruBskySession = null;
+  async function toruBskyAuth() {
+    if (toruBskySession && Date.now() - toruBskySession.t < 60 * 60 * 1000) return toruBskySession;
+    const r = await fetch('https://bsky.social/xrpc/com.atproto.server.createSession', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier: localStorage.getItem(LEAD_BSKY_HANDLE) || '', password: localStorage.getItem(LEAD_BSKY_PW) || '' }),
+    });
+    if (!r.ok) throw new Error(r.status === 401 ? 'ハンドルかアプリパスワードが違う' : 'ログインできない（HTTP ' + r.status + '）');
+    const j = await r.json();
+    const svc = ((j.didDoc && j.didDoc.service) || []).find((x) => x && x.id === '#atproto_pds');
+    toruBskySession = { jwt: j.accessJwt, pds: (svc && svc.serviceEndpoint) || 'https://bsky.social', t: Date.now() };
+    return toruBskySession;
   }
   function toruLeadClip(t, n) { return String(t == null ? '' : t).replace(/<[^>]+>/g, '').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim().slice(0, n); }
   const TORU_LEAD_SOURCES = [
@@ -15793,19 +15847,49 @@
       return (j.items || []).map((it) => ({ title: it.title, url: it.link, note: it.is_answered ? '答えあり' : '答えまだ' }));
     } },
   ];
+  // v20.116：人の声。鍵が無ければ使わない（失敗にはしない）
+  TORU_LEAD_SOURCES.push(
+    { key: 'youtube', kind: '人の声', name: 'YouTube のコメント', lang: 'both', ready: () => !!localStorage.getItem(LEAD_YT_KEY), run: async (q) => {
+      const key = encodeURIComponent(localStorage.getItem(LEAD_YT_KEY) || '');
+      const sr = await toruLeadFetch('https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=2&q=' + encodeURIComponent(q) + '&key=' + key);
+      const out = [];
+      for (const it of (sr.items || [])) {
+        const vid = it.id && it.id.videoId;
+        if (!vid) continue;
+        try {
+          const c = await toruLeadFetch('https://www.googleapis.com/youtube/v3/commentThreads?part=snippet&videoId=' + vid + '&maxResults=20&order=relevance&textFormat=plainText&key=' + key);
+          (c.items || []).map((x) => x.snippet && x.snippet.topLevelComment).filter(Boolean)
+            .sort((a, b) => ((b.snippet.likeCount || 0) - (a.snippet.likeCount || 0))).slice(0, 2)
+            .forEach((tc) => out.push({ title: '「' + toruLeadClip(tc.snippet.textDisplay, 90) + '」', url: 'https://www.youtube.com/watch?v=' + vid + '&lc=' + tc.id, note: '動画：' + toruLeadClip(it.snippet && it.snippet.title, 40) + '・いいね' + (tc.snippet.likeCount || 0) }));
+        } catch (e) { /* コメントを閉じている動画は飛ばす */ }
+      }
+      return out;
+    } },
+    { key: 'bluesky', kind: '人の声', name: 'Bluesky', lang: 'both', ready: () => !!(localStorage.getItem(LEAD_BSKY_HANDLE) && localStorage.getItem(LEAD_BSKY_PW)), run: async (q) => {
+      const ss = await toruBskyAuth();
+      const r = await fetch(ss.pds + '/xrpc/app.bsky.feed.searchPosts?q=' + encodeURIComponent(q) + '&limit=' + TORU_LEAD_PER + '&sort=top', { headers: { Authorization: 'Bearer ' + ss.jwt } });
+      if (!r.ok) { if (r.status === 401) toruBskySession = null; throw new Error('HTTP ' + r.status); }
+      const j = await r.json();
+      return (j.posts || []).map((p) => ({ title: '「' + toruLeadClip(p.record && p.record.text, 90) + '」', url: 'https://bsky.app/profile/' + p.author.handle + '/post/' + String(p.uri || '').split('/').pop(), note: '@' + p.author.handle + '・いいね' + (p.likeCount || 0) }));
+    } },
+  );
   function toruLeadWords(text) { return String(text || '').split(/[、,\n／/]+/).map((x) => x.trim()).filter(Boolean).slice(0, 4); }
   async function toruCollectLeads(deck) {
     const kw = deck.leadKw || { ja: '', en: '' };
     const words = { ja: toruLeadWords(kw.ja), en: toruLeadWords(kw.en) };
     const jobs = [];
-    TORU_LEAD_SOURCES.forEach((src) => words[src.lang].forEach((q) => jobs.push({ src, q })));
+    const skipped = [];
+    TORU_LEAD_SOURCES.forEach((src) => {
+      if (src.ready && !src.ready()) { skipped.push(src.name); return; }
+      (src.lang === 'both' ? words.ja.concat(words.en) : words[src.lang]).forEach((q) => jobs.push({ src, q }));
+    });
     const got = {};
-    const failed = new Set();
+    const failed = new Map();
     await Promise.all(jobs.map(async (jb) => {
       try {
         const rows = await jb.src.run(jb.q);
         (got[jb.src.key] = got[jb.src.key] || []).push(...rows.slice(0, TORU_LEAD_PER).map((r) => Object.assign({ q: jb.q }, r)));
-      } catch (e) { failed.add(jb.src.name); }
+      } catch (e) { failed.set(jb.src.name, String((e && e.message) || e).slice(0, 60)); }
     }));
     const seen = new Set();
     const items = [];
@@ -15818,7 +15902,7 @@
         kind: src.kind, src: src.name, title: toruLeadClip(r.title, 120), year: toruLeadClip(r.year, 4), url: r.url, note: toruLeadClip(r.note, 80), q: toruLeadClip(r.q, 40),
       }));
     });
-    deck.leads = { at: nowIso(), items: items.slice(0, TORU_LEAD_MAX), failed: [...failed] };
+    deck.leads = { at: nowIso(), items: items.slice(0, TORU_LEAD_MAX), failed: [...failed].map(([n, m]) => n + '（' + m + '）'), skipped };
     shootTouch(deck);
     return deck.leads;
   }
@@ -16650,7 +16734,7 @@
         const st = el('p', 'fieldNote', '');
         btn.addEventListener('click', async () => {
           if (!navigator.onLine) { st.textContent = 'オフラインです。つながってから押してください。'; return; }
-          btn.disabled = true; st.textContent = '集めています（論文・古い本・事典・噂の Q&A）…';
+          btn.disabled = true; st.textContent = '集めています（論文・古い本・事典・噂の Q&A・人の声）…';
           try {
             const r = await toruCollectLeads(deck);
             shootFlush();
@@ -16665,7 +16749,8 @@
           L.forEach((x) => { counts[x.kind] = (counts[x.kind] || 0) + 1; });
           const det = el('details', 'kjDetails');
           det.appendChild(el('summary', 'kjSub', '集めた手がかり ' + L.length + '件（' + Object.entries(counts).map(([k, n]) => k + n).join('・') + '）' +
-            ((deck.leads.failed || []).length ? '　つながらなかった：' + deck.leads.failed.join('・') : '') + '。材料の依頼文に入ります'));
+            ((deck.leads.failed || []).length ? '　つながらなかった：' + deck.leads.failed.join('・') : '') +
+            ((deck.leads.skipped || []).length ? '　鍵が無いので使わなかった：' + deck.leads.skipped.join('・') + '（設定 → 調べ物の鍵）' : '') + '。材料の依頼文に入ります'));
           L.forEach((x, idx) => {
             const row = el('div', 'kjSub', '［' + x.kind + '・' + x.src + '］' + x.title + (x.year ? '（' + x.year + '）' : '') + ' ');
             const a = el('a', '', '開く'); a.href = x.url; a.target = '_blank'; a.rel = 'noopener noreferrer'; row.appendChild(a);
