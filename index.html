@@ -3296,7 +3296,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.113';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.114';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -6491,6 +6491,13 @@
       // request that is too large, ...); it never contains the key
       let text = '';
       try { text = (await res.text()).replace(/\s+/g, ' ').slice(0, 200); } catch (e2) {}
+      // v20.114：返事の形を API で保証する（output_config.format）ようにした。選んだ型や形が受け付けられなかったときは、
+      // 前と同じ形なしで1回だけ呼び直し（読み取りは前のゆるい読み方がまだ受ける）、最終エラーの欄に残す
+      if (res.status === 400 && body.output_config && /output_config|format|schema/i.test(text)) {
+        recordAutoLinkError('返事の形の指定が受け付けられず、形なしで呼び直しました: ' + text.slice(0, 120));
+        const b2 = Object.assign({}, body); delete b2.output_config;
+        return aiFetch(b2, opts);
+      }
       const e = new Error('Claude API ' + res.status + (text ? ' / ' + text : '') + '（model: ' + body.model + '）');
       e.status = res.status;
       e.body = text;
@@ -6544,13 +6551,12 @@
     // ~30字 why, plus a 3-line closing - roughly 400-700 tokens), but the
     // thinking pass that chooses them weighs the whole notes list, so that
     // is the part needing room. 8192 leaves ~7.4k for it.
-    const json = await aiFetch({ model, max_tokens: 8192, system, messages: [{ role: 'user', content: promptText }] });
+    const json = await aiFetch({ model, max_tokens: 8192, system, messages: [{ role: 'user', content: promptText }], output_config: { format: { type: 'json_schema', schema: { type: 'object', properties: { picks: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, why: { type: 'string' } }, required: ['id', 'why'], additionalProperties: false } }, closing: { type: 'string' } }, required: ['picks', 'closing'], additionalProperties: false } } } });
     recordApiUsage(usageKind, json.usage);
     const textOut = (json.content || []).map((b) => b.text || '').join('');
-    const parsed = parseConsultResponseLoose(textOut);
+    const parsed = parseConsultResponseLoose(textOut);   // 構造化出力で形は保証。途中で切れたときの picks の拾い上げだけに使う
     if (!parsed) {
       if (isTruncated(json)) throw truncatedResponseError();
-      if (!isParseRetry) return callChatApi(input, history, maxPicks, usageKind, true, true);
       throw new Error('応答を JSON として読めません / stop_reason: ' + (json.stop_reason || '?') + ' / ' + textOut.replace(/\s+/g, ' ').slice(0, 200));
     }
     const validIds = new Set(data.notes.map((n) => n.id));
@@ -7054,9 +7060,7 @@
       '最大何件選ぶかを提示する。入力された状態に対して、指定された件数まで最も応える言葉を選び、' +
       'それぞれになぜ近いかを30字程度で書いてください。最後に、選んだ言葉同士の関係やそこから見える一つの見方を3行以内で書いてください。' +
       '一般論、慰め、アドバイス、ノートにない引用は書かないでください。本人の解釈（myWords）を重視してください。' +
-      '該当がなければ空にしてください。why・closing には引用符や改行を使わないでください。\n\n' +
-      '返答形式（JSONのみ、他の文章は含めない）:\n' +
-      '{"picks":[{"id":"...","why":"..."}],"closing":"..."}';
+      '該当がなければ picks を空にしてください。';
     // v20.16：関連づけと同じ割り方。古い分はキャッシュ、新しい分だけ毎回送る
     const blocks = [{ type: 'text', text, cache_control: { type: 'ephemeral' } }];
     if (split && split.newer.length) blocks.push({ type: 'text', text: '最近加わった言葉（上の一覧の続き）:\n' + JSON.stringify(split.newer) });
@@ -7082,9 +7086,7 @@
         '同じことを言っている名言が続くときだけ、1件にまとめます（残りは context に要旨で）。' +
         '各件の core は、名言そのものを原文のまま（言い換えない。200字以内。見出し・番号・解説文は含めない）。' +
         '各件の context は、その名言に付いていた解説や前後の文の要旨を1〜2文（300字以内）。無ければ空文字。' +
-        '各件に既存タグ一覧から最大3つ選んでください。既存で合わなければ新しいタグを1つだけ提案してよいです。' +
-        'JSONのみを返してください。\n\n返答形式（JSON配列のみ、他の文章は含めない）:\n' +
-        '[{"core": "...", "context": "...", "tags": ["..."]}]';
+        '各件に既存タグ一覧から最大3つ選んでください。既存で合わなければ新しいタグを1つだけ提案してよいです。';
       return [{ type: 'text', text, cache_control: { type: 'ephemeral' } }];
     }
     const bodyText = kind === 'transcript'
@@ -7098,9 +7100,7 @@
     const text =
       '以下はこの人が使っている既存タグの一覧である。\n' + JSON.stringify(allTags()) +
       '\n\nこのあとユーザーメッセージで元のテキストを渡す。' + bodyText +
-      '各件に既存タグ一覧から最大3つ選んでください。既存で合わなければ新しいタグを1つだけ提案してよいです。' +
-      'JSONのみを返してください。\n\n返答形式（JSON配列のみ、他の文章は含めない）:\n' +
-      '[{"core": "...", "context": "...", "tags": ["..."]}]';
+      '各件に既存タグ一覧から最大3つ選んでください。既存で合わなければ新しいタグを1つだけ提案してよいです。';
     return [{ type: 'text', text, cache_control: { type: 'ephemeral' } }];
   }
 
@@ -7117,13 +7117,16 @@
     // sized so the answer is never what runs out; unused budget costs
     // nothing, and a longer wait beats losing the whole decomposition.
     // The wait is the reason for the longer timeout.
-    const json = await aiFetch({ model, max_tokens: 32000, system, messages: [{ role: 'user', content: promptText }] }, { timeoutMs: 180000 });
+    const json = await aiFetch({ model, max_tokens: 32000, system, messages: [{ role: 'user', content: promptText }], output_config: { format: { type: 'json_schema', schema: { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { core: { type: 'string' }, context: { type: 'string' }, tags: { type: 'array', items: { type: 'string' } } }, required: ['core', 'context', 'tags'], additionalProperties: false } } }, required: ['items'], additionalProperties: false } } } }, { timeoutMs: 180000 });
     recordApiUsage('bulk', json.usage);
     const textOut = (json.content || []).map((b) => b.text || '').join('');
-    const parsed = parseJsonArrayLoose(textOut);
+    let parsed = null;
+    try { const o = JSON.parse(textOut); if (o && Array.isArray(o.items)) parsed = o.items; } catch (e) {}
+    // 途中で切れたとき・形の指定なしで呼び直したとき（aiFetch）は、前のゆるい読み方でそろった件だけ拾う
+    if (!parsed) { const a = textOut.indexOf('{'), z = textOut.lastIndexOf('}'); if (a !== -1 && z > a) { try { const o = JSON.parse(textOut.slice(a, z + 1)); if (o && Array.isArray(o.items)) parsed = o.items; else if (Array.isArray(o)) parsed = o; } catch (e) {} } }
+    if (!parsed && textOut.indexOf('[') !== -1) parsed = parseJsonArrayLoose(textOut.slice(textOut.indexOf('[')));
     if (!parsed) {
       if (isTruncated(json)) throw truncatedResponseError();
-      if (!isParseRetry) return callBulkDecomposeApi(rawText, kind, false, true);
       throw new Error('invalid response shape');
     }
     const maxLen = kind === 'transcript' ? 150 : 200;
@@ -7154,11 +7157,12 @@
       JSON.stringify({ text: note.text, source: note.source, myWords: note.myWords, tags: note.tags, k: note.kind || 'quote' }) +
       '\n\n除外するid（対象自身・既にリンク済み・却下済み。これらは選ばないこと）:\n' + JSON.stringify(excludeIds);
 
-    const json = await aiFetch({ model, max_tokens: 2048, system, messages: [{ role: 'user', content: promptText }] });
+    const json = await aiFetch({ model, max_tokens: 8192, system, messages: [{ role: 'user', content: promptText }] });
     recordApiUsage(usageKind, json.usage);
     const textOut = (json.content || []).map((b) => b.text || '').join('');
     const parsed = parseJsonArrayLoose(textOut);
     if (!parsed) {
+      if (isTruncated(json)) throw truncatedResponseError();   // v20.114：思考する型だと 2048 では切れ、読み直しで二重に払っていた
       if (!isParseRetry) return callClaudeApi(note, excludeIds, usageKind, false, true);
       throw new Error('invalid response shape');
     }
@@ -7765,8 +7769,9 @@
       '- 本人の言い方・一人称はそのまま使ってよい。\n' +
       '- 縮めた文だけを返す。かぎ括弧・見出し・箇条書きを付けない。' }];
     const user = JSON.stringify({ 言葉: note.text, 自分の言葉: base });
-    const json = await aiFetch({ model, max_tokens: 300, system, messages: [{ role: 'user', content: user }] });
+    const json = await aiFetch({ model, max_tokens: 2048, system, messages: [{ role: 'user', content: user }] });
     recordApiUsage('postline', json.usage);   // 使用量は「投稿の説明」と同じ行に数える
+    if (isTruncated(json)) throw truncatedResponseError();
     const out = (json.content || []).map((b) => b.text || '').join('').trim().replace(/^[「『]/, '').replace(/[」』]$/, '');
     if (!out) { const e = new Error('empty'); e.empty = true; throw e; }
     const live = findNote(note.id) || note;   // v20.92：待っている間に入れ替わっていたら今の方へ
@@ -7790,8 +7795,9 @@
       '- 投稿する人自身の話（今日の体調・出来事）は書かない。\n' +
       '- 説明の文だけを返す。かぎ括弧・見出し・箇条書きを付けない。' }];
     const user = JSON.stringify({ 言葉: note.text, 出典: note.source, 自分の言葉: note.myWords });
-    const json = await aiFetch({ model, max_tokens: 300, system, messages: [{ role: 'user', content: user }] });
+    const json = await aiFetch({ model, max_tokens: 2048, system, messages: [{ role: 'user', content: user }] });
     recordApiUsage('postline', json.usage);
+    if (isTruncated(json)) throw truncatedResponseError();
     const out = (json.content || []).map((b) => b.text || '').join('').trim().replace(/^[「『]/, '').replace(/[」』]$/, '');
     return out;   // v20.36：短くしない（保存の上限200字だけ）
   }
@@ -9214,9 +9220,7 @@
       '- self: 読者自身の考え・気づき（「自分は〜」「〜な気がする」など、読者の言葉として明示されているものだけ）。1 件 150 字以内、複数可。無ければ空配列。本文の言い換えや、本の著者の主張は self にしない。\n' +
       '書名は次の既知の本から特定する（「ニーチェの本」のような手がかりで十分）。一覧に無い・特定できないときは book を null にし、guess に手がかり（著者名など）を書く。\n' +
       '既知の本: ' + JSON.stringify(books) + '\n' +
-      '別々の箇所は items を分ける（core 1 つにつき 1 item）。\n' +
-      'JSON のみを返す。文字列の中で改行しない（改行が必要なら \\n と書く）。前後に説明文やコードフェンスを付けない。返答形式:\n' +
-      '{"items":[{"core":"...","book":{"title":"...","author":"..."},"guess":"","context":"...","self":["..."]}]}';
+      '別々の箇所は items を分ける（core 1 つにつき 1 item）。';
     return [{ type: 'text', text, cache_control: { type: 'ephemeral' } }];
   }
   // JSON from the model, tolerant of the usual damage: code fences, text
@@ -9261,14 +9265,13 @@
   const READING_TIMEOUT_MS = 120000;
   const LAST_READING_REPLY_KEY = 'kotoba_lastReadingReply';
   async function callReadingDecomposeApi(rawText, bookHint, is429Retry, isParseRetry) {
-    const json = await aiFetch({ model: getClaudeChatModel(), max_tokens: 16000, system: buildReadingSystemBlocks(), messages: [{ role: 'user', content: (bookHint ? '本の手がかり: ' + bookHint + '\n\n' : '') + '入力:\n' + rawText }] }, { timeoutMs: READING_TIMEOUT_MS });
+    const json = await aiFetch({ model: getClaudeChatModel(), max_tokens: 16000, system: buildReadingSystemBlocks(), messages: [{ role: 'user', content: (bookHint ? '本の手がかり: ' + bookHint + '\n\n' : '') + '入力:\n' + rawText }], output_config: { format: { type: 'json_schema', schema: { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { core: { type: 'string' }, book: { anyOf: [{ type: 'object', properties: { title: { type: 'string' }, author: { type: 'string' } }, required: ['title', 'author'], additionalProperties: false }, { type: 'null' }] }, guess: { type: 'string' }, context: { type: 'string' }, self: { type: 'array', items: { type: 'string' } } }, required: ['core', 'book', 'guess', 'context', 'self'], additionalProperties: false } } }, required: ['items'], additionalProperties: false } } } }, { timeoutMs: READING_TIMEOUT_MS });
     recordApiUsage('reading', json.usage);
     const textOut = (json.content || []).map((b) => b.text || '').join('');
     try { localStorage.setItem(LAST_READING_REPLY_KEY, JSON.stringify({ at: nowIso(), stop: json.stop_reason, text: textOut.slice(0, 4000) })); } catch (e) {}
     const parsed = parseReadingReply(textOut);
     if (!parsed) {
       if (isTruncated(json)) throw truncatedResponseError();
-      if (!isParseRetry) return callReadingDecomposeApi(rawText, bookHint, false, true);
       const err = new Error('応答を JSON として読めませんでした（先頭: ' + textOut.replace(/\s+/g, ' ').slice(0, 80) + '）'); err.parse = true; throw err;
     }
     return parsed.items.map((it) => ({
@@ -11420,8 +11423,7 @@
       '- p（主働筋）は1〜3個、s（協働筋）は0〜4個。IDは一覧にあるものだけを使う。\n' +
       '- 種目名から動作が推測できないときは null にする（無理に当てない）。\n' +
       '- 各種目には本人が付けた部位（肩/胸/背中/腕/足/腹筋/有酸素/その他）が添えてある。部位が有酸素の種目（ランニング、バイク、Carb Day など名前が何であれ）は脚の筋肉（rectus_femoris, vastus_lateralis, vastus_medialis）を主働に、gastrocnemius と gluteus_maximus を協働にする。\n' +
-      '- 一覧にない ID や仮の ID は絶対に書かない。JSON は 1 回だけ出力し、訂正や追記はしない。\n' +
-      '- 出力は JSON オブジェクトのみ。キーは与えられた種目名をそのまま、値は {"p": [...], "s": [...]} または null。説明文は書かない。' }];
+      '- キーは与えられた種目名をそのまま使う。' }];
   }
   function partOfExercise(name) {
     const hit = TRAINING_PARTS.find((part) => ((trainingData.exercises || {})[part] || []).some((e) => e.name === name && !e.hidden));
@@ -11440,7 +11442,9 @@
     return null;
   }
   async function generateMuscleMaps(names) {
-    const json = await aiFetch({ model: getClaudeChatModel(), max_tokens: 8192, system: buildMuscleSystemBlocks(), messages: [{ role: 'user', content: '種目名（name）と本人の部位（part）:\n' + JSON.stringify(names.map((n) => ({ name: n, part: partOfExercise(n) }))) + '\n\n出力のキーは name をそのまま使うこと。' }] });
+    const ids = { type: 'array', items: { type: 'string', enum: MUSCLE_CATALOG.map((m) => m.id) } };
+    const schema = { type: 'object', properties: Object.fromEntries(names.map((n) => [n, { anyOf: [{ type: 'object', properties: { p: ids, s: ids }, required: ['p', 's'], additionalProperties: false }, { type: 'null' }] }])), required: names, additionalProperties: false };
+    const json = await aiFetch({ model: getClaudeChatModel(), max_tokens: 8192, system: buildMuscleSystemBlocks(), messages: [{ role: 'user', content: '種目名（name）と本人の部位（part）:\n' + JSON.stringify(names.map((n) => ({ name: n, part: partOfExercise(n) }))) }], output_config: { format: { type: 'json_schema', schema } } });
     recordApiUsage('muscle', json.usage);
     const text = (json.content || []).map((b) => b.text || '').join('');
     const parsed = parseMuscleReply(text);
@@ -15318,10 +15322,7 @@
       '問い：' + (deck.questionText || '（未設定）') + '\n' +
       '仮の答え：' + (deck.text || '（未設定）') + '\n' +
       '本人が選んだ言葉（参考。カードにはしない）：\n' + (words.length ? words.join('\n') : '（なし）') + '\n\n' +
-      '手順：\n' +
-      '1. 仮の答えの中にある前提を1〜3個に分解する。\n' +
-      '2. それぞれの前提について、支持する事実と、衝突する事実を探す。問いに直接答えている資料より、前提を検証できる資料を優先する。\n' +
-      '3. ' + want + '\n\n' +
+      '仮の答えが成り立つための前提（1〜3個）を、支持する事実と衝突する事実の両方で確かめる。問いに直接答える資料より、前提を検証できる資料を選ぶ。' + want + '\n\n' +
       '研究カードの条件：\n' +
       '- 数字か固有名詞を必ず含む。\n' +
       '- 出典は媒体名と年、URL。\n' +
@@ -15340,7 +15341,6 @@
       '- 著者名・媒体・年は source にだけ書く。fact と label には入れない。\n' +
       '- stance は support（前提を支持する）か break（前提と衝突する）のどちらか。\n' +
       '- breaks は「前提『…』と衝突」または「前提『…』を支持」の一句のみ。文章にしない。20〜40字。\n' +
-      '- 意見・評価・助言・つなぎの言葉・話し方の提案は書かない。\n' +
       '- url は実在するページのものだけを書く。見つからなければそのカードを作らない。\n' +
       '- カード以外の文章を返さない。JSON のみ。\n\n' +
       '出力形式：\n' +
@@ -15355,11 +15355,8 @@
       'あなたは、本人が書いた「仮の答え」がどこで崩れるかを指すだけの係です。答えは書きません。\n\n' +
       '仮の答え：' + (deck.text || '') + '\n\n' +
       'カード：\n' + JSON.stringify(cards, null, 1) + '\n\n' +
-      '手順：\n' +
-      '1. 仮の答えが成り立つために必要な前提を、最大3つに分解する。前提は本人の言葉に近い短い文にする。\n' +
-      '2. カードのうち、その前提と衝突しているものを挙げる。衝突が無ければ空の配列を返す。無理に作らない。\n\n' +
-      '厳守すること：\n' +
-      '- 答え・言い直し・候補・助言・評価・感想を書かない。\n' +
+      '仮の答えが成り立つための前提（最大3つ、本人の言葉に近い短い文）と、それと衝突するカードを挙げる。衝突が無ければ空の配列でよい。\n\n' +
+      '決まり：\n' +
       '- what は「カードの何が衝突しているか」を1句で書く。文章にしない。40字まで。\n' +
       '- cardId は上の id のうちのどれか。\n' +
       '- JSON のみ。\n\n' +
@@ -15380,7 +15377,7 @@
       '  良い例：「海の話から、体の内側へ」「数字の話から、体感の話へ」「他人の話から、自分の話へ」\n' +
       '  悪い例：「入りの海の話を、身体の内側に引き戻す」（撮影中に読むには抽象的すぎる）、「前の数字を否定する」（何から何へ移るのか分からない）\n' +
       '- 最初のカードには flow を付けない（前がないため）。\n' +
-      '- 喋る内容・つなぎの台詞・言い回し・助言を書かない。移り方だけを書く。\n' +
+      '- 移り方だけを書く。\n' +
       '- JSON のみ。\n\n' +
       '出力形式：\n' +
       '{"order":["c3","c1"],"relations":[{"cardId":"c1","flow":"…"}]}';
@@ -15397,13 +15394,11 @@
       (conflicts.length ? '前提と衝突：\n' + conflicts.join('\n') + '\n' : '') +
       '\nカード（話す順）：\n' + cards.join('\n') + '\n\n' +
       '決まり：\n' +
-      '- 300〜500字。\n' +
+      '- 撮影の前に1分ほどで読める長さ。\n' +
       '- カードの事実を繰り返さない。数字・固有名詞・研究の内容を書かない。それはカードに書いてある。\n' +
       '- 書くのはカードからカードへの動きと、その落差だけ。\n' +
       '  例：「1から2へは、思考の話から身体の話に一段降りる」「3と4はどちらも循環の話だが、誰が回復させるかが違う」\n' +
-      '- 喋る言い回し・つなぎの台詞・話し出しの文を書かない。読み上げられる文にしない。\n' +
-      '- 助言・評価・感想を書かない。\n' +
-      '- 「ここで〜と言う」「〜と話す」のような指示を書かない。\n' +
+      '- 本人が撮影前に頭に入れるための説明にする（読み上げる台詞や、話し方の指示ではない）。\n' +
       '- 前提と衝突が渡されているときは、どの前提がどこで崩れるかに触れてよい。\n' +
       '- 説明の文だけを返す。前置きも見出しも箇条書きも書かない。';
   }
@@ -15415,11 +15410,10 @@
       '仮の答え：' + (deck.text || '') + '\n' +
       'カードの事実：\n' + (facts.length ? facts.join('\n') : '（なし）') + '\n\n' +
       '決まり：\n' +
-      '- 3つ出す。それぞれ20〜45字。\n' +
+      '- 3つ出す。\n' +
       '- 断言か問いかけ。挨拶・チャンネル説明・自己紹介を書かない。\n' +
       '- 答えを先に言わない（答えは次の文で本人が言う）。\n' +
       '- カードの事実の数字や固有名詞を1つ入れてよい。入れなくてもよい。\n' +
-      '- 説明・理由・助言・煽りの決まり文句を書かない。\n' +
       '- 声に出して一息で読める長さにする。\n' +
       '- JSON のみ。\n\n' +
       '出力形式：\n' +
@@ -15660,14 +15654,13 @@
 
   // 口調シート（フリートーク9本の実測から。台本の依頼文に毎回入れる）
   function toruStyleText() {
-    return '■ 話し方（この形で書く。ここがいちばん大事）\n' +
+    return '■ 話し方（本人のフリートーク9本から測った口調。この口調で書く）\n' +
       '- 語尾：「〜なんだよ」「〜だよね」「〜じゃん」「〜なんだけどね」「〜と思うんだけど」。最初からタメ口寄り。\n' +
-      '- **挨拶・自己紹介・チャンネル説明から始めない。** 最初の一言から本題に入る。\n' +
       '- 文の切れ目に「ね、」を置いて間を取る。「〜っていう」で言い換えながら進む。\n' +
       '- つなぎは「だから」「でも」「やっぱり」。ぼかすときは「なんか」「ちょっと」「多分」。強めるときは「すごい」。\n' +
-      '- **使わない言い方**：' + TORU_BAD_WORDS.join('・') + '。硬い書き言葉にしない。\n' +
+      '- 本人が使わない言い方：' + TORU_BAD_WORDS.join('・') + '。硬い書き言葉にしない。\n' +
       '- 聞き手に呼びかける（「みんな〜ある？」「どうしてるんだろうって思ったんだよ」）。\n' +
-      '- 自分の失敗や弱さを1回は入れる（「僕は自分に怒りが向くんだよ。良くないことなんだけどね」）。\n' +
+      '- 自分の失敗や弱さを隠さずに言う（「僕は自分に怒りが向くんだよ。良くないことなんだけどね」）。体験メモに無い出来事は作らない。\n' +
       '- 出典は会話の形で言う（「この本読んでみたんだけどさ」）。\n' +
       '- 難しい言葉は、その場で言い換える（「心理的エントロピー、まあ頭の中が散らかってる状態ね」）。\n\n';
   }
@@ -15676,7 +15669,7 @@
       '- 視聴者：説明のつかない体験を、夜にひとりで考えてしまう人。目に見えない世界への好奇心がある人。\n' +
       '- 届けるもの：誰にでも起きる体験を入口に、研究・歴史・伝承・オカルト／スピリチュアル・自分の実感をつないで、その体験の見え方を変えること。\n' +
       '- 伝承やオカルトは、否定も肯定もしない。「そう語られてきた」として置き、なぜそう語られたのかを考える。\n' +
-      '- 事実・研究で確かめられたこと・語られてきた話・自分の実感を、言い方で分ける。\n\n';
+      '- 確かめられた事実・報じられていること・語られてきた話・自分の実感を、言い方で分ける。\n\n';
   }
   // v20.103：公開後の数字（冒頭60秒・平均再生率・離脱・気づき）を、次の依頼文に渡す。
   // 前は CTR と平均視聴時間だけで、離脱とメモは保存されるだけだった
@@ -15750,13 +15743,13 @@
       'この題材の動画の材料を集めてください。web 検索を使ってかまいません。\n今日は ' + todayStr() + ' です。\n\n' +
       toruReaderText() + toruJudgeText(deck) +
       '■ 集めるもの\n' +
-      '- 6〜10個。kind は ' + TORU_MAT_KINDS.join('／') + ' のどれか。**研究だけに寄らせない**。伝承・オカルトも必ず入れる。\n' +
+      '- 6〜10個。kind は ' + TORU_MAT_KINDS.join('／') + ' のどれか。研究・歴史・伝承・オカルトを混ぜる（この動画はそれらをつないで体験の見え方を変えるため）。\n' +
       '- fact：話し言葉で言える1文（60字以内）。論文の要約にしない。数字は1つまで。\n' +
       '- detail：数字・方法・人数・年（開いたときだけ見るもの）。\n' +
       '- source：媒体・著者・年。url：あれば（無ければ空）。\n' +
       '- sure：確かさ。fact＝一次資料や研究で確かめられる／report＝報道や書籍にそう書かれている／legend＝そう語られてきた話／mine＝本人の実感。\n' +
       '- why：この題材のどこに効くか（1文）。とくに「常識をどう裏返すか」。\n' +
-      '- 伝承・オカルトは、本当かどうかを判定しない。「そう語られてきた」として置き、なぜそう語られたのかが分かる材料にする。\n' +
+      '- 伝承・オカルトは、なぜそう語られてきたのかが分かる材料を選ぶ。\n' +
       '- 作り話をしない。見つからなければ少なくてよい。\n\n' +
       '■ 出力形式（JSON のみ）\n' +
       '{"mats":[{"kind":"研究","fact":"1文","detail":"数字や方法","source":"媒体・著者・年","url":"https://...","sure":"fact","why":"1文"}]}';
@@ -15814,14 +15807,14 @@
   }
   function toruScriptPromptText(deck) {
     return SHOOT_PROMPT_HEAD.replace('返事は JSON だけ', '返事は台本だけ') +
-      'この構成で、動画の台本を書いてください。**話し言葉の全文**です。\n\n' +
+      'この構成で、動画の台本を書いてください。話し言葉の全文です。\n\n' +
       toruStyleText() + toruLearnedText() + toruReaderText() + toruJudgeText(deck) + toruMatsText(deck) + toruTaikenText(deck) + toruBlocksText(deck) + toruTenkaiText() +
-      toruResultsText('■ これまでの動画の結果（参考。数字が少ないうちは傾向として見る）', deck) +
+      toruResultsText('■ これまでの動画の結果（参考）', deck) +
       '■ 台本の決まり\n' +
       '- ' + TORU_SCRIPT_MIN + '〜' + TORU_SCRIPT_MAX + '字（約20分）。\n' +
-      '- 構成の段の順に書く。章の頭に「＃ 章の名前」の行を置く（読み上げない目印）。段を足して言い直さない。\n' +
+      '- 構成の段の順に、段を足さずに書く。章の頭に「＃ 章の名前」の行を置く（読み上げない目印）。\n' +
       '- 冒頭は構成の opening のとおり。挨拶・自己紹介・チャンネル説明・目次の読み上げから始めない。\n' +
-      '- 事実・報じられていること・語られてきた話・自分の考えを、言い方で分ける。作り話をしない。本人の体験は体験メモにあることだけ（無い体験は作らない）。\n' +
+      '- 作り話をしない。本人の体験は体験メモにあることだけ（無い体験は作らない）。\n' +
       '- 書き終えたら、同じことを言い直している段落を探して削る。\n\n' +
       '■ 返事\n台本だけを返す。前置きや説明を付けない。';
   }
@@ -15833,12 +15826,12 @@
       toruResultsText('■ これまでの動画の題名と結果（題名で約束したことと冒頭がずれると、冒頭で離れる）', deck) +
       '■ 頼むこと\n' +
       '- thumbs：サムネ案3〜5。text（サムネの文字・15字以内）、picture（絵の中身1〜2文）、prompt（画像生成AIへのプロンプト。絵の中の文字は入れない）、why（なぜ目を引くか1文）。\n' +
-      '  **サムネ単体で興味を引く。** タイトルは補助。答えは見せず、「何が起きているんだ？」と思わせる。\n' +
-      '- titles：タイトル案10〜15。26字以内。**「【作業用】」「#番号」は絶対に使わない。** 型を混ぜる（体験型・逆説型・疑問型・数字型・不思議型）。\n' +
-      '  半分以上は「なぜ、〜のか」のように、見る人の悩みの場面を問う形にする（説明する題名より、問いを生む題名）。\n' +
-      '  **台本の最初の約200字で約束していることと同じ中身にする。** 冒頭で触れていない話だけを約束する題名は出さない。煽らない。\n' +
-      '- **JSON は途中で切らずに最後まで書く。** 長くなりそうなら、prompt は英語で短くする。\n' +
-      '- opening：開始数秒で言う2〜3文。サムネとタイトルの約束をここで回収する。\n' +
+      '  サムネ単体で興味を引く（タイトルは補助）。答えは見せず、「何が起きているんだ？」と思わせる。\n' +
+      '- titles：タイトル案10〜15。26字以内。「【作業用】」「#番号」は付けない（作業用のシリーズはやめたため）。型を混ぜる（体験型・逆説型・疑問型・数字型・不思議型）。\n' +
+      '  説明する題名より、見る人の悩みの場面を問う題名（「なぜ、〜のか」など）を多めにする。\n' +
+      '  題名で約束する中身は、台本の冒頭で見せている謎と同じにする（題名と冒頭がずれると、冒頭で離れる）。煽らない。\n' +
+      '- JSON は最後まで書く（途中で切れると取り込めない）。長くなりそうなら、prompt は英語で短くする。\n' +
+      '- opening：開始数秒で言う2〜3文。サムネとタイトルが見せた謎を、台本の冒頭と同じ向きでもう一度見せる（答えは言わない）。\n' +
       '- tags：YouTube のタグを5〜8個（実際に台本で話している言葉）。\n\n' +
       '■ 台本（先頭2000字）\n' + s.slice(0, 2000) + '\n\n' +
       '■ 出力形式（JSON のみ）\n' +
@@ -16066,7 +16059,7 @@
     const lines = (list) => list.map((x, i) => (i + 1) + '. ' + x).join('\n');
     return SHOOT_PROMPT_HEAD +
       'あなたが最初に書いた台本と、本人が実際に動画で話した中身を比べます。\n' +
-      '**目的は、次の台本を本人が作りたい台本に近づけて、直す手間を減らすことです。** 差から、次の台本に効く決まりを3種類つくってください。\n\n' +
+      '目的は、次の台本を本人が作りたい台本に近づけて、直す手間を減らすことです。差から、次の台本に効く決まりを3種類つくってください。\n\n' +
       '■ 今回の比べた結果\n台本 ' + r.total + '文のうち、ほぼそのまま ' + (r.same + r.near) + '・言い換えた ' + (r.reworded.length - r.near) +
       '・話さなかった ' + r.cut.length + '。台本に無いことを本人が足した ' + r.added.length + '文。\n\n' +
       have('口調', toruRules()) + have('足すこと', toruAddRules()) + have('避けること', toruAvoidRules()) +
@@ -16076,11 +16069,11 @@
       (r.cut.length ? '■ 台本にあったのに、本人が話さなかった文（今回）\n' + lines(r.cut.slice(0, TORU_DIFF_MAX)) + '\n\n' : '') +
       (pastCuts.length ? '■ 前の動画でも話さなかった文（参考）\n' + lines(pastCuts) + '\n\n' : '') +
       '■ 決まりにするときの約束\n' +
-      '- tone（口調）：言い回しの差から。「〜と書かず、〜と書く」の形で3〜8個。\n' +
+      '- tone（口調）：言い回しの差から。「〜と書かず、〜と書く」の形で0〜8個。\n' +
       '- add（足すこと）：本人が自分で足した文に共通する中身から。「〜を入れる」の形で0〜5個。例：「難しい言葉のあとに、自分の感想を一言入れる」。\n' +
       '- avoid（避けること）：話さなかった文に共通する中身から。「〜のような話は避ける」の形で0〜5個。' +
-      '**同じ種類が2回以上（前の動画も含めて）出てくるものだけ**にする。1回きりの空振りは書かない。\n' +
-      '- どれも1つ1文（60字以内）。その回かぎりの中身（固有名詞・その動画の話題）は入れない。**次の台本でも使える形**にする。\n' +
+      '同じ種類が2回以上（前の動画も含めて）出てくるものだけにする。1回きりの空振りは書かない。\n' +
+      '- どれも1つ1文（60字以内）。その回かぎりの中身（固有名詞・その動画の話題）は入れない。次の台本でも使える形にする。\n' +
       '- 理由が読み取れないものは飛ばす。数合わせをしない。すでにある決まりと同じことは書かない。\n\n' +
       '■ 出力形式（JSON のみ）\n' +
       '{"tone":["〜と書かず、〜と書く"],"add":["〜を入れる"],"avoid":["〜のような話は避ける"]}';
@@ -16239,8 +16232,8 @@
   function toruLearnedText() {
     const rules = toruRules().slice(0, TORU_RULES_MAX);
     const adds = toruAddRules().slice(0, TORU_RULES_MAX);
-    let t = rules.length ? '■ 前に直されたところ（同じ直しを繰り返さない）\n' + rules.map((r) => '- ' + r.text).join('\n') + '\n\n' : '';
-    if (adds.length) t += '■ 本人がいつも自分で足していること（最初から台本に入れておく）\n' + adds.map((r) => '- ' + r.text).join('\n') + '\n\n';
+    let t = rules.length ? '■ 本人が前に直したところ（本人の口調の傾向。合う所で使う）\n' + rules.map((r) => '- ' + r.text).join('\n') + '\n\n' : '';
+    if (adds.length) t += '■ 本人が自分で足して話していたこと（話が進む所があれば入れる。毎回入れなくていい）\n' + adds.map((r) => '- ' + r.text).join('\n') + '\n\n';
     // v20.86：言い回しの見本は、本人が実際に動画で話した中身を優先する（アプリで手直しした版より本人の声に近い）
     const spoke = deckEntries().find((d) => d.after && d.after.learn && d.after.finalText);
     if (spoke) {
@@ -20934,13 +20927,13 @@
   function worldKnownCardsPart(flowLines) {
     const k = worldKnownCards(flowLines);
     worldKnownCardsLast = { n: k.cards.length, cut: k.cut };
-    return '\n\n■ すでにある札（取り込んだ日が直近' + WORLD_KNOWN_CARDS_DAYS + '日の札。same・follows の id はここか「最近のお金の動き」から選ぶ）\n' +
+    return '\n\n■ すでにある札（取り込んだ日が直近' + WORLD_KNOWN_CARDS_DAYS + '日の札。same・follows の id はここから選ぶ）\n' +
       (k.cards.length ? k.cards.map((e) => e.id + '　' + worldEvDateShort(e) + '　' + e.fact).join('\n') : '（まだありません）');
   }
   // v20.48：規則の節（朝の取り込みだけ）
   function worldSamePromptPart() {
     return '■ すでにある札との関係（same・follows）\n' +
-      '末尾の「すでにある札」「最近のお金の動き」は、もう札になっている出来事。\n' +
+      '末尾の「すでにある札」は、もう札になっている出来事。\n' +
       '見つけた出来事を札にする前に、ここと見比べる。\n' +
       '- 同じ出来事なら、札にしない。"same" に1件ずつ書く。\n' +
       '  同じ出来事＝同じ主体が同じ時に同じことをした。媒体・言い回し・単位が違うだけ、\n' +
@@ -21675,41 +21668,41 @@
       '- read：主体ごとの思惑。推定であることを前提に書く。\n' +
       '  - 2文以内。文の途中で止めず、必ず句点（。）で終える。目安は120字以内。\n' +
       '  - 述べた理由（said）と同じ内容なら空にする。なぞって推定に化かさない。\n' +
-      '  - **同じ主体が何枚にも出てきます。同じ主体には違う読みを書いてください**（同じ文を繰り返さない）。\n' +
+      '  - 同じ主体が何枚にも出てきます。札ごとに、その札の出来事から読める読みを書く（同じ文の繰り返しは読みとして役に立たない）。\n' +
       '  - 損を承知でやっているなら、何を犠牲にしたかを書く（儲かることをするのは当たり前で、思惑は読めない）。\n' +
       '  - 資金繰りの都合で止めない。なぜその時期に、その相手に、その額なのかまで書く。\n' +
       '- すでに「いまの読み」が付いている主体：\n' +
       '  - それが述べた理由のなぞり・言い換え・当たり前のこと（「儲けたい」「安定させたい」）なら、\n' +
-      '    書き直してよい。そのときだけ rewrite を true にする。**元の文はこちらで残すので消えません**。\n' +
+      '    書き直してよい。そのときだけ rewrite を true にする。元の文はこちらで残すので消えません。\n' +
       '  - 読みとして十分なら、その主体を出力に入れない（触らない）。\n' +
       '  - 「朝が書いたもの」は浅いことが多い。「読む回が書いたもの」は原則そのままにする。\n' +
-      '  - **「60字で途中で切れています」と書いてある読みは、書いた係に関係なく、必ず書き直す（rewrite を true）。**\n' +
+      '  - 「60字で途中で切れています」と書いてある読みは、書いた係に関係なく書き直す（rewrite を true）。\n' +
       '    前の読みの続きを想像で足すのではなく、札の文章から読み直して、句点で終わる文にする。\n' +
       '- zure：said と did がずれている札は、そのずれの中身を1文で書く。ずれていなければ空。\n' +
       '  「支援すると言いながら金が動いていない」「減らすと言いながら増えている」のような食い違い。\n' +
       '- fork：3か月ほどで決着する分かれ目を1つ。思いつかなければ null。\n' +
-      '  - **すでに答えが出ていることを fork にしない**（今日は ' + today + ' です）。\n' +
+      '  - すでに答えが出ていることは fork にしない（今日は ' + today + ' です）。\n' +
       '    もう分かっているなら fork は null にして、その中身を read に書く。\n' +
       '  - type は level（示された水準に届くか）か event（起きるか）。\n' +
       '- reason：この札を今あらためて読む値打ちを1行。無ければ空。\n' +
       // v20.21 予告 第1段：思惑の証拠になる「次の行動」を書かせる。当たり外れを確かめられる形にする
-      '- forecast：その思惑が本当なら、次に起きるはずの行動を1つ。**思惑を書いた主体についてだけ**。\n' +
-      '  - **全部の札に付けない。強く読めたものから、この回で最大' + WORLD_FC_PER_READ + '本まで。**書けなければ0本でよい。\n' +
+      '- forecast：その思惑が本当なら、次に起きるはずの行動を1つ。思惑を書いた主体についてだけ。\n' +
+      '  - 強く読めたものだけに付け、この回で最大' + WORLD_FC_PER_READ + '本まで（それ以上は取り込まない）。書けなければ0本でよい。\n' +
       '  - 同じ主体に何本も付けない（1主体1本）。\n' +
       '  - actor：上の「主体：」の名前をそのまま。\n' +
       '  - verb：buy（買う／売る）・stop（出す／止める）・lend（貸す／借りる）・move（物や人を動かす）の4つから1つ。\n' +
-      '  - what：何をどれくらいするか。数字を入れて' + WORLD_FC_WHAT_MAX + '字以内。**換算しない・合計しない**。\n' +
-      '  - due：**必ず YYYY-MM-DD**。「9月中」「近いうち」は書かない（書けないなら、その予告を出さない）。3か月以内を目安。\n' +
-      '  - sign：何が見えたら当たりか。**上の札に出ている出典の名前から選ぶ**（出典は開けないので、知らない出典を作らない）。\n' +
+      '  - what：何をどれくらいするか。数字を入れて' + WORLD_FC_WHAT_MAX + '字以内。換算しない・合計しない。\n' +
+      '  - due：YYYY-MM-DD で書く。「9月中」「近いうち」は書かない（書けないなら、その予告を出さない）。3か月以内を目安。\n' +
+      '  - sign：何が見えたら当たりか。上の札に出ている出典の名前から選ぶ（出典は開けないので、知らない出典を作らない）。\n' +
       // v20.22 第2段A：照合できない印が立ち続けるのを防ぐ。ただし公表を印にするのは有効なので禁じない
       '    - 数字で確かめられるのは、いまのところ次の3つだけ：\n' +
       '      米国の政府債務総額／米国 上位0.1%の富の割合／米国 下半分の富の割合。\n' +
       '    - それ以外は「公表そのもの」を印にしてよい（「日本銀行の金融市場調節の公表」など）。\n' +
       '      公表を印にするのは有効。無理に数字の印を作らない。\n' +
       '  - pledgeOnly：「約束する」だけで実体が動かない予告なら true。実際に金や物が動くはずなら false。\n' +
-      '- confidence：**下げるときだけ**書く。読んだ結果「これは確かでない」と分かったとき。\n' +
-      '  - **上げてはいけません**（出典を開いていないので、確かさを上げる根拠がありません）。\n' +
-      '  - 下げたときは confidenceWhy に理由を必ず書く。下げないなら両方とも省く。\n' +
+      '- confidence：下げるときだけ書く。読んだ結果「これは確かでない」と分かったとき。\n' +
+      '  - 上げない（出典を開いていないので、確かさを上げる根拠がない）。\n' +
+      '  - 下げたときは why に理由を必ず書く（理由の無い下げは取り込まれない）。下げない札は confidence に書かない。\n' +
       '  - まだ起きていない（交渉・打診・約束の段階）ことを理由に下げない。それは確かさではない。\n\n' +   // v20.27
       mkp.section + mkp.rules +   // v20.52
       '■ 札（' + cards.length + '枚）\n' +
@@ -22533,7 +22526,7 @@
       '- 長さ：通勤中に読める（本文 ' + KIJI_BODY_MIN + '〜' + KIJI_BODY_MAX + '字。出典の行・見出し・図の印は数えない）。毎日出す。\n' +
       '- 思惑はどこまでも推測。「こうなるはず」「〜に違いない」と言い切らない。\n' +
       '  書き方の例：「もしこの読みが当たっているなら、〜が見えてくるかもしれない」「次のニュースで見ておきたいのは〜」\n' +
-      '- 下の材料に出てくる「札」「確度」「語り方」「幹」「読む回」はアプリの中の言葉。読者は知らないので記事に出さない。\n\n';
+      '- 下の材料に出てくる「札」「確度」「語り方」「幹」「読む回」「取り込み」はアプリの中の言葉。読者は知らないので記事に出さない。\n\n';
   }
   function worldKijiSureText() {
     return '■ 確かさの書き分け\n' +
@@ -22632,14 +22625,11 @@
       '■ 中身の決まり\n' +
       '- 本文は ' + KIJI_BODY_MIN + '〜' + KIJI_BODY_MAX + '字（出典の行・見出し・図の印は数えない）。この幅の中なら、長さは中身に合わせてよい。\n' +
       '- 出典は、文章の塊ごとに、その塊の直後に1行で置く：「出典：媒体名（月/日） url」。最後にまとめない。\n' +
-      '- **url は行のいちばん最後に置き、url の後ろに文字や「）」を付けない。**（note では url の直後の文字までリンクになり、開けなくなる）\n' +
+      '- url は行のいちばん最後に置く（note では url の直後の文字までリンクになるため）。\n' +
       '- 数字は url を開いて確かめてから使う。開けなければ「〜と報じられている」と書く。\n' +
-      '- 思惑は推測と分かる書き方にする。言い切らない。\n' +
-      '- 「札」「確度」「語り方」「幹」「読む回」「取り込み」などアプリの中の言葉を使わない。\n' +
-      '- 図を入れる場所に「［図N：型・何を見せるか］」を置く。**［図1］は必ずタイトルのすぐ次（本文のいちばん上）に置き、記事全体を1枚で表す絵にする。**\n' +
-      '- **図2から先は「先に見せる図」にする。** 読む前に、この先の文の中身を1枚の表か絵で見せ、文を読みやすくするための図。\n' +
-      '  - 置く場所は、見出し（## と ###）のすぐ次、その節の文より前。図は、次の図までの文に書いてあることを1枚にまとめる。\n' +
-      '  - 図の無いまま続く文は ' + KIJI_FIG_GAP + '字まで。長い節は途中にもう1枚置く。全部で5〜8枚。\n' +
+      '- 図を入れる場所に「［図N：型・何を見せるか］」を置く。［図1］はタイトルのすぐ次（本文のいちばん上）に置き、記事全体を1枚で表す絵にする（最初に全体の絵で引きつけるため）。\n' +
+      '- 図2から先は「先に見せる図」：読む前に、この先の文の中身を1枚の表か絵で見せ、文を読みやすくする図。\n' +
+      '  - 見出し（## と ###）のすぐ次、その節の文より前に置き、次の図までの文をまとめる。文が長く続く節には途中にもう1枚置く。\n' +
       '  - 型は 表・グラフ・地図・構図・資料 のどれか。比べる・並べる・誰が何を言ったか は表にする。\n' +
       '  - 図と文は同じことを言ってよい（図で先につかみ、文で確かめる）。ただし文を図の説明にしない（「上の図のように」と書かない）。\n' +
       '\n' +
@@ -22657,7 +22647,7 @@
       '- 3行。問いの形で書き、答えは書かない（例「なぜ米国は〇〇と言い続けるのか」）\n\n' +
       '## 何が起きたのか（見出しの言葉は中身に合わせて変えてよい。1〜2節）\n' +
       '（立場ごとの語り → 実際に動いたお金・人・物。説明が要る言葉と「なんで？」は、その話題が出た所で答える。最初にまとめて説明しない）\n\n' +
-      '## 思惑を読む（ここが記事のメイン。本文の4割以上をここに使う。見出しの言葉は変えてよい）\n' +
+      '## 思惑を読む（ここが記事のメインで、いちばん紙幅を使う。見出しの言葉は変えてよい）\n' +
       '### 主体の名前（2〜3人）\n' +
       '（次を短い段落と箇条書きで。推測と分かる書き方）\n' +
       '- 何を得たいのか\n' +
@@ -22668,19 +22658,10 @@
       '- 箇条書きで2〜3つ（「次のニュースで使える見方」をここで回収する）\n\n';
   }
   function worldKijiStyleText() {
-    return '■ 読みやすさの決まり（いちばん大事）\n' +
-      '- 語り口は、やわらかい「です・ます」。友だちに説明するような平たい言葉にする。硬い書き言葉や漢語を続けない。\n' +
-      '- 1つの段落は1〜2文。段落ごとに空行を入れる。文章をずらりと並べない。\n' +
-      '- 1文は60字以内を目安。長くなったら2文に分ける。\n' +
-      '- 1つの段落に数字は2つまで。細かい数字の内訳は図に回す。\n' +
-      '- **言葉の説明の基準**：ニュースをふつうに見る大人が知っている言葉（日銀・金利・利上げ・円安・税金・国債・関税・制裁など）は、説明せずにそのまま使う。説明しすぎると逆に分かりにくい。\n' +
-      '  説明するのは、専門家しか使わない言葉（当座預金・売現先・二次制裁など）と、「AとBがなぜつながるのか」だけ。\n' +
-      '- **説明は、その話題が出た所で1〜2文。** 記事の最初にまとめて説明しない（最初に説明が並ぶと読む気が失せる）。本文の途中に（）で長い説明も入れない。\n' +
-      '- 「なんで？」が浮かぶ文を書いたら、次の文で答える。ただし思惑の答えは「思惑を読む」までとっておき、途中は「なぜでしょうか」と引っぱってよい。\n' +
-      '- たとえ話は、分かりにくいところにだけ使う。たとえが事実とずれるところは「たとえるなら」と言う。\n' +
-      '- 大きい数字は、身近なものと比べて大きさが伝わるようにする。ただし比べる数字は、材料にあるか、簡単な計算で出せるものだけ。\n' +
-      '- 3つ以上並ぶものは箇条書きにする。\n' +
-      '- 太字は1つの節に1か所まで。いちばん大事なところだけ。\n\n';
+    return '■ 読みやすさ\n' +
+      '通勤中にスマホで読む人が、止まらずに最後まで読めることを目指す（文章がずらりと並ぶと読む気が失せる）。語り口はやわらかい「です・ます」で、友だちに説明するような平たい言葉。段落は短くして空行で区切り、長い文は分け、細かい数字の内訳は文に詰めずに図へ回す。3つ以上並ぶものは箇条書きにし、太字は節でいちばん大事な所だけ。\n' +
+      '言葉の説明：ニュースをふつうに見る大人が知っている言葉（日銀・金利・利上げ・円安・税金・国債・関税・制裁など）は説明せずに使う（説明しすぎると逆に分かりにくい）。説明するのは専門家しか使わない言葉（当座預金・売現先・二次制裁など）と「AとBがなぜつながるのか」だけで、その話題が出た所で1〜2文で答える（最初に説明が並ぶと読む気が失せる）。本文の途中に（）で長い説明を入れない。\n' +
+      '「なんで？」が浮かぶ文を書いたら次の文で答える。思惑の答えだけは「思惑を読む」までとっておき、途中は「なぜでしょうか」と引っぱってよい。たとえ話は分かりにくい所にだけ使い、事実とずれる所は「たとえるなら」と言う。大きい数字は身近なものと比べるが、比べる数字は材料にあるか簡単な計算で出せるものだけ。\n\n';
   }
   // v20.99：short＝本文を書いたのと同じチャットで続けるとき。材料（確かさの書き分け・札・語り方）を入れ直さない
   function worldKijiCheckPromptText(ev, kt, kj, short) {
@@ -22694,11 +22675,11 @@
       '- 下の材料に無い数字・媒体が本文に出ていないか。\n' +
       '- アプリの中の言葉（札・確度・語り方・幹・読む回・取り込み）が混ざっていないか。\n' +
       '- タイトルの約束と、本文の中身がずれていないか。「次のニュースで見ておきたいこと」が最後にあるか。\n' +
-      '- 図2から先が、見出しのすぐ次（文より前）にあり、その先の文を1枚にまとめるものになっているか。図の無いまま ' + KIJI_FIG_GAP + '字を超えて文が続く所が無いか（あれば図の印を足す）。\n' +
+      '- 図2から先が、見出しのすぐ次（文より前）にあり、その先の文を1枚にまとめるものになっているか。図の無いまま長く文が続く所があれば図の印を足す。\n' +
       '- 読みやすさ：下の「記事の形」と「読みやすさの決まり」に合っているか。長い段落は分け、長い文は切り、硬い言い回しはやわらかくする。\n' +
       '- 言葉の説明：大人が知っている基本の言葉に説明を付けすぎていないか（付けすぎなら削る）。専門家しか使わない言葉と「なんで？」は、その話題が出た所で答えているか。記事の最初に説明がまとめて並んでいないか。\n' +
       '- 最初：タイトルの次に［図1］があるか。思惑の予告は1行であいまいか（答えを言っていないか）。「この記事でわかること」は問いの形か。\n' +
-      '- 思惑を読む：記事のメインとして深いか（得たいもの・そう読める理由・犠牲や駆け引き・別の読み方）。本文の4割以上あるか。\n' +
+      '- 思惑を読む：記事のメインとして深いか（得たいもの・そう読める理由・犠牲や駆け引き・別の読み方）。いちばん紙幅を使っているか。\n' +
       '\n' +
       worldKijiShapeText() + worldKijiStyleText() +
       '■ 本文\n' + kj.body + '\n\n' +
@@ -32379,7 +32360,7 @@
     L.push('- 研究開発・自社株買い・配当は、設備投資の札の detail に書類の書き方のまま並べる。足さない。書類に無い項目は「記載なし」と書き、別の項目で埋めない。');
     // v20.10：行の言い方は5社で全部違う（実測）。Amazon は3つとも行が無いので、探させない
     L.push('  行の言い方は会社ごとに違う（例：設備投資は「Purchases of property and equipment」「Additions to property and equipment」「Expenditures for property, plant, and equipment」）。Amazon は研究開発費・自社株買い・配当の行が無いので「記載なし」と書く。');
-    L.push('- 作る側の売上の札の after に、買う側の設備投資の札（同じ JSON の "#番号" か、最近のお金の動きの id）を書いてよい。書類に買い手の名前が無いときは、つながりを read に推定と書き、confidence を7以下にする。');
+    L.push('- 作る側の売上の札の after に、買う側の設備投資の札（同じ JSON の "#番号" か、末尾の「すでにある札」の番号）を書いてよい。書類に買い手の名前が無いときは、つながりを detail に「推定」と書き、confidence を7以下にする。');
     L.push('- url は上の「書類ぜんぶ」の URL（表のページではなく、人が開いて確かめられる方）。source は「会社名 10-Q（提出日）」。eventDate は提出日。');
     L.push('- 1社ずつ "checked" に報告する。source は「決算 会社名」（' + list.map(worldSecLabel).join('／') + '）。');
     return L.join('\n') + '\n';
