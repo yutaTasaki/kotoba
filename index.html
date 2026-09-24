@@ -3296,7 +3296,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.112';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.113';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -15767,79 +15767,62 @@
     return '■ 材料\n' + m.map((x, i) => (i + 1) + '. [' + x.kind + '／' + (TORU_SURE[x.sure] || x.sure) + '] ' + x.fact +
       (x.detail ? '\n   くわしく：' + x.detail : '') + (x.source ? '\n   出どころ：' + x.source : '') + (x.why ? '\n   効くところ：' + x.why : '')).join('\n') + '\n\n';
   }
-  // v20.112：面白いと本人が選んだトーク動画6本（ミルクティー飲みたい・トーマの夢日記）と自分の1本目を、
-  // 同じ物差しで比べて分かったこと。報告 docs/toru/2026-09-24_daihon_hikaku.md（非公開）
-  function toruCraftText() {
-    return '■ 台本の作り（面白いと本人が選んだトーク動画と、自分の動画を比べて分かったこと）\n' +
-      '- 冒頭を目次の読み上げにしない（「〜について紹介していこうと思う」は授業の予告になり、謎も賭けも生まれない）。\n' +
-      '- 冒頭で、台本の中でいちばん強い断片（中盤でひっくり返す所・信じがたいが確かめられる事実・本人の一言）を先に見せる。題名の約束には10秒以内に触れる。\n' +
-      '- 動画全体を引っぱる「大きな問い」を1つ持ち、最後まで答えを取っておく。題名の問いに最初の数分で答え切って、残りを別の話の紹介で埋めない。途中で小さな答えを出しながら、大きな問いは開いたままにする（「理由は後で話すね」と予告してよい）。\n' +
-      '- ブロックは問いで始め、次の問いを開いて終わる。「もう一つ」「〜にもある」で同じ種類の例を並べない（紹介の羅列になる）。並べたくなったら1つのブロックにまとめ、次は段階を上げる（「ここからが本番」）。\n' +
-      '- 中盤（全体の4〜6割の所）で1回ひっくり返す：自分の説明を訂正する／眉唾だと思った話が本当だった／通説や聞き手の善意を裏返す。面白い転換を最後の5分に固めない。\n' +
-      '- 具体を濃く：固有名詞・年・数字・場所を20〜30秒（130〜190字）に1つ。抽象的な主張は「一言で言う → 具体を3つ → 要は1文 → 生活の場面か比喩」で下ろす。同じ定義を言い直さない。\n' +
-      '- 伝聞を重ねない：「らしい」「んだって」を続けない。事実・報じられていること・語られてきた話・自分の仮説を、毎回はっきり分けて言い切る（「これは記録に残ってる事実」「ここからは僕の仮説」）。うろ覚えを書かない。\n' +
-      '- 本人の実話を入口にする：体験メモの出来事を、いつ・どこで・何が起きたかの場面として語る（感想の一言で済ませない）。冒頭2〜3分に1回、そのあと3〜4分に1回。**体験メモに無い体験は作らない。**\n' +
-      '- 聞き手を動かす：約2分に1回問いかける。聞き手が思いそうな反論を先に言う（「いや、それ気のせいでしょって思うよね」）。1回は頭の中で何かをさせる（思い出す・数える・想像する）。\n' +
-      '- 最後は冒頭の一文に戻り、大きな問いの答えを一段深くして言う。平凡な言い換えで薄めない。\n\n';
+  // v20.113：v20.112 の「台本の作り」10か条をやめた。決まりが多すぎて、チャットが面白さより決まりを満たすことを
+  // 優先し（体験メモを回数どおり無理に入れる等）、ブロックごとの回収が毎回同じ形のまとめ（「だから、〜なのは〜じゃなくて〜」が
+  // 5章で5回）になって、同じことを言い直しているように聞こえた（本人「進んでも同じことを違う言い方で話している」）。
+  // 代わりに「話が進む」ことだけを求める：1つの謎を追い、段ごとに前の段では言えなかったことが1つ分かる。
+  // 報告 docs/toru/2026-09-24_daihon_hikaku.md の続き（非公開）
+  function toruTenkaiText() {
+    return '■ 展開（これだけは守る）\n' +
+      '- 話は1つの謎を追いかける。段が進むたびに、前の段では言えなかったことが1つ分かり、それで次の疑問が生まれる。これが「話が進む」ということ。\n' +
+      '- 同じことの別の例は、新しい段にしない。例は1つの段の中で1〜2文で済ませる（同じ形の話を3つ並べると、進まずに言い直しに聞こえる）。\n' +
+      '- 謎の答え（仕組み・結論）は後半まで出さない。先に答えを出すと、あとの話が全部その答えの例になって進まなくなる。不思議な話・食い違い・確かめられた事実を先に積み、答えは終わり近くで出す。\n' +
+      '- 段の終わりに「だから、〜なのは〜じゃなくて〜」とまとめ直さない。まとめは最後に1回だけ。段は次の疑問か、次の事実で終わる。\n' +
+      '- 体験メモは、そこで使うと話が進む所にだけ使う。使わなくてもいい。何度も持ち出さない。\n\n';
   }
   function toruTaikenLines(deck) {
     return String(deck.taiken || '').split(/\n+/).map((x) => x.replace(/^[・\-\s\d.．、)）]+/, '').trim()).filter(Boolean).slice(0, 12);
   }
   function toruTaikenText(deck) {
     const t = toruTaikenLines(deck);
-    if (!t.length) return '■ 本人の体験メモ：まだ無い。本人の体験を作らない。体験を入れたい所には【体験：〜のような場面】と印だけ置く（本人があとで自分の話で埋める）。\n\n';
-    return '■ 本人の体験メモ（本人が書いた実話。番号で指す。作り話を足さない・盛らない）\n' + t.map((x, i) => (i + 1) + '. ' + x).join('\n') + '\n\n';
+    if (!t.length) return '';   // 無いときは何も書かない（体験を作らない決まりは台本の決まりにある）
+    return '■ 本人の体験メモ（本人が書いた実話。使えるときだけ使う。盛らない）\n' + t.map((x, i) => (i + 1) + '. ' + x).join('\n') + '\n\n';
   }
   function toruBlocksPromptText(deck) {
     return SHOOT_PROMPT_HEAD +
       'この題材と材料で、20分の動画の構成を作ってください。台本はまだ書きません。\n\n' +
-      toruReaderText() + toruJudgeText(deck) + toruMatsText(deck) + toruTaikenText(deck) + toruCraftText() +
-      '■ 構成の決まり\n' +
-      '- big_q：動画全体を引っぱる大きな問い（1文）。題名の問いより一段深く、最後のブロックで答える。\n' +
-      '- ブロックは3〜5つ。1ブロックは3〜6分。\n' +
-      '- q：このブロックが答える問い（1文）。前のブロックの bridge から生まれる。\n' +
-      '- taiken：このブロックで使う体験メモの番号（無ければ []）。\n' +
-      '- name：ブロックの名前（15字以内。視聴者が「今どこの話か」分かる言葉）。\n' +
-      '- promise：このブロックで何が分かるか（1文）。\n' +
-      '- mats：使う材料の番号（上の数字）。1ブロックに1〜3つ。\n' +
-      '- kaishuu：このブロックの**小さな答え**（1文）。「〜なのは、〜だからではなく、〜だから」の形で、体験の見え方を変える。大きな問いの答えはまだ言わない。\n' +
-      '  **毎回ちがう言い方にする。同じ決まり文句を繰り返さない。**\n' +
-      '- bridge：終わりに**開く次の問い**（答えは次のブロックで）。前のブロックの足りないところから入る（「でも、これだけじゃ説明がつかないことがある」）。最後のブロックは空。\n' +
-      '- turn：どのブロックで何をひっくり返すか（1文。全体の4〜6割の位置。ブロックの名前を入れる）。\n' +
-      '- opening：冒頭（0〜45秒・3〜5文）。いちばん強い断片を先に → 大きな問い → 聞き手が思いそうな反論 → 見終わると何が変わるか。\n' +
-      '  挨拶・自己紹介・目次の読み上げから始めない。題名の約束には10秒以内に触れる。60秒までに「信じがたいが確かめられる事実」を1つ。\n' +
-      '- ending：最後。大きな問いの答え → 冒頭の一文に戻る → 視聴者への具体的な問い、の順で2〜3文。\n' +
-      '  登録をお願いするなら、この動画の中身と結びついた理由を1文添える（無理に入れない）。\n\n' +
+      toruReaderText() + toruJudgeText(deck) + toruMatsText(deck) + toruTaikenText(deck) + toruTenkaiText() +
+      '■ 構成の作り方\n' +
+      '- big_q：この動画で追いかける謎（1文）。\n' +
+      '- 段を10〜15個並べ、3〜5つの章に分ける。章には name（15字以内。視聴者が今どこの話か分かる言葉）。\n' +
+      '- 段ごとに new（この段で新しく分かること。1文。前の段では言えなかったこと）、next（それで生まれる次の疑問。1文。最後の段は空）、mats（使う材料の番号）。\n' +
+      '- 並べ終わったら new を上から読み直し、前のどれかの言い換えになっている段を消すか、別の新しい事実に替える。\n' +
+      '- opening：冒頭（0〜45秒、3〜5文）。謎そのものを、いちばん不思議な事実か場面で見せる。答えは言わない。挨拶・自己紹介・目次の読み上げはしない。\n' +
+      '- ending：最後（2〜3文）。謎の答え → 冒頭の場面に戻る → 視聴者への問い。\n\n' +
       '■ 出力形式（JSON のみ）\n' +
-      '{"big_q":"1文","opening":"3〜5文","turn":"1文","blocks":[{"name":"15字以内","q":"1文","promise":"1文","mats":[1,2],"taiken":[1],"kaishuu":"1文","bridge":"1文"}],"ending":"2〜3文"}';
+      '{"big_q":"1文","opening":"3〜5文","blocks":[{"name":"15字以内","steps":[{"new":"1文","next":"1文","mats":[1]}]}],"ending":"2〜3文"}';
   }
   function toruBlocksText(deck) {
     const b = deck.blocks || [];
     if (!b.length) return '';
-    return '■ 構成\n' + (deck.bigQ ? '大きな問い（最後まで答えを取っておく）：' + deck.bigQ + '\n' : '') +
-      '冒頭：' + (deck.opening || '') + '\n' + (deck.turn ? 'ひっくり返す所：' + deck.turn + '\n' : '') +
-      b.map((x, i) => (i + 1) + '. ' + x.name + (x.q ? '\n   問い：' + x.q : '') + '\n   約束：' + (x.promise || '') + '\n   使う材料：' + (x.mats || []).join('・') +
-        ((x.taiken || []).length ? '\n   使う体験：' + x.taiken.join('・') : '') +
-        '\n   小さな答え：' + (x.kaishuu || '') + (x.bridge ? '\n   次に開く問い：' + x.bridge : '')).join('\n') +
+    let n = 0;
+    return '■ 構成\n' + (deck.bigQ ? '追いかける謎：' + deck.bigQ + '\n' : '') + '冒頭：' + (deck.opening || '') + '\n' +
+      b.map((x) => '＃ ' + x.name + '\n' + ((x.steps || []).length
+        ? x.steps.map((st) => '  ' + (++n) + '. 分かること：' + st.new + ((st.mats || []).length ? '（材料 ' + st.mats.join('・') + '）' : '') + (st.next ? '\n     次の疑問：' + st.next : '')).join('\n')
+        : '  約束：' + (x.promise || '') + '\n  使う材料：' + (x.mats || []).join('・') + (x.bridge ? '\n  次：' + x.bridge : ''))).join('\n') +
       '\n最後：' + (deck.ending || '') + '\n\n';
   }
   function toruScriptPromptText(deck) {
     return SHOOT_PROMPT_HEAD.replace('返事は JSON だけ', '返事は台本だけ') +
       'この構成で、動画の台本を書いてください。**話し言葉の全文**です。\n\n' +
-      toruStyleText() + toruLearnedText() + toruReaderText() + toruJudgeText(deck) + toruMatsText(deck) + toruTaikenText(deck) + toruBlocksText(deck) + toruCraftText() +
-      toruResultsText('■ これまでの動画の結果（離脱が大きかった所と同じ作りを避ける。冒頭60秒で残る割合を上げたい）', deck) +
+      toruStyleText() + toruLearnedText() + toruReaderText() + toruJudgeText(deck) + toruMatsText(deck) + toruTaikenText(deck) + toruBlocksText(deck) + toruTenkaiText() +
+      toruResultsText('■ これまでの動画の結果（参考。数字が少ないうちは傾向として見る）', deck) +
       '■ 台本の決まり\n' +
       '- ' + TORU_SCRIPT_MIN + '〜' + TORU_SCRIPT_MAX + '字（約20分）。\n' +
-      '- 構成の順に書く。ブロックの頭に「＃ ブロックの名前」の行を置く（読み上げない目印）。\n' +
-      '- ブロックの終わりに「小さな答え」を自分の言葉で言い、「次に開く問い」を投げて終わる。**同じ言い回しを繰り返さない。**\n' +
-      '- 大きな問いの答えは最後のブロックまで言わない。構成の「ひっくり返す所」は、その位置で必ずやる。\n' +
-      '- 材料は、出どころを会話の形で言う。確かさを言い分ける（「研究で分かってる」「そう報じられてる」「そう語られてきた」「僕の感覚だけど」）。\n' +
-      '- 伝承・オカルトは、断定も否定もしない。「なぜそう語られてきたのか」を考える形にする。\n' +
-      '- 途中で1回、自分に反論する（「いや、それって気のせいじゃない？って思うよね」）。\n' +
-      '- 2〜3分（約800〜1100字）ごとに、見ている人への問い（「〜って思わない？」）か意外な展開を1つ置く。問いには「？」を付ける。\n' +
-      '- 挨拶・自己紹介・チャンネル説明から始めない。今日わかることは最初の約200字までに言う。\n' +
-      '- 数字は1つの段落に2つまで。\n' +
-      '- 最初の2〜3文は、構成の冒頭どおり、いちばん強い断片か題名の約束に直結する驚きにする。\n\n' +
+      '- 構成の段の順に書く。章の頭に「＃ 章の名前」の行を置く（読み上げない目印）。段を足して言い直さない。\n' +
+      '- 冒頭は構成の opening のとおり。挨拶・自己紹介・チャンネル説明・目次の読み上げから始めない。\n' +
+      '- 事実・報じられていること・語られてきた話・自分の考えを、言い方で分ける。作り話をしない。本人の体験は体験メモにあることだけ（無い体験は作らない）。\n' +
+      '- 書き終えたら、同じことを言い直している段落を探して削る。\n\n' +
       '■ 返事\n台本だけを返す。前置きや説明を付けない。';
   }
   function toruPackPromptText(deck) {
@@ -16335,39 +16318,29 @@
     const p = lj.value;
     if (!p || typeof p !== 'object' || Array.isArray(p) || !Array.isArray(p.blocks)) return { error: (p ? '「blocks」の並びが見つかりません' + worldJsonKeysNote(p) : 'JSON として読めませんでした' + (lj.error ? '：' + lj.error : '')) + '。{"blocks":[...]} の形で貼ってください。' };
     const s = (v, n) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
+    const nums = (a) => (Array.isArray(a) ? a : []).map((x) => Number(x)).filter((x) => x > 0).slice(0, 5);
+    // v20.113：章（name）の中に段（steps：new・next・mats）。前の形（promise・kaishuu・bridge）の返事も読む
     const blocks = p.blocks.filter((b) => b && typeof b === 'object' && !Array.isArray(b) && s(b.name, 60)).map((b) => ({
-      name: s(b.name, 60), promise: s(b.promise, 300),
-      mats: (Array.isArray(b.mats) ? b.mats : []).map((x) => Number(x)).filter((x) => x > 0).slice(0, 5),
-      kaishuu: s(b.kaishuu, 300), bridge: s(b.bridge, 300),
-      q: s(b.q, 300), taiken: (Array.isArray(b.taiken) ? b.taiken : []).map((x) => Number(x)).filter((x) => x > 0).slice(0, 5),
+      name: s(b.name, 60),
+      steps: (Array.isArray(b.steps) ? b.steps : []).filter((x) => x && typeof x === 'object' && s(x.new, 300)).map((x) => ({ new: s(x.new, 300), next: s(x.next, 300), mats: nums(x.mats) })).slice(0, 8),
+      promise: s(b.promise, 300), mats: nums(b.mats), kaishuu: s(b.kaishuu, 300), bridge: s(b.bridge, 300),
     })).slice(0, 6);
-    let salvagedB = 0;
-    if (!blocks.length) {   // v20.81
-      worldLooseObjects(raw).forEach((o) => {
-        const name = s(o.name, 60);
-        if (!name || !s(o.kaishuu, 300)) return;
-        blocks.push({ name, promise: s(o.promise, 300), mats: (Array.isArray(o.mats) ? o.mats : []).map((x) => Number(x)).filter((x) => x > 0).slice(0, 5), kaishuu: s(o.kaishuu, 300), bridge: s(o.bridge, 300) });
-      });
-      salvagedB = blocks.length;
-    }
-    if (!blocks.length) return { error: 'ブロックがありませんでした。返事が途中で切れていないか見てください。' };
+    if (!blocks.length) return { error: '章がありませんでした。返事が途中で切れていないか見てください。' };
     deck.blocks = blocks;
     deck.opening = s(p.opening, 1000);
     deck.ending = s(p.ending, 800);
-    deck.bigQ = s(p.big_q || p.bigQ, 300);   // v20.112
-    deck.turn = s(p.turn, 400);
+    deck.bigQ = s(p.big_q || p.bigQ, 300);
+    deck.turn = '';
     shootTouch(deck);
+    const steps = blocks.reduce((a, b) => a.concat(b.steps), []);
     const notes = [];
-    if (blocks.length < 3) notes.push('ブロックが3つに足りない');
-    if (!deck.bigQ) notes.push('大きな問いが無い');
-    if (!deck.turn) notes.push('ひっくり返す所が無い');
-    if (toruTaikenLines(deck).length && !blocks.some((b) => b.taiken.length)) notes.push('体験メモを使うブロックが無い');
-    if (blocks.some((b) => !b.kaishuu)) notes.push('回収の一文が無いブロックあり');
-    const ks = blocks.map((b) => b.kaishuu.slice(0, 12));
-    if (new Set(ks).size < ks.length) notes.push('回収の言い方が同じブロックあり');
+    if (steps.length && steps.length < 8) notes.push('段が ' + steps.length + ' 個と少ない');
+    if (!steps.length) notes.push('段（steps）が無い前の形の返事です');
+    const heads = steps.map((x) => x.new.slice(0, 14));
+    if (new Set(heads).size < heads.length) notes.push('同じ書き出しの段がある（言い直しかも）');
+    if (!deck.bigQ) notes.push('追いかける謎が無い');
     if (!deck.opening) notes.push('冒頭が無い');
-    if (salvagedB) notes.push('返事の JSON が途中で壊れていたので、読めたところだけ拾いました');
-    return { text: '取り込みました：ブロック ' + blocks.length + (notes.length ? '（' + notes.join('・') + '）' : '') };
+    return { text: '取り込みました：章 ' + blocks.length + '・段 ' + steps.length + (notes.length ? '（' + notes.join('／') + '）' : '') };
   }
   const TORU_GREET_RE = /こんにちは|こんばんは|どうも|はじめまして|夜ふかしユタ|チャンネル/;
   const TORU_PROMISE_RE = /今日は|今回は|この動画|話そう|話して|紹介|分かる|わかる|見ていく|考えていく/;
@@ -16393,7 +16366,9 @@
     const hearsay = (body.match(/らしい|んだって/g) || []).length;
     const toc = /紹介していこう|紹介していき|紹介します|について話していこう/.test(body.slice(0, 400));
     const marks = (t.match(/【体験[：:]/g) || []).length;
-    return { chars, heads, bad, greet, promise, questions: qs.length, gap, gapAt, hearsay, toc, marks };
+    // v20.113：段の終わりの同じ形のまとめ直し（「だから、〜なのは〜じゃなくて／っていうより」）
+    const recap = (body.match(/だから、[^。]{0,80}?(じゃなくて|じゃない|っていうより)/g) || []).length;
+    return { chars, heads, bad, greet, promise, questions: qs.length, gap, gapAt, hearsay, toc, marks, recap };
   }
   function toruScriptLintText(l, deck) {
     const parts = ['台本 約' + l.chars + '字', 'ブロックの見出し ' + l.heads];
@@ -16409,8 +16384,8 @@
     const mins = Math.max(1, l.chars / 380);
     if (l.chars >= 500 && l.hearsay / mins > 1) notes.push('「らしい」「んだって」が1分に約' + (l.hearsay / mins).toFixed(1) + '回（伝聞が続くと弱く聞こえる）');
     if (l.marks) notes.push('【体験】の印が' + l.marks + 'か所（自分の話で埋める）');
-    if (l.chars >= 500 && !l.promise) notes.push('最初の約30秒（' + TORU_OPEN_CHARS + '字）に「今日は〜」のような約束が見当たらない');
-    if (l.chars >= 500 && l.gap > TORU_QGAP_CHARS) notes.push('問い（？）の無いところが約' + Math.round(l.gap / 380) + '分続く（「' + l.gapAt + '…」から）');
+    // v20.113：「最初の30秒に今日は〜の約束」の知らせは外した（謎そのものから入る冒頭を、決まり文句に戻してしまうため）
+    if (l.recap >= 3) notes.push('「だから、〜じゃなくて〜」のまとめ直しが' + l.recap + '回（同じことを言い直しているように聞こえる）');
     return parts.join('・') + (notes.length ? '（' + notes.join('／') + '）' : '');
   }
   // v20.105：台本を「、。？！」の後ろで改行する（撮影中、目を左右に動かさずに読めるように。前は手で入れていた）。
@@ -16572,27 +16547,31 @@
     step('blocks', '3. 構成', !!(deck.mats && deck.mats.length), !!(deck.blocks && deck.blocks.length), () => toruBlocksPromptText(deck), (raw) => toruImportBlocks(deck, raw),
       '{"big_q":"...","opening":"...","blocks":[...]} をここに貼る',
       (sec) => {
-        if (deck.bigQ) sec.appendChild(el('div', 'kjLine', '大きな問い：' + deck.bigQ));
+        if (deck.bigQ) sec.appendChild(el('div', 'kjLine', '追いかける謎：' + deck.bigQ));
         if (deck.opening) sec.appendChild(el('div', 'kjSub', '冒頭：' + deck.opening));
-        if (deck.turn) sec.appendChild(el('div', 'kjSub', 'ひっくり返す所：' + deck.turn));
+        let n = 0;
         (deck.blocks || []).forEach((b, i) => {
           sec.appendChild(el('div', 'kjLine', (i + 1) + '. ' + b.name));
-          if (b.q) sec.appendChild(el('div', 'kjSub', '問い：' + b.q + ((b.taiken || []).length ? '／体験：' + b.taiken.join('・') : '')));
-          sec.appendChild(el('div', 'kjSub', '約束：' + b.promise + '／材料：' + (b.mats || []).join('・')));
-          sec.appendChild(el('div', 'kjSub', (b.q ? '小さな答え：' : '回収：') + b.kaishuu + (b.bridge ? '　→ ' + b.bridge : '')));
+          if ((b.steps || []).length) {
+            // v20.113：段ごとに「新しく分かること → 次の疑問」。上から読んで、進んでいるか（言い直しが無いか）を見る
+            b.steps.forEach((st) => sec.appendChild(el('div', 'kjSub', (++n) + '. ' + st.new + (st.next ? '　→ ' + st.next : ''))));
+          } else {
+            sec.appendChild(el('div', 'kjSub', '約束：' + b.promise + '／材料：' + (b.mats || []).join('・')));
+            sec.appendChild(el('div', 'kjSub', '回収：' + b.kaishuu + (b.bridge ? '　→ ' + b.bridge : '')));
+          }
         });
         if (deck.ending) sec.appendChild(el('div', 'kjSub', '最後：' + deck.ending));
       },
       (sec) => {
         // v20.112：本人の実話。台本はこれを場面として語る（無い体験は作らせない）
-        sec.appendChild(el('div', 'kjGroup', '体験メモ（この題材で本当にあった自分の出来事。1行に1つ）'));
+        sec.appendChild(el('div', 'kjGroup', '体験メモ（この題材で本当にあった自分の出来事。1行に1つ・任意）'));
         const ta = el('textarea'); ta.rows = 3; ta.autocomplete = 'off';
         ta.placeholder = '例：去年の冬、1週間で財布をなくして給湯器も壊れた。夜中に「呪われてる」と本気で思った';
         ta.value = deck.taiken || '';
         ta.addEventListener('input', () => { deck.taiken = ta.value.slice(0, 3000); shootScheduleSave(); });
         ta.addEventListener('blur', () => { shootFlush(); });
         sec.appendChild(ta);
-        sec.appendChild(el('div', 'kjSub', 'いつ・どこで・何が起きたか、そのとき何を思ったか。書いた体験だけが台本に入ります（無い体験は作りません）。構成を取り込んだあとに書いたら「貼り直す」で作り直せます。'));
+        sec.appendChild(el('div', 'kjSub', '任意。使うと話が進む所にだけ使われます（無理には入れません）。書いていない体験は作りません。'));
       });
     // 4 台本
     step('script', '4. 台本', !!(deck.blocks && deck.blocks.length), !!(deck.script && deck.script.text), () => toruScriptPromptText(deck), (raw) => toruImportScript(deck, raw),
