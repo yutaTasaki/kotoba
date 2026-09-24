@@ -3296,7 +3296,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.114';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.115';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -3458,6 +3458,9 @@
       out.taiken = typeof j.taiken === 'string' ? j.taiken.slice(0, 3000) : '';
       out.bigQ = typeof j.bigQ === 'string' ? j.bigQ.slice(0, 300) : '';
       out.turn = typeof j.turn === 'string' ? j.turn.slice(0, 400) : '';
+      // v20.115：公開資料の手がかりと、探す言葉
+      out.leads = (j.leads && typeof j.leads === 'object' && Array.isArray(j.leads.items)) ? j.leads : null;
+      out.leadKw = (j.leadKw && typeof j.leadKw === 'object') ? { ja: String(j.leadKw.ja || '').slice(0, 300), en: String(j.leadKw.en || '').slice(0, 300) } : null;
       // v20.86：orig（チャットが最初に書いた版）と editedAt も残す。v20.83 で足したのにここで捨てていたため、
       // 開き直すたびに比べる相手が消え、台本の学び（v20.85）が一度も動けなかった
       out.script = (j.script && typeof j.script === 'object' && typeof j.script.text === 'string')
@@ -15644,7 +15647,7 @@
   // ---- v20.79 撮る v3：題材の判定 → 材料 → 構成 → 台本 → サムネ・タイトル → 公開後 ----------
   // 仕様 docs/toru/toru_v3_shiyou.md（非公開）。口調シート docs/toru/kuchou.md
   const TORU_SURE = { fact: '確かめられる', report: '報じられている', legend: 'そう語られてきた', mine: '自分の実感' };
-  const TORU_MAT_KINDS = ['研究', '歴史', '伝承', 'オカルト', '自分'];
+  const TORU_MAT_KINDS = ['研究', '歴史', '伝承', 'オカルト', '噂', '自分'];
   const TORU_SCRIPT_MIN = 6500;
   const TORU_SCRIPT_MAX = 7500;
   const TORU_BAD_WORDS = ['皆さん', 'みなさん', 'なのです', 'ですよね', '要は', 'ではないでしょうか', '私たち'];
@@ -15722,11 +15725,13 @@
       '- gap：known＝視聴者がすでに知っていること。unknown＝知らないこと（ここが大きいほど良い）。\n' +
       '- ok：上が全部埋まり、知らないことが十分に大きければ true。埋まらなければ false。\n' +
       '- why：なぜその判定か（1〜2文）。false なら missing に足りないものを書く。\n' +
-      '- 甘くしない。通らない種は通らないと言う。\n\n' +
+      '- 甘くしない。通らない種は通らないと言う。\n' +
+      '- search：この題材を公開の資料（論文・古い本・事典・噂の真偽を問う Q&A）で探すための言葉。ja（日本語）と en（英語）を2〜4個ずつ。研究での呼び名だけでなく、伝承・オカルト・噂での呼び名も混ぜる。短い言葉にする（文にしない）。\n\n' +
       '■ 出力形式（JSON のみ）\n' +
       '{"genshou":"1文","joushiki":"1文",\n' +
       ' "zure":[{"kind":"研究","text":"1文"}],\n' +
       ' "kaishuu":"1文","gap":{"known":"1文","unknown":"1〜2文"},\n' +
+      ' "search":{"ja":["言葉"],"en":["words"]},\n' +
       ' "ok":true,"why":"1〜2文","missing":""}';
   }
   function toruJudgeText(deck) {
@@ -15738,12 +15743,98 @@
       '視聴者が知っていること：' + ((j.gap && j.gap.known) || '') + '\n' +
       '知らないこと：' + ((j.gap && j.gap.unknown) || '') + '\n\n';
   }
+  // v20.115：公開資料の手がかり。研究だけでなく、古い記録・事典・噂の真偽・神話の問答まで、いろんな角度から集める。
+  // Reddit・Bluesky は登録が要り、GDELT・Semantic Scholar・J-STAGE はブラウザから呼べないので入れていない
+  const TORU_LEAD_PER = 3;      // 1つの言葉・1つの資料から取る数
+  const TORU_LEAD_SRC_MAX = 6;  // 1つの資料から取る数の上限
+  const TORU_LEAD_MAX = 45;     // 全部で
+  async function toruLeadFetch(url, asText) {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 15000);
+    try {
+      const r = await fetch(url, { signal: ctl.signal });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return asText ? await r.text() : await r.json();
+    } finally { clearTimeout(t); }
+  }
+  function toruLeadClip(t, n) { return String(t == null ? '' : t).replace(/<[^>]+>/g, '').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim().slice(0, n); }
+  const TORU_LEAD_SOURCES = [
+    { key: 'openalex', kind: '研究', name: 'OpenAlex', lang: 'en', run: async (q) => {
+      const j = await toruLeadFetch('https://api.openalex.org/works?search=' + encodeURIComponent(q) + '&per-page=' + TORU_LEAD_PER);
+      return (j.results || []).map((w) => ({ title: w.display_name, year: w.publication_year, url: (w.primary_location && w.primary_location.landing_page_url) || w.doi || w.id }));
+    } },
+    { key: 'cinii', kind: '研究', name: 'CiNii', lang: 'ja', run: async (q) => {
+      const j = await toruLeadFetch('https://cir.nii.ac.jp/opensearch/all?q=' + encodeURIComponent(q) + '&count=' + TORU_LEAD_PER + '&format=json');
+      return (j.items || []).map((x) => ({ title: x.title, year: String(x['prism:publicationDate'] || '').slice(0, 4), url: (x.link && x.link['@id']) || x['@id'], note: x['dc:type'] || '' }));
+    } },
+    { key: 'ndl', kind: '古い記録', name: '国立国会図書館', lang: 'ja', run: async (q) => {
+      const x = await toruLeadFetch('https://ndlsearch.ndl.go.jp/api/opensearch?any=' + encodeURIComponent(q) + '&cnt=' + TORU_LEAD_PER, true);
+      const doc = new DOMParser().parseFromString(x, 'text/xml');
+      return [...doc.querySelectorAll('item')].map((it) => ({ title: (it.querySelector('title') || {}).textContent, url: (it.querySelector('link') || {}).textContent, note: [...it.querySelectorAll('category')].map((c) => c.textContent).join('・') }));
+    } },
+    { key: 'archive', kind: '古い記録', name: 'Internet Archive', lang: 'en', run: async (q) => {
+      const j = await toruLeadFetch('https://archive.org/advancedsearch.php?q=' + encodeURIComponent('(' + q + ') AND mediatype:texts') + '&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=year&rows=' + TORU_LEAD_PER + '&output=json');
+      return ((j.response && j.response.docs) || []).map((d) => ({ title: d.title, year: d.year, url: 'https://archive.org/details/' + d.identifier }));
+    } },
+    { key: 'wikija', kind: '事典', name: 'Wikipedia（日本語）', lang: 'ja', run: async (q) => {
+      const j = await toruLeadFetch('https://ja.wikipedia.org/w/api.php?action=query&list=search&srsearch=' + encodeURIComponent(q) + '&format=json&origin=*&srlimit=' + TORU_LEAD_PER);
+      return ((j.query && j.query.search) || []).map((r) => ({ title: r.title, url: 'https://ja.wikipedia.org/wiki/' + encodeURIComponent(r.title.replace(/ /g, '_')), note: r.snippet }));
+    } },
+    { key: 'wikien', kind: '事典', name: 'Wikipedia（英語）', lang: 'en', run: async (q) => {
+      const j = await toruLeadFetch('https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=' + encodeURIComponent(q) + '&format=json&origin=*&srlimit=' + TORU_LEAD_PER);
+      return ((j.query && j.query.search) || []).map((r) => ({ title: r.title, url: 'https://en.wikipedia.org/wiki/' + encodeURIComponent(r.title.replace(/ /g, '_')), note: r.snippet }));
+    } },
+    { key: 'skeptics', kind: '噂の真偽', name: 'Skeptics（英語の Q&A）', lang: 'en', run: async (q) => {
+      const j = await toruLeadFetch('https://api.stackexchange.com/2.3/search/advanced?q=' + encodeURIComponent(q) + '&site=skeptics&order=desc&sort=relevance&pagesize=' + TORU_LEAD_PER);
+      return (j.items || []).map((it) => ({ title: it.title, url: it.link, note: it.is_answered ? '答えあり' : '答えまだ' }));
+    } },
+    { key: 'mythology', kind: '神話・伝承の問答', name: 'Mythology（英語の Q&A）', lang: 'en', run: async (q) => {
+      const j = await toruLeadFetch('https://api.stackexchange.com/2.3/search/advanced?q=' + encodeURIComponent(q) + '&site=mythology&order=desc&sort=relevance&pagesize=' + TORU_LEAD_PER);
+      return (j.items || []).map((it) => ({ title: it.title, url: it.link, note: it.is_answered ? '答えあり' : '答えまだ' }));
+    } },
+  ];
+  function toruLeadWords(text) { return String(text || '').split(/[、,\n／/]+/).map((x) => x.trim()).filter(Boolean).slice(0, 4); }
+  async function toruCollectLeads(deck) {
+    const kw = deck.leadKw || { ja: '', en: '' };
+    const words = { ja: toruLeadWords(kw.ja), en: toruLeadWords(kw.en) };
+    const jobs = [];
+    TORU_LEAD_SOURCES.forEach((src) => words[src.lang].forEach((q) => jobs.push({ src, q })));
+    const got = {};
+    const failed = new Set();
+    await Promise.all(jobs.map(async (jb) => {
+      try {
+        const rows = await jb.src.run(jb.q);
+        (got[jb.src.key] = got[jb.src.key] || []).push(...rows.slice(0, TORU_LEAD_PER).map((r) => Object.assign({ q: jb.q }, r)));
+      } catch (e) { failed.add(jb.src.name); }
+    }));
+    const seen = new Set();
+    const items = [];
+    TORU_LEAD_SOURCES.forEach((src) => {
+      (got[src.key] || []).filter((r) => {
+        const u = shootSafeUrl(toruLeadClip(r.url, 400));
+        if (!u || !toruLeadClip(r.title, 10) || seen.has(u)) return false;
+        seen.add(u); r.url = u; return true;
+      }).slice(0, TORU_LEAD_SRC_MAX).forEach((r) => items.push({
+        kind: src.kind, src: src.name, title: toruLeadClip(r.title, 120), year: toruLeadClip(r.year, 4), url: r.url, note: toruLeadClip(r.note, 80), q: toruLeadClip(r.q, 40),
+      }));
+    });
+    deck.leads = { at: nowIso(), items: items.slice(0, TORU_LEAD_MAX), failed: [...failed] };
+    shootTouch(deck);
+    return deck.leads;
+  }
+  function toruLeadsText(deck) {
+    const L = deck.leads && deck.leads.items;
+    if (!L || !L.length) return '';
+    return '■ アプリが集めた手がかり（公開の資料の検索結果。関係の無いものも混ざる。使うものは url を開いて中身を確かめてから材料にする。ここに無いものも探してよい）\n' +
+      L.map((x) => '- [' + x.kind + '・' + x.src + '] ' + x.title + (x.year ? '（' + x.year + '）' : '') + (x.note ? '　' + x.note : '') + '　' + x.url).join('\n') + '\n\n';
+  }
   function toruMatsPromptText(deck) {
     return SHOOT_PROMPT_HEAD +
       'この題材の動画の材料を集めてください。web 検索を使ってかまいません。\n今日は ' + todayStr() + ' です。\n\n' +
-      toruReaderText() + toruJudgeText(deck) +
+      toruReaderText() + toruJudgeText(deck) + toruLeadsText(deck) +
       '■ 集めるもの\n' +
-      '- 6〜10個。kind は ' + TORU_MAT_KINDS.join('／') + ' のどれか。研究・歴史・伝承・オカルトを混ぜる（この動画はそれらをつないで体験の見え方を変えるため）。\n' +
+      '- 6〜10個。kind は ' + TORU_MAT_KINDS.join('／') + ' のどれか。研究・歴史・伝承・オカルト・噂を混ぜる（この動画はそれらをつないで体験の見え方を変えるため）。\n' +
+      '- 英語など日本語以外の資料もどんどん使ってよい（fact は日本語で書く）。\n' +
       '- fact：話し言葉で言える1文（60字以内）。論文の要約にしない。数字は1つまで。\n' +
       '- detail：数字・方法・人数・年（開いたときだけ見るもの）。\n' +
       '- source：媒体・著者・年。url：あれば（無ければ空）。\n' +
@@ -16256,6 +16347,11 @@
       kaishuu: s(p.kaishuu, 300),
       gap: { known: s(p.gap && p.gap.known, 300), unknown: s(p.gap && p.gap.unknown, 400) },
       ok: p.ok === true, why: s(p.why, 400), missing: s(p.missing, 300), at: nowIso(),
+      // v20.115：公開資料を探す言葉（2. 材料 の「手がかりを集める」が使う）
+      search: {
+        ja: (p.search && Array.isArray(p.search.ja) ? p.search.ja : []).map((x) => s(x, 40)).filter(Boolean).slice(0, 5),
+        en: (p.search && Array.isArray(p.search.en) ? p.search.en : []).map((x) => s(x, 60)).filter(Boolean).slice(0, 5),
+      },
     };
     if (!judge.genshou && !judge.kaishuu) return { error: '判定に中身がありませんでした。' };
     deck.judge = judge;
@@ -16535,6 +16631,51 @@
           }
           if (m.why) sec.appendChild(el('div', 'kjSub', '効くところ：' + m.why));
         });
+      },
+      (sec) => {
+        // v20.115：無料の公開資料（論文・古い本・事典・噂の真偽の Q&A）から手がかりを集め、材料の依頼文に渡す
+        sec.appendChild(el('div', 'kjGroup', '手がかりを集める（無料の公開資料）'));
+        const js = (deck.judge && deck.judge.search) || { ja: [], en: [] };
+        if (!deck.leadKw) deck.leadKw = { ja: (js.ja || []).join('、'), en: (js.en || []).join(', ') };
+        const mk = (key, label, ph) => {
+          const wrap = el('div', 'kjLine');
+          wrap.appendChild(el('span', 'kjSub', label));
+          const i = el('input'); i.type = 'text'; i.placeholder = ph; i.autocomplete = 'off'; i.value = deck.leadKw[key] || '';
+          i.addEventListener('input', () => { deck.leadKw[key] = i.value.slice(0, 300); shootScheduleSave(); });
+          wrap.appendChild(i); sec.appendChild(wrap);
+        };
+        mk('ja', '日本語で探す言葉（、で区切る・4つまで）', '例：神隠し、浦島');
+        mk('en', '英語で探す言葉（, で区切る・4つまで）', 'e.g. missing time, fairy folklore');
+        const btn = el('button', 'secondaryBtn', deck.leads ? '手がかりを集め直す' : '手がかりを集める'); btn.type = 'button';
+        const st = el('p', 'fieldNote', '');
+        btn.addEventListener('click', async () => {
+          if (!navigator.onLine) { st.textContent = 'オフラインです。つながってから押してください。'; return; }
+          btn.disabled = true; st.textContent = '集めています（論文・古い本・事典・噂の Q&A）…';
+          try {
+            const r = await toruCollectLeads(deck);
+            shootFlush();
+            st.textContent = r.items.length + '件集めました。材料の依頼文に入ります。' + (r.failed.length ? '（つながらなかった：' + r.failed.join('・') + '）' : '');
+            rerender();
+          } catch (e) { st.textContent = '集められませんでした（' + e.message + '）'; btn.disabled = false; }
+        });
+        sec.appendChild(btn); sec.appendChild(st);
+        const L = deck.leads && deck.leads.items;
+        if (L && L.length) {
+          const counts = {};
+          L.forEach((x) => { counts[x.kind] = (counts[x.kind] || 0) + 1; });
+          const det = el('details', 'kjDetails');
+          det.appendChild(el('summary', 'kjSub', '集めた手がかり ' + L.length + '件（' + Object.entries(counts).map(([k, n]) => k + n).join('・') + '）' +
+            ((deck.leads.failed || []).length ? '　つながらなかった：' + deck.leads.failed.join('・') : '') + '。材料の依頼文に入ります'));
+          L.forEach((x, idx) => {
+            const row = el('div', 'kjSub', '［' + x.kind + '・' + x.src + '］' + x.title + (x.year ? '（' + x.year + '）' : '') + ' ');
+            const a = el('a', '', '開く'); a.href = x.url; a.target = '_blank'; a.rel = 'noopener noreferrer'; row.appendChild(a);
+            const rm = el('button', 'linkLikeBtn', '外す'); rm.type = 'button';
+            rm.addEventListener('click', () => { deck.leads.items.splice(idx, 1); shootTouch(deck); rerender(); });
+            row.appendChild(document.createTextNode(' ')); row.appendChild(rm);
+            det.appendChild(row);
+          });
+          sec.appendChild(det);
+        }
       });
     // 3 構成
     step('blocks', '3. 構成', !!(deck.mats && deck.mats.length), !!(deck.blocks && deck.blocks.length), () => toruBlocksPromptText(deck), (raw) => toruImportBlocks(deck, raw),
