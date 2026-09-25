@@ -1982,6 +1982,19 @@
         </div>
       </details>
 
+      <details class="setGroup" data-group="ytStats">
+        <summary><span class="sgTitle">YouTube の数字（維持率）</span><span class="sgSub" id="setSubYtStats"></span></summary>
+        <div class="setBody">
+          <p class="fieldNote">撮るの「8. 公開後」で、維持率のグラフを YouTube から取ってくるための鍵。Google Cloud の OAuth クライアント ID（ウェブ アプリケーション）を貼る。端末の localStorage にだけ保存され、同期しません。取るときは毎回 Google のログイン画面が出ます（読むだけの許可）。</p>
+          <div class="field">
+            <span class="fieldLabel">OAuth クライアント ID</span>
+            <input id="ytClientIdInput" type="text" placeholder="xxxx.apps.googleusercontent.com" autocomplete="off" spellcheck="false">
+          </div>
+          <button id="btnSaveYtStats" class="secondaryBtn" type="button">保存</button>
+          <p class="fieldNote" id="ytStatsNote"></p>
+        </div>
+      </details>
+
       <details class="setGroup" data-group="api">
         <summary><span class="sgTitle">Claude API</span><span class="sgSub" id="setSubApi"></span></summary>
         <div class="setBody">
@@ -3319,7 +3332,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.119';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.120';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -13813,6 +13826,9 @@
     paintSettingsSummaries();
     document.getElementById('ghTokenInput').value = getGhToken();
     document.getElementById('claudeApiKeyInput').value = getClaudeApiKey();
+    // v20.120：YouTube の数字
+    document.getElementById('ytClientIdInput').value = localStorage.getItem(YT_CLIENT_KEY) || '';
+    document.getElementById('setSubYtStats').textContent = localStorage.getItem(YT_CLIENT_KEY) ? '設定済み' : '未設定';
     // v20.116：調べ物の鍵
     document.getElementById('leadYtKeyInput').value = localStorage.getItem(LEAD_YT_KEY) || '';
     document.getElementById('leadBskyHandleInput').value = localStorage.getItem(LEAD_BSKY_HANDLE) || '';
@@ -13999,6 +14015,14 @@
   }
 
   document.getElementById('backFromSettings').addEventListener('click', goHome);
+
+  document.getElementById('btnSaveYtStats').addEventListener('click', () => {
+    const v = document.getElementById('ytClientIdInput').value.trim();
+    if (v) localStorage.setItem(YT_CLIENT_KEY, v); else localStorage.removeItem(YT_CLIENT_KEY);
+    toruYtTok = null;
+    document.getElementById('setSubYtStats').textContent = v ? '設定済み' : '未設定';
+    document.getElementById('ytStatsNote').textContent = v ? (/\.apps\.googleusercontent\.com$/.test(v) ? '保存しました。撮るの「8. 公開後」から維持率を取れます。' : '保存しました。ただ、ふつうは「….apps.googleusercontent.com」で終わる文字です。貼り間違いがないか見てください。') : '消しました。';
+  });
 
   document.getElementById('btnSaveLeadKeys').addEventListener('click', () => {
     const put = (k, v) => { v = v.trim(); if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); };
@@ -15895,7 +15919,7 @@
     const t = (deck.script && deck.script.text) || '';
     return SHOOT_PROMPT_HEAD +
       'この動画の台本の「粗」を探してください。台本を書き直すのではなく、直すべき所を指摘してください。\n\n' +
-      toruGoalText() + toruViewText(deck) + toruJudgeText(deck) + toruReduceText() +
+      toruGoalText() + toruViewText(deck) + toruJudgeText(deck) + toruReduceText() + toruRetText(deck) +
       '■ 探すもの（kind）\n' +
       '- 飛躍：前の話から次の話へ、理由の無いまま跳んでいる所\n' +
       '- こじつけ：次の材料を出すためだけに作った問い（「じゃあ〜なのか、っていうのが次の話」）／何が同じかを言わない「似てる」「同じ形」／最後に別々の分野を「実は同じもの」「同じ場所を指してる」とまとめる所\n' +
@@ -16124,7 +16148,7 @@
   function toruBlocksPromptText(deck) {
     return SHOOT_PROMPT_HEAD +
       'この題材と材料で、20分の動画の構成を作ってください。台本はまだ書きません。\n\n' +
-      toruGoalText() + toruReaderText() + toruJudgeText(deck) + toruViewText(deck) + toruMatsText(deck) + toruTaikenText(deck) + toruTenkaiText() +
+      toruGoalText() + toruReaderText() + toruJudgeText(deck) + toruViewText(deck) + toruMatsText(deck) + toruTaikenText(deck) + toruRetText(deck) + toruTenkaiText() +
       ((deck.mats || []).some((m) => m.role === 'counter') ? '■ 視点に反する材料の使い方\n- 捨てずに、話をひっくり返す所か「実はこういう見方もある」の所で使う。反論を越えた視点のほうが強く聞こえる。\n\n' : '') +
       '■ 構成の作り方\n' +
       '- big_q：この動画で追いかける謎（1文）。\n' +
@@ -16151,7 +16175,7 @@
     return SHOOT_PROMPT_HEAD.replace('返事は JSON だけ', '返事は台本だけ') +
       'この構成で、動画の台本を書いてください。話し言葉の全文です。\n\n' +
       toruStyleText() + toruReduceText() + toruLearnedText() + toruGoalText() + toruReaderText() + toruJudgeText(deck) + toruViewText(deck) + toruMatsText(deck) + toruTaikenText(deck) + toruBlocksText(deck) + toruTenkaiText() +
-      toruResultsText('■ これまでの動画の結果（参考）', deck) +
+      toruResultsText('■ これまでの動画の結果（参考）', deck) + toruRetText(deck) +
       '■ 台本の決まり\n' +
       '- ' + TORU_SCRIPT_MIN + '〜' + TORU_SCRIPT_MAX + '字（約20分）。\n' +
       '- 構成の段の順に、段を足さずに書く。章の頭に「＃ 章の名前」の行を置く（読み上げない目印）。\n' +
@@ -16294,7 +16318,7 @@
   }
   function toruStyleBack(text) { toruListAll(TORU_STYLE_OFF_KEY).filter((r) => r.text === text).forEach((r) => toruListOff(TORU_STYLE_OFF_KEY, r.id)); }
   function toruPer1000(text, w) {
-    const body = String(text || '').replace(/^＃[^\n]*$/gm, '').replace(/\s/g, '');
+    const body = String(text || '').replace(/^＃[^\n]*$/gm, '').replace(/〔\d+:\d{2}〕/g, '').replace(/\s/g, '');
     if (!body.length) return 0;
     return ((body.split(w).length - 1) * 1000) / body.length;
   }
@@ -16323,7 +16347,7 @@
       .map((l) => l.trim())
       // 字幕の番号・時刻の行、台本の見出し（＃ ブロックの名前）は読み上げないので外す
       .filter((l) => l && !/^\d+$/.test(l) && l.indexOf('-->') < 0 && !/^[#＃■]/.test(l) && !/^【[^】]*】$/.test(l))
-      .map((l) => l.replace(/^\d\|/, '').replace(/^\[\s*\d{1,2}:\d{2}(?::\d{2})?\s*\]\s*/, ''))
+      .map((l) => l.replace(/^〔\d+:\d{2}〕/, '').replace(/^\d\|/, '').replace(/^\[\s*\d{1,2}:\d{2}(?::\d{2})?\s*\]\s*/, ''))
       .join('');
     const out = [];
     (body.match(/[^。？?！!]+[。？?！!]*/g) || []).forEach((s0) => {
@@ -16689,6 +16713,198 @@
     }
   }
   // 最初の1語：本人が決めた「らしい」（9/25）。一度でも登録があれば（消した後も）入れ直さない
+  // ---- v20.120 維持率を台本に戻す ----------
+  // 公開後の数字は手で打つ欄（冒頭60秒・平均再生率・離れた所）だけで、どの文で離れたかは分からなかった。
+  // YouTube Analytics の維持率（動画を100に分けた各点で、見ていた人の割合）を取り、大きく減った所・増えた所
+  // （見返された所）を、話した中身の〔分:秒〕と結びつけて、次の構成・台本・粗探しの依頼文に渡す
+  const YT_CLIENT_KEY = 'kotoba_ytClientId';
+  const YT_SCOPE = 'https://www.googleapis.com/auth/yt-analytics.readonly';
+  let toruYtTok = null;
+  function toruYtVideoId(u) {
+    const t = String(u || '').trim();
+    const m = t.match(/(?:youtu\.be\/|[?&]v=|\/shorts\/|\/live\/|\/embed\/)([A-Za-z0-9_-]{11})/) || t.match(/^([A-Za-z0-9_-]{11})$/);
+    return m ? m[1] : '';
+  }
+  function toruGsiLoad() {
+    if (window.google && window.google.accounts && window.google.accounts.oauth2) return Promise.resolve();
+    return new Promise((res, rej) => {
+      const sc = document.createElement('script');
+      sc.src = 'https://accounts.google.com/gsi/client'; sc.async = true;
+      sc.onload = () => res(); sc.onerror = () => rej(new Error('Google のログインの部品を読めませんでした（通信を確かめてください）'));
+      document.head.appendChild(sc);
+    });
+  }
+  async function toruYtToken() {
+    if (toruYtTok && toruYtTok.exp > Date.now() + 60000) return toruYtTok.tok;
+    const cid = localStorage.getItem(YT_CLIENT_KEY);
+    if (!cid) throw new Error('設定 → YouTube の数字 に OAuth クライアント ID を入れてください');
+    await toruGsiLoad();
+    return new Promise((res, rej) => {
+      const tc = window.google.accounts.oauth2.initTokenClient({
+        client_id: cid, scope: YT_SCOPE,
+        callback: (r) => {
+          if (!r || r.error || !r.access_token) { rej(new Error('Google の許可が取れませんでした（' + ((r && (r.error_description || r.error)) || '取り消し') + '）')); return; }
+          toruYtTok = { tok: r.access_token, exp: Date.now() + (Number(r.expires_in) || 3000) * 1000 };
+          res(r.access_token);
+        },
+        error_callback: (e) => rej(new Error('Google の画面が閉じられました（' + ((e && e.type) || '') + '）')),
+      });
+      tc.requestAccessToken({ prompt: '' });
+    });
+  }
+  async function toruYtReport(tok, params) {
+    const q = new URLSearchParams(Object.assign({ ids: 'channel==MINE', startDate: '2020-01-01', endDate: todayStr() }, params));
+    const r = await fetch('https://youtubeanalytics.googleapis.com/v2/reports?' + q.toString(), { headers: { Authorization: 'Bearer ' + tok } });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      if (r.status === 401) toruYtTok = null;
+      const msg = (j.error && j.error.message) || ('HTTP ' + r.status);
+      throw new Error(r.status === 403 ? 'YouTube Analytics API が使えません（Google Cloud で有効にしたか、このチャンネルの持ち主のアカウントでログインしたかを確かめてください）：' + msg.slice(0, 80) : msg.slice(0, 120));
+    }
+    return j;
+  }
+  async function toruFetchRetention(deck) {
+    const a = deck.after || {};
+    const vid = toruYtVideoId(a.url);
+    if (!vid) throw new Error('上の「動画の URL」に YouTube の URL を入れてください');
+    const tok = await toruYtToken();
+    const cur = await toruYtReport(tok, { metrics: 'audienceWatchRatio,relativeRetentionPerformance', dimensions: 'elapsedVideoTimeRatio', filters: 'video==' + vid, sort: 'elapsedVideoTimeRatio' });
+    const rows = (cur.rows || []).filter((x) => Array.isArray(x) && x.length >= 2).map((x) => [Number(x[0]), Number(x[1]), Number(x[2] || 0)]);
+    if (!rows.length) throw new Error('まだ維持率がありません（公開から2〜3日は出ないことがあります。見た人が少なすぎても出ません）');
+    const bas = await toruYtReport(tok, { metrics: 'views,averageViewDuration,averageViewPercentage,subscribersGained', filters: 'video==' + vid });
+    const b = (bas.rows && bas.rows[0]) || [];
+    const views = Number(b[0]) || 0, avgDur = Number(b[1]) || 0, avgPct = Number(b[2]) || 0, subs = Number(b[3]) || 0;
+    a.ret = { at: nowIso(), vid, points: rows.slice(0, 101), views, avgDur, avgPct, subs, duration: avgPct > 0 ? Math.round(avgDur / (avgPct / 100)) : 0 };
+    // 手で打つ欄が空なら埋める（打ってあるものは上書きしない）
+    const w60 = toruRetAt(a, 60);
+    if (!a.keep60 && w60 != null) a.keep60 = String(Math.round(w60 * 100));
+    if (!a.avgPct && avgPct) a.avgPct = String(Math.round(avgPct));
+    if (!a.avgView && avgDur) a.avgView = Math.floor(avgDur / 60) + '分' + Math.round(avgDur % 60) + '秒';
+    const f = toruRetFindings(deck);
+    if (!a.drop && f && f.drops.length) a.drop = f.drops.map((d) => toruMmss(d.t)).join('・') + '（維持率から）';
+    deck.after = a;
+    shootTouch(deck);
+    return a.ret;
+  }
+  function toruMmss(t) { t = Math.max(0, Math.round(t)); return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0'); }
+  function toruRetAt(a, sec) {   // その秒で見ていた人の割合（動画の長さが分かるときだけ）
+    const r = a && a.ret;
+    if (!r || !r.duration || !r.points.length) return null;
+    const x = sec / r.duration;
+    let best = r.points[0];
+    r.points.forEach((p) => { if (Math.abs(p[0] - x) < Math.abs(best[0] - x)) best = p; });
+    return best[1];
+  }
+  // 話した中身を [{t, s}]（台本の時刻）に。〔分:秒〕が無ければ字数で割り振る
+  function toruSpokenTimed(a) {
+    const lines = String((a && a.finalText) || '').split(/\r\n|\r|\n/).map((l) => l.trim()).filter(Boolean);
+    const timed = lines.map((l) => { const m = l.match(/^〔(\d+):(\d{2})〕(.*)$/); return m ? { t: Number(m[1]) * 60 + Number(m[2]), s: m[3] } : null; });
+    if (timed.length && timed.every(Boolean)) return timed;
+    const r = a && a.ret;
+    const total = (r && r.duration ? r.duration : 0) - (Number(a && a.preSec) || 0);
+    const sents = toruSentences(a && a.finalText);
+    const chars = sents.reduce((n, x) => n + x.length, 0);
+    if (!total || !chars) return [];
+    let c = 0;
+    return sents.map((x) => { const t = (c / chars) * total; c += x.length; return { t, s: x, est: true }; });
+  }
+  // 大きく減った所（離れた所）と増えた所（見返された所）
+  function toruRetFindings(deck) {
+    const a = deck.after || {};
+    const r = a.ret;
+    if (!r || !r.points || r.points.length < 20 || !r.duration) return null;
+    const P = r.points, pre = Number(a.preSec) || 0;
+    const cand = [];
+    for (let i = 2; i < P.length; i++) {
+      if (P[i][0] > 0.97) break;                     // 終わりの画面で離れるのは数えない
+      cand.push({ i, d: P[i - 2][1] - P[i][1] });
+    }
+    const pick = (list, key, min, n) => {
+      const out = [];
+      list.slice().sort((x, y) => key(y) - key(x)).forEach((c) => {
+        if (key(c) < min || out.length >= n || out.some((o) => Math.abs(o.i - c.i) < 5)) return;
+        out.push(c);
+      });
+      return out.sort((x, y) => x.i - y.i);
+    };
+    const spoken = toruSpokenTimed(a);
+    const near = (tv) => {
+      const ts = tv - pre;
+      return spoken.filter((x) => x.t >= ts - 30 && x.t <= ts + 3).slice(-3).map((x) => x.s.slice(0, 60));
+    };
+    // 見た人が少ないと、1人が離れただけで数％動く。1.5人ぶんより小さい動きは数えない
+    const one = 1.5 / Math.max(1, r.views || 0);
+    const drops = pick(cand.filter((c) => P[c.i][0] > 0.03), (c) => c.d, Math.max(0.04, one), 3).map((c) => ({ t: P[c.i][0] * r.duration, d: c.d, lines: near(P[c.i][0] * r.duration) }));
+    const rises = pick(cand, (c) => -c.d, Math.max(0.03, one), 2).map((c) => ({ t: P[c.i][0] * r.duration, d: -c.d, lines: near(P[c.i][0] * r.duration) }));
+    return { views: r.views, w30: toruRetAt(a, 30 + pre), w60: toruRetAt(a, 60 + pre), drops, rises, est: spoken.length && spoken[0].est, noText: !spoken.length };
+  }
+  // 依頼文に入れる：前の動画（最新2本まで）の離れた所・見返された所
+  function toruRetText(deck) {
+    const rows = [];
+    deckEntries().forEach((d) => {
+      if (rows.length >= 2 || (deck && d.id === deck.id)) return;
+      const f = toruRetFindings(d);
+      if (!f || f.noText) return;
+      let t = '- 「' + toruDeckTitle(d).slice(0, 30) + '」（見た人 ' + f.views + ' 人）：30秒で残った ' + Math.round((f.w30 || 0) * 100) + '%・60秒で ' + Math.round((f.w60 || 0) * 100) + '%\n';
+      f.drops.forEach((x) => { t += '  離れた ' + toruMmss(x.t) + '（-' + Math.round(x.d * 100) + '%）直前：' + x.lines.map((l) => '「' + l + '」').join('') + '\n'; });
+      f.rises.forEach((x) => { t += '  見返された ' + toruMmss(x.t) + '（+' + Math.round(x.d * 100) + '%）：' + x.lines.map((l) => '「' + l + '」').join('') + '\n'; });
+      rows.push(t);
+    });
+    if (!rows.length) return '';
+    return '■ 前の動画で、見る人が離れた所・見返された所（YouTube の維持率から。直前に話していたこと）\n' + rows.join('') +
+      '→ 離れた所と同じ運び（説明が続く・次を知りたくなる理由が無い等）を避け、見返された所の運びを増やす。見た人が少ないうちは1人で大きく揺れるので、傾向として見る。\n\n';
+  }
+  function toruRetSvg(deck) {
+    const a = deck.after || {}, r = a.ret;
+    const f = toruRetFindings(deck);
+    const W = 320, H = 110, pad = 4;
+    const maxY = Math.max(1, ...r.points.map((p) => p[1]));
+    const xy = (p) => [pad + p[0] * (W - 2 * pad), H - pad - (p[1] / maxY) * (H - 2 * pad)];
+    const path = r.points.map((p, i) => (i ? 'L' : 'M') + xy(p).map((v) => v.toFixed(1)).join(',')).join('');
+    const mk = (list, color) => (list || []).map((x) => { const [px] = xy([x.t / r.duration, 0]); return '<line x1="' + px.toFixed(1) + '" y1="' + pad + '" x2="' + px.toFixed(1) + '" y2="' + (H - pad) + '" stroke="' + color + '" stroke-width="1.5" stroke-dasharray="3 3"/>'; }).join('');
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" style="max-width:480px;display:block" role="img" aria-label="維持率のグラフ">' +
+      '<rect x="0" y="0" width="' + W + '" height="' + H + '" fill="none" stroke="currentColor" stroke-opacity="0.2"/>' +
+      (f ? mk(f.drops, '#e0605a') + mk(f.rises, '#5fb77a') : '') +
+      '<path d="' + path + '" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
+  }
+  function toruRetSection(sec, deck, rerender) {
+    const el = (tag, cls, text) => { const x = document.createElement(tag); if (cls) x.className = cls; if (text != null) x.textContent = text; return x; };
+    const a = deck.after;
+    sec.appendChild(el('div', 'kjGroup', '維持率（どこで離れ、どこを見返したか）'));
+    const row = el('div', 'kjLine');
+    row.appendChild(el('span', 'kjSub', '本編の前に付けたもの（秒）'));
+    const pi = el('input'); pi.type = 'number'; pi.min = '0'; pi.step = '1'; pi.style.width = '4em'; pi.value = a.preSec || '';
+    pi.placeholder = '0'; pi.title = '予告などを本編の前に付けたときの秒数（1本目は予告8秒）';
+    pi.addEventListener('input', () => { a.preSec = pi.value.slice(0, 4); shootScheduleSave(); });
+    pi.addEventListener('blur', () => { shootFlush(); rerender(); });
+    row.appendChild(pi);
+    const btn = el('button', 'secondaryBtn', a.ret ? '維持率を取り直す' : '維持率を取ってくる'); btn.type = 'button';
+    const st = el('span', 'kjSub', '');
+    btn.addEventListener('click', async () => {
+      if (!navigator.onLine) { st.textContent = 'オフラインです'; return; }
+      btn.disabled = true; st.textContent = 'YouTube から取っています…';
+      try { const r = await toruFetchRetention(deck); shootFlush(); st.textContent = '取りました（見た人 ' + r.views + ' 人）'; rerender(); }
+      catch (e) { st.textContent = e.message; btn.disabled = false; }
+    });
+    row.appendChild(btn); row.appendChild(st);
+    sec.appendChild(row);
+    if (!a.ret) {
+      if (!localStorage.getItem(YT_CLIENT_KEY)) sec.appendChild(el('div', 'kjSub', '使う前に、設定 → YouTube の数字 に OAuth クライアント ID を入れます。'));
+      return;
+    }
+    const r = a.ret;
+    const box = el('div', ''); box.innerHTML = toruRetSvg(deck); sec.appendChild(box);
+    const f = toruRetFindings(deck);
+    sec.appendChild(el('div', 'kjSub', '見た人 ' + r.views + ' 人・平均 ' + Math.round(r.avgPct) + '%・登録 +' + r.subs + '・' + worldShortDate(r.at.slice(0, 10)) + ' に取得' + (r.views < 300 ? '（見た人が少ないので、1人の動きで大きく揺れます）' : '')));
+    if (!f) return;
+    sec.appendChild(el('div', 'kjSub', '30秒で残った ' + Math.round((f.w30 || 0) * 100) + '%・60秒で ' + Math.round((f.w60 || 0) * 100) + '%'));
+    if (f.noText) { sec.appendChild(el('div', 'kjSub', '上の「動画で実際に話した中身」を貼ると、離れた所の直前に話していた文が出ます（話した中身.txt をそのまま）。')); }
+    f.drops.forEach((x) => sec.appendChild(el('div', 'kjLine', '離れた ' + toruMmss(x.t) + '（-' + Math.round(x.d * 100) + '%）' + (x.lines.length ? '　直前：' + x.lines.map((l) => '「' + l + '」').join('') : ''))));
+    f.rises.forEach((x) => sec.appendChild(el('div', 'kjLine', '見返された ' + toruMmss(x.t) + '（+' + Math.round(x.d * 100) + '%）' + (x.lines.length ? '　' + x.lines.map((l) => '「' + l + '」').join('') : ''))));
+    if (!f.drops.length && !f.rises.length) sec.appendChild(el('div', 'kjSub', '目立って離れた所・見返された所はありません。'));
+    if (f.est) sec.appendChild(el('div', 'kjSub', '話した中身に時刻〔分:秒〕が無いので、字数から時刻を見積もっています（新しい 話した中身.txt を貼り直すと正確になります）。'));
+    sec.appendChild(el('div', 'kjSub', 'ここで分かったことは、次の動画の 構成・台本・粗探し の依頼文に入ります。'));
+  }
   function toruSeedWords() {
     if (!wdig || !wdig.docs || toruWordsEverSet()) return;
     toruReduceAdd('らしい', 1, '多いと、聞く側に「この人も自信がないのかな」と伝わる');
@@ -17306,6 +17522,7 @@
         sec.appendChild(wrap);
       };
       f('url', '動画の URL', 'https://youtu.be/...');
+      try { toruRetSection(sec, deck, rerender); } catch (e) { recordFeatureError('維持率', e); }
       f('ctr', 'クリック率（％）', '例：3.8');
       f('keep60', '冒頭60秒で残った（％）', '維持率のグラフの1:00の値。例：45');
       f('avgPct', '平均再生率（％）', 'エンゲージメント。例：30');
