@@ -3319,7 +3319,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.118';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.119';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -15810,7 +15810,7 @@
     ['違和感から広げる', '本人の小さな違和感や本人の言葉を起点に、大きな仮説まで広げる'],
     ['前提を1つ外す', '一般論と結論は同じでも、その下にある前提を1つ外して別の道筋でたどり着く'],
   ];
-  const TORU_CHECK_KINDS = ['飛躍', '根拠が弱い', '言い直し', '離脱しそう', '約束とずれ', '解釈の札'];
+  const TORU_CHECK_KINDS = ['飛躍', 'こじつけ', '根拠が弱い', '言い直し', '離脱しそう', '約束とずれ', '解釈の札'];
   function toruGoalText() {
     return '■ この動画の目的（いちばん大事）\n' +
       '- チャンネルの再生回数と登録者を増やすこと。題名とサムネでクリックされ、最後まで見られ、見終わって「この人の次の動画も見たい」と思われることが物差し。\n' +
@@ -15898,6 +15898,7 @@
       toruGoalText() + toruViewText(deck) + toruJudgeText(deck) + toruReduceText() +
       '■ 探すもの（kind）\n' +
       '- 飛躍：前の話から次の話へ、理由の無いまま跳んでいる所\n' +
+      '- こじつけ：次の材料を出すためだけに作った問い（「じゃあ〜なのか、っていうのが次の話」）／何が同じかを言わない「似てる」「同じ形」／最後に別々の分野を「実は同じもの」「同じ場所を指してる」とまとめる所\n' +
       '- 根拠が弱い：確かめられていないことを、確かな事実のように言っている所\n' +
       '- 言い直し：前に言ったことを別の言い方で繰り返しているだけの所（話が進んでいない）\n' +
       '- 離脱しそう：見る人がここで飽きて離れそうな所（説明が長い・次を知りたくなる理由が無い・同じ調子が続く）\n' +
@@ -16096,13 +16097,21 @@
   // 5章で5回）になって、同じことを言い直しているように聞こえた（本人「進んでも同じことを違う言い方で話している」）。
   // 代わりに「話が進む」ことだけを求める：1つの謎を追い、段ごとに前の段では言えなかったことが1つ分かる。
   // 報告 docs/toru/2026-09-24_daihon_hikaku.md の続き（非公開）
+  // v20.119：3本目の台本で段のつなぎが「こじつけ」に読めた（作った問い・中身の無い「似てる」・最後の大きなくくり）。
+  // 参考の6本（ミルクティー・トーマ）では、つながって聞こえるのは接続の言葉ではなく、冒頭の1本の問いに対して
+  // 材料がどれも「次の候補・証拠」として出る枠と、共通の具体物（人・資料・年・直前の名詞）のおかげだった。
+  // 次の材料を呼ぶための問いは6本で0。そこで全段の「次の疑問」をやめ、枠と具体物でつなぐ形に置き換えた。
+  // 報告 docs/toru/2026-09-25_tsunagi_sankou.md
   function toruTenkaiText() {
     return '■ 展開（これだけは守る）\n' +
-      '- 話は1つの謎を追いかける。段が進むたびに、前の段では言えなかったことが1つ分かり、それで次の疑問が生まれる。これが「話が進む」ということ。\n' +
-      '- 同じことの別の例は、新しい段にしない。例は1つの段の中で1〜2文で済ませる（同じ形の話を3つ並べると、進まずに言い直しに聞こえる）。\n' +
-      '- 謎の答え（仕組み・結論）は後半まで出さない。先に答えを出すと、あとの話が全部その答えの例になって進まなくなる。不思議な話・食い違い・確かめられた事実を先に積み、答えは終わり近くで出す。\n' +
-      '- 段の終わりに「だから、〜なのは〜じゃなくて〜」とまとめ直さない。まとめは最後に1回だけ。段は次の疑問か、次の事実で終わる。\n' +
-      '- 体験メモは、そこで使うと話が進む所にだけ使う。使わなくてもいい。何度も持ち出さない。\n\n';
+      '- 話は1つの大きな問い（または仮説）を追いかける。段はどれも、その問いへの「次の候補」「証拠」「反証」「区別（似ているが違うもの）」として出す。つながって聞こえるのはこの枠があるからで、接続の言葉は「で、」「他にも」「ちなみに」くらいで足りる。\n' +
+      '- 段と段は、具体的なものでつなぐ：同じ人物・資料・年・言葉が続く／直前の段の名詞を1つ拾う／直前の資料の穴から出る本物の疑い（「なんで〜なの？」）／「他にも」で大きな問いへの次の候補へ。次の材料を出すためだけの問い（「じゃあ〜なのか、っていうのが次の話」）は作らない。どれも無ければ短く正直に移り、数文以内に本筋へ戻る具体物を出す。\n' +
+      '- 「似てる」「同じ」と言うときは、何が同じかを一言か数字で言う（違う所があればそれも）。言えないなら「〜っぽいなと思って」と自分の連想として弱く言うか、つながない。\n' +
+      '- 段が進むたびに、前の段では言えなかったことが1つ分かる。同じことの別の例は新しい段にしない（例は段の中で1〜2文）。\n' +
+      '- 謎の答え（仕組み・結論）は後半まで出さない。先に答えを出すと、あとの話が全部その答えの例になって進まなくなる。\n' +
+      '- 段の終わりに「だから、〜なのは〜じゃなくて〜」とまとめ直さない。まとめは最後に1回だけ。\n' +
+      '- 最後は分野を1つにまとめない（「実は同じものだった」「みんな同じ場所を指してる」と言わない）。冒頭の問いに1本だけ線を戻し、脇の説は説のまま残し、自分の気持ちか小さな行動で終える。\n' +
+      '- 体験メモは、そこで使うと話が進む所にだけ使う。使わなくてもいい。\n\n';
   }
   function toruTaikenLines(deck) {
     return String(deck.taiken || '').split(/\n+/).map((x) => x.replace(/^[・\-\s\d.．、)）]+/, '').trim()).filter(Boolean).slice(0, 12);
@@ -16120,12 +16129,12 @@
       '■ 構成の作り方\n' +
       '- big_q：この動画で追いかける謎（1文）。\n' +
       '- 段を10〜15個並べ、3〜5つの章に分ける。章には name（15字以内。視聴者が今どこの話か分かる言葉）。\n' +
-      '- 段ごとに new（この段で新しく分かること。1文。前の段では言えなかったこと）、next（それで生まれる次の疑問。1文。最後の段は空）、mats（使う材料の番号）。\n' +
-      '- 並べ終わったら new を上から読み直し、前のどれかの言い換えになっている段を消すか、別の新しい事実に替える。\n' +
+      '- 段ごとに new（この段で新しく分かること。1文。前の段では言えなかったこと）、role（大きな問いに対して：候補／証拠／反証／区別／答え）、link（前の段から何でつながるか。続く人物・資料・年・言葉、拾う名詞、資料の穴から出る疑い のどれかを具体的に短く。最初の段は空）、mats（使う材料の番号。材料は全部使わなくてよい）。\n' +
+      '- 並べ終わったら new を上から読み直し、前のどれかの言い換えになっている段を消すか、別の新しい事実に替える。link も読み直し、中身の無い「似ている」や、次の材料を呼ぶためだけの問いになっているものを直す。\n' +
       '- opening：冒頭（0〜45秒、3〜5文）。謎そのものを、いちばん不思議な事実か場面で見せる。答えは言わない。挨拶・自己紹介・目次の読み上げはしない。\n' +
-      '- ending：最後（2〜3文）。謎の答え → 冒頭の場面に戻る → 視聴者への問い。\n\n' +
+      '- ending：最後（2〜3文）。大きな問いへの自分の答え（仮説なら仮説と言う）→ 冒頭の場面に1本だけ戻る → 視聴者への問い。分野をまとめない。\n\n' +
       '■ 出力形式（JSON のみ）\n' +
-      '{"big_q":"1文","opening":"3〜5文","blocks":[{"name":"15字以内","steps":[{"new":"1文","next":"1文","mats":[1]}]}],"ending":"2〜3文"}';
+      '{"big_q":"1文","opening":"3〜5文","blocks":[{"name":"15字以内","steps":[{"new":"1文","role":"候補","link":"短く","mats":[1]}]}],"ending":"2〜3文"}';
   }
   function toruBlocksText(deck) {
     const b = deck.blocks || [];
@@ -16133,7 +16142,8 @@
     let n = 0;
     return '■ 構成\n' + (deck.bigQ ? '追いかける謎：' + deck.bigQ + '\n' : '') + '冒頭：' + (deck.opening || '') + '\n' +
       b.map((x) => '＃ ' + x.name + '\n' + ((x.steps || []).length
-        ? x.steps.map((st) => '  ' + (++n) + '. 分かること：' + st.new + ((st.mats || []).length ? '（材料 ' + st.mats.join('・') + '）' : '') + (st.next ? '\n     次の疑問：' + st.next : '')).join('\n')
+        ? x.steps.map((st) => '  ' + (++n) + '. ' + (st.role ? '［' + st.role + '］' : '') + '分かること：' + st.new + ((st.mats || []).length ? '（材料 ' + st.mats.join('・') + '）' : '') +
+          (st.link ? '\n     つなぎ：' + st.link : '') + (st.next ? '\n     次の疑問：' + st.next : '')).join('\n')
         : '  約束：' + (x.promise || '') + '\n  使う材料：' + (x.mats || []).join('・') + (x.bridge ? '\n  次：' + x.bridge : ''))).join('\n') +
       '\n最後：' + (deck.ending || '') + '\n\n';
   }
@@ -16777,7 +16787,7 @@
     // v20.113：章（name）の中に段（steps：new・next・mats）。前の形（promise・kaishuu・bridge）の返事も読む
     const blocks = p.blocks.filter((b) => b && typeof b === 'object' && !Array.isArray(b) && s(b.name, 60)).map((b) => ({
       name: s(b.name, 60),
-      steps: (Array.isArray(b.steps) ? b.steps : []).filter((x) => x && typeof x === 'object' && s(x.new, 300)).map((x) => ({ new: s(x.new, 300), next: s(x.next, 300), mats: nums(x.mats) })).slice(0, 8),
+      steps: (Array.isArray(b.steps) ? b.steps : []).filter((x) => x && typeof x === 'object' && s(x.new, 300)).map((x) => ({ new: s(x.new, 300), role: s(x.role, 10), link: s(x.link, 200), next: s(x.next, 300), mats: nums(x.mats) })).slice(0, 8),
       promise: s(b.promise, 300), mats: nums(b.mats), kaishuu: s(b.kaishuu, 300), bridge: s(b.bridge, 300),
     })).slice(0, 6);
     if (!blocks.length) return { error: '章がありませんでした。返事が途中で切れていないか見てください。' };
@@ -16794,6 +16804,11 @@
     const heads = steps.map((x) => x.new.slice(0, 14));
     if (new Set(heads).size < heads.length) notes.push('同じ書き出しの段がある（言い直しかも）');
     if (!deck.bigQ) notes.push('追いかける謎が無い');
+    // v20.119：作った問いでつないでいる段、中身の無い「似ている」でつないでいる段
+    const forced = steps.filter((x) => /次の話|っていうのが次|じゃあ.{0,20}のか/.test(x.link || '')).length;
+    const vague = steps.filter((x) => /(似て|同じ形|通じる)/.test(x.link || '') && (x.link || '').length < 14).length;
+    if (forced) notes.push('問いを作ってつないでいる段 ' + forced);
+    if (vague) notes.push('「似ている」だけでつないでいる段 ' + vague);
     if (!deck.opening) notes.push('冒頭が無い');
     return { text: '取り込みました：章 ' + blocks.length + '・段 ' + steps.length + (notes.length ? '（' + notes.join('／') + '）' : '') };
   }
@@ -16823,7 +16838,9 @@
     const marks = (t.match(/【体験[：:]/g) || []).length;
     // v20.113：段の終わりの同じ形のまとめ直し（「だから、〜なのは〜じゃなくて／っていうより」）
     const recap = (body.match(/だから、[^。]{0,80}?(じゃなくて|じゃない|っていうより)/g) || []).length;
-    return { chars, heads, bad, greet, promise, questions: qs.length, gap, gapAt, hearsay, toc, marks, recap, text: t };
+    // v20.119：こじつけに聞こえやすい言い方（作った問いのつなぎ・大きなくくり）
+    const koji = (body.match(/っていうのが次の話|ここで出てくるのが|実は同じもの|同じ場所を指して|別の側から見て/g) || []).length;
+    return { chars, heads, bad, greet, promise, questions: qs.length, gap, gapAt, hearsay, toc, marks, recap, koji, text: t };
   }
   function toruScriptLintText(l, deck) {
     const parts = ['台本 約' + l.chars + '字', 'ブロックの見出し ' + l.heads];
@@ -16848,6 +16865,7 @@
     } else if (l.chars >= 500 && l.hearsay / mins > 1) notes.push('「らしい」「んだって」が1分に約' + (l.hearsay / mins).toFixed(1) + '回（伝聞が続くと弱く聞こえる）');
     if (l.marks) notes.push('【体験】の印が' + l.marks + 'か所（自分の話で埋める）');
     // v20.113：「最初の30秒に今日は〜の約束」の知らせは外した（謎そのものから入る冒頭を、決まり文句に戻してしまうため）
+    if (l.koji) notes.push('こじつけに聞こえやすい言い方 ' + l.koji + '回（「ここで出てくるのが」「実は同じもの」など。粗探しで見てもらう）');
     if (l.recap >= 3) notes.push('「だから、〜じゃなくて〜」のまとめ直しが' + l.recap + '回（同じことを言い直しているように聞こえる）');
     return parts.join('・') + (notes.length ? '（' + notes.join('／') + '）' : '');
   }
@@ -17105,7 +17123,7 @@
           sec.appendChild(el('div', 'kjLine', (i + 1) + '. ' + b.name));
           if ((b.steps || []).length) {
             // v20.113：段ごとに「新しく分かること → 次の疑問」。上から読んで、進んでいるか（言い直しが無いか）を見る
-            b.steps.forEach((st) => sec.appendChild(el('div', 'kjSub', (++n) + '. ' + st.new + (st.next ? '　→ ' + st.next : ''))));
+            b.steps.forEach((st) => sec.appendChild(el('div', 'kjSub', (++n) + '. ' + (st.link ? '（' + st.link + '）' : '') + (st.role ? '［' + st.role + '］' : '') + st.new + (st.next ? '　→ ' + st.next : ''))));
           } else {
             sec.appendChild(el('div', 'kjSub', '約束：' + b.promise + '／材料：' + (b.mats || []).join('・')));
             sec.appendChild(el('div', 'kjSub', '回収：' + b.kaishuu + (b.bridge ? '　→ ' + b.bridge : '')));
