@@ -3319,7 +3319,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.117';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.118';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -15699,11 +15699,25 @@
   function toruDraftSet(key, text) { try { const d = toruDrafts(); if (text) d[key] = text; else delete d[key]; localStorage.setItem(TORU_DRAFT_KEY, JSON.stringify(d)); } catch (e) {} }
 
   // 口調シート（フリートーク9本の実測から。台本の依頼文に毎回入れる）
+  // v20.118：言い回しは一覧から組み立てる。本人の話し方が変わったら、8. 公開後 で外せる（前は固定で、足すだけだった）
+  const TORU_STYLE_PHRASES = {
+    end: ['なんだよ', 'だよね', 'じゃん', 'なんだけどね', 'と思うんだけど'],
+    pause: ['ね、', 'っていう'],
+    link: ['だから', 'でも', 'やっぱり'],
+    soft: ['なんか', 'ちょっと', '多分'],
+    strong: ['すごい'],
+  };
+  function toruStyleOn(group) {
+    const off = new Set(toruListAll(TORU_STYLE_OFF_KEY).map((r) => r.text));
+    return TORU_STYLE_PHRASES[group].filter((w) => !off.has(w));
+  }
   function toruStyleText() {
+    const q = (a, pre) => a.map((w) => '「' + (pre || '') + w + '」').join('');
+    const end = toruStyleOn('end'), pause = toruStyleOn('pause'), link = toruStyleOn('link'), soft = toruStyleOn('soft'), strong = toruStyleOn('strong');
     return '■ 話し方（本人のフリートーク9本から測った口調。この口調で書く）\n' +
-      '- 語尾：「〜なんだよ」「〜だよね」「〜じゃん」「〜なんだけどね」「〜と思うんだけど」。最初からタメ口寄り。\n' +
-      '- 文の切れ目に「ね、」を置いて間を取る。「〜っていう」で言い換えながら進む。\n' +
-      '- つなぎは「だから」「でも」「やっぱり」。ぼかすときは「なんか」「ちょっと」「多分」。強めるときは「すごい」。\n' +
+      (end.length ? '- 語尾：' + q(end, '〜') + '。最初からタメ口寄り。\n' : '- 最初からタメ口寄り。\n') +
+      (pause.includes('ね、') ? '- 文の切れ目に「ね、」を置いて間を取る。' : '- ') + (pause.includes('っていう') ? '「〜っていう」で言い換えながら進む。' : '') + '\n' +
+      (link.length ? '- つなぎは' + q(link) + '。' : '- ') + (soft.length ? 'ぼかすときは' + q(soft) + '。' : '') + (strong.length ? '強めるときは' + q(strong) + '。' : '') + '\n' +
       '- 本人が使わない言い方：' + TORU_BAD_WORDS.join('・') + '。硬い書き言葉にしない。\n' +
       '- 聞き手に呼びかける（「みんな〜ある？」「どうしてるんだろうって思ったんだよ」）。\n' +
       '- 自分の失敗や弱さを隠さずに言う（「僕は自分に怒りが向くんだよ。良くないことなんだけどね」）。体験メモに無い出来事は作らない。\n' +
@@ -15881,7 +15895,7 @@
     const t = (deck.script && deck.script.text) || '';
     return SHOOT_PROMPT_HEAD +
       'この動画の台本の「粗」を探してください。台本を書き直すのではなく、直すべき所を指摘してください。\n\n' +
-      toruGoalText() + toruViewText(deck) + toruJudgeText(deck) +
+      toruGoalText() + toruViewText(deck) + toruJudgeText(deck) + toruReduceText() +
       '■ 探すもの（kind）\n' +
       '- 飛躍：前の話から次の話へ、理由の無いまま跳んでいる所\n' +
       '- 根拠が弱い：確かめられていないことを、確かな事実のように言っている所\n' +
@@ -16126,7 +16140,7 @@
   function toruScriptPromptText(deck) {
     return SHOOT_PROMPT_HEAD.replace('返事は JSON だけ', '返事は台本だけ') +
       'この構成で、動画の台本を書いてください。話し言葉の全文です。\n\n' +
-      toruStyleText() + toruLearnedText() + toruGoalText() + toruReaderText() + toruJudgeText(deck) + toruViewText(deck) + toruMatsText(deck) + toruTaikenText(deck) + toruBlocksText(deck) + toruTenkaiText() +
+      toruStyleText() + toruReduceText() + toruLearnedText() + toruGoalText() + toruReaderText() + toruJudgeText(deck) + toruViewText(deck) + toruMatsText(deck) + toruTaikenText(deck) + toruBlocksText(deck) + toruTenkaiText() +
       toruResultsText('■ これまでの動画の結果（参考）', deck) +
       '■ 台本の決まり\n' +
       '- ' + TORU_SCRIPT_MIN + '〜' + TORU_SCRIPT_MAX + '字（約20分）。\n' +
@@ -16243,6 +16257,56 @@
   // まま行で比べると、話した文まで「話さなかった」になる
   // （2026-09-23 実測：台本と中身がまったく同じでも、字幕のまま貼ると 話さなかった12文・言い回しが変わった198 と出た）
   const TORU_ADD_KEY = 'toruadd';          // 台本に無かったのに本人が足して話したことの型（台本の依頼文に入る）
+  // v20.118 話し方の「引く」：学びは足すだけで、本人の話し方が変わっても古い癖が残り続けた。
+  // とくに前回話した中身を見本にするので、「らしい」が 1000字あたり 1.6→2.3→2.7→3.8→4.5（チャットの台本）と本ごとに増えた。
+  // 本人「"らしい" が多いと、聞く側に『この人も自信がないのかな』と伝わる」→ 減らしたい言葉を本人が決め、見本からも外す
+  const TORU_WORDS_KEY = 'toruwords';      // 減らしたい言葉 {text, max(1000字あたり), why}
+  const TORU_STYLE_OFF_KEY = 'torustyleoff'; // 口調シートから外した言い回し {text}
+  function toruReduceWords() {   // 同じ言葉が2つ入っても1つに（2台の端末で同時に足したとき）
+    const seen = new Set();
+    return toruListAll(TORU_WORDS_KEY).filter((r) => (seen.has(r.text) ? false : (seen.add(r.text), true)));
+  }
+  function toruWordsEverSet() {   // 一度でも登録したことがあるか（消したものも含む。消したのに最初の1語を入れ直さないため）
+    return [...wdig.docs.values()].some((doc) => Array.isArray(doc[TORU_WORDS_KEY]) && doc[TORU_WORDS_KEY].length);
+  }
+  function toruReduceAdd(text, max, why) {
+    const t = String(text || '').trim().slice(0, 20);
+    if (!t || toruReduceWords().some((r) => r.text === t)) return 0;
+    const at = nowIso();
+    const m = Number(max);
+    const rec = { id: digNewId('tw'), text: t, max: Number.isFinite(m) && m >= 0 ? Math.min(20, m) : 1, why: String(why || '').slice(0, 200), at, createdAt: at, updatedAt: at };
+    digMutate((doc) => { doc[TORU_WORDS_KEY] = (Array.isArray(doc[TORU_WORDS_KEY]) ? doc[TORU_WORDS_KEY] : []).concat([rec]); });
+    return 1;
+  }
+  function toruStyleOff(text) {
+    const at = nowIso();
+    digMutate((doc) => { doc[TORU_STYLE_OFF_KEY] = (Array.isArray(doc[TORU_STYLE_OFF_KEY]) ? doc[TORU_STYLE_OFF_KEY] : []).concat([{ id: digNewId('ts'), text, at, createdAt: at, updatedAt: at }]); });
+  }
+  function toruStyleBack(text) { toruListAll(TORU_STYLE_OFF_KEY).filter((r) => r.text === text).forEach((r) => toruListOff(TORU_STYLE_OFF_KEY, r.id)); }
+  function toruPer1000(text, w) {
+    const body = String(text || '').replace(/^＃[^\n]*$/gm, '').replace(/\s/g, '');
+    if (!body.length) return 0;
+    return ((body.split(w).length - 1) * 1000) / body.length;
+  }
+  function toruReduceText() {
+    const ws = toruReduceWords();
+    if (!ws.length) return '';
+    return '■ 本人が減らしたい言葉（本人が自分の話し方を直している。台本もそれに合わせる）\n' +
+      ws.map((r) => '- 「' + r.text + '」：1000字に' + r.max + '回まで。' + (r.why ? '理由：' + r.why : '')).join('\n') + '\n' +
+      (ws.some((r) => /らしい|みたい|んだって/.test(r.text))
+        ? '- 伝承・噂・研究の紹介は、最初に1回「こういう話が残ってるんだけど」「〜って研究があって」と枠を置いたら、その中は言い切って語る。1文ごとに「らしい」を付けない。\n' +
+          '- 言い換えを散らす：「〜って言われてる」「〜って記録が残ってる」「〜って書かれてる」「〜って話なんだ」。確かめられた事実は言い切る。\n'
+        : '') + '\n';
+  }
+  // 見本の文から、減らしたい言葉を含む文を外す（前回の癖が次の台本に移らないように）
+  function toruSampleFilter(lines) {
+    const ws = toruReduceWords().map((r) => r.text);
+    return ws.length ? lines.filter((l) => !ws.some((w) => l.includes(w))) : lines;
+  }
+  // 話した中身がある動画（古い順）
+  function toruSpokenDecks() {
+    return deckEntries().filter((d) => d.after && d.after.finalText && String(d.after.finalText).length > 500).slice().reverse();
+  }
   const TORU_NEAR = 0.6;                   // 似ぐあいがこれ以上なら「ほぼそのまま話した」
   function toruSentences(raw) {
     const body = String(raw || '').split(/\r\n|\r|\n/)
@@ -16547,6 +16611,78 @@
       sec.appendChild(dd);
     });
   }
+  // v20.118 話し方の「引く」：減らしたい言葉の登録／口調シートの言い回しのうち最近使っていないもの／言葉の増減
+  function toruTalkSection(sec, rerender) {
+    const el = (tag, cls, text) => { const x = document.createElement(tag); if (cls) x.className = cls; if (text != null) x.textContent = text; return x; };
+    const spoken = toruSpokenDecks();
+    const label = (d, i) => (i + 1) + '本目';
+    const trend = (w) => spoken.map((d) => toruPer1000(d.after.finalText, w).toFixed(1)).join(' → ');
+    sec.appendChild(el('div', 'kjGroup', '話し方（減らしたい言葉・口調の言い回し）'));
+    if (spoken.length) sec.appendChild(el('div', 'kjSub', '数は「1000字あたり」。' + spoken.map(label).join(' → ') + '（動画で実際に話した中身から）'));
+    // 減らしたい言葉
+    const ws = toruReduceWords();
+    ws.forEach((r) => {
+      const row = el('div', 'kjMagRow');
+      row.appendChild(el('span', 'kjSub', '減らす「' + r.text + '」目安 ' + r.max + (spoken.length ? '・話した：' + trend(r.text) : '') + (r.why ? '（' + r.why + '）' : '')));
+      const b = el('button', 'linkLikeBtn', '外す'); b.type = 'button';
+      b.addEventListener('click', () => { toruListOff(TORU_WORDS_KEY, r.id); rerender(); });
+      row.appendChild(b); sec.appendChild(row);
+    });
+    const add = el('div', 'kjLine');
+    const wi = el('input'); wi.type = 'text'; wi.placeholder = '減らしたい言葉（例：らしい）'; wi.autocomplete = 'off'; wi.style.width = '9em';
+    const mi = el('input'); mi.type = 'number'; mi.min = '0'; mi.step = '0.5'; mi.value = '1'; mi.style.width = '4em'; mi.title = '1000字に何回まで';
+    const yi = el('input'); yi.type = 'text'; yi.placeholder = '理由（任意）'; yi.autocomplete = 'off';
+    const ab = el('button', 'secondaryBtn', '足す'); ab.type = 'button';
+    const ast = el('span', 'kjSub', '');
+    ab.addEventListener('click', () => {
+      if (!wi.value.trim()) { ast.textContent = '言葉を入れてください'; return; }
+      const n = toruReduceAdd(wi.value, mi.value, yi.value);
+      if (!n) { ast.textContent = 'もう入っています'; return; }
+      rerender();
+    });
+    add.appendChild(wi); add.appendChild(document.createTextNode(' 1000字に ')); add.appendChild(mi); add.appendChild(document.createTextNode(' 回まで '));
+    add.appendChild(yi); add.appendChild(ab); add.appendChild(ast);
+    sec.appendChild(add);
+    sec.appendChild(el('div', 'kjSub', '減らしたい言葉は、台本の依頼文と粗探しに入り、台本の段で数えます。前回話した中身を見本に渡すとき、この言葉を含む文は外します。'));
+    // 口調シートの言い回し
+    const off = new Set(toruListAll(TORU_STYLE_OFF_KEY).map((r) => r.text));
+    const dd = el('details', 'kjPreview');
+    const all = [].concat(...Object.values(TORU_STYLE_PHRASES));
+    const last = spoken[spoken.length - 1], prev = spoken.slice(0, -1);
+    const unused = last ? all.filter((w) => !off.has(w) && toruPer1000(last.after.finalText, w) === 0 && prev.some((d) => toruPer1000(d.after.finalText, w) > 0)) : [];
+    dd.appendChild(el('summary', '', '口調シートの言い回し ' + all.filter((w) => !off.has(w)).length + '（台本の依頼文に入ります）' + (unused.length ? '・最近使っていない ' + unused.length : '')));
+    all.forEach((w) => {
+      const row = el('div', 'kjMagRow');
+      const tag = off.has(w) ? '（外した）' : unused.includes(w) ? '（最近使っていない）' : '';
+      row.appendChild(el('span', 'kjSub' + (off.has(w) ? ' kjDone' : ''), '「' + w + '」' + (spoken.length ? ' ' + trend(w) : '') + tag));
+      const b = el('button', 'linkLikeBtn', off.has(w) ? '戻す' : '外す'); b.type = 'button';
+      b.addEventListener('click', () => { if (off.has(w)) toruStyleBack(w); else toruStyleOff(w); rerender(); });
+      row.appendChild(b); dd.appendChild(row);
+    });
+    if (unused.length) dd.open = true;
+    sec.appendChild(dd);
+    // 学んだ口調の型のうち、「」の中の言い回しを最近の動画で使っていないもの
+    if (last) {
+      const stale = toruRules().filter((r) => { const qs = (r.text.match(/「([^」]{2,12})」/g) || []).map((x) => x.slice(1, -1).replace(/^〜/, '')); return qs.length && qs.every((q) => toruPer1000(last.after.finalText, q) === 0); });
+      if (stale.length) {
+        const sd = el('details', 'kjPreview'); sd.open = true;
+        sd.appendChild(el('summary', '', '学んだ口調のうち、最近の動画で使っていないもの ' + stale.length));
+        stale.forEach((r) => {
+          const row = el('div', 'kjMagRow');
+          row.appendChild(el('span', 'kjSub', r.text));
+          const b = el('button', 'linkLikeBtn', '消す'); b.type = 'button';
+          b.addEventListener('click', () => { toruListOff(TORU_RULES_KEY, r.id); rerender(); });
+          row.appendChild(b); sd.appendChild(row);
+        });
+        sec.appendChild(sd);
+      }
+    }
+  }
+  // 最初の1語：本人が決めた「らしい」（9/25）。一度でも登録があれば（消した後も）入れ直さない
+  function toruSeedWords() {
+    if (!wdig || !wdig.docs || toruWordsEverSet()) return;
+    toruReduceAdd('らしい', 1, '多いと、聞く側に「この人も自信がないのかな」と伝わる');
+  }
   // 台本の依頼文に足す：口調の型・足すことの型と、言い回しの見本
   function toruLearnedText() {
     const rules = toruRules().slice(0, TORU_RULES_MAX);
@@ -16556,11 +16692,11 @@
     // v20.86：言い回しの見本は、本人が実際に動画で話した中身を優先する（アプリで手直しした版より本人の声に近い）
     const spoke = deckEntries().find((d) => d.after && d.after.learn && d.after.finalText);
     if (spoke) {
-      t += '■ 前回、本人が実際に動画で話した中身の一部（言い回しの見本。中身はまねしない）\n' + toruSentences(spoke.after.finalText).join('\n').slice(0, 1200) + '\n\n';
+      t += '■ 前回、本人が実際に動画で話した中身の一部（言い回しの見本。中身はまねしない）\n' + toruSampleFilter(toruSentences(spoke.after.finalText)).join('\n').slice(0, 1200) + '\n\n';
       return t;
     }
     const last = deckEntries().find((d) => d.script && d.script.text && d.script.editedAt);
-    if (last) t += '■ 前回の台本（本人が直したあとの一部。言い回しの見本。中身はまねしない）\n' + last.script.text.slice(0, 1200) + '\n\n';
+    if (last) t += '■ 前回の台本（本人が直したあとの一部。言い回しの見本。中身はまねしない）\n' + toruSampleFilter(last.script.text.split('\n')).join('\n').slice(0, 1200) + '\n\n';
     return t;
   }
   // ---- 取り込み
@@ -16687,7 +16823,7 @@
     const marks = (t.match(/【体験[：:]/g) || []).length;
     // v20.113：段の終わりの同じ形のまとめ直し（「だから、〜なのは〜じゃなくて／っていうより」）
     const recap = (body.match(/だから、[^。]{0,80}?(じゃなくて|じゃない|っていうより)/g) || []).length;
-    return { chars, heads, bad, greet, promise, questions: qs.length, gap, gapAt, hearsay, toc, marks, recap };
+    return { chars, heads, bad, greet, promise, questions: qs.length, gap, gapAt, hearsay, toc, marks, recap, text: t };
   }
   function toruScriptLintText(l, deck) {
     const parts = ['台本 約' + l.chars + '字', 'ブロックの見出し ' + l.heads];
@@ -16701,7 +16837,15 @@
     if (l.greet) notes.push('挨拶かチャンネルの説明から始まっている');
     if (l.toc) notes.push('冒頭が目次の読み上げになっている（「紹介していこう」など）');
     const mins = Math.max(1, l.chars / 380);
-    if (l.chars >= 500 && l.hearsay / mins > 1) notes.push('「らしい」「んだって」が1分に約' + (l.hearsay / mins).toFixed(1) + '回（伝聞が続くと弱く聞こえる）');
+    const rw = toruReduceWords();
+    if (rw.length && l.text) {
+      // v20.118：本人が減らしたい言葉を 1000字あたりで数える（目安を超えたら知らせる）
+      rw.forEach((r) => {
+        const v = toruPer1000(l.text, r.text);
+        const n = l.text.split(r.text).length - 1;
+        if (n) notes.push('「' + r.text + '」' + n + '回・1000字に' + v.toFixed(1) + (v > r.max ? '（目安 ' + r.max + ' を超えています）' : '（目安内）'));
+      });
+    } else if (l.chars >= 500 && l.hearsay / mins > 1) notes.push('「らしい」「んだって」が1分に約' + (l.hearsay / mins).toFixed(1) + '回（伝聞が続くと弱く聞こえる）');
     if (l.marks) notes.push('【体験】の印が' + l.marks + 'か所（自分の話で埋める）');
     // v20.113：「最初の30秒に今日は〜の約束」の知らせは外した（謎そのものから入る冒頭を、決まり文句に戻してしまうため）
     if (l.recap >= 3) notes.push('「だから、〜じゃなくて〜」のまとめ直しが' + l.recap + '回（同じことを言い直しているように聞こえる）');
@@ -16786,6 +16930,7 @@
   function renderToruSteps(deck) {
     const box = document.getElementById('shootV3');
     if (!box) return;
+    try { toruSeedWords(); } catch (e) { /* 月ファイルがまだなら次に描くとき */ }
     if (box.contains(document.activeElement) && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) return;
     box.innerHTML = '';
     const el = (tag, cls, text) => { const x = document.createElement(tag); if (cls) x.className = cls; if (text != null) x.textContent = text; return x; };
@@ -17153,6 +17298,7 @@
       // 次の台本を作りたい台本に近づける（②アプリで手直しした版は経由しない）
       if (deck.script && deck.script.orig) toruLearnSection(sec, deck, rerender);
       toruLearnedList(sec, rerender);
+      toruTalkSection(sec, rerender);
       box.appendChild(sec);
     }
   }
