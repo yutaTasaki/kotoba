@@ -1154,6 +1154,7 @@
   .kjGroup { font-size: 12px; color: var(--text-faint); margin: 10px 0 4px; }
   .kjPick { display: block; width: 100%; text-align: left; background: none; color: var(--text); font: inherit; border: 1px solid var(--text-faint); border-radius: 8px; padding: 6px 9px; margin: 0 0 5px; cursor: pointer; }
   .kjPick.on { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+  .kjDone { opacity: 0.45; }
   .kjPickMain { font-size: 14px; line-height: 1.5; }
   .kjAgain { font-size: 12px; margin-top: 6px; }
   .kjCopyRow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 6px 0; }
@@ -3318,7 +3319,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.116';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.117';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -3483,6 +3484,10 @@
       // v20.115：公開資料の手がかりと、探す言葉
       out.leads = (j.leads && typeof j.leads === 'object' && Array.isArray(j.leads.items)) ? j.leads : null;
       out.leadKw = (j.leadKw && typeof j.leadKw === 'object') ? { ja: String(j.leadKw.ja || '').slice(0, 300), en: String(j.leadKw.en || '').slice(0, 300) } : null;
+      // v20.117：視点（チャットが出した案と、選んだもの・自分で直した文）と、台本の粗探し
+      out.views = (j.views && typeof j.views === 'object' && Array.isArray(j.views.items)) ? j.views : null;
+      out.viewEdit = typeof j.viewEdit === 'string' ? j.viewEdit.slice(0, 1000) : '';
+      out.check = (j.check && typeof j.check === 'object' && Array.isArray(j.check.issues)) ? j.check : null;
       // v20.86：orig（チャットが最初に書いた版）と editedAt も残す。v20.83 で足したのにここで捨てていたため、
       // 開き直すたびに比べる相手が消え、台本の学び（v20.85）が一度も動けなかった
       out.script = (j.script && typeof j.script === 'object' && typeof j.script.text === 'string')
@@ -15685,6 +15690,7 @@
   // 仕様 docs/toru/toru_v3_shiyou.md（非公開）。口調シート docs/toru/kuchou.md
   const TORU_SURE = { fact: '確かめられる', report: '報じられている', legend: 'そう語られてきた', mine: '自分の実感' };
   const TORU_MAT_KINDS = ['研究', '歴史', '伝承', 'オカルト', '噂', '自分'];
+  const TORU_MAT_ROLE = { support: '視点を支える', counter: '視点に反する', far: '遠い分野の同じ形' };   // v20.117
   const TORU_SCRIPT_MIN = 6500;
   const TORU_SCRIPT_MAX = 7500;
   const TORU_BAD_WORDS = ['皆さん', 'みなさん', 'なのです', 'ですよね', '要は', 'ではないでしょうか', '私たち'];
@@ -15779,6 +15785,138 @@
       '回収：' + (j.kaishuu || '') + '\n' +
       '視聴者が知っていること：' + ((j.gap && j.gap.known) || '') + '\n' +
       '知らないこと：' + ((j.gap && j.gap.unknown) || '') + '\n\n';
+  }
+  // ---- v20.117 視点（案A・D）と粗探し（案C） ----------
+  // AI に材料を集めて「うまくまとめて」もらうと、真ん中の結論（一般論）に寄る。面白い動画は、視点が先にあり、
+  // 材料はその視点を確かめたり揺さぶったりするために集める。そこで材料の前に「視点を8つ出す → 本人が選ぶ」段を置く。
+  // 物差しは面白さではなく、チャンネルの目的（再生回数と登録者）：クリックされ、最後まで見られ、次も見たくなるか。
+  const TORU_VIEW_TYPES = [
+    ['読み替え', 'いつものことを、ふつう置かれている棚とは別の棚へ移す'],
+    ['離れたものをつなぐ', '関係なさそうな2つの事柄に、同じ形や一致を見つけて並べる'],
+    ['違和感から広げる', '本人の小さな違和感や本人の言葉を起点に、大きな仮説まで広げる'],
+    ['前提を1つ外す', '一般論と結論は同じでも、その下にある前提を1つ外して別の道筋でたどり着く'],
+  ];
+  const TORU_CHECK_KINDS = ['飛躍', '根拠が弱い', '言い直し', '離脱しそう', '約束とずれ', '解釈の札'];
+  function toruGoalText() {
+    return '■ この動画の目的（いちばん大事）\n' +
+      '- チャンネルの再生回数と登録者を増やすこと。題名とサムネでクリックされ、最後まで見られ、見終わって「この人の次の動画も見たい」と思われることが物差し。\n' +
+      '- 理屈が正しいだけでは足りない。見る人が続きを知りたくなるかで判断する。\n\n';
+  }
+  // 案D：一万日アプリに集めた言葉と、本人の解釈。題材に近いものだけを渡す（この人しか持っていない材料）
+  function toruViewNotes(deck) {
+    const j = deck.judge || {};
+    const seed = [deck.tane, j.genshou, j.joushiki, j.kaishuu].concat((j.zure || []).map((z) => z.text)).filter(Boolean).join(' ');
+    const sg = textBigrams(seed);
+    if (!sg.size || !Array.isArray(data.notes)) return [];
+    return data.notes.map((n) => {
+      const g = textBigrams((n.text || '') + ' ' + (n.myWords || ''));
+      let hit = 0; sg.forEach((x) => { if (g.has(x)) hit++; });
+      return { n, sc: hit + (n.myWords ? 1 : 0) };
+    }).filter((x) => x.sc >= 4).sort((a, b) => b.sc - a.sc).slice(0, 10).map((x) => x.n);
+  }
+  function toruViewNotesText(deck) {
+    const ns = toruViewNotes(deck);
+    if (!ns.length) return '';
+    return '■ 本人が集めた言葉と、本人の解釈（一万日アプリから、題材に近いもの。ほかの誰も持っていない材料。視点の起点に使ってよい）\n' +
+      ns.map((n, i) => (i + 1) + '. 「' + String(n.text || '').slice(0, 160) + '」' + (n.source ? '（' + String(n.source).slice(0, 40) + '）' : '') +
+        (n.myWords ? '\n   本人の解釈：' + String(n.myWords).slice(0, 200) : '')).join('\n') + '\n\n';
+  }
+  function toruViewPromptText(deck) {
+    return SHOOT_PROMPT_HEAD +
+      'YouTube の一人語りの動画（台本あり・約20分）の「視点」を探してください。まだ台本も材料も要りません。視点の候補だけを出してください。\n今日は ' + todayStr() + ' です。\n\n' +
+      toruGoalText() + toruReaderText() + toruJudgeText(deck) + toruTaikenText(deck) + toruViewNotesText(deck) +
+      toruResultsText('■ これまでの動画の結果（参考）', deck) +
+      '■ 視点の出し方\n' +
+      '次の4つの型で、視点を2つずつ、合わせて8つ出す。\n' +
+      TORU_VIEW_TYPES.map((t) => '- ' + t[0] + '：' + t[1]).join('\n') + '\n' +
+      '1つの視点につき、次を書く。\n' +
+      '- claim：その視点の主張（1文）\n' +
+      '- general：世間の一般論（上の「世間の常識」）と比べて何が違うのか（1文）\n' +
+      '- evidence：支えになりそうな、確かめられる事実の見込み（無ければ「確かめが要る」と書く。作らない）\n' +
+      '- breaks：この視点が崩れる条件（何が出てきたら言えなくなるか。1文）\n' +
+      '- viewer：見た人にとって何が変わるか（1文）\n' +
+      '- title：この視点で作るときの題名案（26字以内。煽らない）\n' +
+      '- hook：なぜクリックされ、最後まで見られるか（1文。目的に照らして正直に。弱ければ弱いと書く）\n' +
+      '- notes：起点にした本人の言葉があれば、その言葉を短く（無ければ空の配列）\n' +
+      '- search：この視点を確かめる・揺さぶる資料を探す言葉。ja（日本語）と en（英語）を2〜4個ずつ。短い言葉にする\n' +
+      '当たり障りのない、どこかで聞いたまとめにしない。遠すぎて根拠の無いこじつけにもしない。\n\n' +
+      '■ 出力形式（JSON のみ）\n' +
+      '{"views":[{"type":"読み替え","claim":"1文","general":"1文","evidence":"1文","breaks":"1文","viewer":"1文","title":"26字以内","hook":"1文","notes":["言葉"],"search":{"ja":["言葉"],"en":["words"]}}]}';
+  }
+  function toruViewPicked(deck) {
+    const v = deck.views;
+    return v && v.pick >= 0 && v.items[v.pick] ? v.items[v.pick] : null;
+  }
+  function toruViewChosen(deck) { return !!(toruViewPicked(deck) || (deck.viewEdit || '').trim()); }
+  function toruViewText(deck) {
+    const v = toruViewPicked(deck);
+    const own = (deck.viewEdit || '').trim();
+    if (!v && !own) return '';
+    return '■ この動画の視点（本人が選んだもの。構成・台本はこの視点で貫く）\n' +
+      (own ? '本人の言葉：' + own + '\n' : '') +
+      (v ? '型：' + v.type + '\n主張：' + v.claim + '\n一般論との違い：' + v.general + '\n崩れる条件：' + v.breaks + '\n見た人に変わること：' + v.viewer + '\n' : '') + '\n';
+  }
+  function toruImportViews(deck, raw) {
+    const lj = worldLooseJsonPick(raw, ['views']);
+    const p = lj.value;
+    const s = (v, n) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
+    let list = p && (Array.isArray(p) ? p : Array.isArray(p.views) ? p.views : null);
+    if (!list) list = worldLooseObjects(raw).filter((o) => s(o.claim, 300));
+    const arr = (v, n, k) => (Array.isArray(v) ? v : []).map((x) => s(x, n)).filter(Boolean).slice(0, k);
+    const items = (list || []).filter((x) => x && typeof x === 'object' && s(x.claim, 300)).map((x) => ({
+      type: s(x.type, 20), claim: s(x.claim, 300), general: s(x.general, 300), evidence: s(x.evidence, 300),
+      breaks: s(x.breaks, 300), viewer: s(x.viewer, 300), title: s(x.title, 60), hook: s(x.hook, 300),
+      notes: arr(x.notes, 120, 4), search: { ja: arr(x.search && x.search.ja, 40, 5), en: arr(x.search && x.search.en, 60, 5) },
+    })).slice(0, 12);
+    if (!items.length) return { error: '視点が見つかりませんでした' + worldJsonKeysNote(p) + '。返事が途中で切れていないか見てください。' };
+    const old = toruViewPicked(deck);
+    deck.views = { at: nowIso(), items, pick: old ? items.findIndex((v) => v.claim === old.claim) : -1 };
+    shootTouch(deck);
+    const types = {};
+    items.forEach((v) => { types[v.type || '?'] = (types[v.type || '?'] || 0) + 1; });
+    return { text: '取り込みました：視点 ' + items.length + '（' + Object.entries(types).map(([k, n]) => k + n).join('・') + '）。1つ選んでください。' };
+  }
+  // 案C：台本の粗探し。本人が読む前に、飛躍・根拠の弱い所・言い直し・離脱しそうな所を指摘してもらう
+  function toruCheckPromptText(deck) {
+    const t = (deck.script && deck.script.text) || '';
+    return SHOOT_PROMPT_HEAD +
+      'この動画の台本の「粗」を探してください。台本を書き直すのではなく、直すべき所を指摘してください。\n\n' +
+      toruGoalText() + toruViewText(deck) + toruJudgeText(deck) +
+      '■ 探すもの（kind）\n' +
+      '- 飛躍：前の話から次の話へ、理由の無いまま跳んでいる所\n' +
+      '- 根拠が弱い：確かめられていないことを、確かな事実のように言っている所\n' +
+      '- 言い直し：前に言ったことを別の言い方で繰り返しているだけの所（話が進んでいない）\n' +
+      '- 離脱しそう：見る人がここで飽きて離れそうな所（説明が長い・次を知りたくなる理由が無い・同じ調子が続く）\n' +
+      '- 約束とずれ：冒頭で見せた謎や視点から外れている所\n' +
+      '- 解釈の札：本人の推測なのに事実に聞こえる所。「ここは僕の解釈なんだけど」と言えば残せる所\n' +
+      '見つかった所だけを、台本の順に書く。無理に数を増やさない。良い所もあれば good に書く（削らないため）。\n' +
+      '- quote：台本の該当する文を、そのまま抜き出す（40字以内。言い換えない）\n' +
+      '- why：なぜ直すべきか（1文）\n' +
+      '- fix：どう直すか（1文。書き直しの全文は要らない）\n' +
+      '- first30：冒頭30秒で、見続ける理由が出ているか（1〜2文）\n\n' +
+      toruBlocksText(deck) +
+      '■ 台本\n' + t + '\n\n' +
+      '■ 出力形式（JSON のみ）\n' +
+      '{"first30":"1〜2文","issues":[{"kind":"飛躍","quote":"台本の文","why":"1文","fix":"1文"}],"good":["1文"]}';
+  }
+  function toruNormQ(x) { return String(x || '').replace(/[\s、。，．,.!！?？「」『』…ー〜~]/g, ''); }
+  function toruImportCheck(deck, raw) {
+    const lj = worldLooseJsonPick(raw, ['issues', 'first30']);
+    const p = lj.value;
+    const s = (v, n) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
+    let list = p && (Array.isArray(p) ? p : Array.isArray(p.issues) ? p.issues : null);
+    if (!list) list = worldLooseObjects(raw).filter((o) => s(o.quote, 200) || s(o.why, 300));
+    const body = toruNormQ((deck.script && deck.script.text) || '');
+    const issues = (list || []).filter((x) => x && typeof x === 'object' && (s(x.quote, 200) || s(x.why, 300))).map((x) => {
+      const q = s(x.quote, 120);
+      return { kind: s(x.kind, 20), quote: q, why: s(x.why, 300), fix: s(x.fix, 300), found: !!(q && body.includes(toruNormQ(q))), done: false };
+    }).slice(0, 40);
+    const first30 = s(p && p.first30, 400);
+    if (!issues.length && !first30) return { error: '指摘が見つかりませんでした' + worldJsonKeysNote(p) + '。返事が途中で切れていないか見てください。' };
+    deck.check = { at: nowIso(), issues, first30, good: (p && Array.isArray(p.good) ? p.good : []).map((x) => s(x, 300)).filter(Boolean).slice(0, 10) };
+    shootTouch(deck);
+    const notFound = issues.filter((x) => x.quote && !x.found).length;
+    return { text: '取り込みました：指摘 ' + issues.length + (notFound ? '（台本の中に見つからない引用 ' + notFound + '件：言い換えられているかも）' : '') };
   }
   // v20.115：公開資料の手がかり。研究だけでなく、古い記録・事典・噂の真偽・神話の問答まで、いろんな角度から集める。
   // Reddit・Bluesky は登録が要り、GDELT・Semantic Scholar・J-STAGE はブラウザから呼べないので入れていない
@@ -15915,7 +16053,11 @@
   function toruMatsPromptText(deck) {
     return SHOOT_PROMPT_HEAD +
       'この題材の動画の材料を集めてください。web 検索を使ってかまいません。\n今日は ' + todayStr() + ' です。\n\n' +
-      toruReaderText() + toruJudgeText(deck) + toruLeadsText(deck) +
+      toruReaderText() + toruJudgeText(deck) + toruViewText(deck) + toruLeadsText(deck) +
+      (toruViewChosen(deck)
+        ? '■ 視点に向けて集める（題材について一般に言われていることを広く集めない。一般論の材料は結論を一般論に寄せる）\n' +
+          '- role：support＝この視点を確かめる材料／counter＝この視点に反する・弱める材料（1〜2個は探す。見つかれば「実はこういう見方もある」として話を強くする）／far＝遠い分野（別の時代・国・学問）で同じ形が起きている例（1〜2個）。\n\n'
+        : '') +
       '■ 集めるもの\n' +
       '- 6〜10個。kind は ' + TORU_MAT_KINDS.join('／') + ' のどれか。研究・歴史・伝承・オカルト・噂を混ぜる（この動画はそれらをつないで体験の見え方を変えるため）。\n' +
       '- 英語など日本語以外の資料もどんどん使ってよい（fact は日本語で書く）。\n' +
@@ -15927,12 +16069,12 @@
       '- 伝承・オカルトは、なぜそう語られてきたのかが分かる材料を選ぶ。\n' +
       '- 作り話をしない。見つからなければ少なくてよい。\n\n' +
       '■ 出力形式（JSON のみ）\n' +
-      '{"mats":[{"kind":"研究","fact":"1文","detail":"数字や方法","source":"媒体・著者・年","url":"https://...","sure":"fact","why":"1文"}]}';
+      '{"mats":[{"kind":"研究","fact":"1文","detail":"数字や方法","source":"媒体・著者・年","url":"https://...","sure":"fact","why":"1文"' + (toruViewChosen(deck) ? ',"role":"support"' : '') + '}]}';
   }
   function toruMatsText(deck) {
     const m = deck.mats || [];
     if (!m.length) return '';
-    return '■ 材料\n' + m.map((x, i) => (i + 1) + '. [' + x.kind + '／' + (TORU_SURE[x.sure] || x.sure) + '] ' + x.fact +
+    return '■ 材料\n' + m.map((x, i) => (i + 1) + '. [' + x.kind + '／' + (TORU_SURE[x.sure] || x.sure) + (x.role && TORU_MAT_ROLE[x.role] ? '／' + TORU_MAT_ROLE[x.role] : '') + '] ' + x.fact +
       (x.detail ? '\n   くわしく：' + x.detail : '') + (x.source ? '\n   出どころ：' + x.source : '') + (x.why ? '\n   効くところ：' + x.why : '')).join('\n') + '\n\n';
   }
   // v20.113：v20.112 の「台本の作り」10か条をやめた。決まりが多すぎて、チャットが面白さより決まりを満たすことを
@@ -15959,7 +16101,8 @@
   function toruBlocksPromptText(deck) {
     return SHOOT_PROMPT_HEAD +
       'この題材と材料で、20分の動画の構成を作ってください。台本はまだ書きません。\n\n' +
-      toruReaderText() + toruJudgeText(deck) + toruMatsText(deck) + toruTaikenText(deck) + toruTenkaiText() +
+      toruGoalText() + toruReaderText() + toruJudgeText(deck) + toruViewText(deck) + toruMatsText(deck) + toruTaikenText(deck) + toruTenkaiText() +
+      ((deck.mats || []).some((m) => m.role === 'counter') ? '■ 視点に反する材料の使い方\n- 捨てずに、話をひっくり返す所か「実はこういう見方もある」の所で使う。反論を越えた視点のほうが強く聞こえる。\n\n' : '') +
       '■ 構成の作り方\n' +
       '- big_q：この動画で追いかける謎（1文）。\n' +
       '- 段を10〜15個並べ、3〜5つの章に分ける。章には name（15字以内。視聴者が今どこの話か分かる言葉）。\n' +
@@ -15983,7 +16126,7 @@
   function toruScriptPromptText(deck) {
     return SHOOT_PROMPT_HEAD.replace('返事は JSON だけ', '返事は台本だけ') +
       'この構成で、動画の台本を書いてください。話し言葉の全文です。\n\n' +
-      toruStyleText() + toruLearnedText() + toruReaderText() + toruJudgeText(deck) + toruMatsText(deck) + toruTaikenText(deck) + toruBlocksText(deck) + toruTenkaiText() +
+      toruStyleText() + toruLearnedText() + toruGoalText() + toruReaderText() + toruJudgeText(deck) + toruViewText(deck) + toruMatsText(deck) + toruTaikenText(deck) + toruBlocksText(deck) + toruTenkaiText() +
       toruResultsText('■ これまでの動画の結果（参考）', deck) +
       '■ 台本の決まり\n' +
       '- ' + TORU_SCRIPT_MIN + '〜' + TORU_SCRIPT_MAX + '字（約20分）。\n' +
@@ -15997,7 +16140,8 @@
     const s = (deck.script && deck.script.text) || '';
     return SHOOT_PROMPT_HEAD +
       'この動画のサムネイルとタイトルの案を作ってください。\n\n' +
-      toruReaderText() + toruJudgeText(deck) +
+      toruGoalText() + toruReaderText() + toruJudgeText(deck) + toruViewText(deck) +
+      (toruViewPicked(deck) && toruViewPicked(deck).title ? '（視点を選んだときの題名案：' + toruViewPicked(deck).title + '。これも候補に入れて比べる）\n\n' : '') +
       toruResultsText('■ これまでの動画の題名と結果（題名で約束したことと冒頭がずれると、冒頭で離れる）', deck) +
       '■ 頼むこと\n' +
       '- thumbs：サムネ案3〜5。text（サムネの文字・15字以内）、picture（絵の中身1〜2文）、prompt（画像生成AIへのプロンプト。絵の中の文字は入れない）、why（なぜ目を引くか1文）。\n' +
@@ -16275,7 +16419,7 @@
   function toruLearnedSummaryText() {
     const a = toruRules().length, b = toruAddRules().length, c = toruAvoidRules().length;
     return (a || b || c)
-      ? 'この台本の依頼文に入る学び：口調 ' + a + '・足すこと ' + b + '（避けること ' + c + ' は題材判定に入ります）。中身は 6. 公開後 で見られます。'
+      ? 'この台本の依頼文に入る学び：口調 ' + a + '・足すこと ' + b + '（避けること ' + c + ' は題材判定に入ります）。中身は 8. 公開後 で見られます。'
       : '';
   }
   // 6. 公開後：台本の学び（① 貼る → ② 比べた結果 → ③ 学ぶ）
@@ -16459,6 +16603,7 @@
         id: 'mt' + (i + 1), kind: TORU_MAT_KINDS.includes(s(x.kind, 20)) ? s(x.kind, 20) : s(x.kind, 20) || '研究',
         fact: s(x.fact, 300), detail: s(x.detail, 600), source: s(x.source, 200), url: u,
         sure: TORU_SURE[s(x.sure, 20)] ? s(x.sure, 20) : 'report', why: s(x.why, 300),
+        role: TORU_MAT_ROLE[s(x.role, 20)] ? s(x.role, 20) : '',
       };
     }).slice(0, 20);
     let salvagedM = 0;
@@ -16482,6 +16627,7 @@
     const notes = [];
     if (mats.length < 6) notes.push('6つに足りない');
     if (!mats.some((m) => m.sure === 'legend')) notes.push('「そう語られてきた」話が無い');
+    if (toruViewChosen(deck) && !mats.some((m) => m.role === 'counter')) notes.push('視点に反する材料が無い');
     if (badUrl) notes.push('url の形が正しくない ' + badUrl + '件（空にしました）');
     if (salvagedM) notes.push('返事の JSON が途中で壊れていたので、読めたところだけ拾いました');
     return { text: '取り込みました：材料 ' + mats.length + '（' + Object.entries(kinds).map(([k, n]) => k + n).join('・') + '）' + (notes.length ? '（' + notes.join('・') + '）' : '') };
@@ -16701,12 +16847,53 @@
         ta.addEventListener('input', () => { deck.tane = ta.value.slice(0, 600); shootScheduleSave(); });
         sec.appendChild(ta);
       });
-    // 2 材料
-    step('mats', '2. 材料', !!(deck.judge && deck.judge.ok), !!(deck.mats && deck.mats.length), () => toruMatsPromptText(deck), (raw) => toruImportMats(deck, raw),
+    // 2 視点（v20.117 案A・D）：チャットが4つの型で8つ出し、本人が1つ選ぶ（自分の言葉で直してもよい）
+    step('view', '2. 視点を選ぶ', !!(deck.judge && deck.judge.ok), !!(deck.views && deck.views.items.length), () => toruViewPromptText(deck), (raw) => toruImportViews(deck, raw),
+      '{"views":[...]} をここに貼る',
+      (sec) => {
+        const v = deck.views;
+        sec.appendChild(el('div', 'kjGroup', '視点を1つ選ぶ（選ぶと、材料・構成・台本・サムネの依頼文に入ります）'));
+        v.items.forEach((x, i) => {
+          const r = el('button', 'kjPick' + (v.pick === i ? ' on' : '')); r.type = 'button';
+          r.appendChild(el('div', 'kjSub', '［' + (x.type || '型なし') + '］' + (x.title ? '題名案「' + x.title + '」' : '')));
+          r.appendChild(el('div', 'kjPickMain', x.claim));
+          if (x.general) r.appendChild(el('div', 'kjSub', '一般論との違い：' + x.general));
+          if (x.hook) r.appendChild(el('div', 'kjSub', '見られる理由：' + x.hook));
+          if (x.evidence) r.appendChild(el('div', 'kjSub', '支え：' + x.evidence));
+          if (x.breaks) r.appendChild(el('div', 'kjSub', '崩れる条件：' + x.breaks));
+          if (x.viewer) r.appendChild(el('div', 'kjSub', '見た人に変わること：' + x.viewer));
+          if ((x.notes || []).length) r.appendChild(el('div', 'kjSub', '起点にした本人の言葉：' + x.notes.join('／')));
+          r.addEventListener('click', () => {
+            v.pick = v.pick === i ? -1 : i;
+            // 案B：手がかりを探す言葉も、選んだ視点に向ける（あとで手で直せる）
+            if (v.pick === i && ((x.search.ja || []).length || (x.search.en || []).length)) deck.leadKw = { ja: x.search.ja.join('、'), en: x.search.en.join(', ') };
+            shootTouch(deck); rerender();
+          });
+          sec.appendChild(r);
+        });
+        sec.appendChild(el('div', 'kjGroup', '自分の言葉で直す・足す（任意。書くと、選んだ視点より先に依頼文に入ります）'));
+        const ta = el('textarea'); ta.rows = 2; ta.autocomplete = 'off';
+        ta.placeholder = '例：嫌なことが続くのは、運ではなく「数え方」のせいだと思う';
+        ta.value = deck.viewEdit || '';
+        ta.addEventListener('input', () => { deck.viewEdit = ta.value.slice(0, 1000); shootScheduleSave(); });
+        ta.addEventListener('blur', () => { shootFlush(); rerender(); });
+        sec.appendChild(ta);
+        if (!toruViewChosen(deck)) sec.appendChild(el('div', 'chNoFit', 'まだ選んでいません。1つ押すか、自分の言葉で書くと 3. 材料 に進めます。'));
+        else if ((deck.mats || []).length && deck.mats.every((m) => !m.role)) sec.appendChild(el('div', 'kjSub', '材料は視点を選ぶ前に集めたものです。視点に向けて集め直すなら、3. 材料 の「貼り直す」から。'));
+      },
+      (sec) => {
+        const ns = toruViewNotes(deck);
+        const det = el('details', 'kjDetails');
+        det.appendChild(el('summary', 'kjSub', ns.length ? '依頼文に入る、一万日アプリの言葉と解釈 ' + ns.length + '件（題材に近いもの）' : '一万日アプリの言葉：題材に近いものは見つかりませんでした'));
+        ns.forEach((n) => det.appendChild(el('div', 'kjSub', '「' + String(n.text || '').slice(0, 80) + '」' + (n.myWords ? '　解釈：' + String(n.myWords).slice(0, 60) : ''))));
+        sec.appendChild(det);
+      });
+    // 3 材料
+    step('mats', '3. 材料', !!(deck.judge && deck.judge.ok) && (toruViewChosen(deck) || !!(deck.mats && deck.mats.length)), !!(deck.mats && deck.mats.length), () => toruMatsPromptText(deck), (raw) => toruImportMats(deck, raw),
       '{"mats":[...]} をここに貼る',
       (sec) => {
         (deck.mats || []).forEach((m, i) => {
-          const d = el('div', 'kjLine', (i + 1) + '. ［' + m.kind + '・' + (TORU_SURE[m.sure] || m.sure) + '］' + m.fact);
+          const d = el('div', 'kjLine', (i + 1) + '. ［' + m.kind + '・' + (TORU_SURE[m.sure] || m.sure) + (m.role && TORU_MAT_ROLE[m.role] ? '・' + TORU_MAT_ROLE[m.role] : '') + '］' + m.fact);
           sec.appendChild(d);
           if (m.source || m.url) {
             const s = el('div', 'kjSub', m.source ? m.source + ' ' : '');
@@ -16762,8 +16949,8 @@
           sec.appendChild(det);
         }
       });
-    // 3 構成
-    step('blocks', '3. 構成', !!(deck.mats && deck.mats.length), !!(deck.blocks && deck.blocks.length), () => toruBlocksPromptText(deck), (raw) => toruImportBlocks(deck, raw),
+    // 4 構成
+    step('blocks', '4. 構成', !!(deck.mats && deck.mats.length), !!(deck.blocks && deck.blocks.length), () => toruBlocksPromptText(deck), (raw) => toruImportBlocks(deck, raw),
       '{"big_q":"...","opening":"...","blocks":[...]} をここに貼る',
       (sec) => {
         if (deck.bigQ) sec.appendChild(el('div', 'kjLine', '追いかける謎：' + deck.bigQ));
@@ -16792,8 +16979,8 @@
         sec.appendChild(ta);
         sec.appendChild(el('div', 'kjSub', '任意。使うと話が進む所にだけ使われます（無理には入れません）。書いていない体験は作りません。'));
       });
-    // 4 台本
-    step('script', '4. 台本', !!(deck.blocks && deck.blocks.length), !!(deck.script && deck.script.text), () => toruScriptPromptText(deck), (raw) => toruImportScript(deck, raw),
+    // 5 台本
+    step('script', '5. 台本', !!(deck.blocks && deck.blocks.length), !!(deck.script && deck.script.text), () => toruScriptPromptText(deck), (raw) => toruImportScript(deck, raw),
       '返ってきた台本をそのまま貼る',
       (sec) => {
         // v20.83：台本は手で直せる。打つたびに端末へ保存し、字数と使わない言い方をその場で数える
@@ -16870,8 +17057,31 @@
           sec.appendChild(back); sec.appendChild(st);
         }
       });
-    // 5 サムネ・タイトル
-    step('pack', '5. サムネ・タイトル', !!(deck.script && deck.script.text), !!(deck.pack && deck.pack.at), () => toruPackPromptText(deck), (raw) => toruImportPack(deck, raw),
+    // 6 粗探し（v20.117 案C）：本人が読む前に、飛躍・根拠の弱い所・言い直し・離脱しそうな所を指摘してもらう
+    step('check', '6. 粗探し', !!(deck.script && deck.script.text), !!(deck.check && deck.check.at), () => toruCheckPromptText(deck), (raw) => toruImportCheck(deck, raw),
+      '{"first30":"...","issues":[...]} をここに貼る',
+      (sec) => {
+        const c = deck.check;
+        if (c.first30) sec.appendChild(el('div', 'kjLine', '冒頭30秒：' + c.first30));
+        const left = c.issues.filter((x) => !x.done).length;
+        sec.appendChild(el('div', 'kjSub', '指摘 ' + c.issues.length + '件・残り ' + left + '件（直したら「直した」を押す。台本は 5. 台本 で直す）'));
+        c.issues.forEach((x) => {
+          const row = el('div', 'kjLine' + (x.done ? ' kjDone' : ''));
+          row.appendChild(el('div', 'kjSub', '［' + (x.kind || '指摘') + '］' + (x.quote ? '「' + x.quote + '」' + (x.found ? '' : '（台本に見つからない）') : '')));
+          row.appendChild(el('div', '', x.why + (x.fix ? '　→ ' + x.fix : '')));
+          const b = el('button', 'linkLikeBtn', x.done ? '直した（戻す）' : '直した'); b.type = 'button';
+          b.addEventListener('click', () => { x.done = !x.done; shootTouch(deck); rerender(); });
+          row.appendChild(b);
+          sec.appendChild(row);
+        });
+        if ((c.good || []).length) {
+          sec.appendChild(el('div', 'kjGroup', '残したほうがいい所'));
+          c.good.forEach((g) => sec.appendChild(el('div', 'kjSub', '・' + g)));
+        }
+        if (deck.script && deck.script.editedAt && deck.script.editedAt > c.at) sec.appendChild(el('div', 'kjSub', '台本を直したあとです。もう一度見てもらうなら「貼り直す」から依頼文をコピーします。'));
+      });
+    // 7 サムネ・タイトル
+    step('pack', '7. サムネ・タイトル', !!(deck.script && deck.script.text), !!(deck.pack && deck.pack.at), () => toruPackPromptText(deck), (raw) => toruImportPack(deck, raw),
       '{"thumbs":[...],"titles":[...]} をここに貼る',
       (sec) => {
         const p = deck.pack;
@@ -16921,7 +17131,7 @@
     // 6 公開後
     {
       const sec = el('div', 'kjStep' + (deck.after && deck.after.at ? ' done' : ''));
-      sec.appendChild(el('div', 'kjStepHead', '6. 公開後' + (deck.after && deck.after.at ? '（済）' : '')));
+      sec.appendChild(el('div', 'kjStepHead', '8. 公開後' + (deck.after && deck.after.at ? '（済）' : '')));
       sec.appendChild(el('div', 'kjSub', 'YouTube Studio → この動画のアナリティクス。公開から7日後くらいの数字を入れる。次の題材の判定・タイトル・台本の依頼文に渡します。'));
       deck.after = deck.after || { url: '', ctr: '', avgView: '', drop: '', note: '', at: '', finalText: '', finalAt: '' };
       const f = (key, label, ph) => {
