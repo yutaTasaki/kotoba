@@ -3332,7 +3332,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.121';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.122';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -16823,13 +16823,19 @@
       const tc = window.google.accounts.oauth2.initTokenClient({
         client_id: cid, scope: YT_SCOPE,
         callback: (r) => {
-          if (!r || r.error || !r.access_token) { rej(new Error('Google の許可が取れませんでした（' + ((r && (r.error_description || r.error)) || '取り消し') + '）')); return; }
+          if (!r || r.error || !r.access_token) {
+            const code = (r && r.error) || '';
+            rej(new Error(code === 'access_denied' ? 'Google で許可されませんでした。選んだアカウントが、Google Cloud の「テストユーザー」に入っているか確かめてください（入っていないと使えません）。'
+              : 'Google の許可が取れませんでした（' + ((r && (r.error_description || r.error)) || '取り消し') + '）'));
+            return;
+          }
           toruYtTok = { tok: r.access_token, exp: Date.now() + (Number(r.expires_in) || 3000) * 1000 };
           res(r.access_token);
         },
         error_callback: (e) => rej(new Error('Google の画面が閉じられました（' + ((e && e.type) || '') + '）')),
       });
-      tc.requestAccessToken({ prompt: '' });
+      // v20.122：毎回アカウントを選ぶ画面を出す（前はブラウザで開いていた別のアカウントが黙って使われ、チャンネルの持ち主でないため失敗した）
+      tc.requestAccessToken({ prompt: 'select_account' });
     });
   }
   async function toruYtReport(tok, params) {
@@ -16839,7 +16845,10 @@
     if (!r.ok) {
       if (r.status === 401) toruYtTok = null;
       const msg = (j.error && j.error.message) || ('HTTP ' + r.status);
-      throw new Error(r.status === 403 ? 'YouTube Analytics API が使えません（Google Cloud で有効にしたか、このチャンネルの持ち主のアカウントでログインしたかを確かめてください）：' + msg.slice(0, 80) : msg.slice(0, 120));
+      throw new Error(r.status === 403
+        ? (/not been used|disabled/i.test(msg) ? 'YouTube Analytics API が有効になっていません（Google Cloud → API とサービス → ライブラリ で「YouTube Analytics API」を有効に）。'
+          : 'この動画の数字を見る権利がありません。選んだアカウントがこのチャンネルの持ち主か（ブランドアカウントのチャンネルなら、その名前を選んだか）を確かめてください。もう一度押すとアカウントを選び直せます。（' + msg.slice(0, 60) + '）')
+        : msg.slice(0, 120));
     }
     return j;
   }
@@ -16850,7 +16859,7 @@
     const tok = await toruYtToken();
     const cur = await toruYtReport(tok, { metrics: 'audienceWatchRatio,relativeRetentionPerformance', dimensions: 'elapsedVideoTimeRatio', filters: 'video==' + vid, sort: 'elapsedVideoTimeRatio' });
     const rows = (cur.rows || []).filter((x) => Array.isArray(x) && x.length >= 2).map((x) => [Number(x[0]), Number(x[1]), Number(x[2] || 0)]);
-    if (!rows.length) throw new Error('まだ維持率がありません（公開から2〜3日は出ないことがあります。見た人が少なすぎても出ません）');
+    if (!rows.length) throw new Error('まだ維持率がありません（公開から2〜3日は出ないことがあります。見た人が少なすぎても出ません。別のチャンネルのアカウントを選んだときも空になります）');
     const bas = await toruYtReport(tok, { metrics: 'views,averageViewDuration,averageViewPercentage,subscribersGained', filters: 'video==' + vid });
     const b = (bas.rows && bas.rows[0]) || [];
     const views = Number(b[0]) || 0, avgDur = Number(b[1]) || 0, avgPct = Number(b[2]) || 0, subs = Number(b[3]) || 0;
@@ -16970,6 +16979,7 @@
     sec.appendChild(row);
     if (!a.ret) {
       if (!localStorage.getItem(YT_CLIENT_KEY)) sec.appendChild(el('div', 'kjSub', '使う前に、設定 → YouTube の数字 に OAuth クライアント ID を入れます。'));
+      else sec.appendChild(el('div', 'kjSub', '押すと Google のアカウントを選ぶ画面が出ます。YouTube チャンネルの持ち主のアカウント（ブランドアカウントならその名前）を選んでください。'));
       return;
     }
     const r = a.ret;
