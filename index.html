@@ -3332,7 +3332,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.122';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.123';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -16832,7 +16832,9 @@
           toruYtTok = { tok: r.access_token, exp: Date.now() + (Number(r.expires_in) || 3000) * 1000 };
           res(r.access_token);
         },
-        error_callback: (e) => rej(new Error('Google の画面が閉じられました（' + ((e && e.type) || '') + '）')),
+        error_callback: (e) => rej(new Error((e && e.type) === 'popup_failed_to_open'
+          ? 'Google の画面（ポップアップ）が止められました。もう一度押してください。それでも出なければ、iPhone の 設定 → Safari →「ポップアップブロック」を一時的にオフにしてください。'
+          : 'Google の画面が閉じられました（' + ((e && e.type) || '') + '）')),
       });
       // v20.122：毎回アカウントを選ぶ画面を出す（前はブラウザで開いていた別のアカウントが黙って使われ、チャンネルの持ち主でないため失敗した）
       tc.requestAccessToken({ prompt: 'select_account' });
@@ -16960,6 +16962,7 @@
     const el = (tag, cls, text) => { const x = document.createElement(tag); if (cls) x.className = cls; if (text != null) x.textContent = text; return x; };
     const a = deck.after;
     sec.appendChild(el('div', 'kjGroup', '維持率（どこで離れ、どこを見返したか）'));
+    if (localStorage.getItem(YT_CLIENT_KEY) && navigator.onLine) toruGsiLoad().catch(() => {});   // v20.123：先に読み込んでおく（押してから読み込むと、Safari がポップアップを止める）
     const row = el('div', 'kjLine');
     row.appendChild(el('span', 'kjSub', '本編の前に付けたもの（秒）'));
     const pi = el('input'); pi.type = 'number'; pi.min = '0'; pi.step = '1'; pi.style.width = '4em'; pi.value = a.preSec || '';
@@ -16979,7 +16982,9 @@
     sec.appendChild(row);
     if (!a.ret) {
       if (!localStorage.getItem(YT_CLIENT_KEY)) sec.appendChild(el('div', 'kjSub', '使う前に、設定 → YouTube の数字 に OAuth クライアント ID を入れます。'));
-      else sec.appendChild(el('div', 'kjSub', '押すと Google のアカウントを選ぶ画面が出ます。YouTube チャンネルの持ち主のアカウント（ブランドアカウントならその名前）を選んでください。'));
+      else {
+        sec.appendChild(el('div', 'kjSub', '押すと Google のアカウントを選ぶ画面が出ます。YouTube チャンネルの持ち主のアカウント（ブランドアカウントならその名前）を選んでください。'));
+      }
       return;
     }
     const r = a.ret;
