@@ -1985,7 +1985,7 @@
       <details class="setGroup" data-group="ytStats">
         <summary><span class="sgTitle">YouTube の数字（維持率）</span><span class="sgSub" id="setSubYtStats"></span></summary>
         <div class="setBody">
-          <p class="fieldNote">撮るの「8. 公開後」で、維持率のグラフを YouTube から取ってくるための鍵。Google Cloud の OAuth クライアント ID（ウェブ アプリケーション）を貼る。端末の localStorage にだけ保存され、同期しません。取るときは毎回 Google のログイン画面が出ます（読むだけの許可）。</p>
+          <p class="fieldNote">撮るの「9. 公開後」で、維持率のグラフを YouTube から取ってくるための鍵。Google Cloud の OAuth クライアント ID（ウェブ アプリケーション）を貼る。端末の localStorage にだけ保存され、同期しません。取るときは毎回 Google のログイン画面が出ます（読むだけの許可）。</p>
           <div class="field">
             <span class="fieldLabel">OAuth クライアント ID</span>
             <input id="ytClientIdInput" type="text" placeholder="xxxx.apps.googleusercontent.com" autocomplete="off" spellcheck="false">
@@ -3332,7 +3332,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.120';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.121';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -3501,6 +3501,8 @@
       out.views = (j.views && typeof j.views === 'object' && Array.isArray(j.views.items)) ? j.views : null;
       out.viewEdit = typeof j.viewEdit === 'string' ? j.viewEdit.slice(0, 1000) : '';
       out.check = (j.check && typeof j.check === 'object' && Array.isArray(j.check.issues)) ? j.check : null;
+      // v20.121：台本の確かめ（抜き出した所と、別のチャットが出典と照らした結果）
+      out.verify = (j.verify && typeof j.verify === 'object' && Array.isArray(j.verify.claims)) ? j.verify : null;
       // v20.86：orig（チャットが最初に書いた版）と editedAt も残す。v20.83 で足したのにここで捨てていたため、
       // 開き直すたびに比べる相手が消え、台本の学び（v20.85）が一度も動けなかった
       out.script = (j.script && typeof j.script === 'object' && typeof j.script.text === 'string')
@@ -14021,7 +14023,7 @@
     if (v) localStorage.setItem(YT_CLIENT_KEY, v); else localStorage.removeItem(YT_CLIENT_KEY);
     toruYtTok = null;
     document.getElementById('setSubYtStats').textContent = v ? '設定済み' : '未設定';
-    document.getElementById('ytStatsNote').textContent = v ? (/\.apps\.googleusercontent\.com$/.test(v) ? '保存しました。撮るの「8. 公開後」から維持率を取れます。' : '保存しました。ただ、ふつうは「….apps.googleusercontent.com」で終わる文字です。貼り間違いがないか見てください。') : '消しました。';
+    document.getElementById('ytStatsNote').textContent = v ? (/\.apps\.googleusercontent\.com$/.test(v) ? '保存しました。撮るの「9. 公開後」から維持率を取れます。' : '保存しました。ただ、ふつうは「….apps.googleusercontent.com」で終わる文字です。貼り間違いがないか見てください。') : '消しました。';
   });
 
   document.getElementById('btnSaveLeadKeys').addEventListener('click', () => {
@@ -15723,7 +15725,7 @@
   function toruDraftSet(key, text) { try { const d = toruDrafts(); if (text) d[key] = text; else delete d[key]; localStorage.setItem(TORU_DRAFT_KEY, JSON.stringify(d)); } catch (e) {} }
 
   // 口調シート（フリートーク9本の実測から。台本の依頼文に毎回入れる）
-  // v20.118：言い回しは一覧から組み立てる。本人の話し方が変わったら、8. 公開後 で外せる（前は固定で、足すだけだった）
+  // v20.118：言い回しは一覧から組み立てる。本人の話し方が変わったら、9. 公開後 で外せる（前は固定で、足すだけだった）
   const TORU_STYLE_PHRASES = {
     end: ['なんだよ', 'だよね', 'じゃん', 'なんだけどね', 'と思うんだけど'],
     pause: ['ね、', 'っていう'],
@@ -15937,6 +15939,84 @@
       '■ 台本\n' + t + '\n\n' +
       '■ 出力形式（JSON のみ）\n' +
       '{"first30":"1〜2文","issues":[{"kind":"飛躍","quote":"台本の文","why":"1文","fix":"1文"}],"good":["1文"]}';
+  }
+  // ---- v20.121 台本の確かめ ----------
+  // 材料を集めたチャットと台本を書いたチャットが同じなので、間違いに自分で気づきにくい。台本から「見る人が自分で
+  // 調べられる所」だけをアプリが抜き出し、材料と出典を添えて、別のチャット（疑ってかかる確かめ役）に照らしてもらう
+  const TORU_VERIFY_MAX = 50;
+  const TORU_VERIFY_STATUS = { ok: '出典どおり', diff: 'ずれている', none: '出典に無い', unsure: '確かめられない' };
+  function toruClaimScore(t) {
+    let sc = 0;
+    if (/[0-9０-９]/.test(t) || /[一二三四五六七八九十百千万億]+(?:年|人|回|倍|日|時間|分|秒|歳|世紀|割|パーセント)/.test(t)) sc += 3;
+    if (/研究|実験|調査|論文|報告|データ|統計|によると|によれば|書いて|記録|と言われ|という説|証明|発見|定義/.test(t)) sc += 2;
+    if (/世紀|時代|年前|年代/.test(t)) sc += 1;
+    if (/[ァ-ヶ][ァ-ヶー・]{2,}/.test(t)) sc += 1;
+    if (/『[^』]+』|「[^」]{2,}」/.test(t)) sc += 1;
+    return sc;
+  }
+  function toruNums(t) { return (String(t || '').replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/,/g, '').match(/\d+(?:\.\d+)?/g) || []); }
+  function toruClaims(deck) {
+    const sents = toruSentences((deck.script && deck.script.text) || '');
+    const mats = deck.mats || [];
+    const matText = mats.map((m) => [m.fact, m.detail, m.source].join(' '));
+    const matNums = new Set([].concat(...matText.map(toruNums)));
+    // 「実験」「研究」の語だけで拾った短い文（「どういう実験だよって思うじゃん？」など）は、確かめる中身が無いので外す
+    const scored = sents.map((t, i) => ({ t, i, sc: toruClaimScore(t) })).filter((x) => x.sc >= 3 || (x.sc >= 2 && x.t.length >= 25));
+    const keep = scored.sort((a, b) => b.sc - a.sc || a.i - b.i).slice(0, TORU_VERIFY_MAX).sort((a, b) => a.i - b.i);
+    return keep.map((x, k) => {
+      const g = textBigrams(x.t);
+      let best = -1, bestHit = 0;
+      matText.forEach((mt, mi) => { const mg = textBigrams(mt); let h = 0; g.forEach((q) => { if (mg.has(q)) h++; }); if (h > bestHit) { bestHit = h; best = mi; } });
+      const m = bestHit >= 4 ? mats[best] : null;
+      const lost = toruNums(x.t).filter((n) => Number(n) > 9 && !matNums.has(n));   // 1桁は「1つ目」などが多いので見ない
+      return { id: k + 1, text: x.t.slice(0, 200), mat: m ? best + 1 : 0, source: m ? String(m.source || '').slice(0, 120) : '', url: m ? String(m.url || '') : '',
+        sure: m ? m.sure : '', flag: lost.length ? '数字 ' + lost.join('・') + ' が材料に無い' : (m ? '' : '対応する材料が無い') };
+    });
+  }
+  function toruVerifyPromptText(deck) {
+    const claims = toruClaims(deck);
+    deck.verify = { claims, results: {}, made: nowIso(), at: '', scriptAt: (deck.script && (deck.script.editedAt || deck.script.at)) || '' };
+    shootTouch(deck);
+    return SHOOT_PROMPT_HEAD +
+      'YouTube の台本の中の「見る人が自分で調べられる所」を、出典と照らして確かめてください。\n' +
+      'あなたは台本を書いた人とは別の、疑ってかかる確かめ役です。web 検索を使ってください。今日は ' + todayStr() + ' です。\n\n' +
+      '■ 確かめ方\n' +
+      '- 1つずつ、書いてある出典（無ければ自分で探す）を開き、台本の言い方が出典と合っているかを見る。数字・年・人・書名・研究の結論・言い切りの強さ（言い過ぎ）を見る。\n' +
+      '- status：ok＝出典どおり／diff＝ずれている（数字・年・人・結論が違う、言い過ぎ、誰の説かが違う）／none＝出典に書いていない・出典が見つからない／unsure＝確かめられない。\n' +
+      '- 伝承・噂・スピリチュアル・本人の体験は、「そう語られてきた」「〜と言われている」として言っていれば ok。事実として言い切っていれば diff。\n' +
+      '- quote：出典の該当する所を短く（80字以内。原文の言葉のままでよい）。\n' +
+      '- fix：diff と none のとき、どう直すか（正しい数字や、「〜って言われてるけど、元の資料までは確かめられなかった」などの言い方）。\n' +
+      '- url：実際に確かめた所。開けなかったものは unsure にして、作らない。\n\n' +
+      '■ 確かめる所（アプリが台本から抜き出したもの。材料＝台本のもとにした材料の番号）\n' +
+      claims.map((c) => c.id + '. 「' + c.text + '」' + (c.mat ? '\n   材料 ' + c.mat + (c.source ? '・出典：' + c.source : '') + (c.url ? '・' + c.url : '') + (c.sure ? '・' + (TORU_SURE[c.sure] || c.sure) : '') : '') +
+        (c.flag ? '\n   印：' + c.flag : '')).join('\n') + '\n\n' +
+      '■ 出力形式（JSON のみ。全部の番号について書く）\n' +
+      '{"results":[{"id":1,"status":"ok","quote":"出典の該当する所","fix":"","url":"https://..."}]}';
+  }
+  function toruImportVerify(deck, raw) {
+    const v = deck.verify;
+    if (!v || !v.claims || !v.claims.length) return { error: '先に「確かめの依頼文をコピー」を押してください（確かめる所を抜き出します）。' };
+    const lj = worldLooseJsonPick(raw, ['results']);
+    const p = lj.value;
+    const s = (x, n) => (typeof x === 'string' ? x.trim().slice(0, n) : '');
+    let list = p && (Array.isArray(p) ? p : Array.isArray(p.results) ? p.results : null);
+    if (!list) list = worldLooseObjects(raw).filter((o) => o && o.id != null && o.status);
+    const res = {};
+    (list || []).forEach((x) => {
+      if (!x || typeof x !== 'object') return;
+      const id = Number(x.id);
+      if (!v.claims.some((c) => c.id === id)) return;
+      const st = TORU_VERIFY_STATUS[s(x.status, 10)] ? s(x.status, 10) : 'unsure';
+      res[id] = { status: st, quote: s(x.quote, 200), fix: s(x.fix, 300), url: shootSafeUrl(s(x.url, 400)), done: false };
+    });
+    const n = Object.keys(res).length;
+    if (!n) return { error: '確かめた結果が見つかりませんでした' + worldJsonKeysNote(p) + '。返事が途中で切れていないか見てください。' };
+    v.results = res; v.at = nowIso();
+    shootTouch(deck);
+    const cnt = {};
+    Object.values(res).forEach((r) => { cnt[r.status] = (cnt[r.status] || 0) + 1; });
+    const miss = v.claims.length - n;
+    return { text: '取り込みました：' + Object.entries(TORU_VERIFY_STATUS).map(([k, lab]) => lab + ' ' + (cnt[k] || 0)).join('・') + (miss ? '（返事の無かった所 ' + miss + '）' : '') };
   }
   function toruNormQ(x) { return String(x || '').replace(/[\s、。，．,.!！?？「」『』…ー〜~]/g, ''); }
   function toruImportCheck(deck, raw) {
@@ -16517,7 +16597,7 @@
   function toruLearnedSummaryText() {
     const a = toruRules().length, b = toruAddRules().length, c = toruAvoidRules().length;
     return (a || b || c)
-      ? 'この台本の依頼文に入る学び：口調 ' + a + '・足すこと ' + b + '（避けること ' + c + ' は題材判定に入ります）。中身は 8. 公開後 で見られます。'
+      ? 'この台本の依頼文に入る学び：口調 ' + a + '・足すこと ' + b + '（避けること ' + c + ' は題材判定に入ります）。中身は 9. 公開後 で見られます。'
       : '';
   }
   // 6. 公開後：台本の学び（① 貼る → ② 比べた結果 → ③ 学ぶ）
@@ -17436,8 +17516,48 @@
           sec.appendChild(back); sec.appendChild(st);
         }
       });
-    // 6 粗探し（v20.117 案C）：本人が読む前に、飛躍・根拠の弱い所・言い直し・離脱しそうな所を指摘してもらう
-    step('check', '6. 粗探し', !!(deck.script && deck.script.text), !!(deck.check && deck.check.at), () => toruCheckPromptText(deck), (raw) => toruImportCheck(deck, raw),
+    // 6 確かめ（v20.121）：台本の中の、見る人が調べられる所を、別のチャットに出典と照らしてもらう
+    step('verify', '6. 確かめ', !!(deck.script && deck.script.text), !!(deck.verify && deck.verify.at), () => toruVerifyPromptText(deck), (raw) => toruImportVerify(deck, raw),
+      '{"results":[...]} をここに貼る（台本を書いたのとは別のチャットで）',
+      (sec) => {
+        const v = deck.verify;
+        const R = v.results || {};
+        const rows = v.claims.map((c) => Object.assign({ c }, R[c.id] || { status: 'unsure', quote: '', fix: '返事にありませんでした', url: '' }));
+        const bad = rows.filter((r) => r.status !== 'ok');
+        const left = bad.filter((r) => !(R[r.c.id] && R[r.c.id].done)).length;
+        sec.appendChild(el('div', 'kjSub', Object.entries(TORU_VERIFY_STATUS).map(([k, lab]) => lab + ' ' + rows.filter((r) => r.status === k).length).join('・') +
+          '　直す所 ' + bad.length + '件・残り ' + left + '件（台本は 5. 台本 で直す）'));
+        bad.forEach((r) => {
+          const done = !!(R[r.c.id] && R[r.c.id].done);
+          const row = el('div', 'kjLine' + (done ? ' kjDone' : ''));
+          row.appendChild(el('div', r.status === 'diff' ? 'chNoFit' : 'kjSub', '［' + TORU_VERIFY_STATUS[r.status] + '］「' + r.c.text + '」'));
+          if (r.quote) row.appendChild(el('div', 'kjSub', '出典では：' + r.quote));
+          if (r.fix) row.appendChild(el('div', '', '→ ' + r.fix));
+          if (r.url) { const a = el('a', 'kjSub', '確かめた所'); a.href = r.url; a.target = '_blank'; a.rel = 'noopener noreferrer'; row.appendChild(a); }
+          if (R[r.c.id]) {
+            const b = el('button', 'linkLikeBtn', done ? '直した（戻す）' : '直した'); b.type = 'button';
+            b.addEventListener('click', () => { R[r.c.id].done = !R[r.c.id].done; shootTouch(deck); rerender(); });
+            row.appendChild(b);
+          }
+          sec.appendChild(row);
+        });
+        const okRows = rows.filter((r) => r.status === 'ok');
+        if (okRows.length) {
+          const det = el('details', 'kjDetails');
+          det.appendChild(el('summary', 'kjSub', '出典どおりだった所 ' + okRows.length));
+          okRows.forEach((r) => det.appendChild(el('div', 'kjSub', '「' + r.c.text.slice(0, 60) + '」' + (r.quote ? '　出典：' + r.quote.slice(0, 60) : ''))));
+          sec.appendChild(det);
+        }
+        if (deck.script && (deck.script.editedAt || deck.script.at) > (v.scriptAt || '') && v.scriptAt) sec.appendChild(el('div', 'kjSub', '確かめたあとに台本を直しています。直した所をもう一度確かめるなら「貼り直す」から依頼文をコピーします。'));
+      },
+      (sec) => {
+        const cl = toruClaims(deck);
+        const noSrc = cl.filter((c) => c.flag).length;
+        sec.appendChild(el('div', 'kjSub', '台本から、見る人が自分で調べられる所（数字・年・人名・書名・研究の結論・引用）を ' + cl.length + ' か所抜き出しました' +
+          (noSrc ? '（うち材料・出典の無い所 ' + noSrc + '）' : '') + '。依頼文は、台本を書いたのとは別の新しいチャットに貼ってください（同じチャットだと自分の間違いに気づきにくい）。'));
+      });
+    // 7 粗探し（v20.117 案C）：本人が読む前に、飛躍・根拠の弱い所・言い直し・離脱しそうな所を指摘してもらう
+    step('check', '7. 粗探し', !!(deck.script && deck.script.text), !!(deck.check && deck.check.at), () => toruCheckPromptText(deck), (raw) => toruImportCheck(deck, raw),
       '{"first30":"...","issues":[...]} をここに貼る',
       (sec) => {
         const c = deck.check;
@@ -17460,7 +17580,7 @@
         if (deck.script && deck.script.editedAt && deck.script.editedAt > c.at) sec.appendChild(el('div', 'kjSub', '台本を直したあとです。もう一度見てもらうなら「貼り直す」から依頼文をコピーします。'));
       });
     // 7 サムネ・タイトル
-    step('pack', '7. サムネ・タイトル', !!(deck.script && deck.script.text), !!(deck.pack && deck.pack.at), () => toruPackPromptText(deck), (raw) => toruImportPack(deck, raw),
+    step('pack', '8. サムネ・タイトル', !!(deck.script && deck.script.text), !!(deck.pack && deck.pack.at), () => toruPackPromptText(deck), (raw) => toruImportPack(deck, raw),
       '{"thumbs":[...],"titles":[...]} をここに貼る',
       (sec) => {
         const p = deck.pack;
@@ -17510,7 +17630,7 @@
     // 6 公開後
     {
       const sec = el('div', 'kjStep' + (deck.after && deck.after.at ? ' done' : ''));
-      sec.appendChild(el('div', 'kjStepHead', '8. 公開後' + (deck.after && deck.after.at ? '（済）' : '')));
+      sec.appendChild(el('div', 'kjStepHead', '9. 公開後' + (deck.after && deck.after.at ? '（済）' : '')));
       sec.appendChild(el('div', 'kjSub', 'YouTube Studio → この動画のアナリティクス。公開から7日後くらいの数字を入れる。次の題材の判定・タイトル・台本の依頼文に渡します。'));
       deck.after = deck.after || { url: '', ctr: '', avgView: '', drop: '', note: '', at: '', finalText: '', finalAt: '' };
       const f = (key, label, ph) => {
