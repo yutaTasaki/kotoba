@@ -3332,7 +3332,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.124';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.125';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -3503,6 +3503,11 @@
       // v20.124：仮の題名とサムネ（冒頭はこの約束に合わせる）
       out.titleDraft = typeof j.titleDraft === 'string' ? j.titleDraft.slice(0, 80) : '';
       out.thumbDraft = typeof j.thumbDraft === 'string' ? j.thumbDraft.slice(0, 200) : '';
+      // v20.125：視点から自動で入れた題名（選び直したら、手で直していなければ差し替える）と、
+      // 約束（視点・仮の題名・サムネ）と構成を最後に変えた時（後ろの段に「作り直すと合う」を出す）
+      out.titleAuto = typeof j.titleAuto === 'string' ? j.titleAuto.slice(0, 80) : '';
+      out.promiseAt = typeof j.promiseAt === 'string' ? j.promiseAt : '';
+      out.blocksAt = typeof j.blocksAt === 'string' ? j.blocksAt : '';
       out.check = (j.check && typeof j.check === 'object' && Array.isArray(j.check.issues)) ? j.check : null;
       // v20.121：台本の確かめ（抜き出した所と、別のチャットが出典と照らした結果）
       out.verify = (j.verify && typeof j.verify === 'object' && Array.isArray(j.verify.claims)) ? j.verify : null;
@@ -15907,6 +15912,16 @@
     return '■ 仮の題名とサムネ（見る人はこれを見てクリックしてくる。冒頭はこの約束をまず果たす）\n' +
       (t ? '題名：' + t + '\n' : '') + (th ? 'サムネ：' + th + '\n' : '') + '\n';
   }
+  // v20.125：前の段が変わったのに後ろの段が古いまま、を知らせる（前は黙って古い構成・台本のまま進んだ）
+  function toruStaleNote(deck, key) {
+    const pa = deck.promiseAt || '', ba = deck.blocksAt || '', sa = (deck.script && deck.script.at) || '';
+    if (key === 'blocks' && pa && (!ba || pa > ba)) return '視点か仮の題名・サムネが、構成を作ったあとで変わりました。「貼り直す」から構成を作り直すと、冒頭が新しい約束に合います。';
+    if (key === 'script' && sa) {
+      if (pa && pa > sa) return '視点か仮の題名・サムネが、台本を書いたあとで変わりました。構成と台本を作り直すと、冒頭が新しい約束に合います。';
+      if (ba && ba > sa) return '構成が、台本を書いたあとで作り直されました。「貼り直す」から台本を書き直すと、新しい構成に合います。';
+    }
+    return '';
+  }
   // 前の動画の冒頭（同じ入り方・同じ言い回しにしない）
   function toruPrevOpeningsText(deck) {
     const rows = [];
@@ -15956,7 +15971,7 @@
       '- quote：台本の該当する文を、そのまま抜き出す（40字以内。言い換えない）\n' +
       '- why：なぜ直すべきか（1文）\n' +
       '- fix：どう直すか（1文。書き直しの全文は要らない）\n' +
-      '- first30：冒頭30秒で、見続ける理由が出ているか（1〜2文）\n\n' +
+      '- first30：冒頭30秒が、仮の題名とサムネの約束を果たし、見続ける理由を出しているか（1〜2文）\n\n' +
       toruBlocksText(deck) +
       '■ 台本\n' + t + '\n\n' +
       '■ 出力形式（JSON のみ）\n' +
@@ -16250,7 +16265,7 @@
   function toruBlocksPromptText(deck) {
     return SHOOT_PROMPT_HEAD +
       'この題材と材料で、20分の動画の構成を作ってください。台本はまだ書きません。\n\n' +
-      toruGoalText() + toruReaderText() + toruJudgeText(deck) + toruViewText(deck) + toruMatsText(deck) + toruTaikenText(deck) + toruRetText(deck) + toruPrevOpeningsText(deck) + toruTenkaiText() +
+      toruGoalText() + toruReaderText() + toruJudgeText(deck) + toruViewText(deck) + toruMatsText(deck) + toruTaikenText(deck) + toruRetText(deck) + toruTenkaiText() +
       ((deck.mats || []).some((m) => m.role === 'counter') ? '■ 視点に反する材料の使い方\n- 捨てずに、話をひっくり返す所か「実はこういう見方もある」の所で使う。反論を越えた視点のほうが強く聞こえる。\n\n' : '') +
       '■ 構成の作り方\n' +
       '- big_q：この動画で追いかける謎（1文）。\n' +
@@ -16262,7 +16277,6 @@
       '  ② 話に入るのに要る前提だけ（いつ・どこ・誰）。説明は後に回す。\n' +
       '  ③ 「〜と思われていた。ところが〜」の食い違いを見せ、そこから生まれる問いを声に出す。答えは言わずに、先へ送る。\n' +
       '  ④ この先にまだある話を一言だけ約束する（目次にしない）。この動画ならではの理由（本人の体験・夜ひとりで考える目線・研究と伝承をまたぐ調べ方）は、自然に言えるものがあれば一言だけ。無理に入れない。\n' +
-      '  置いていかない：1文に1つのことだけ。いつ・どこ・誰を先に言う。知らない言葉はその場で言い換える。前の文を受けて次の文を言い、話を飛ばさない。耳で一度聞いて分かる自然な話し言葉にする（形に当てはめたような不自然な言い回しにしない）。\n' +
       '- ending：最後（2〜3文）。大きな問いへの自分の答え（仮説なら仮説と言う）→ 冒頭の場面に1本だけ戻る → 視聴者への問い。分野をまとめない。\n\n' +
       '■ 出力形式（JSON のみ）\n' +
       '{"big_q":"1文","opening":"3〜5文","blocks":[{"name":"15字以内","steps":[{"new":"1文","role":"候補","link":"短く","mats":[1]}]}],"ending":"2〜3文"}';
@@ -16282,11 +16296,12 @@
     return SHOOT_PROMPT_HEAD.replace('返事は JSON だけ', '返事は台本だけ') +
       'この構成で、動画の台本を書いてください。話し言葉の全文です。\n\n' +
       toruStyleText() + toruReduceText() + toruLearnedText() + toruGoalText() + toruReaderText() + toruJudgeText(deck) + toruViewText(deck) + toruMatsText(deck) + toruTaikenText(deck) + toruBlocksText(deck) + toruTenkaiText() +
-      toruResultsText('■ これまでの動画の結果（参考）', deck) + toruRetText(deck) +
+      toruResultsText('■ これまでの動画の結果（参考）', deck) + toruRetText(deck) + toruPrevOpeningsText(deck) +
       '■ 台本の決まり\n' +
       '- ' + TORU_SCRIPT_MIN + '〜' + TORU_SCRIPT_MAX + '字（約20分）。\n' +
       '- 構成の段の順に、段を足さずに書く。章の頭に「＃ 章の名前」の行を置く（読み上げない目印）。\n' +
-      '- 冒頭は構成の opening のとおり。挨拶・自己紹介・チャンネル説明・目次の読み上げから始めない。\n' +
+      '- 冒頭は構成の opening の順（題名の主題に自然な言葉で入る → 要る前提だけ → 食い違いと問い → 先にある話を一言約束）のとおり。挨拶・自己紹介・チャンネル説明・目次の読み上げから始めない。\n' +
+      '- 置いていかない（特に冒頭）：1文に1つのことだけ。いつ・どこ・誰を先に言う。知らない言葉はその場で言い換える。前の文を受けて次の文を言い、話を飛ばさない。耳で一度聞いて分かる自然な話し言葉にする（形に当てはめたような不自然な言い回しにしない）。\n' +
       '- 作り話をしない。本人の体験は体験メモにあることだけ（無い体験は作らない）。\n' +
       '- 書き終えたら、同じことを言い直している段落を探して削る。\n\n' +
       '■ 返事\n台本だけを返す。前置きや説明を付けない。';
@@ -17135,6 +17150,7 @@
     deck.ending = s(p.ending, 800);
     deck.bigQ = s(p.big_q || p.bigQ, 300);
     deck.turn = '';
+    deck.blocksAt = nowIso();
     shootTouch(deck);
     const steps = blocks.reduce((a, b) => a.concat(b.steps), []);
     const notes = [];
@@ -17297,6 +17313,8 @@
       const sec = el('div', 'kjStep' + (done ? ' done' : '') + (ready ? '' : ' wait'));
       sec.appendChild(el('div', 'kjStepHead', label + (done ? '（済）' : '')));
       if (!ready) { sec.appendChild(el('div', 'kjSub', '前の段が済むと始められます')); box.appendChild(sec); return; }
+      const staleMsg = done ? toruStaleNote(deck, key) : '';
+      if (staleMsg) sec.appendChild(el('div', 'chNoFit', staleMsg));
       if (extra) extra(sec);
       const skey = deck.id + ':' + key;
       const reopen = !!(shootState.toruOpen && shootState.toruOpen[skey]);
@@ -17367,7 +17385,11 @@
           if ((x.notes || []).length) r.appendChild(el('div', 'kjSub', '起点にした本人の言葉：' + x.notes.join('／')));
           r.addEventListener('click', () => {
             v.pick = v.pick === i ? -1 : i;
-            if (v.pick === i && x.title && !(deck.titleDraft || '').trim()) deck.titleDraft = x.title;   // v20.124：題名案を仮の題名に（空のときだけ）
+            // v20.124：題名案を仮の題名に。v20.125：前は空のときだけ入れていたので、選び直しても最初の視点の題名が残った。
+            // 欄が空か、前に視点から自動で入れた題名のまま（手で直していない）なら差し替える
+            const curT = (deck.titleDraft || '').trim();
+            if (v.pick === i && x.title && (!curT || curT === (deck.titleAuto || '').trim())) { deck.titleDraft = x.title; deck.titleAuto = x.title; }
+            deck.promiseAt = nowIso();
             // 案B：手がかりを探す言葉も、選んだ視点に向ける（あとで手で直せる）
             if (v.pick === i && ((x.search.ja || []).length || (x.search.en || []).length)) deck.leadKw = { ja: x.search.ja.join('、'), en: x.search.en.join(', ') };
             shootTouch(deck); rerender();
@@ -17378,14 +17400,14 @@
         const ta = el('textarea'); ta.rows = 2; ta.autocomplete = 'off';
         ta.placeholder = '例：嫌なことが続くのは、運ではなく「数え方」のせいだと思う';
         ta.value = deck.viewEdit || '';
-        ta.addEventListener('input', () => { deck.viewEdit = ta.value.slice(0, 1000); shootScheduleSave(); });
+        ta.addEventListener('input', () => { deck.viewEdit = ta.value.slice(0, 1000); deck.promiseAt = nowIso(); shootScheduleSave(); });
         ta.addEventListener('blur', () => { shootFlush(); rerender(); });
         sec.appendChild(ta);
-        // v20.124：仮の題名とサムネ。先に決めて、冒頭をこの約束に合わせる（最後の 8. サムネ・題名 で磨く）
+        // v20.124：仮の題名とサムネ。先に決めて、冒頭をこの約束に合わせる（最後の 8. サムネ・題名を磨く で磨く）
         sec.appendChild(el('div', 'kjGroup', '仮の題名とサムネ（先に決めると、冒頭がこの約束に合わせて作られます）'));
         const mkIn = (key, ph, max) => {
           const i = el('input'); i.type = 'text'; i.placeholder = ph; i.autocomplete = 'off'; i.value = deck[key] || '';
-          i.addEventListener('input', () => { deck[key] = i.value.slice(0, max); shootScheduleSave(); });
+          i.addEventListener('input', () => { deck[key] = i.value.slice(0, max); deck.promiseAt = nowIso(); shootScheduleSave(); });
           i.addEventListener('blur', () => { shootFlush(); });
           const w = el('div', 'kjLine'); w.appendChild(i); sec.appendChild(w);
         };
@@ -17633,8 +17655,8 @@
         }
         if (deck.script && deck.script.editedAt && deck.script.editedAt > c.at) sec.appendChild(el('div', 'kjSub', '台本を直したあとです。もう一度見てもらうなら「貼り直す」から依頼文をコピーします。'));
       });
-    // 7 サムネ・タイトル
-    step('pack', '8. サムネ・タイトル', !!(deck.script && deck.script.text), !!(deck.pack && deck.pack.at), () => toruPackPromptText(deck), (raw) => toruImportPack(deck, raw),
+    // 8 サムネ・題名を磨く（v20.125：仮の題名は 2. で先に決める。ここは台本に合わせて磨く段、と名前で分かるように）
+    step('pack', '8. サムネ・題名を磨く', !!(deck.script && deck.script.text), !!(deck.pack && deck.pack.at), () => toruPackPromptText(deck), (raw) => toruImportPack(deck, raw),
       '{"thumbs":[...],"titles":[...]} をここに貼る',
       (sec) => {
         const p = deck.pack;
@@ -17680,6 +17702,13 @@
           b.addEventListener('click', async () => { const ok = await copyToClipboard(p.tags.join(',')); s.textContent = ok ? 'コピーしました' : 'コピーできませんでした'; });
           sec.appendChild(b); sec.appendChild(s);
         }
+      },
+      (sec) => {
+        // v20.125：2. で先に決めた仮の題名とサムネを上に出す（この段はそれを台本に合わせて磨く）
+        const t = (deck.titleDraft || '').trim(), th = (deck.thumbDraft || '').trim();
+        sec.appendChild(el('div', 'kjSub', t || th
+          ? '2. 視点を選ぶ で決めた仮の題名：' + (t || '（なし）') + (th ? '／サムネ：' + th : '') + '。ここでは台本に合わせて磨きます（冒頭の約束から外れる案は出しません）。'
+          : '仮の題名はまだありません。2. 視点を選ぶ で先に決めると、冒頭がその約束に合わせて作られます。'));
       });
     // 6 公開後
     {
