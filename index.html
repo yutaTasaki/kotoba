@@ -1977,6 +1977,11 @@
             <p class="fieldNote">ふだんのパスワードではなく、設定 → プライバシーとセキュリティ → アプリパスワード で作ったもの。</p>
             <input id="leadBskyPwInput" type="text" placeholder="xxxx-xxxx-xxxx-xxxx" autocomplete="off" spellcheck="false">
           </div>
+          <div class="field">
+            <span class="fieldLabel">題名の見本にするチャンネル</span>
+            <p class="fieldNote">撮るの題名づくりで、このチャンネルの中で平均より伸びた動画の題名を取ってきて、型を借ります（上の YouTube のキーを使う）。1行に1つ：@ハンドル・UC で始まる ID・そのチャンネルの動画の URL のどれか。空なら、参考にしている3チャンネル（ミルクティー飲みたい・トーマの夢日記・現地確認記録）を使います。</p>
+            <textarea id="toruRefChInput" rows="3" placeholder="@handle&#10;https://www.youtube.com/watch?v=..." autocomplete="off" spellcheck="false"></textarea>
+          </div>
           <button id="btnSaveLeadKeys" class="secondaryBtn" type="button">保存</button>
           <p class="fieldNote" id="leadKeysNote"></p>
         </div>
@@ -3332,7 +3337,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.125';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.126';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -13843,6 +13848,7 @@
     document.getElementById('leadYtKeyInput').value = localStorage.getItem(LEAD_YT_KEY) || '';
     document.getElementById('leadBskyHandleInput').value = localStorage.getItem(LEAD_BSKY_HANDLE) || '';
     document.getElementById('leadBskyPwInput').value = localStorage.getItem(LEAD_BSKY_PW) || '';
+    document.getElementById('toruRefChInput').value = localStorage.getItem(TORU_REF_CH_KEY) || '';
     document.getElementById('setSubLeadKeys').textContent = [localStorage.getItem(LEAD_YT_KEY) ? 'YouTube' : '', localStorage.getItem(LEAD_BSKY_PW) ? 'Bluesky' : ''].filter(Boolean).join('・') || '未設定';
     document.getElementById('claudeModelAutoLinkInput').value = getClaudeAutoLinkModel();
     document.getElementById('claudeModelChatInput').value = getClaudeChatModel();
@@ -14039,6 +14045,7 @@
     put(LEAD_YT_KEY, document.getElementById('leadYtKeyInput').value);
     put(LEAD_BSKY_HANDLE, document.getElementById('leadBskyHandleInput').value.replace(/^@/, ''));
     put(LEAD_BSKY_PW, document.getElementById('leadBskyPwInput').value);
+    put(TORU_REF_CH_KEY, document.getElementById('toruRefChInput').value);
     toruBskySession = null;
     document.getElementById('setSubLeadKeys').textContent = [localStorage.getItem(LEAD_YT_KEY) ? 'YouTube' : '', localStorage.getItem(LEAD_BSKY_PW) ? 'Bluesky' : ''].filter(Boolean).join('・') || '未設定';
     document.getElementById('leadKeysNote').textContent = '保存しました。撮るの「手がかりを集める」から使えます。';
@@ -15767,9 +15774,56 @@
   }
   // v20.103：公開後の数字（冒頭60秒・平均再生率・離脱・気づき）を、次の依頼文に渡す。
   // 前は CTR と平均視聴時間だけで、離脱とメモは保存されるだけだった
+  // v20.126：題名を変える（伸びない題名は変える。変えた記録と前後のクリック率が、次の題名づくりに入る）
+  function toruNum(v) { const n = parseFloat(String(v || '').replace(/[,，%％]/g, '')); return Number.isFinite(n) ? n : null; }
+  function toruTitleSwapSection(sec, deck, rerender) {
+    const el = (tag, cls, text) => { const x = document.createElement(tag); if (cls) x.className = cls; if (text != null) x.textContent = text; return x; };
+    const p = deck.pack;
+    const a = deck.after;
+    sec.appendChild(el('div', 'kjGroup', '題名を変えるか（公開24時間後に見る）'));
+    const others = deckEntries().filter((d) => d.id !== deck.id && d.after);
+    const avg = (k) => { const v = others.map((d) => toruNum(d.after[k])).filter((x) => x != null); return v.length ? { n: v.length, v: v.reduce((s, x) => s + x, 0) / v.length } : null; };
+    const ac = avg('ctr24'), ai = avg('imp24');
+    const c = toruNum(a.ctr24), i = toruNum(a.imp24);
+    let msg = '';
+    if (c == null || i == null) msg = '公開24時間後のクリック率とインプレッションを入れると、変えるかどうかをここに出します。';
+    else if (!ac || !ai) msg = 'これまでの動画の24時間の数字がまだ無いので比べられません。次の動画から比べられます。';
+    else {
+      const low = c < ac.v && i < ai.v;
+      msg = 'これまでの平均（' + Math.min(ac.n, ai.n) + '本）：クリック率 ' + ac.v.toFixed(1) + '％・インプレッション ' + Math.round(ai.v) + '。' +
+        (low ? '両方とも平均より低いので、題名を下の候補に変えてみるのをすすめます。' : 'どちらかが平均くらいなので、伸び始めるまで（7〜10日）待ちます。');
+    }
+    sec.appendChild(el('div', 'kjSub', msg));
+    if (!p || !(p.titles || []).length) return;
+    a.titleLog = Array.isArray(a.titleLog) ? a.titleLog : [];
+    const cur = toruDeckTitle(deck);
+    const cands = p.titles.map((t, k) => ({ t, k })).filter((x) => x.k !== p.titlePick).slice(0, 4);
+    if (cands.length) {
+      sec.appendChild(el('div', 'kjSub', '次の候補（8. の案から。変えたら押す）'));
+      cands.forEach(({ t, k }) => {
+        const b = el('button', 'kjPick'); b.type = 'button';
+        b.appendChild(el('div', 'kjPickMain', t.text));
+        if (t.q) b.appendChild(el('div', 'kjSub', '浮かぶ疑問：' + t.q));
+        b.addEventListener('click', () => {
+          a.titleLog.push({ at: nowIso(), from: cur, to: t.text, ctrBefore: a.ctr24 || a.ctr || '', ctrAfter: '' });
+          p.titlePick = k; a.at = nowIso(); shootTouch(deck); rerender();
+        });
+        sec.appendChild(b);
+      });
+    }
+    a.titleLog.forEach((g) => {
+      const w = el('div', 'kjLine');
+      w.appendChild(el('div', 'kjSub', String(g.at).slice(0, 10) + '　「' + g.from + '」→「' + g.to + '」　変える前のクリック率 ' + (g.ctrBefore || '？') + '％'));
+      const inp = el('input'); inp.type = 'text'; inp.placeholder = '変えて1週間後のクリック率（％）'; inp.autocomplete = 'off'; inp.value = g.ctrAfter || '';
+      inp.addEventListener('input', () => { g.ctrAfter = inp.value.slice(0, 20); a.at = nowIso(); shootScheduleSave(); });
+      w.appendChild(inp); sec.appendChild(w);
+    });
+  }
   function toruAfterLine(d) {
     const a = d.after || {};
     const parts = [];
+    if (a.ctr24 || a.imp24) parts.push('24時間：CTR ' + (a.ctr24 || '？') + '％・インプレッション ' + (a.imp24 || '？'));
+    (Array.isArray(a.titleLog) ? a.titleLog : []).forEach((g) => parts.push('題名を「' + String(g.from).slice(0, 30) + '」→「' + String(g.to).slice(0, 30) + '」に変えた（CTR ' + (g.ctrBefore || '？') + '→' + (g.ctrAfter || '？') + '％）'));
     if (a.ctr) parts.push('CTR ' + a.ctr + '％');
     if (a.keep60) parts.push('冒頭60秒で残った ' + a.keep60 + '％');
     if (a.avgPct) parts.push('平均再生率 ' + a.avgPct + '％');
@@ -15873,7 +15927,7 @@
     return SHOOT_PROMPT_HEAD +
       'YouTube の一人語りの動画（台本あり・約20分）の「視点」を探してください。まだ台本も材料も要りません。視点の候補だけを出してください。\n今日は ' + todayStr() + ' です。\n\n' +
       toruGoalText() + toruReaderText() + toruJudgeText(deck) + toruTaikenText(deck) + toruViewNotesText(deck) +
-      toruResultsText('■ これまでの動画の結果（参考）', deck) +
+      toruResultsText('■ これまでの動画の結果（参考）', deck) + toruOutlierText() + toruTitleRulesText(false) +
       '■ 視点の出し方\n' +
       '次の4つの型で、視点を2つずつ、合わせて8つ出す。\n' +
       TORU_VIEW_TYPES.map((t) => '- ' + t[0] + '：' + t[1]).join('\n') + '\n' +
@@ -15883,7 +15937,7 @@
       '- evidence：支えになりそうな、確かめられる事実の見込み（無ければ「確かめが要る」と書く。作らない）\n' +
       '- breaks：この視点が崩れる条件（何が出てきたら言えなくなるか。1文）\n' +
       '- viewer：見た人にとって何が変わるか（1文）\n' +
-      '- title：この視点で作るときの題名案（26字以内。煽らない）\n' +
+      '- title：この視点で作るときの題名案（上の「題名の条件」どおり）\n' +
       '- hook：なぜクリックされ、最後まで見られるか（1文。目的に照らして正直に。弱ければ弱いと書く）\n' +
       '- notes：起点にした本人の言葉があれば、その言葉を短く（無ければ空の配列）\n' +
       '- search：この視点を確かめる・揺さぶる資料を探す言葉。ja（日本語）と en（英語）を2〜4個ずつ。短い言葉にする\n' +
@@ -16093,6 +16147,111 @@
   const LEAD_BSKY_HANDLE = 'kotoba_leadBskyHandle';
   const LEAD_BSKY_PW = 'kotoba_leadBskyPw';
   let toruBskySession = null;
+  // v20.126：題名の見本。見本チャンネルの中で、そのチャンネルの中央値より伸びた動画の題名（型を借りる。言葉は写さない）
+  const TORU_REF_CH_KEY = 'kotoba_toruRefCh';
+  const TORU_OUTLIER_KEY = 'kotoba_toruOutliers';
+  const TORU_REF_CH_DEFAULT = ['LZoLcRlFuxw', 'VMJ-Nyg1C3Y', 'LItSIynPC9k'];   // sankou の3チャンネル（その動画から持ち主を引く）
+  function toruOutliers() {
+    try { const j = JSON.parse(localStorage.getItem(TORU_OUTLIER_KEY) || 'null'); return j && Array.isArray(j.items) ? j : null; } catch (e) { return null; }
+  }
+  function toruIsoSec(d) {
+    const m = /PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/.exec(String(d || ''));
+    return m ? (+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0) : 0;
+  }
+  async function toruFetchOutliers() {
+    const key = localStorage.getItem(LEAD_YT_KEY) || '';
+    if (!key) throw new Error('設定 → 調べ物の鍵 に YouTube Data API のキーを入れてください');
+    const api = (path) => toruLeadFetch('https://www.googleapis.com/youtube/v3/' + path + '&key=' + encodeURIComponent(key));
+    const lines = String(localStorage.getItem(TORU_REF_CH_KEY) || '').split(/\n+/).map((x) => x.trim()).filter(Boolean);
+    const refs = lines.length ? lines : TORU_REF_CH_DEFAULT;
+    const chans = [], items = [], errs = [];
+    for (const ref of refs.slice(0, 8)) {
+      try {
+        let cid = '';
+        const vm = /(?:v=|youtu\.be\/|shorts\/)([\w-]{11})/.exec(ref) || (/^[\w-]{11}$/.test(ref) ? [0, ref] : null);
+        if (/^UC[\w-]{22}$/.test(ref)) cid = ref;
+        else if (/^@/.test(ref) || /youtube\.com\/@/.test(ref)) {
+          const h = '@' + ref.replace(/^.*@/, '').replace(/[/?#].*$/, '');
+          const j = await api('channels?part=id&forHandle=' + encodeURIComponent(h));
+          cid = (j.items && j.items[0] && j.items[0].id) || '';
+        } else if (vm) {
+          const j = await api('videos?part=snippet&id=' + vm[1]);
+          cid = (j.items && j.items[0] && j.items[0].snippet.channelId) || '';
+        }
+        if (!cid) { errs.push(ref.slice(0, 40) + '：チャンネルが見つからない'); continue; }
+        const cj = await api('channels?part=snippet,contentDetails&id=' + cid);
+        const ch = cj.items && cj.items[0];
+        if (!ch) { errs.push(ref.slice(0, 40) + '：チャンネルが読めない'); continue; }
+        const up = ch.contentDetails.relatedPlaylists.uploads;
+        let ids = [], page = '';
+        for (let k = 0; k < 3; k++) {
+          const pj = await api('playlistItems?part=contentDetails&maxResults=50&playlistId=' + up + (page ? '&pageToken=' + page : ''));
+          ids = ids.concat((pj.items || []).map((x) => x.contentDetails.videoId));
+          page = pj.nextPageToken || '';
+          if (!page) break;
+        }
+        const vids = [];
+        for (let k = 0; k < ids.length; k += 50) {
+          const vj = await api('videos?part=snippet,statistics,contentDetails&id=' + ids.slice(k, k + 50).join(','));
+          (vj.items || []).forEach((v) => {
+            if (toruIsoSec(v.contentDetails && v.contentDetails.duration) < 180) return;   // ショートは外す
+            vids.push({ title: v.snippet.title, views: +(v.statistics.viewCount || 0), date: String(v.snippet.publishedAt || '').slice(0, 10) });
+          });
+        }
+        if (vids.length < 5) { errs.push(ch.snippet.title + '：長い動画が少ない'); continue; }
+        const sorted = vids.map((v) => v.views).sort((a, b) => a - b);
+        const med = sorted[Math.floor(sorted.length / 2)] || 1;
+        chans.push({ name: ch.snippet.title, n: vids.length, median: med });
+        const top = vids.map((v) => ({ ...v, ch: ch.snippet.title, ratio: Math.round((v.views / med) * 10) / 10 })).sort((a, b) => b.ratio - a.ratio);
+        const out = top.filter((v) => v.ratio >= 2).slice(0, 8);
+        (out.length ? out : top.slice(0, 3)).forEach((v) => items.push(v));
+      } catch (e) {
+        errs.push(ref.slice(0, 40) + '：' + (String(e.message || e).includes('403') ? 'キーが使えない（YouTube Data API が有効か見てください）' : String(e.message || e).slice(0, 60)));
+      }
+    }
+    if (!items.length) throw new Error(errs.join('／') || '伸びた動画が見つかりませんでした');
+    const j = { at: nowIso(), chans, items: items.sort((a, b) => b.ratio - a.ratio), errs };
+    localStorage.setItem(TORU_OUTLIER_KEY, JSON.stringify(j));
+    return j;
+  }
+  function toruOutlierText() {
+    const o = toruOutliers();
+    if (!o) return '';
+    const man = (n) => (n >= 10000 ? (Math.round(n / 1000) / 10) + '万' : String(n)) + '回';
+    return '■ 見本チャンネルで、そのチャンネルの中央値より伸びた動画の題名（何倍か・回数）\n' +
+      o.items.slice(0, 18).map((v) => '- 「' + v.title + '」（' + v.ch + '・×' + v.ratio + '・' + man(v.views) + '）').join('\n') + '\n' +
+      '題名は、まず上の題名を型に分解する（例：「〇〇って△△じゃね？」＝意外な言い換え＋問いかけ）。その型をこの動画の中身に当てはめる。' +
+      'よく出る言葉（正体・秘密 など）は、この動画の中身と合うときだけ使う。まねるのは型だけで、言葉は写さない。\n\n';
+  }
+  // 題名の条件（v20.126：Aprilynne Alter「8分で題名を81%良くする」から。①疑問が浮かぶ ④前に置く）
+  function toruTitleRulesText(withQ) {
+    return '■ 題名の条件\n' +
+      '- 意外な具体を1つ入れる（数字・固有名詞・意外な行動や事実）。「なぜ、〜のか？」だけの題名にしない（中身を言っただけになる）。\n' +
+      '- 前半13字くらいで、何の話か・何が不思議かが分かる（一覧では後ろが切れる）。\n' +
+      '- 26字以内。煽らない（題名で約束したことは、動画の中で必ず果たす）。\n' +
+      (withQ ? '- 案ごとに、見た人に浮かぶ疑問を q に書く（1〜2個）。疑問が浮かばない案は出さない。\n' : '') + '\n';
+  }
+  function toruOutlierBox(sec, rerender) {
+    const el = (tag, cls, text) => { const x = document.createElement(tag); if (cls) x.className = cls; if (text != null) x.textContent = text; return x; };
+    const o = toruOutliers();
+    const w = el('div', 'kjLine');
+    w.appendChild(el('span', 'kjSub', o ? '題名の見本：伸びた題名 ' + o.items.length + '件（' + String(o.at).slice(0, 10) + ' に取得。依頼文に入ります）　' : '題名の見本：まだ取っていません　'));
+    const b = el('button', 'linkLikeBtn', o ? '取り直す' : '見本の伸びた題名を取ってくる'); b.type = 'button';
+    const st = el('span', 'kjSub', '');
+    b.addEventListener('click', async () => {
+      b.disabled = true; st.textContent = '取っています…';
+      try { const j = await toruFetchOutliers(); st.textContent = '取りました：' + j.items.length + '件' + (j.errs.length ? '（取れなかった：' + j.errs.join('／') + '）' : ''); rerender(); }
+      catch (e) { st.textContent = '取れませんでした：' + e.message; b.disabled = false; }
+    });
+    w.appendChild(b); w.appendChild(st);
+    if (o) {
+      const det = el('details', 'kjDetails');
+      det.appendChild(el('summary', 'kjSub', '伸びた題名を見る'));
+      o.items.slice(0, 18).forEach((v) => det.appendChild(el('div', 'kjSub', '×' + v.ratio + '　「' + v.title + '」（' + v.ch + '）')));
+      w.appendChild(det);
+    }
+    sec.appendChild(w);
+  }
   async function toruBskyAuth() {
     if (toruBskySession && Date.now() - toruBskySession.t < 60 * 60 * 1000) return toruBskySession;
     const r = await fetch('https://bsky.social/xrpc/com.atproto.server.createSession', {
@@ -16313,11 +16472,11 @@
       toruGoalText() + toruReaderText() + toruJudgeText(deck) + toruViewText(deck) +
       (toruViewPicked(deck) && toruViewPicked(deck).title ? '（視点を選んだときの題名案：' + toruViewPicked(deck).title + '。これも候補に入れて比べる）\n\n' : '') +
       toruResultsText('■ これまでの動画の題名と結果（題名で約束したことと冒頭がずれると、冒頭で離れる）', deck) +
+      toruOutlierText() + toruTitleRulesText(true) +
       '■ 頼むこと\n' +
       '- thumbs：サムネ案3〜5。text（サムネの文字・15字以内）、picture（絵の中身1〜2文）、prompt（画像生成AIへのプロンプト。絵の中の文字は入れない）、why（なぜ目を引くか1文）。\n' +
       '  サムネ単体で興味を引く（タイトルは補助）。答えは見せず、「何が起きているんだ？」と思わせる。\n' +
-      '- titles：タイトル案10〜15。26字以内。「【作業用】」「#番号」は付けない（作業用のシリーズはやめたため）。型を混ぜる（体験型・逆説型・疑問型・数字型・不思議型）。\n' +
-      '  説明する題名より、見る人の悩みの場面を問う題名（「なぜ、〜のか」など）を多めにする。\n' +
+      '- titles：タイトル案10〜15。「【作業用】」「#番号」は付けない（作業用のシリーズはやめたため）。上の「題名の条件」どおりに作り、type には借りた型を短く書く。よいと思う順に並べる。\n' +
       '  題名で約束する中身は、台本の冒頭で見せている謎と同じにする（題名と冒頭がずれると、冒頭で離れる）。煽らない。\n' +
       '  冒頭は仮の題名とサムネに合わせて作ってある。仮の題名そのものと、それを磨いた案を必ず入れ、冒頭の約束から外れる案は作らない。\n' +
       '- JSON は最後まで書く（途中で切れると取り込めない）。長くなりそうなら、prompt は英語で短くする。\n' +
@@ -16326,7 +16485,7 @@
       '■ 台本（先頭2000字）\n' + s.slice(0, 2000) + '\n\n' +
       '■ 出力形式（JSON のみ）\n' +
       '{"thumbs":[{"text":"15字以内","picture":"絵の中身","prompt":"画像生成AIへのプロンプト","why":"1文"}],\n' +
-      ' "titles":[{"text":"26字以内","type":"体験型"}],"opening":"2〜3文","tags":["タグ"]}';
+      ' "titles":[{"text":"26字以内","type":"借りた型","q":"見た人に浮かぶ疑問"}],"opening":"2〜3文","tags":["タグ"]}';
   }
 
   // ---- v20.85 台本を学ぶ：チャットが書いた最初の版と、動画で実際に話した中身の差から学ぶ ----------
@@ -17258,7 +17417,7 @@
     const pack = {
       thumbs: thumbsIn.map((t) => (typeof t === 'string' ? { text: s(t, 40), picture: '', prompt: '', why: '' }
         : { text: s(t.text, 40), picture: s(t.picture, 400), prompt: s(t.prompt, 2000), why: s(t.why, 300) })).filter((t) => t.text || t.picture).slice(0, 8),
-      titles: titlesIn.map((t) => (typeof t === 'string' ? { text: s(t, 80), type: '' } : { text: s(t.text, 80), type: s(t.type, 20) })).filter((t) => t.text).slice(0, 25),
+      titles: titlesIn.map((t) => (typeof t === 'string' ? { text: s(t, 80), type: '', q: '' } : { text: s(t.text, 80), type: s(t.type, 30), q: s(t.q, 160) })).filter((t) => t.text).slice(0, 25),
       opening: s(p.opening, 800), tags: arr(p.tags).map((x) => s(x, 30)).filter(Boolean).slice(0, 10),
       pick: -1, at: nowIso(),
     };
@@ -17417,6 +17576,7 @@
         else if ((deck.mats || []).length && deck.mats.every((m) => !m.role)) sec.appendChild(el('div', 'kjSub', '材料は視点を選ぶ前に集めたものです。視点に向けて集め直すなら、3. 材料 の「貼り直す」から。'));
       },
       (sec) => {
+        toruOutlierBox(sec, rerender);
         const ns = toruViewNotes(deck);
         const det = el('details', 'kjDetails');
         det.appendChild(el('summary', 'kjSub', ns.length ? '依頼文に入る、一万日アプリの言葉と解釈 ' + ns.length + '件（題材に近いもの）' : '一万日アプリの言葉：題材に近いものは見つかりませんでした'));
@@ -17680,6 +17840,8 @@
           const r = el('button', 'kjPick' + (p.titlePick === i ? ' on' : '')); r.type = 'button';
           r.appendChild(el('div', 'kjPickMain', t.text));
           r.appendChild(el('div', 'kjSub', t.text.length + '字' + (t.type ? '・' + t.type : '') + (t.text.length > KIJI_TITLE_CHARS ? '・長い（一覧で切れます）' : '')));
+          if (t.q) r.appendChild(el('div', 'kjSub', '浮かぶ疑問：' + t.q));
+          r.appendChild(el('div', 'kjSub', '前半：「' + t.text.slice(0, 13) + '」'));
           r.addEventListener('click', () => { p.titlePick = i; shootTouch(deck); rerender(); });
           sec.appendChild(r);
         });
@@ -17704,6 +17866,7 @@
         }
       },
       (sec) => {
+        toruOutlierBox(sec, rerender);
         // v20.125：2. で先に決めた仮の題名とサムネを上に出す（この段はそれを台本に合わせて磨く）
         const t = (deck.titleDraft || '').trim(), th = (deck.thumbDraft || '').trim();
         sec.appendChild(el('div', 'kjSub', t || th
@@ -17726,6 +17889,10 @@
       };
       f('url', '動画の URL', 'https://youtu.be/...');
       try { toruRetSection(sec, deck, rerender); } catch (e) { recordFeatureError('維持率', e); }
+      // v20.126：題名を変えるかの判断（公開24時間後のクリック率とインプレッションを、これまでの平均と比べる）
+      f('ctr24', '公開24時間後のクリック率（％）', '例：3.1');
+      f('imp24', '公開24時間後のインプレッション', '例：1200');
+      try { toruTitleSwapSection(sec, deck, rerender); } catch (e) { recordFeatureError('題名を変える', e); }
       f('ctr', 'クリック率（％）', '例：3.8');
       f('keep60', '冒頭60秒で残った（％）', '維持率のグラフの1:00の値。例：45');
       f('avgPct', '平均再生率（％）', 'エンゲージメント。例：30');
