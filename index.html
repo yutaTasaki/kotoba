@@ -3337,7 +3337,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.128';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.129';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -16068,10 +16068,11 @@
     const items = toruFixItems(deck).filter((x) => !x.skip);
     return SHOOT_PROMPT_HEAD.replace('返事は JSON だけ', '返事は台本だけ') +
       '次の台本を、下の「直す所」だけ直してください。直す所の無い文は一字も変えないでください（言い回しを整えない・削らない・足さない）。\n\n' +
-      toruViewText(deck) + toruReduceText() +
+      toruViewText(deck) + toruReduceText() + toruTenkaiText() + toruBlocksText(deck) +
       '■ 直す所（' + items.length + '）\n' + items.map((x, i) => (i + 1) + '. ［' + x.kind + '］「' + x.quote + '」' + (x.why ? '\n   なぜ：' + x.why : '') + (x.fix ? '\n   直し方：' + x.fix : '')).join('\n') + '\n\n' +
       '■ 直し方の決まり\n' +
       '- 直す所の文だけを直す。つながりのために前後の1文を最小限に直すのはよい。\n' +
+      '- 章と段の順番は変えない（上の構成のとおり）。「移す」「先に出す」という指摘は、その場で言い方を直すか削るかで応える。まだ分かっていないこと・反論は最後の答えのあとのまま。\n' +
       '- 出典と違う所は出典どおりに直す。出典に無い所は、削るか「〜と言われている」「ここは僕の解釈なんだけど」と札を付ける。\n' +
       '- 削る指摘は削る。足す指摘は1〜2文まで。\n' +
       '- 章の見出し（＃ の行）は残す。話し言葉のまま。\n\n' +
