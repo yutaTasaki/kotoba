@@ -1992,7 +1992,7 @@
       <details class="setGroup" data-group="ytStats">
         <summary><span class="sgTitle">YouTube の数字（維持率）</span><span class="sgSub" id="setSubYtStats"></span></summary>
         <div class="setBody">
-          <p class="fieldNote">撮るの「10. 公開後」で、維持率のグラフを YouTube から取ってくるための鍵。Google Cloud の OAuth クライアント ID（ウェブ アプリケーション）を貼る。端末の localStorage にだけ保存され、同期しません。取るときは毎回 Google のログイン画面が出ます（読むだけの許可）。</p>
+          <p class="fieldNote">撮るの「11. 公開後」で、維持率のグラフを YouTube から取ってくるための鍵。Google Cloud の OAuth クライアント ID（ウェブ アプリケーション）を貼る。端末の localStorage にだけ保存され、同期しません。取るときは毎回 Google のログイン画面が出ます（読むだけの許可）。</p>
           <div class="field">
             <span class="fieldLabel">OAuth クライアント ID</span>
             <input id="ytClientIdInput" type="text" placeholder="xxxx.apps.googleusercontent.com" autocomplete="off" spellcheck="false">
@@ -3339,7 +3339,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.135';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.136';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -14045,7 +14045,7 @@
     if (v) localStorage.setItem(YT_CLIENT_KEY, v); else localStorage.removeItem(YT_CLIENT_KEY);
     toruYtTok = null;
     document.getElementById('setSubYtStats').textContent = v ? '設定済み' : '未設定';
-    document.getElementById('ytStatsNote').textContent = v ? (/\.apps\.googleusercontent\.com$/.test(v) ? '保存しました。撮るの「10. 公開後」から維持率を取れます。' : '保存しました。ただ、ふつうは「….apps.googleusercontent.com」で終わる文字です。貼り間違いがないか見てください。') : '消しました。';
+    document.getElementById('ytStatsNote').textContent = v ? (/\.apps\.googleusercontent\.com$/.test(v) ? '保存しました。撮るの「11. 公開後」から維持率を取れます。' : '保存しました。ただ、ふつうは「….apps.googleusercontent.com」で終わる文字です。貼り間違いがないか見てください。') : '消しました。';
   });
 
   document.getElementById('btnSaveLeadKeys').addEventListener('click', () => {
@@ -16107,6 +16107,50 @@
       '■ 返事\n直した台本の全文だけを返す。前置き・説明・変更点の一覧は付けない。\n\n' +
       '■ 台本\n' + t;
   }
+  // v20.136 耳で聞いて直す：全文を書く段・直す段は何十もの決まりを一度に満たそうとし、「耳で1回聞いて分かるか」が埋もれる。
+  // 本人がチャットに「もう少しわかりやすく」と1つだけ頼むと分かりやすくなったのと同じく、この1つだけを頼む段を分ける
+  function toruEarKey(deck) { return (deck.fix && deck.fix.at) || (deck.script && deck.script.at) || ''; }
+  function toruEarPromptText(deck) {
+    const t = (deck.script && deck.script.text) || '';
+    return SHOOT_PROMPT_HEAD.replace('返事は JSON だけ', '返事は台本だけ') +
+      '次の台本を、話の中身をまったく知らない人が、耳で1回だけ聞きます。1回聞いて分からない文だけを探して、その文だけを書き直してください。ほかの文は一字も変えないでください。\n\n' +
+      toruTaneText(deck) +
+      '■ 1回で分からない文の型（直す前 → 直した後）\n' +
+      '- 名前だけの対比・まとめ：「逆転」「ずれ」「棚」「手綱」のような名前だけで言い、何と何かを文で言っていない → 両側を文で言う（「普通は〜と思うじゃん。でも実は〜」）。\n' +
+      '  ×「僕にはけっこう大きな逆転に聞こえた。」 ○「普通は、相手の目を見て、それで『見られてる』って気づく順番だと思うじゃん。でも順番が逆なんだよ。」\n' +
+      '- かぎかっこの短い言葉を名詞として使う → 1文分の中身を、そのまま文で言う。\n' +
+      '  ×「脳が先に『たぶんこうだ』を出して」 ○「脳のほうが先に『この人、こっち見てるな』って決めてて」\n' +
+      '- 同じ語を1つの文で2つの意味に使う（自分が「見る」と、相手が自分を「見てる」）→ 片方を言い換える。\n' +
+      '  ×「前から来る人を見るときも、目に入った光がそのまま『見てる』になってるわけじゃない」 ○「前から来る人が自分を見てるかどうかも、目に入ったものだけで決めてるわけじゃない」\n' +
+      '- たとえの動詞が絵にならない → 何が何をするかを、目に浮かぶ動作で言う。\n' +
+      '  ×「そこに光を当てはめてる」 ○「目に入ったものは、それに合わせて使われてるだけ」\n' +
+      '- 1文に2つ以上のことが入っている・主語が途中で替わる・「〜わけじゃない」で打ち消してから本当のことを言う → 文を分け、本当のことから言う。\n' +
+      '- 企画メモや英語の資料の言い回しがそのまま残っている → 見ている人がふだん使う言葉で言う。\n\n' +
+      '■ 決まり\n' +
+      '- 直すのは、1回で分からない文だけ。つながりのために前後の1文を最小限に直すのはよい。\n' +
+      '- 中身・順番・数字・人名・書名は変えない。原文の読み上げと、本人の一言は変えない。章の見出し（＃ の行）は残す。\n' +
+      '- 直した文は、元の文の1.5倍より長くしない。\n' +
+      '- 上の「本人がこの題材について自分で書いた言葉」があれば、芯の考えを言う所はその言い方を優先する。\n\n' +
+      '■ 返事\n直した台本の全文だけを返す。前置き・説明・変更点の一覧は付けない。\n\n' +
+      '■ 台本\n' + t;
+  }
+  function toruImportEar(deck, raw) {
+    const t = String(raw || '').replace(/^```[a-z]*\n?/, '').replace(/```\s*$/, '').trim();
+    const old = (deck.script && deck.script.text) || '';
+    if (!t) return { error: '台本が貼られていません。' };
+    if (t.replace(/\s/g, '').length < old.replace(/\s/g, '').length * 0.8) return { error: '返事が元の台本の8割より短いです。途中で切れていないか見てください。' };
+    const norm = (x) => x.replace(/\s/g, '');
+    const so = toruSentences(old).map(norm), sn = toruSentences(t).map(norm);
+    const setO = new Set(so), setN = new Set(sn);
+    const changed = sn.filter((x) => !setO.has(x)).length, removed = so.filter((x) => !setN.has(x)).length;
+    deck.ear = { at: nowIso(), key: toruEarKey(deck), before: old, changed, removed, total: so.length };
+    deck.script.text = toruBreakLines(t);
+    deck.script.editedAt = nowIso();
+    shootTouch(deck);
+    const ratio = so.length ? (changed + removed) / so.length : 0;
+    return { text: '耳で聞いて直した台本を取り込みました：変わった文 ' + changed + '・消えた文 ' + removed + '（もとは ' + so.length + ' 文）' +
+      (ratio > 0.3 ? '。思ったより多く変わっています。5. 台本 で読み比べてください' : '') };
+  }
   function toruImportFix(deck, raw) {
     const t = String(raw || '').replace(/^```[a-z]*\n?/, '').replace(/```\s*$/, '').trim();
     const old = (deck.script && deck.script.text) || '';
@@ -16526,7 +16570,7 @@
       '- 6〜10個。kind は ' + TORU_MAT_KINDS.join('／') + ' のどれか。分野（研究・歴史・伝承・オカルト）はまたいでよいが、どれも同じ芯を掘るものにする。\n' +
       '- 英語など日本語以外の資料もどんどん使ってよい（fact は日本語で書く）。\n' +
       '- fact：話し言葉で言える1文（60字以内）。論文の要約にしない。数字は1つまで。\n' +
-      '- detail：数字・方法・人数・年（開いたときだけ見るもの）。\n' +
+      '- detail：数字・方法・年（開いたときだけ見るもの）。研究や実験なら、参加者の人数と、著者が参加者に入っているかを必ず書く（分からなければ「人数は確かめられなかった」と書く。4本目で人数の無い材料から「全員」を強めた台本が2回できた）。\n' +
       '- source：媒体・著者・年。url：あれば（無ければ空）。\n' +
       '- sure：確かさ。fact＝一次資料や研究で確かめられる／report＝報道や書籍にそう書かれている／legend＝そう語られてきた話／mine＝本人の実感。\n' +
       '- why：この題材のどこに効くか（1文）。とくに「常識をどう裏返すか」。\n' +
@@ -16621,6 +16665,14 @@
       '- 上の視点・材料・構成の説明の言い回しを、台詞に写さない。英語の資料の言葉は訳語のまま使わず、何が起きるかを日本語のふつうの言い方で言う（×「拡張された心」→ ○「目から何かが相手まで届いてる」）。\n' +
       '- 「つまり〜ってこと」で言い直さない。これから話すことの説明（「今日は〜も入れながら話していこうと思う」）をしない。\n\n';
   }
+  // v20.136：本人がこの題材について自分で書いた種。4本目で、本人のメモ「この世界を見ているようで実は全然見ていない。…脳内で作り出した
+  // 映像を見ている」は、台本の同じ所（AI「僕にはけっこう大きな逆転に聞こえた。…「たぶんこうだ」を出して、そこに光を当てはめてる」）より
+  // ずっと分かりやすかった。前は種が 1. 判定 までしか届いていなかった
+  function toruTaneText(deck) {
+    const t = String(deck.tane || '').trim();
+    if (!t) return '';
+    return '■ 本人がこの題材について自分で書いた言葉（種。芯の考えを説明する所では、この言い方を優先して使う。中身を足したり盛ったりしない）\n' + t.slice(0, 600) + '\n\n';
+  }
   function toruTaikenLines(deck) {
     return String(deck.taiken || '').split(/\n+/).map((x) => x.replace(/^[・\-\s\d.．、)）]+/, '').trim()).filter(Boolean).slice(0, 12);
   }
@@ -16666,7 +16718,7 @@
   function toruScriptPromptText(deck) {
     return SHOOT_PROMPT_HEAD.replace('返事は JSON だけ', '返事は台本だけ') +
       'この構成で、動画の台本を書いてください。話し言葉の全文です。\n\n' +
-      toruStyleText() + toruReduceText() + toruLearnedText() + toruGoalText() + toruReaderText() + toruJudgeText(deck) + toruViewText(deck) + toruMatsText(deck) + toruReadText(deck) + toruExplainText(deck) + toruTaikenText(deck) + toruBlocksText(deck) + toruTenkaiText() + toruSpeakRulesText() +
+      toruStyleText() + toruReduceText() + toruLearnedText() + toruGoalText() + toruReaderText() + toruJudgeText(deck) + toruViewText(deck) + toruMatsText(deck) + toruReadText(deck) + toruExplainText(deck) + toruTaneText(deck) + toruTaikenText(deck) + toruBlocksText(deck) + toruTenkaiText() + toruSpeakRulesText() +
       toruResultsText('■ これまでの動画の結果（参考）', deck) + toruRetText(deck) + toruPrevOpeningsText(deck) +
       '■ 台本の決まり\n' +
       '- ' + TORU_SCRIPT_MIN + '〜' + TORU_SCRIPT_MAX + '字（約20分）。\n' +
@@ -17011,7 +17063,7 @@
   function toruLearnedSummaryText() {
     const a = toruRules().length, b = toruAddRules().length, c = toruAvoidRules().length;
     return (a || b || c)
-      ? 'この台本の依頼文に入る学び：口調 ' + a + '・足すこと ' + b + '（避けること ' + c + ' は題材判定に入ります）。中身は 10. 公開後 で見られます。'
+      ? 'この台本の依頼文に入る学び：口調 ' + a + '・足すこと ' + b + '（避けること ' + c + ' は題材判定に入ります）。中身は 11. 公開後 で見られます。'
       : '';
   }
   // 6. 公開後：台本の学び（① 貼る → ② 比べた結果 → ③ 学ぶ）
@@ -17828,7 +17880,7 @@
         ta.addEventListener('input', () => { deck.viewEdit = ta.value.slice(0, 1000); deck.promiseAt = nowIso(); shootScheduleSave(); });
         ta.addEventListener('blur', () => { shootFlush(); rerender(); });
         sec.appendChild(ta);
-        // v20.124：仮の題名とサムネ。先に決めて、冒頭をこの約束に合わせる（最後の 9. サムネ・題名を磨く で磨く）
+        // v20.124：仮の題名とサムネ。先に決めて、冒頭をこの約束に合わせる（最後の 10. サムネ・題名を磨く で磨く）
         sec.appendChild(el('div', 'kjGroup', '仮の題名とサムネ（先に決めると、冒頭がこの約束に合わせて作られます）'));
         const mkIn = (key, ph, max) => {
           const i = el('input'); i.type = 'text'; i.placeholder = ph; i.autocomplete = 'off'; i.value = deck[key] || '';
@@ -18161,8 +18213,23 @@
           sec.appendChild(lab);
         });
       });
-    // 8 サムネ・題名を磨く（v20.125：仮の題名は 2. で先に決める。ここは台本に合わせて磨く段、と名前で分かるように）
-    step('pack', '9. サムネ・題名を磨く', !!(deck.script && deck.script.text), !!(deck.pack && deck.pack.at), () => toruPackPromptText(deck), (raw) => toruImportPack(deck, raw),
+    // 9 耳で聞いて直す（v20.136）：1回聞いて分からない文だけを直してもらう
+    step('ear', '9. 耳で聞いて直す', !!(deck.script && deck.script.text),
+      !!(deck.ear && deck.ear.at && deck.ear.key === toruEarKey(deck)), () => toruEarPromptText(deck), (raw) => toruImportEar(deck, raw),
+      '直した台本をそのまま貼る',
+      (sec) => {
+        const e = deck.ear;
+        sec.appendChild(el('div', 'kjLine', '変わった文 ' + e.changed + '・消えた文 ' + e.removed + '（もとは ' + e.total + ' 文）。台本は 5. 台本 で読めます。'));
+        const b = el('button', 'linkLikeBtn', '直す前の台本に戻す'); b.type = 'button';
+        b.addEventListener('click', () => { if (e.before) { deck.script.text = e.before; deck.script.editedAt = nowIso(); } deck.ear = null; shootTouch(deck); rerender(); });
+        sec.appendChild(b);
+      },
+      (sec) => {
+        sec.appendChild(el('div', 'kjSub', '台本を、中身を知らない人が耳で1回だけ聞いたとして、1回で分からない文だけを直してもらいます（名前だけの対比・かぎかっこの名詞・同じ語の二重の意味・絵にならないたとえ など）。8. 直した台本 のあとがおすすめです。' +
+          (deck.fix && deck.fix.scriptAt === (deck.script && deck.script.at) ? '' : '（8. がまだなら、先に 8. を）')));
+      });
+    // 10 サムネ・題名を磨く（v20.125：仮の題名は 2. で先に決める。ここは台本に合わせて磨く段、と名前で分かるように）
+    step('pack', '10. サムネ・題名を磨く', !!(deck.script && deck.script.text), !!(deck.pack && deck.pack.at), () => toruPackPromptText(deck), (raw) => toruImportPack(deck, raw),
       '{"thumbs":[...],"titles":[...]} をここに貼る',
       (sec) => {
         const p = deck.pack;
@@ -18222,7 +18289,7 @@
     // 6 公開後
     {
       const sec = el('div', 'kjStep' + (deck.after && deck.after.at ? ' done' : ''));
-      sec.appendChild(el('div', 'kjStepHead', '10. 公開後' + (deck.after && deck.after.at ? '（済）' : '')));
+      sec.appendChild(el('div', 'kjStepHead', '11. 公開後' + (deck.after && deck.after.at ? '（済）' : '')));
       sec.appendChild(el('div', 'kjSub', 'YouTube Studio → この動画のアナリティクス。公開から7日後くらいの数字を入れる。次の題材の判定・タイトル・台本の依頼文に渡します。'));
       deck.after = deck.after || { url: '', ctr: '', avgView: '', drop: '', note: '', at: '', finalText: '', finalAt: '' };
       const f = (key, label, ph) => {
