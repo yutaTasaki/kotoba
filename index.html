@@ -3339,7 +3339,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.133';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.134';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -16183,7 +16183,8 @@
     const sents = toruSentences((deck.script && deck.script.text) || '');
     const mats = deck.mats || [];
     const matNums = new Set([].concat(...mats.map((m) => [m.fact, m.detail, m.source].join(' ')).map(toruNums)));
-    const matText = mats.map((m) => [m.fact, m.detail, m.source, m.explain || ''].join(' '));   // v20.131：説明の数字は印を付けたまま（原文で照らしてもらう）
+    // v20.134：v20.131 で分かった説明（長文）も材料の対応に使ったら、4本目で確かめる所38のうち30が説明のある2つの材料に寄り、「出典に無い」が19に増えた。対応は要点・くわしく・出どころ・原文の一節だけで取る
+    const matText = mats.map((m) => [m.fact, m.detail, m.source, m.quote || ''].join(' '));
     // 「実験」「研究」の語だけで拾った短い文（「どういう実験だよって思うじゃん？」など）は、確かめる中身が無いので外す
     const scored = sents.map((t, i) => ({ t, i, sc: toruClaimScore(t) })).filter((x) => x.sc >= 3 || (x.sc >= 2 && x.t.length >= 25));
     const keep = scored.sort((a, b) => b.sc - a.sc || a.i - b.i).slice(0, TORU_VERIFY_MAX).sort((a, b) => a.i - b.i);
@@ -17626,7 +17627,7 @@
     if (l.marks) notes.push('【体験】の印が' + l.marks + 'か所（自分の話で埋める）');
     if (l.research) notes.push('調べた道筋でつなぐ言い方 ' + l.research + '回（「〜なのかなって調べた」「探したら」。見ている人の問いでつなぐ）');
     const tw = deck ? toruTitleWordAt(deck, l.text) : null;
-    if (tw) notes.push('題名の言葉「' + tw.word + '」がそのまま最初に出るのは約' + tw.sec + '秒目' + (tw.sec > 15 ? '（15秒より遅い）' : ''));
+    if (tw) notes.push('題名の言葉「' + tw.word + '」がそのまま最初に出るのは約' + tw.sec + '秒目' + (tw.sec > 15 ? '（15秒より遅い。言い換えで主題に入っていれば問題なし）' : ''));
     const ec = toruEndCheck(l.text);
     if (ec.n) notes.push('「〜んだよ」' + ec.n + '回・1000字に' + ec.v.toFixed(1) + '（本人が話すと約' + ec.target + '）' + (ec.over ? '。多いので 8. 直した台本 で減らせます' : ''));
     // v20.113：「最初の30秒に今日は〜の約束」の知らせは外した（謎そのものから入る冒頭を、決まり文句に戻してしまうため）
