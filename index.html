@@ -3339,7 +3339,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.130';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.131';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -16026,13 +16026,13 @@
     const t = (deck.script && deck.script.text) || '';
     return SHOOT_PROMPT_HEAD +
       'この動画の台本の「粗」を探してください。台本を書き直すのではなく、直すべき所を指摘してください。\n\n' +
-      toruGoalText() + toruViewText(deck) + toruJudgeText(deck) + toruReduceText() + toruRetText(deck) + toruReadText(deck) +
+      toruGoalText() + toruViewText(deck) + toruJudgeText(deck) + toruReduceText() + toruRetText(deck) + toruReadText(deck) + toruExplainText(deck) +
       '■ 探すもの（kind）\n' +
       '- 飛躍：前の話から次の話へ、理由の無いまま跳んでいる所\n' +
       '- こじつけ：次の材料を出すためだけに作った問い（「じゃあ〜なのか、っていうのが次の話」）／何が同じかを言わない「似てる」「同じ形」／最後に別々の分野を「実は同じもの」「同じ場所を指してる」とまとめる所\n' +
       '- 根拠が弱い：確かめられていないことを、確かな事実のように言っている所\n' +
       '- 言い直し：前に言ったことを別の言い方で繰り返しているだけの所（話が進んでいない）。「つまり〜ってこと」の言い直しも\n' +
-      '- 事実が続く：事実・数字のすぐ後に、本人の反応も見ている人の生活の場面も無く、次の事実が続いている所。覚えなくていい人の名前・年・雑誌名が並ぶ所\n' +
+      '- 事実が続く：事実・数字のすぐ後に、本人の反応も見ている人の生活の場面も無く、次の事実が続いている所。覚えなくていい人の名前・年・雑誌名が並ぶ所。実験や出来事の中身（何をして何が分かったか）を言わずに結果だけ言っている所\n' +
       '- 作り物：耳で1回聞いて絵が浮かばない言い方・英語をそのまま日本語にした言い方（例「実験にかけた」）／本人の一言や体験メモに無い感情（「ゾクッとした」）／「ここは確かめられることね」のような区分けの説明／人に付けた評価の言葉（「本気で」）\n' +
       '- 離脱しそう：見る人がここで飽きて離れそうな所（説明が長い・次を知りたくなる理由が無い・同じ調子が続く）\n' +
       '- 約束とずれ：冒頭で見せた謎や視点から外れている所。題名の問いに、この動画の中で答えていない所（次回に回している）\n' +
@@ -16072,7 +16072,7 @@
     const items = toruFixItems(deck).filter((x) => !x.skip);
     return SHOOT_PROMPT_HEAD.replace('返事は JSON だけ', '返事は台本だけ') +
       '次の台本を、下の「直す所」だけ直してください。直す所の無い文は一字も変えないでください（言い回しを整えない・削らない・足さない）。\n\n' +
-      toruViewText(deck) + toruReduceText() + toruTenkaiText() + toruReadText(deck) + toruSpeakRulesText() + toruBlocksText(deck) +
+      toruViewText(deck) + toruReduceText() + toruTenkaiText() + toruReadText(deck) + toruExplainText(deck) + toruSpeakRulesText() + toruBlocksText(deck) +
       '■ 直す所（' + items.length + '）\n' + items.map((x, i) => (i + 1) + '. ［' + x.kind + '］「' + x.quote + '」' + (x.why ? '\n   なぜ：' + x.why : '') + (x.fix ? '\n   直し方：' + x.fix : '')).join('\n') + '\n\n' +
       '■ 直し方の決まり\n' +
       '- 直す所の文だけを直す。つながりのために前後の1文を最小限に直すのはよい。\n' +
@@ -16128,6 +16128,8 @@
     const early = steps.filter((st, i) => (st.role === '未解明' || st.role === '反証') && i < lastA).length;
     out.push([early === 0, early ? '答えより前に「反証・未解明」の段が ' + early + ' つ（強い所の直後で弱めない。最後に1段だけ）' : '反証・未解明は最後にまとまっている']);
     const nr = toruReadMats(deck).length;
+    const ne = toruExplainMats(deck).length;
+    out.push([ne > 0, '本人が分かった説明：' + ne + (ne ? '' : '（3. 材料 の「分かりやすく説明してもらう」で、腑に落ちた説明を貼ると、その順番で台本が書かれる）')]);
     out.push([nr > 0, '本人が読んだ原文：' + nr + (nr ? '' : '（3. 材料 で原文を読んで一言を書くと、台本で本人が読み上げる所になる）')]);
     const tonight = TORU_TONIGHT_RE.test(deck.ending || '');
     out.push([tonight, '終わり：見ている人が今夜できること' + (tonight ? 'がある' : 'が見当たらない')]);
@@ -16152,8 +16154,8 @@
   function toruClaims(deck) {
     const sents = toruSentences((deck.script && deck.script.text) || '');
     const mats = deck.mats || [];
-    const matText = mats.map((m) => [m.fact, m.detail, m.source].join(' '));
-    const matNums = new Set([].concat(...matText.map(toruNums)));
+    const matNums = new Set([].concat(...mats.map((m) => [m.fact, m.detail, m.source].join(' ')).map(toruNums)));
+    const matText = mats.map((m) => [m.fact, m.detail, m.source, m.explain || ''].join(' '));   // v20.131：説明の数字は印を付けたまま（原文で照らしてもらう）
     // 「実験」「研究」の語だけで拾った短い文（「どういう実験だよって思うじゃん？」など）は、確かめる中身が無いので外す
     const scored = sents.map((t, i) => ({ t, i, sc: toruClaimScore(t) })).filter((x) => x.sc >= 3 || (x.sc >= 2 && x.t.length >= 25));
     const keep = scored.sort((a, b) => b.sc - a.sc || a.i - b.i).slice(0, TORU_VERIFY_MAX).sort((a, b) => a.i - b.i);
@@ -16538,11 +16540,40 @@
       r.map((x) => '- 材料 ' + x.n + (x.m.source ? '（' + x.m.source + (x.m.where ? '・' + x.m.where : '') + '）' : '') + (x.m.found ? '［本人が原文で確かめた］' : '') +
         '\n  原文：' + x.m.quote + (x.m.quoteJa ? '\n  訳：' + x.m.quoteJa : '') + '\n  本人の一言：' + x.m.react.trim()).join('\n') + '\n\n';
   }
+  // v20.131：本人が資料をチャットに分かりやすく説明してもらい、腑に落ちた説明を材料に残す。
+  // 本人が試した比べ（Mareschal 2013）で、分かりやすくなった説明は：参加者がしたことから入る／やったこと→わかったこと→意味／
+  // 疑問を先に／数字で1回たどる／専門語をやめる・たとえは1つ／最後に流れを一言。この型を依頼文にし、分かった道筋をそのまま台本の道筋にする
+  function toruExplainPromptText(deck, m) {
+    return '次の資料の中身を、この分野を知らない人に分かるように説明してください。web 検索で資料を開いて読んでから書いてください。今日は ' + todayStr() + ' です。\n\n' +
+      '■ 資料\n' + (m.source ? '- 出どころ：' + m.source + (m.where ? '・' + m.where : '') + '\n' : '') + (m.url ? '- url：' + m.url + '\n' : '') +
+      '- 要点：' + m.fact + '\n' + (m.detail ? '- くわしく：' + m.detail + '\n' : '') + (m.quote ? '- 原文の一節：' + m.quote + '\n' : '') +
+      (toruViewChosen(deck) && (deck.core || '').trim() ? '- この資料を使う動画の芯：' + deck.core.trim() + '\n' : '') + '\n' +
+      '■ 説明の仕方\n' +
+      '- 理屈や用語からではなく、参加者（登場人物）が実際にしたこと・起きたことから入る。聞く人がその場に座れるように、見たもの・時間・回数を具体的に。\n' +
+      '- 実験や出来事がいくつかあれば、1つずつ「やったこと → わかったこと → 意味（それで何が言えるか）」の順で書く。\n' +
+      '- 次の実験や段に入る前に、それが答えようとした疑問を先に一言で言う（「これは〜かもしれない。そこで〜」）。\n' +
+      '- 数字を使って、判断や結果を1回たどってみせる（例：左に5°の顔が正面に見えると、左に3°の顔を逆に答えてしまう）。数字は資料にあるものだけ使う。無ければ数字を作らず、言葉でたどる。\n' +
+      '- 専門語は使わない。どうしても要るものは、言ったすぐ後に日常の言葉で言い換える。\n' +
+      '- たとえは1つだけ、いちばん分かりにくい所に使う。\n' +
+      '- 最後に、全体の流れを一言でまとめる。\n' +
+      '- 資料で確かめられなかったことは書かない。研究の弱い所（人数が少ない・著者が参加者を兼ねている など）があれば、最後に一言。\n\n' +
+      '■ 返事\n説明の文章だけ（見出しは使ってよい）。';
+  }
+  function toruExplainMats(deck) {
+    return (deck.mats || []).map((m, i) => ({ m, n: i + 1 })).filter((x) => (x.m.explain || '').trim());
+  }
+  function toruExplainText(deck) {
+    const r = toruExplainMats(deck);
+    if (!r.length) return '';
+    return '■ 本人が分かった説明（本人がチャットに分かりやすく説明してもらい、腑に落ちた説明。台本でその材料を話す所は、この順番・数字の例・たとえを使い、本人の口調で短くする。専門語を戻さない。ここに無い数字を足さない）\n' +
+      r.map((x) => '- 材料 ' + x.n + (x.m.source ? '（' + x.m.source + '）' : '') + '\n' + x.m.explain.trim().split(/\n+/).map((l) => '  ' + l).join('\n')).join('\n') + '\n\n';
+  }
   // v20.130 事実の出し方（台本と 8. 直した台本 に入れる）
   function toruSpeakRulesText() {
     return '■ 事実の出し方（見本4チャンネルの当たりと、本人が話すときに飛ばした文から）\n' +
       '- 事実・数字・研究を1つ出したら、すぐ後にどちらかを1つ置く：本人の反応や判断（上の「本人が読んだ原文と一言」・体験メモにあるもの、または「これは怪しい」「ここは分からない」のような判断）／見ている人の生活の場面への置き換え。どちらも置けない事実は削る。事実のすぐ後に次の事実を続けない。\n' +
       '- 驚き・笑い・「ゾクッとした」などの感情を作らない（本人の一言や体験メモに無い感情は書かない）。\n' +
+      '- 実験や出来事は、結果だけを言わない。何をしたか（見ている人がその場に座れるように）→ 何が分かったか → それで何が言えるか、の順で。その前に、それが答えようとした疑問を一言。上の「本人が分かった説明」があれば、その順番とたとえを使う。\n' +
       '- 人の名前は、主役とその相手だけ。ほかは「イギリスの心理学者」「別の研究者たち」のように言う（名前・年・雑誌名を並べない）。\n' +
       '- 人や物に評価の言葉（本気で・天才的な・有名な）を付けない。評価は本人の反応として後で言う。\n' +
       '- 上の視点・材料・構成の説明の言い回しを、台詞に写さない。英語の資料の言葉は訳語のまま使わず、何が起きるかを日本語のふつうの言い方で言う（×「拡張された心」→ ○「目から何かが相手まで届いてる」）。\n' +
@@ -16559,12 +16590,13 @@
   function toruBlocksPromptText(deck) {
     return SHOOT_PROMPT_HEAD +
       'この題材と材料で、20分の動画の構成を作ってください。台本はまだ書きません。\n\n' +
-      toruGoalText() + toruReaderText() + toruJudgeText(deck) + toruViewText(deck) + toruMatsText(deck) + toruReadText(deck) + toruTaikenText(deck) + toruRetText(deck) + toruTenkaiText() +
+      toruGoalText() + toruReaderText() + toruJudgeText(deck) + toruViewText(deck) + toruMatsText(deck) + toruReadText(deck) + toruExplainText(deck) + toruTaikenText(deck) + toruRetText(deck) + toruTenkaiText() +
       ((deck.mats || []).some((m) => m.role === 'counter') ? '■ まだ分かっていないこと・反論の材料の使い方（v20.128）\n- 捨てずに、最後の答えのあと（今夜やることの前）に短く1段で触れる。途中で話をひっくり返すのには使わない（強い所の直後で弱めないため）。\n\n' : '') +
       '■ 構成の作り方\n' +
       '- big_q：この動画で追いかける謎（1文）。\n' +
       '- core：この動画の芯（上の「話の芯」。1つ）。\n' +
       '- 段を10〜15個並べ、3〜5つの章に分ける。章には name（15字以内。視聴者が今どこの話か分かる言葉）。\n' +
+      (toruExplainMats(deck).length ? '- 「本人が分かった説明」がある材料は、その説明の順番（やったこと→わかったこと→意味）で段を立てる（1つの実験を1〜3段）。\n' : '') +
       (toruReadMats(deck).length ? '- 「本人が読んだ原文と一言」は、芯の段で本人が原文を読み上げる所として使う（使う段の mats にその番号を入れる）。\n' : '') +
       '- 段ごとに new（この段で新しく分かること。1文。前の段では言えなかったこと）、role（大きな問いに対して：候補／証拠／区別／答え／未解明＝まだ分かっていないこと。未解明は最後の答えのあとに1段だけ）、link（前の段から何でつながるか。続く人物・資料・年・言葉、拾う名詞、資料の穴から出る疑い のどれかを具体的に短く。最初の段は空）、mats（使う材料の番号。材料は全部使わなくてよい）。\n' +
       '- 並べ終わったら new を上から読み直し、前のどれかの言い換えになっている段を消すか、別の新しい事実に替える。link も読み直し、中身の無い「似ている」や、次の材料を呼ぶためだけの問いになっているものを直す。\n' +
@@ -16591,7 +16623,7 @@
   function toruScriptPromptText(deck) {
     return SHOOT_PROMPT_HEAD.replace('返事は JSON だけ', '返事は台本だけ') +
       'この構成で、動画の台本を書いてください。話し言葉の全文です。\n\n' +
-      toruStyleText() + toruReduceText() + toruLearnedText() + toruGoalText() + toruReaderText() + toruJudgeText(deck) + toruViewText(deck) + toruMatsText(deck) + toruReadText(deck) + toruTaikenText(deck) + toruBlocksText(deck) + toruTenkaiText() + toruSpeakRulesText() +
+      toruStyleText() + toruReduceText() + toruLearnedText() + toruGoalText() + toruReaderText() + toruJudgeText(deck) + toruViewText(deck) + toruMatsText(deck) + toruReadText(deck) + toruExplainText(deck) + toruTaikenText(deck) + toruBlocksText(deck) + toruTenkaiText() + toruSpeakRulesText() +
       toruResultsText('■ これまでの動画の結果（参考）', deck) + toruRetText(deck) + toruPrevOpeningsText(deck) +
       '■ 台本の決まり\n' +
       '- ' + TORU_SCRIPT_MIN + '〜' + TORU_SCRIPT_MAX + '字（約20分）。\n' +
@@ -17406,6 +17438,10 @@
     // v20.130：貼り直しても、同じ一節に書いた本人の一言は残す
     const prevR = new Map((deck.mats || []).filter((m) => m.quote && (m.react || m.found)).map((m) => [m.quote, m]));
     mats.forEach((m) => { const o = m.quote && prevR.get(m.quote); if (o) { m.react = o.react || ''; m.found = !!o.found; } });
+    // v20.131：分かった説明も、同じ資料（url か 要点）なら残す
+    const keyOf = (m) => m.url || m.fact;
+    const prevE = new Map((deck.mats || []).filter((m) => (m.explain || '').trim()).map((m) => [keyOf(m), m.explain]));
+    mats.forEach((m) => { const e = prevE.get(keyOf(m)); if (e) m.explain = e; });
     let salvagedM = 0;
     if (!mats.length) {   // v20.81
       const objs = worldLooseObjects(raw);
@@ -17746,6 +17782,26 @@
             sec.appendChild(s);
           }
           if (m.why) sec.appendChild(el('div', 'kjSub', '効くところ：' + m.why));
+          // v20.131：分かりやすく説明してもらう（依頼文をコピー → 腑に落ちた説明を貼る）
+          const det = el('details', 'kjDetails kjExplain');
+          const has = !!(m.explain || '').trim();
+          det.appendChild(el('summary', 'kjSub', has ? '分かった説明あり（台本に入ります）' : '分かりやすく説明してもらう'));
+          const cp = el('button', 'secondaryBtn', '説明してもらう依頼文をコピー'); cp.type = 'button';
+          const cst = el('p', 'fieldNote', '');
+          const fb = el('textarea'); fb.rows = 4; fb.readOnly = true; fb.hidden = true;
+          cp.addEventListener('click', async () => {
+            const text = toruExplainPromptText(deck, m);
+            if (await copyToClipboard(text)) cst.textContent = 'コピーしました。Claude のチャットに貼ってください。分かりにくい所は、チャットで続けて聞いてかまいません。';
+            else { cst.textContent = 'コピーできませんでした。下の欄の内容を選んでコピーしてください。'; fb.value = text; fb.hidden = false; }
+          });
+          det.appendChild(cp); det.appendChild(cst); det.appendChild(fb);
+          det.appendChild(el('div', 'kjSub', '腑に落ちた説明を貼る（この順番・例・たとえで台本が書かれます）'));
+          const ea = el('textarea'); ea.rows = 5; ea.autocomplete = 'off'; ea.placeholder = 'チャットの説明のうち、分かった所を貼る';
+          ea.value = m.explain || '';
+          ea.addEventListener('input', () => { m.explain = ea.value.slice(0, 4000); shootScheduleSave(); });
+          ea.addEventListener('blur', () => { shootFlush(); });
+          det.appendChild(ea);
+          sec.appendChild(det);
         });
         // v20.130：原文を読んで一言（書いた一言が、構成・台本に「本人が読んだ所」として入る）
         const qs = (deck.mats || []).map((m, i) => ({ m, i })).filter((x) => x.m.quote);
