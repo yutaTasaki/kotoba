@@ -3339,7 +3339,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.131';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.132';   // 設定 → 世界 の一番下に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   // 世界の札のほかの欄（名前・出典・注など）の直書きの 80・40・200 は別々の欄なので入れない
   // （1つにまとめると関係ない欄の上限が一緒に変わる）
@@ -16065,6 +16065,9 @@
     }
     const c = deck.check;
     if (c && Array.isArray(c.issues)) c.issues.forEach((x, i) => out.push({ key: 'c' + i, kind: x.kind || '指摘', quote: x.quote || '', why: x.why || '', fix: x.fix || '', ref: x }));
+    const ec = toruEndCheck(deck.script && deck.script.text);
+    if (ec.over) out.push({ key: 'end', kind: '語尾', quote: '「〜んだよ」で終わる文（' + ec.n + '回）', why: '1000字に' + ec.v.toFixed(1) + '回。本人が実際に話すと約' + ec.target + '回',
+      fix: '「〜んだよ」で終わる文のうち約' + ec.cut + '文を、ほかの終わり方（〜だよね／〜なの／〜じゃん／「〜だった」「〜してる」の言い切り／名詞で止める）に変える。中身と順番は変えない。原文の読み上げと本人の一言の所は変えない' });
     return out.map((x) => Object.assign(x, { skip: !!sk[x.key] }));
   }
   function toruFixPromptText(deck) {
@@ -16122,6 +16125,9 @@
     } else if (mats.length) {
       out.push([false, '材料に「芯そのもの」の印がありません（3. 材料 を貼り直すと付きます）']);
     }
+    // v20.132：題名の本題に入る段（4本目の作り直しで、見られてる感の本題が全体の4割あたりだった）
+    const ma = deck.mainAt || 0;
+    out.push([ma > 0 && ma / n <= 0.3, ma > 0 ? '題名の本題に入る段：' + ma + '段目／' + n + '（3割までに）' : '題名の本題に入る段が書かれていません（構成を貼り直すと出ます）']);
     const ai = steps.findIndex((st) => st.role === '答え');
     out.push([ai >= 0 && ai / n <= 0.7, ai >= 0 ? '最初の答え：' + (ai + 1) + '段目／' + n + '（7割までに）' : '答えの段がありません（題名の問いにこの動画の中で答える）']);
     const lastA = steps.map((st) => st.role).lastIndexOf('答え');
@@ -16182,7 +16188,7 @@
       'YouTube の台本の中の「見る人が自分で調べられる所」を、出典と照らして確かめてください。\n' +
       'あなたは台本を書いた人とは別の、疑ってかかる確かめ役です。web 検索を使ってください。今日は ' + todayStr() + ' です。\n\n' +
       '■ 確かめ方\n' +
-      '- 1つずつ、書いてある出典（無ければ自分で探す）を開き、台本の言い方が出典と合っているかを見る。数字・年・人・書名・研究の結論・言い切りの強さ（言い過ぎ）を見る。\n' +
+      '- 1つずつ、書いてある出典（無ければ自分で探す）を開き、台本の言い方が出典と合っているかを見る。数字・年・人・書名・研究の結論・言い切りの強さ（言い過ぎ）を見る。「全員」「誰でも」「必ず」などの強い言い方が、研究の人数や対象（数人だけ・著者も参加者 など）に見合っているかも見る。\n' +
       '- status：ok＝出典どおり／diff＝ずれている（数字・年・人・結論が違う、言い過ぎ、誰の説かが違う）／none＝出典に書いていない・出典が見つからない／unsure＝確かめられない。\n' +
       '- 伝承・噂・スピリチュアル・本人の体験は、「そう語られてきた」「〜と言われている」として言っていれば ok。事実として言い切っていれば diff。\n' +
       '- quote：出典の該当する所を短く（80字以内。原文の言葉のままでよい）。\n' +
@@ -16536,7 +16542,7 @@
   function toruReadText(deck) {
     const r = toruReadMats(deck);
     if (!r.length) return '';
-    return '■ 本人が読んだ原文と一言（本人が資料を開いて読んだ所。台本では「読んでみるね」と原文を短く読み上げ、すぐ後に本人の一言を本人の言葉のまま使う。原文は写し間違えない。一言を盛らない・別の感情を足さない）\n' +
+    return '■ 本人が読んだ原文と一言（本人が資料を開いて読んだ所。台本では「読んでみるね」と原文を短く読み上げ、すぐ後に本人の一言を使う。原文が日本語以外なら、声では訳だけを読む（英語は読み上げない。原文は編集で画面に出す）。本人の一言は、中身と気づきの順番を変えずに話し言葉に直す（メモの書き言葉「摂取」「伝達情報」などは話す言葉に。長ければ要点を2〜5文に）。盛らない・別の感情を足さない）\n' +
       r.map((x) => '- 材料 ' + x.n + (x.m.source ? '（' + x.m.source + (x.m.where ? '・' + x.m.where : '') + '）' : '') + (x.m.found ? '［本人が原文で確かめた］' : '') +
         '\n  原文：' + x.m.quote + (x.m.quoteJa ? '\n  訳：' + x.m.quoteJa : '') + '\n  本人の一言：' + x.m.react.trim()).join('\n') + '\n\n';
   }
@@ -16574,6 +16580,7 @@
       '- 事実・数字・研究を1つ出したら、すぐ後にどちらかを1つ置く：本人の反応や判断（上の「本人が読んだ原文と一言」・体験メモにあるもの、または「これは怪しい」「ここは分からない」のような判断）／見ている人の生活の場面への置き換え。どちらも置けない事実は削る。事実のすぐ後に次の事実を続けない。\n' +
       '- 驚き・笑い・「ゾクッとした」などの感情を作らない（本人の一言や体験メモに無い感情は書かない）。\n' +
       '- 実験や出来事は、結果だけを言わない。何をしたか（見ている人がその場に座れるように）→ 何が分かったか → それで何が言えるか、の順で。その前に、それが答えようとした疑問を一言。上の「本人が分かった説明」があれば、その順番とたとえを使う。\n' +
+      '- 研究の人数が少ないとき（数人など）は、「全員」「誰でも」と強めない。「参加者は数人なんだけど、その全員が」のように人数と一緒に言う。\n' +
       '- 人の名前は、主役とその相手だけ。ほかは「イギリスの心理学者」「別の研究者たち」のように言う（名前・年・雑誌名を並べない）。\n' +
       '- 人や物に評価の言葉（本気で・天才的な・有名な）を付けない。評価は本人の反応として後で言う。\n' +
       '- 上の視点・材料・構成の説明の言い回しを、台詞に写さない。英語の資料の言葉は訳語のまま使わず、何が起きるかを日本語のふつうの言い方で言う（×「拡張された心」→ ○「目から何かが相手まで届いてる」）。\n' +
@@ -16595,6 +16602,7 @@
       '■ 構成の作り方\n' +
       '- big_q：この動画で追いかける謎（1文）。\n' +
       '- core：この動画の芯（上の「話の芯」。1つ）。\n' +
+      '- 題名の本題（仮の題名とサムネで約束したもの。見る人がクリックした理由そのもの）には、全体の段の3割までに入る。仕組みの一般論などの前置きは、本題の中で要る分だけにする。芯の順番（本の章など）と両立しないときは、本題に要る所から芯を掘り、芯の前置きは本題の後ろに回す。main_at：本題に入る段の番号（上から数えて何段目か）。\n' +
       '- 段を10〜15個並べ、3〜5つの章に分ける。章には name（15字以内。視聴者が今どこの話か分かる言葉）。\n' +
       (toruExplainMats(deck).length ? '- 「本人が分かった説明」がある材料は、その説明の順番（やったこと→わかったこと→意味）で段を立てる（1つの実験を1〜3段）。\n' : '') +
       (toruReadMats(deck).length ? '- 「本人が読んだ原文と一言」は、芯の段で本人が原文を読み上げる所として使う（使う段の mats にその番号を入れる）。\n' : '') +
@@ -16607,7 +16615,7 @@
       '  ④ この先にまだある話を一言だけ約束する（目次にしない）。この動画ならではの理由（本人の体験・夜ひとりで考える目線）は、自然に言えるものがあれば一言だけ。無理に入れない。\n' +
       '- ending：最後（2〜3文）。大きな問いへの自分の答え（仮説なら仮説と言う）→ 冒頭の場面に1本だけ戻る → 見ている人が今夜できることを1つ（具体的に）。分野をまとめない。\n\n' +
       '■ 出力形式（JSON のみ）\n' +
-      '{"big_q":"1文","core":"芯","opening":"3〜5文","blocks":[{"name":"15字以内","steps":[{"new":"1文","role":"候補","link":"短く","mats":[1]}]}],"ending":"2〜3文"}';
+      '{"big_q":"1文","core":"芯","main_at":3,"opening":"3〜5文","blocks":[{"name":"15字以内","steps":[{"new":"1文","role":"候補","link":"短く","mats":[1]}]}],"ending":"2〜3文"}';
   }
   function toruBlocksText(deck) {
     const b = deck.blocks || [];
@@ -17488,6 +17496,7 @@
     deck.ending = s(p.ending, 800);
     deck.bigQ = s(p.big_q || p.bigQ, 300);
     deck.blocksCore = s(p.core, 120);
+    deck.mainAt = Number(p.main_at || p.mainAt) > 0 ? Math.round(Number(p.main_at || p.mainAt)) : 0;   // v20.132
     deck.turn = '';
     deck.blocksAt = nowIso();
     shootTouch(deck);
@@ -17536,6 +17545,18 @@
     const koji = (body.match(/っていうのが次の話|ここで出てくるのが|実は同じもの|同じ場所を指して|別の側から見て/g) || []).length;
     return { chars, heads, bad, greet, promise, questions: qs.length, gap, gapAt, hearsay, toc, marks, recap, koji, text: t };
   }
+  // v20.132：「〜んだよ」の数。本人が実際に話した中身から目安を出す（無ければ 3本目の実測 6.8 から 7）
+  function toruEndTarget() {
+    const v = toruSpokenDecks().map((d) => toruPer1000(d.after.finalText, 'んだよ')).filter((x) => x > 0);
+    return v.length ? Math.round((v.reduce((a, x) => a + x, 0) / v.length) * 10) / 10 : 7;
+  }
+  function toruEndCheck(text) {
+    const body = String(text || '').replace(/^＃[^\n]*$/gm, '').replace(/\s/g, '');
+    const n = body.split('んだよ').length - 1;
+    const v = toruPer1000(text, 'んだよ');
+    const target = toruEndTarget();
+    return { n, v, target, over: body.length >= 500 && v > target * 1.3, cut: Math.max(0, n - Math.round((target * body.length) / 1000)) };
+  }
   function toruScriptLintText(l, deck) {
     const parts = ['台本 約' + l.chars + '字', 'ブロックの見出し ' + l.heads];
     const notes = [];
@@ -17558,6 +17579,8 @@
       });
     } else if (l.chars >= 500 && l.hearsay / mins > 1) notes.push('「らしい」「んだって」が1分に約' + (l.hearsay / mins).toFixed(1) + '回（伝聞が続くと弱く聞こえる）');
     if (l.marks) notes.push('【体験】の印が' + l.marks + 'か所（自分の話で埋める）');
+    const ec = toruEndCheck(l.text);
+    if (ec.n) notes.push('「〜んだよ」' + ec.n + '回・1000字に' + ec.v.toFixed(1) + '（本人が話すと約' + ec.target + '）' + (ec.over ? '。多いので 8. 直した台本 で減らせます' : ''));
     // v20.113：「最初の30秒に今日は〜の約束」の知らせは外した（謎そのものから入る冒頭を、決まり文句に戻してしまうため）
     if (l.koji) notes.push('こじつけに聞こえやすい言い方 ' + l.koji + '回（「ここで出てくるのが」「実は同じもの」など。粗探しで見てもらう）');
     if (l.recap >= 3) notes.push('「だから、〜じゃなくて〜」のまとめ直しが' + l.recap + '回（同じことを言い直しているように聞こえる）');
