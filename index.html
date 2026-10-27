@@ -13,7 +13,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
 <!-- v9.9: the training log image only. Everything else keeps DotGothic16. -->
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Noto+Sans+JP:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Noto+Sans+JP:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #121212;
@@ -621,12 +621,33 @@
   .medTable th:first-child, .medTable td:first-child { text-align: left; }
   .medTableWrap { overflow-x: auto; }
   input[type="time"] { font-family: inherit; font-size: 16px; background: var(--bg-elevated); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
-  #screen-medTimer { background: #050807; color: #9aa59d; justify-content: center; align-items: center; text-align: center; gap: 24px; transition: background 0.6s ease; }
-  #screen-medTimer.flash { background: #3b4a44; }
-  #medTimerBig { font-size: 64px; font-variant-numeric: tabular-nums; letter-spacing: 0.04em; color: #b9c3bc; }
+  #screen-medTimer { background: radial-gradient(120% 70% at 50% 0%, #1d2a31 0%, #0f1518 55%, #0a0d0f 100%); color: #8fa6ad; justify-content: center; align-items: center; text-align: center; gap: 24px; transition: background 0.6s ease; }
+  #screen-medTimer.flash { background: #2c4046; }
+  #medTimerBig { font-family: Inter, system-ui, sans-serif; font-weight: 300; font-size: 72px; font-variant-numeric: tabular-nums; letter-spacing: 0.02em; color: #dfe9eb; }
   #medTimerSub { font-size: 14px; }
-  #btnMedTimerEnd { border: 1px solid #3a4540; color: #b9c3bc; border-radius: 999px; padding: 12px 36px; font-size: 16px; }
-  #btnMedTimerEnd:active { background: #1c2420; }
+  #btnMedTimerEnd { border: 1px solid rgba(156, 195, 200, 0.35); color: #cfe0e3; border-radius: 999px; padding: 12px 36px; font-size: 16px; }
+  #btnMedTimerEnd:active { background: rgba(156, 195, 200, 0.12); }
+  /* v20.147 瞑想の画面：色は画面の中だけ差し替える（ほかの画面は今のまま） */
+  #shell:has(#screen-meditation:not([hidden])) { background: radial-gradient(120% 520px at 50% 0%, #1d2a31 0%, #131a1e 55%, #121212 100%) no-repeat, #121212; }
+  #screen-meditation {
+    --accent: #9cc3c8; --accent-dim: #5f8a90; --border: rgba(255, 255, 255, 0.08);
+    --bg-elevated: rgba(255, 255, 255, 0.05); --text-dim: #8fa6ad; --text-faint: #6b8086;
+  }
+  #screen-meditation .tagFilterBtn { border-color: rgba(255, 255, 255, 0.12); }
+  #screen-meditation .tagFilterBtn.selected { border-color: var(--accent); color: var(--accent); background: rgba(156, 195, 200, 0.12); }
+  #screen-meditation input[type="number"], #screen-meditation textarea { background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.1); }
+  .medHero { display: flex; flex-direction: column; gap: 10px; }
+  .medRingBox { position: relative; width: 250px; height: 250px; margin: 2px auto 0; }
+  .medRingBox svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .medRingCenter { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .medRingK { font-size: 12px; color: var(--text-dim); letter-spacing: 0.15em; }
+  .medBig { font-family: Inter, system-ui, sans-serif; font-weight: 300; font-size: 46px; letter-spacing: -0.02em; line-height: 1.1; color: var(--text); font-variant-numeric: tabular-nums; }
+  .medBig small { font-size: 18px; color: #9fb5bb; margin: 0 3px; }
+  .medRingSub { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+  .medLegend { text-align: center; font-size: 12px; color: var(--text-dim); }
+  .medCards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .medCards > div { background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 14px; padding: 10px 12px; font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+  .medCards b { display: block; font-family: Inter, system-ui, sans-serif; font-weight: 400; font-size: 20px; color: var(--text); font-variant-numeric: tabular-nums; }
   /* --- v4.0: 筋トレ ------------------------------------------------- */
   .trBlock { background: var(--bg-card); border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; }
   .trBlockHead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
@@ -1579,6 +1600,22 @@
       </div>
     </header>
     <div class="editorBody" id="medMain">
+      <!-- v20.147：真ん中に累計、まわりの輪は今週の7日（月〜日）。記録を入れている間は隠す -->
+      <div class="medHero" id="medHero">
+        <div class="medRingBox">
+          <svg id="medRing" viewBox="0 0 250 250" aria-hidden="true"></svg>
+          <div class="medRingCenter">
+            <div class="medRingK">これまで</div>
+            <div class="medBig" id="medBigTotal"></div>
+            <div class="medRingSub" id="medBigSub"></div>
+          </div>
+        </div>
+        <div class="medLegend">輪＝今週（月〜日）　光っているのが、やった日</div>
+        <div class="medCards">
+          <div>今月<b id="medMonthTotal"></b><span id="medMonthCount"></span></div>
+          <div>今週<b id="medWeekTotal"></b><span id="medWeekCount"></span></div>
+        </div>
+      </div>
       <div class="field" id="medStartField">
         <span class="fieldLabel">記録する</span>
         <button type="button" id="btnMedManual" class="primaryBtn">後から入れる</button>
@@ -1653,7 +1690,6 @@
         <span class="fieldLabel" id="medTodayLabel">今日</span>
         <div id="medTodayList"></div>
         <p class="emptyMsg" id="medTodayEmpty" hidden>今日はまだ記録がありません。</p>
-        <p class="fieldNote" id="medTotals"></p>
       </div>
       <audio id="medBellAudio" preload="auto"></audio>
     </div>
@@ -1956,7 +1992,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.146';   // 設定 → 同期 の見出しの横に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.147';   // 設定 → 同期 の見出しの横に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   const CUT_MAX = {
     postAsk: 60,     // 投稿の説明：「説明を作る」の生成への指示。自分の言葉がこれを超えると要約を頼む（v20.36）
@@ -12733,7 +12769,6 @@
     return buckets.map(([label, f]) => { const l = medData.sessions.filter((x) => f(x.min)); return { label, count: l.length, avgFocus: medAvg(l, (x) => x.focus) }; }).filter((r) => r.count);
   }
   function medFmtClock(m) { return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); }
-  function medFmtHours(min) { return min >= 60 ? (min / 60).toFixed(1) + '時間' : min + '分'; }
 
   // bell: the same partial-synthesis as the 試聴 page, rendered once into a
   // WAV data URI and played through an <audio> element (unlike Web Audio,
@@ -12916,6 +12951,7 @@
     document.getElementById('medStartField').hidden = st !== 'idle';
     document.getElementById('medEntryStage').hidden = !(st === 'entry' || st === 'edit');
     document.getElementById('medDoneStage').hidden = st !== 'done';
+    document.getElementById('medHero').hidden = st === 'entry' || st === 'edit';   // v20.147
     if (st === 'entry' || st === 'edit') {
       const fixed = st === 'entry' && medForm.mode !== 'manual';
       document.getElementById('medEntryTitle').textContent = st === 'edit' ? '記録を直す' : fixed ? `${medForm.min}分 座りました` : '後から入れる';
@@ -12963,10 +12999,48 @@
     list.forEach((x) => wrap.appendChild(medSessionRow(x)));
     document.getElementById('medTodayEmpty').hidden = list.length > 0;
     document.getElementById('medTodayLabel').textContent = list.length ? `今日　${list.length}回 ${medSum(list)}分` : '今日';
-    const all = medData.sessions;
-    const streak = medStreak();
-    document.getElementById('medTotals').textContent = all.length ? `累計 ${all.length}回 ${medSum(all)}分（${medFmtHours(medSum(all))}）　連続 ${streak.days}日${streak.days && !streak.includesToday ? '（昨日まで）' : ''}` : '';
+    medRenderHero();   // v20.147
   }
+  // v20.147：累計（時間と分）・今月・今週と、今週の7日の輪
+  function medHmParts(min) { return { h: Math.floor(min / 60), m: min % 60 }; }
+  function medHmText(min) { const p = medHmParts(min); return p.h ? p.h + '時間' + (p.m ? p.m + '分' : '') : p.m + '分'; }
+  function medRenderHero() {
+    const all = medData.sessions, today = todayStr();
+    const total = medSum(all), p = medHmParts(total);
+    const big = document.getElementById('medBigTotal'); big.innerHTML = '';
+    const put = (n, u) => { big.appendChild(document.createTextNode(String(n))); const s = document.createElement('small'); s.textContent = u; big.appendChild(s); };
+    if (p.h) { put(p.h, 'h'); put(String(p.m).padStart(2, '0'), 'm'); } else put(p.m, 'm');
+    document.getElementById('medBigSub').textContent = all.length + '回 ・ ' + new Set(all.map((x) => x.date)).size + '日';
+    const month = all.filter((x) => x.date.slice(0, 7) === today.slice(0, 7));
+    document.getElementById('medMonthTotal').textContent = medHmText(medSum(month));
+    document.getElementById('medMonthCount').textContent = month.length + '回';
+    const dow = (parseDateStr(today).getDay() + 6) % 7;   // 月曜 = 0
+    const monday = addDays(today, -dow);
+    const week = all.filter((x) => x.date >= monday && x.date <= today);
+    document.getElementById('medWeekTotal').textContent = medHmText(medSum(week));
+    document.getElementById('medWeekCount').textContent = week.length + '回';
+    const done = new Set(week.map((x) => x.date));
+    const svg = document.getElementById('medRing'); svg.innerHTML = '';
+    const NS = 'http://www.w3.org/2000/svg', cx = 125, cy = 125, r = 112, gap = 6;
+    for (let i = 0; i < 7; i++) {
+      const a0 = (-90 + i * 360 / 7 + gap / 2) * Math.PI / 180, a1 = (-90 + (i + 1) * 360 / 7 - gap / 2) * Math.PI / 180;
+      const d = addDays(monday, i), on = done.has(d), future = d > today;
+      const arc = document.createElementNS(NS, 'path');
+      arc.setAttribute('d', 'M ' + (cx + r * Math.cos(a0)) + ' ' + (cy + r * Math.sin(a0)) + ' A ' + r + ' ' + r + ' 0 0 1 ' + (cx + r * Math.cos(a1)) + ' ' + (cy + r * Math.sin(a1)));
+      arc.setAttribute('fill', 'none'); arc.setAttribute('stroke-width', '9'); arc.setAttribute('stroke-linecap', 'round');
+      arc.setAttribute('stroke', on ? '#9cc3c8' : future ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.16)');
+      if (on) arc.style.filter = 'drop-shadow(0 0 6px rgba(156,195,200,0.7))';
+      svg.appendChild(arc);
+      // 曜日の字：輪のすぐ内側に小さく
+      const am = (a0 + a1) / 2, t = document.createElementNS(NS, 'text');
+      t.setAttribute('x', String(cx + (r - 20) * Math.cos(am))); t.setAttribute('y', String(cy + (r - 20) * Math.sin(am) + 4));
+      t.setAttribute('text-anchor', 'middle'); t.setAttribute('font-size', '11');
+      t.setAttribute('fill', d === today ? '#dfe9eb' : on ? '#9cc3c8' : 'rgba(255,255,255,0.3)');
+      t.textContent = '月火水木金土日'[i];
+      svg.appendChild(t);
+    }
+  }
+
   function medTable(tableId, head, rows) {
     const t = document.getElementById(tableId); t.innerHTML = '';
     const tr = document.createElement('tr'); head.forEach((h) => { const th = document.createElement('th'); th.textContent = h; tr.appendChild(th); }); t.appendChild(tr);
@@ -12978,7 +13052,7 @@
     document.getElementById('medStatStreak').textContent = `${streak.days}日${streak.days && !streak.includesToday ? '（昨日まで）' : ''}`;
     document.getElementById('medStatDays30').textContent = `${medDays30()}日 / 30日`;
     const all = medData.sessions;
-    document.getElementById('medStatTotal').textContent = all.length ? `${all.length}回 ${medSum(all)}分（${medFmtHours(medSum(all))}）` : '0回';
+    document.getElementById('medStatTotal').textContent = all.length ? `${all.length}回 ${medHmText(medSum(all))}` : '0回';   // v20.147：上の輪と同じ書き方
     const f1 = (v) => v == null ? '-' : v.toFixed(1);
     medTable('medMonthTable', ['月', '日数', '回', '分', '平均分', '集中', '時刻'], medMonthRows().map((r) => [r.month.slice(0, 4) + '/' + r.month.slice(5), String(r.days), String(r.count), String(r.minutes), f1(r.avgMin), f1(r.avgFocus), r.clock ? `${medFmtClock(r.clock.center)} ±${r.clock.spread}分` : '-']));
     medTable('medBandTable', ['時間帯', '直近90日 回', '集中', '全期間 回', '集中'], medBandRows().map((r) => [r.band, String(r.recentCount), f1(r.recentFocus), String(r.allCount), f1(r.allFocus)]));
