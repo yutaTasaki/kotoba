@@ -13,7 +13,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
 <!-- v9.9: the training log image only. Everything else keeps DotGothic16. -->
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Noto+Sans+JP:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Barlow+Condensed:wght@500;600&family=Noto+Sans+JP:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #121212;
@@ -686,6 +686,35 @@
   .trDayCardSet .trDayCardNote { color: var(--text-dim); font-size: 12px; }
   .trSetNoteRow { margin: -2px 0 8px 0; padding-left: 0; }
   .trSetNoteRow input { width: 100%; font-size: 12px; padding: 5px 10px; color: var(--text-dim); }
+  /* v20.148 筋トレの画面：色は画面の中だけ差し替える（ほかの画面は今のまま） */
+  #shell:has(#screen-training:not([hidden])) { background: #141210; }
+  #screen-training {
+    --accent: #f0b56f; --accent-dim: #9a7448; --border: #2e2720; --text: #efe6da;
+    --text-dim: #a8987f; --text-faint: #6f6457; --bg-elevated: #1d1915; --bg-card: #1a1713;
+    color: var(--text);
+  }
+  #screen-training .tagFilterBtn { border-color: #3a3127; }
+  #screen-training .tagFilterBtn.selected { border-color: var(--accent); color: var(--accent); background: rgba(240, 181, 111, 0.1); }
+  #screen-training input[type="number"], #screen-training input[type="text"], #screen-training input[type="date"] { background: #1d1915; border-color: #2e2720; color: var(--text); }
+  #screen-training .trBlock { border: 1px solid #2a241d; border-radius: 14px; }
+  #screen-training .trBlockHead .trPart { font-size: 13px; letter-spacing: 0.1em; }
+  #screen-training .trExName { font-size: 15px; font-weight: 600; }
+  #screen-training .trExMax { color: #f08a5d; }
+  .trSum { background: #1d1915; border: 1px solid #2e2720; border-radius: 16px; padding: 14px 16px; }
+  .trSumDate { font-size: 12px; color: var(--text-dim); letter-spacing: 0.08em; }
+  .trSumParts { font-size: 22px; font-weight: 600; margin: 2px 0 10px; }
+  .trSumStats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .trSumStats div { font-size: 11px; color: var(--text-dim); }
+  .trSumStats b { display: block; font-family: "Barlow Condensed", system-ui, sans-serif; font-size: 30px; line-height: 1.05; color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .trSumStats small { font-size: 14px; color: #c9a57a; margin-left: 2px; }
+  .trSumCmp { font-size: 12px; color: var(--text-dim); margin-top: 8px; }
+  .trSumCmp em { color: var(--accent); font-style: normal; }
+  .trSumCmp em.down { color: #d1665a; }
+  .trSets { display: grid; grid-template-columns: 22px 1fr; gap: 2px 6px; margin-top: 6px; font-size: 13px; font-variant-numeric: tabular-nums; cursor: pointer; }
+  .trSets .trSetNo { color: var(--text-faint); font-size: 11px; padding-top: 3px; }
+  .trSets .trSetDrops { color: var(--text-dim); font-size: 12px; }
+  .trSets b { font-family: "Barlow Condensed", system-ui, sans-serif; font-size: 17px; font-weight: 500; color: var(--text); }
+  .trExRm { font-size: 11px; color: var(--text-dim); white-space: nowrap; margin-left: auto; margin-right: 6px; }
   .calToolRow { display: flex; justify-content: flex-end; margin: 6px 0 4px; }
   /* 振り返る (v8.1) */
   .lookbackRow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 10px; }
@@ -1480,6 +1509,17 @@
       <div style="width:40px;"></div>
     </header>
     <div class="editorBody">
+      <!-- v20.148：この日のまとめ（セット・種目・挙げた重さと、同じ部位の前回との差）。打つたびに変わる -->
+      <div class="trSum" id="trSum">
+        <div class="trSumDate" id="trSumDate"></div>
+        <div class="trSumParts" id="trSumParts"></div>
+        <div class="trSumStats">
+          <div><b id="trSumSets"></b>セット</div>
+          <div><b id="trSumEx"></b>種目</div>
+          <div><b id="trSumVol"></b>挙げた重さ</div>
+        </div>
+        <div class="trSumCmp" id="trSumCmp" hidden></div>
+      </div>
       <div class="field">
         <span class="fieldLabel">日付</span>
         <input type="date" id="trDate">
@@ -1992,7 +2032,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.147';   // 設定 → 同期 の見出しの横に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.148';   // 設定 → 同期 の見出しの横に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   const CUT_MAX = {
     postAsk: 60,     // 投稿の説明：「説明を作る」の生成への指示。自分の言葉がこれを超えると要約を頼む（v20.36）
@@ -8823,6 +8863,7 @@
   // them are not stored (the row stays on screen); a day left with nothing
   // at all is removed with a tombstone.
   function trPersist() {
+    renderTrSummary();   // v20.148
     const day = trCollectDay();
     if (!day) return;
     const iso = nowIso();
@@ -8909,7 +8950,44 @@
       list.appendChild(b);
     });
   }
+  // v20.148：この日のまとめ。挙げた重さ＝重さ×回数の合計（ドロップも足す。自重は数えない）
+  function trDayTotals(day) {
+    let sets = 0, ex = 0, vol = 0;
+    (day ? day.parts : []).forEach((p) => p.exercises.forEach((e) => {
+      if (e.cardio) { ex++; return; }
+      if (!e.sets.length) return;
+      ex++;
+      e.sets.forEach((st) => { sets++; if (st.w !== null && st.r) vol += st.w * st.r; (st.drops || []).forEach((d) => { vol += d.w * d.r; }); });
+    }));
+    return { sets, ex, vol: Math.round(vol) };
+  }
+  function trStrengthParts(day) { return day.parts.filter((p) => !isCardioPart(p.part) && p.exercises.some((e) => e.sets && e.sets.length)).map((p) => p.part); }
+  function renderTrSummary() {
+    const day = trCollectDay();
+    const d = parseDateStr(trState.date);
+    document.getElementById('trSumDate').textContent = trState.date ? trState.date.replace(/-/g, '/') + '（' + WEEKDAY_LABELS[d.getDay()] + '）' : '';
+    const live = day ? day.parts.filter((p) => p.exercises.some((e) => e.cardio || e.sets.length)).map((p) => p.part) : [];
+    document.getElementById('trSumParts').textContent = live.length ? live.join('・') : (day && day.weight !== null ? '体重だけの日' : 'まだ記録がありません');
+    const t = trDayTotals(day);
+    document.getElementById('trSumSets').textContent = String(t.sets);
+    document.getElementById('trSumEx').textContent = String(t.ex);
+    const vol = document.getElementById('trSumVol'); vol.textContent = t.vol.toLocaleString();
+    const kg = document.createElement('small'); kg.textContent = 'kg'; vol.appendChild(kg);
+    // 前回：同じ部位の組み合わせ（有酸素を除く）だった、この日より前のいちばん近い日
+    const cmp = document.getElementById('trSumCmp');
+    const key = day ? trStrengthParts(day).slice().sort().join('|') : '';
+    const prev = key && t.sets ? trainingData.days.filter((x) => x.date < trState.date && trStrengthParts(x).slice().sort().join('|') === key).sort((a, b) => (a.date < b.date ? 1 : -1))[0] : null;
+    cmp.hidden = !prev;
+    cmp.innerHTML = '';
+    if (prev) {
+      const p = trDayTotals(prev), dv = t.vol - p.vol, ds = t.sets - p.sets;
+      cmp.appendChild(document.createTextNode('前回の' + trStrengthParts(day).join('・') + '（' + Number(prev.date.slice(5, 7)) + '/' + Number(prev.date.slice(8, 10)) + '）より '));
+      const em = document.createElement('em'); em.className = dv < 0 ? 'down' : ''; em.textContent = (dv >= 0 ? '+' : '−') + Math.abs(dv).toLocaleString() + 'kg'; cmp.appendChild(em);
+      cmp.appendChild(document.createTextNode('・セット ' + (ds >= 0 ? '+' : '−') + Math.abs(ds)));
+    }
+  }
   function renderTraining() {
+    renderTrSummary();   // v20.148
     renderTrWeightExtras();   // v20.101
     const row = document.getElementById('trPartRow');
     row.innerHTML = '';
@@ -9117,12 +9195,33 @@
     toggle.addEventListener('click', () => { ex.collapsed = !ex.collapsed; renderTraining(); });
     head.appendChild(toggle);
     if (ex.collapsed) {
+      const sets = ex.sets.map((st) => normalizeTrainingSet({ w: st.bw ? null : (st.w === '' ? NaN : Number(st.w)), r: Number(st.r), drops: st.drops })).filter(Boolean);
+      const bs = bestSet(sets);
+      if (bs) { const rm = document.createElement('span'); rm.className = 'trExRm'; rm.textContent = '1RM ' + fmtKg(est1RM(bs)); head.insertBefore(rm, toggle); }   // v20.148
       box.appendChild(head);
-      const sum = document.createElement('div');
-      sum.className = 'trExCollapsed';
-      sum.textContent = trExSummary(ex);
-      sum.addEventListener('click', () => { ex.collapsed = false; renderTraining(); });
-      box.appendChild(sum);
+      if (!sets.length) {
+        const sum = document.createElement('div');
+        sum.className = 'trExCollapsed';
+        sum.textContent = trExSummary(ex);
+        sum.addEventListener('click', () => { ex.collapsed = false; renderTraining(); });
+        box.appendChild(sum);
+        return box;
+      }
+      // v20.148：1セット1行。重さ×回数を大きく、ドロップは続けて小さく
+      const grid = document.createElement('div');
+      grid.className = 'trSets';
+      sets.forEach((st, i) => {
+        const no = document.createElement('span'); no.className = 'trSetNo'; no.textContent = String(i + 1); grid.appendChild(no);
+        const line = document.createElement('span');
+        const b1 = document.createElement('b'); b1.textContent = st.w === null ? '自重' : fmtKg(st.w); line.appendChild(b1);
+        if (st.w !== null) line.appendChild(document.createTextNode('kg'));
+        if (st.r) { line.appendChild(document.createTextNode(' × ')); const b2 = document.createElement('b'); b2.textContent = String(st.r); line.appendChild(b2); }
+        if (st.drops && st.drops.length) { const dr = document.createElement('span'); dr.className = 'trSetDrops'; dr.textContent = '　↓ ' + st.drops.map((x) => fmtKg(x.w) + '×' + x.r).join('　↓ '); line.appendChild(dr); }
+        if (st.note) { const nt = document.createElement('span'); nt.className = 'trSetDrops'; nt.textContent = '　' + st.note; line.appendChild(nt); }
+        grid.appendChild(line);
+      });
+      grid.addEventListener('click', () => { ex.collapsed = false; renderTraining(); });
+      box.appendChild(grid);
       return box;
     }
     const maxInfo = exerciseMax(ex.name, trState.date);
