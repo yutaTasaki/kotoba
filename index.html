@@ -668,6 +668,8 @@
   .hyRecentRow .hyD { width: 6.6em; white-space: nowrap; color: var(--text-dim); flex: none; }
   .hyRecentRow .hyMark { width: 1.2em; flex: none; text-align: center; }
   .hyRecentRow .hyTxt { flex: 1; }
+  .hyFixBtn { font-size: 12px; padding: 2px 4px; flex: none; }
+  .hyFixBox { background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin: 4px 0 8px; display: flex; flex-direction: column; gap: 4px; }
   .hyCheck { display: flex; gap: 10px; align-items: center; padding: 6px 0; font-size: 14px; }
   .hyCheck input { width: 22px; height: 22px; flex: none; }
   .hyNightBed { font-size: 15px; line-height: 1.7; }
@@ -2189,7 +2191,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.149';   // 設定 → 同期 の見出しの横に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.150';   // 設定 → 同期 の見出しの横に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   const CUT_MAX = {
     postAsk: 60,     // 投稿の説明：「説明を作る」の生成への指示。自分の言葉がこれを超えると要約を頼む（v20.36）
@@ -13524,7 +13526,7 @@
     if (!x || typeof x !== 'object' || !/^\d{4}-\d{2}-\d{2}$/.test(x.date || '')) return null;
     const iso = (v) => (typeof v === 'string' && /T\d{2}:\d{2}/.test(v) ? v : null);
     const marks = (l) => (Array.isArray(l) ? l : []).filter((s) => s && s.label && iso(s.at)).map((s) => ({ label: String(s.label), at: s.at }));
-    const out = { date: x.date, target: hyMin(x.target) != null ? x.target : null, wakeAt: iso(x.wakeAt), qrless: !!x.qrless, outAt: iso(x.outAt), steps: marks(x.steps), watch: null, slip: null, prep: marks(x.prep), updatedAt: typeof x.updatedAt === 'string' ? x.updatedAt : '' };
+    const out = { date: x.date, target: hyMin(x.target) != null ? x.target : null, wakeAt: iso(x.wakeAt), qrless: !!x.qrless, fixed: !!x.fixed, outAt: iso(x.outAt), steps: marks(x.steps), watch: null, slip: null, prep: marks(x.prep), updatedAt: typeof x.updatedAt === 'string' ? x.updatedAt : '' };
     if (x.watch && typeof x.watch === 'object') out.watch = { startAt: iso(x.watch.startAt), endAt: iso(x.watch.endAt), rang: Math.max(0, Math.round(Number(x.watch.rang) || 0)), awayMin: Math.max(0, Math.round(Number(x.watch.awayMin) || 0)), early: !!x.watch.early };
     if (x.slip && typeof x.slip === 'object' && ['bed', 'kotatsu', 'forgot', 'off'].includes(x.slip.place)) out.slip = { place: x.slip.place, reason: typeof x.slip.reason === 'string' ? x.slip.reason : '', at: iso(x.slip.at) || '' };
     return out;
@@ -13990,7 +13992,7 @@
     document.getElementById('hyStatSlipWhere').textContent = `ベッド ${slips.filter((x) => x.slip.place === 'bed').length}・炬燵 ${slips.filter((x) => x.slip.place === 'kotatsu').length}`;
     // 最近の朝（14日）
     const rec = document.getElementById('hyRecent'); rec.innerHTML = '';
-    const rows = hyDays.filter((x) => x.date <= today && (x.wakeAt || x.slip)).slice(-14).reverse();
+    const rows = hyDays.filter((x) => x.date <= today && (x.wakeAt || x.slip || x.date === hyFixDate)).slice(-14).reverse();
     rows.forEach((x) => {
       const s = hyState(x), row = document.createElement('div'); row.className = 'hyRecentRow';
       const dd = document.createElement('span'); dd.className = 'hyD'; dd.textContent = hyDateLabel(x.date); row.appendChild(dd);
@@ -13998,8 +14000,13 @@
       const tx = document.createElement('span'); tx.className = 'hyTxt';
       if (x.wakeAt) tx.textContent = `起きた ${hyShort(hyAtHm(x.wakeAt))}（目標 ${hyShort(hyTargetOf(x))}）` + (x.outAt ? ` → 外へ ${hyShort(hyAtHm(x.outAt))}` : '');
       else tx.textContent = HY_PLACE[x.slip.place] + (x.slip.reason ? `・${x.slip.reason}` : '');
+      if (x.fixed) tx.textContent += '（直した）';
       row.appendChild(tx);
+      const fb = document.createElement('button'); fb.type = 'button'; fb.className = 'linkLikeBtn hyFixBtn'; fb.textContent = hyFixDate === x.date ? '閉じる' : '直す';
+      fb.addEventListener('click', () => { hyFixDate = hyFixDate === x.date ? null : x.date; renderHayaoki(); });
+      if (!(hyW && hyW.date === x.date)) row.appendChild(fb);   // 見張りの途中の日は直さない
       rec.appendChild(row);
+      if (hyFixDate === x.date) rec.appendChild(hyFixBox(x));
     });
     document.getElementById('hyRecentEmpty').hidden = rows.length > 0;
   }
@@ -14037,24 +14044,62 @@
     asks.forEach((a) => {
       const box = document.createElement('div'); box.style.marginBottom = '12px';
       const lb = document.createElement('span'); lb.className = 'fieldLabel'; lb.textContent = a.label; box.appendChild(lb);
-      const row = document.createElement('div'); row.className = 'hyRow';
-      const reasonRow = document.createElement('div'); reasonRow.className = 'hyRow'; reasonRow.style.marginTop = '8px'; reasonRow.hidden = true;
-      let place = null;
-      const save = (reason) => { const x = hyEnsureDay(a.date); x.slip = { place, reason: reason || '', at: medLocalIso(new Date()) }; hyTouch(x); renderHayaoki(); };
-      Object.entries(HY_PLACE).forEach(([k, v]) => {
-        const b = document.createElement('button'); b.type = 'button'; b.className = 'tagFilterBtn'; b.textContent = v;
-        b.addEventListener('click', () => {
-          place = k;
-          if (k === 'forgot' || k === 'off') { save(''); return; }
-          row.querySelectorAll('button').forEach((y) => y.classList.toggle('selected', y === b));
-          reasonRow.hidden = false;
-        });
-        row.appendChild(b);
-      });
-      HY_REASONS.forEach((rs) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'tagFilterBtn'; b.textContent = rs; b.addEventListener('click', () => save(rs)); reasonRow.appendChild(b); });
-      box.appendChild(row); box.appendChild(reasonRow);
+      hyPlaceButtons(box, a.date, false);
       body.appendChild(box);
     });
+  }
+  // 「ベッド／炬燵／記録し忘れ／休み」→（ベッド・炬燵なら）理由。fix=true は「最近の朝」から直すとき：起きた記録があれば消して置き換える
+  function hyPlaceButtons(box, date, fix) {
+    const row = document.createElement('div'); row.className = 'hyRow';
+    const reasonRow = document.createElement('div'); reasonRow.className = 'hyRow'; reasonRow.style.marginTop = '8px'; reasonRow.hidden = true;
+    let place = null;
+    const save = (reason) => {
+      const x = hyEnsureDay(date);
+      if (fix) { Object.assign(x, { wakeAt: null, qrless: false, outAt: null, steps: [], watch: null }); x.fixed = true; }
+      x.slip = { place, reason: reason || '', at: medLocalIso(new Date()) };
+      hyFixDate = null; hyTouch(x); renderHayaoki();
+    };
+    Object.entries(HY_PLACE).forEach(([k, v]) => {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'tagFilterBtn'; b.textContent = v;
+      b.addEventListener('click', () => {
+        place = k;
+        if (k === 'forgot' || k === 'off') { save(''); return; }
+        row.querySelectorAll('button').forEach((y) => y.classList.toggle('selected', y === b));
+        reasonRow.hidden = false;
+      });
+      row.appendChild(b);
+    });
+    HY_REASONS.forEach((rs) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'tagFilterBtn'; b.textContent = rs; b.addEventListener('click', () => save(rs)); reasonRow.appendChild(b); });
+    box.appendChild(row); box.appendChild(reasonRow);
+  }
+  // v20.150：「最近の朝」の1日を直す（押し間違い・記録し忘れ）
+  let hyFixDate = null;
+  function hyFixBox(x) {
+    const box = document.createElement('div'); box.className = 'hyFixBox';
+    const l1 = document.createElement('span'); l1.className = 'fieldLabel'; l1.textContent = '起きていた → 起きた時刻'; box.appendChild(l1);
+    const r1 = document.createElement('div'); r1.className = 'hyRow';
+    const tm = document.createElement('input'); tm.type = 'time'; tm.style.width = 'auto'; tm.value = x.wakeAt ? hyAtHm(x.wakeAt) : hyTargetOf(x);
+    const ok = document.createElement('button'); ok.type = 'button'; ok.className = 'secondaryBtn'; ok.style.width = 'auto'; ok.textContent = 'この時刻にする';
+    ok.addEventListener('click', () => {
+      const m = hyMin(tm.value); if (m == null) return;
+      const d = parseDateStr(x.date); d.setHours(Math.floor(m / 60), m % 60, 0, 0);
+      x.wakeAt = medLocalIso(d); x.target = x.target || hyTargetFor(x.date); x.slip = null; x.fixed = true;
+      hyFixDate = null; hyTouch(x); renderHayaoki();
+    });
+    r1.appendChild(tm); r1.appendChild(ok); box.appendChild(r1);
+    const l2 = document.createElement('span'); l2.className = 'fieldLabel'; l2.style.marginTop = '10px'; l2.textContent = '起きられなかった・休み'; box.appendChild(l2);
+    hyPlaceButtons(box, x.date, true);
+    const r3 = document.createElement('div'); r3.className = 'hyRow'; r3.style.marginTop = '10px';
+    const clr = document.createElement('button'); clr.type = 'button'; clr.className = 'linkLikeBtn'; clr.textContent = 'この日の記録を空にする';
+    clr.addEventListener('click', () => {
+      if (!confirm(hyDateLabel(x.date) + ' の朝の記録を空にしますか？')) return;
+      Object.assign(x, { wakeAt: null, qrless: false, fixed: false, outAt: null, steps: [], watch: null, slip: null, target: null });
+      hyFixDate = null; hyTouch(x); renderHayaoki();
+    });
+    const cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'linkLikeBtn'; cancel.textContent = 'やめる';
+    cancel.addEventListener('click', () => { hyFixDate = null; renderHayaoki(); });
+    r3.appendChild(clr); r3.appendChild(cancel); box.appendChild(r3);
+    return box;
   }
   // 決める
   function hyFillSettings() {
