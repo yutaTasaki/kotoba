@@ -648,6 +648,47 @@
   .medCards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .medCards > div { background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 14px; padding: 10px 12px; font-size: 12px; color: var(--text-dim); line-height: 1.5; }
   .medCards b { display: block; font-family: Inter, system-ui, sans-serif; font-weight: 400; font-size: 20px; color: var(--text); font-variant-numeric: tabular-nums; }
+  /* v20.149 早起き：色は画面の中だけ（夜明けの色） */
+  #shell:has(#screen-hayaoki:not([hidden])) { background: radial-gradient(120% 520px at 50% 0%, #33242a 0%, #1b1619 55%, #121212 100%) no-repeat, #121212; }
+  #screen-hayaoki {
+    --accent: #f3b58a; --accent-dim: #a87a5c; --border: rgba(255, 255, 255, 0.08);
+    --bg-elevated: rgba(255, 255, 255, 0.05); --text-dim: #b39d93; --text-faint: #7d6b64;
+  }
+  #screen-hayaoki .tagFilterBtn { border-color: rgba(255, 255, 255, 0.12); }
+  #screen-hayaoki .tagFilterBtn.selected { border-color: var(--accent); color: var(--accent); background: rgba(243, 181, 138, 0.12); }
+  #screen-hayaoki input, #screen-hayaoki textarea { background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.1); }
+  #screen-hayaoki .medCards b { color: var(--text); }
+  .hyBig { font-family: Inter, system-ui, sans-serif; font-weight: 300; font-size: 50px; letter-spacing: -0.01em; line-height: 1.1; color: var(--text); font-variant-numeric: tabular-nums; }
+  .hyWakeBtn { min-height: 56px; font-size: 17px; }
+  .hyRow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .hySum { font-size: 14px; line-height: 1.8; font-variant-numeric: tabular-nums; }
+  .hySum .hyDim { color: var(--text-dim); font-size: 13px; }
+  .hyRecentRow { display: flex; gap: 10px; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .hyRecentRow:last-child { border-bottom: none; }
+  .hyRecentRow .hyD { width: 6.6em; white-space: nowrap; color: var(--text-dim); flex: none; }
+  .hyRecentRow .hyMark { width: 1.2em; flex: none; text-align: center; }
+  .hyRecentRow .hyTxt { flex: 1; }
+  .hyCheck { display: flex; gap: 10px; align-items: center; padding: 6px 0; font-size: 14px; }
+  .hyCheck input { width: 22px; height: 22px; flex: none; }
+  .hyNightBed { font-size: 15px; line-height: 1.7; }
+  .hyNightBed b { font-family: Inter, system-ui, sans-serif; font-weight: 400; font-size: 22px; color: var(--accent); }
+  #screen-hyScan { background: #000; justify-content: center; align-items: center; text-align: center; gap: 14px; }
+  #hyScanVideo { width: 100%; max-width: 420px; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 16px; background: #111; }
+  #hyScanTitle { font-size: 17px; color: #f1ddd0; }
+  #hyScanMsg { font-size: 14px; color: #c9b2a6; min-height: 1.5em; margin: 0; }
+  #screen-hyWatch { background: radial-gradient(120% 70% at 50% 0%, #3a2a2c 0%, #1a1416 55%, #0d0b0c 100%); color: #c9b2a6; align-items: center; text-align: center; gap: 14px; overflow-y: auto; transition: background 0.4s ease; }
+  #screen-hyWatch.alarm { background: #6b2f22; }
+  #hyWClock { font-family: Inter, system-ui, sans-serif; font-weight: 300; font-size: 64px; font-variant-numeric: tabular-nums; color: #f6e7dd; margin-top: 18px; }
+  #hyWSub { font-size: 14px; }
+  #hyWStepK { font-size: 12px; letter-spacing: 0.15em; color: #a8908a; margin-top: 10px; }
+  #hyWStep { font-size: 22px; line-height: 1.5; color: #f6e7dd; max-width: 22em; }
+  .hyBigBtn { border: 1px solid rgba(243, 181, 138, 0.5); color: #f6e7dd; background: rgba(243, 181, 138, 0.12); border-radius: 999px; padding: 16px 56px; font-size: 18px; font-family: inherit; }
+  .hyBigBtn:active { background: rgba(243, 181, 138, 0.25); }
+  #btnHyAck { background: #f3b58a; color: #2a1810; border: none; border-radius: 16px; padding: 20px 28px; font-size: 20px; font-family: inherit; width: 100%; max-width: 420px; }
+  .hyWList { font-size: 13px; line-height: 1.9; color: #a8908a; text-align: left; }
+  .hyWList .hyDoneStep { color: #f3b58a; }
+  .hyWDoneBig { font-size: 30px; color: #f6e7dd; margin-top: 40px; }
+  #screen-hyWatch .linkLikeBtn { color: #a8908a; }
   /* --- v4.0: 筋トレ ------------------------------------------------- */
   .trBlock { background: var(--bg-card); border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; }
   .trBlockHead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
@@ -1566,6 +1607,7 @@
     <!-- v10: moved out of the topbar. A 4th button did not fit at 390px, and
          the row wraps instead of shrinking when a 5th is added. -->
     <div class="subEntryRow">
+      <button type="button" id="btnOpenHayaoki" class="tagFilterBtn">早起き</button>
       <button type="button" id="btnOpenMeditation" class="tagFilterBtn">瞑想</button>
       <button type="button" id="btnOpenTraining" class="tagFilterBtn">筋トレ</button>
     </div>
@@ -1752,6 +1794,91 @@
         <span class="fieldLabel">分数ごとの集中</span>
         <div class="medTableWrap"><table class="medTable" id="medLenTable"></table></div>
       </div>
+    </div>
+  </section>
+
+  <section id="screen-hayaoki" class="screen" hidden>
+    <header class="topbar">
+      <button class="backBtn" id="backFromHayaoki">← 戻る</button>
+      <div class="topbar-title">早起き</div>
+      <div class="topbarBtnGroup">
+        <button id="btnHySettings" class="iconBtn">決める</button>
+      </div>
+    </header>
+    <div class="editorBody" id="hyMain">
+      <!-- v20.149：真ん中に今日の目標（起きたら起きた時刻）、まわりの輪は今週の7日。瞑想と同じく、休んでも0に戻らない -->
+      <div class="medHero">
+        <div class="medRingBox">
+          <svg id="hyRing" viewBox="0 0 250 250" aria-hidden="true"></svg>
+          <div class="medRingCenter">
+            <div class="medRingK" id="hyRingK">今日の目標</div>
+            <div class="hyBig" id="hyBig"></div>
+            <div class="medRingSub" id="hyRingSub"></div>
+          </div>
+        </div>
+        <div class="medLegend">輪＝今週（月〜日）　明るい＝目標どおり起きた日　うすい＝遅れたが起きた日</div>
+      </div>
+      <p class="fieldNote warn" id="hyNotice" hidden></p>
+      <div class="field" id="hyActField">
+        <button type="button" id="btnHyWake" class="primaryBtn hyWakeBtn">台所のQRを写して起きる</button>
+        <button type="button" id="btnHyResume" class="primaryBtn hyWakeBtn" hidden>見張りに戻る</button>
+        <p class="fieldNote" id="hyActNote"></p>
+        <div class="hySum" id="hyTodaySummary" hidden></div>
+        <button type="button" id="btnHyUndoWake" class="linkLikeBtn" hidden>今朝の記録を取り消す</button>
+      </div>
+      <div class="field" id="hyAskField" hidden>
+        <div id="hyAskBody"></div>
+      </div>
+      <div class="field" id="hyNightField" hidden>
+        <span class="fieldLabel">今夜</span>
+        <div class="hyNightBed" id="hyNightBed"></div>
+        <span class="fieldLabel" style="margin-top:8px;">明日の朝の準備</span>
+        <div id="hyPrepList"></div>
+      </div>
+      <div class="medCards">
+        <div>直近30日 起きられた<b id="hyStatOk"></b><span id="hyStatOut"></span></div>
+        <div>直近30日 二度寝<b id="hyStatSlip"></b><span id="hyStatSlipWhere"></span></div>
+      </div>
+      <div class="field">
+        <span class="fieldLabel">最近の朝</span>
+        <div id="hyRecent"></div>
+        <p class="emptyMsg" id="hyRecentEmpty" hidden>まだ記録がありません。</p>
+      </div>
+      <audio id="hyChimeAudio" preload="auto"></audio>
+      <audio id="hyAlarmAudio" preload="auto" loop></audio>
+    </div>
+    <div class="editorBody" id="hySettingsView" hidden>
+      <div class="field">
+        <span class="fieldLabel">起きる時刻</span>
+        <div class="hyRow"><span style="width:7.5em;">今起きている</span><input type="time" id="hyStart" style="width:auto;"></div>
+        <div class="hyRow"><span style="width:7.5em;">目標</span><input type="time" id="hyGoal" style="width:auto;"></div>
+        <div class="hyRow"><span style="width:7.5em;">1週間で早める</span><input type="number" id="hyStepMin" min="0" max="60" inputmode="numeric" style="width:80px;"><span>分</span></div>
+        <div class="hyRow"><span style="width:7.5em;">眠る時間</span><input type="number" id="hySleepH" min="4" max="10" step="0.5" inputmode="decimal" style="width:80px;"><span>時間</span></div>
+        <p class="fieldNote" id="hyPlanNote"></p>
+        <p class="fieldNote">目覚ましは iPhone の時計アプリで鳴らします（このアプリは閉じていると鳴らせません）。目標が変わった週は、iPhone の目覚ましも合わせてください。</p>
+      </div>
+      <div class="field">
+        <span class="fieldLabel">台所のQR</span>
+        <p class="fieldNote" id="hyQrNote"></p>
+        <a class="linkLikeBtn" href="assets/hayaoki_qr.png" target="_blank" rel="noopener">印刷用のQRを開く</a>
+        <div class="hyRow" style="margin-top:6px;">
+          <button type="button" id="btnHyQrRegister" class="secondaryBtn" style="width:auto;">別のQRを読み取って決める</button>
+          <button type="button" id="btnHyQrDefault" class="linkLikeBtn" hidden>用意したQRに戻す</button>
+        </div>
+        <p class="fieldNote">寝室の外（台所など）に貼る。家にある物のQR（コーヒーの袋など）を読み取って決めてもよい。</p>
+      </div>
+      <div class="field">
+        <span class="fieldLabel">起きてからの段（1行に1つ）</span>
+        <textarea id="hySteps" rows="6" autocomplete="off"></textarea>
+        <p class="fieldNote">QRを写したあと、上から順に出ます。最後の行を「できた」にすると見張りが終わります（外に出る段にする）。見張りの間は3分ごとに「起きてる？」と鳴り、45秒押さないと大きな音になります。</p>
+      </div>
+      <div class="field">
+        <span class="fieldLabel">夜の準備（1行に1つ）</span>
+        <textarea id="hyNight" rows="3" autocomplete="off"></textarea>
+        <p class="fieldNote">夜6時を過ぎてこの画面を開くと、寝る時刻と一緒に出ます。</p>
+      </div>
+      <button type="button" id="btnHySettingsSave" class="primaryBtn">保存</button>
+      <button type="button" id="btnHySettingsCancel" class="secondaryBtn">やめる</button>
     </div>
   </section>
 
@@ -1964,6 +2091,31 @@
     <div id="medTimerSub"></div>
     <button type="button" id="btnMedTimerEnd">終了</button>
   </div>
+  <div id="screen-hyScan" class="drawOverlay" hidden>
+    <div id="hyScanTitle">台所のQRを写す</div>
+    <video id="hyScanVideo" playsinline muted autoplay></video>
+    <p id="hyScanMsg"></p>
+    <button type="button" id="btnHyScanQrless" class="secondaryBtn" style="width:auto;" hidden>QRなしで記録する</button>
+    <button type="button" id="btnHyScanCancel" class="linkLikeBtn">やめる</button>
+  </div>
+  <div id="screen-hyWatch" class="drawOverlay" hidden>
+    <div id="hyWRun">
+      <div id="hyWClock">--:--</div>
+      <div id="hyWSub"></div>
+      <button type="button" id="btnHyAck" hidden>起きてる（押して止める）</button>
+      <div id="hyWStepK">次にやること</div>
+      <div id="hyWStep"></div>
+      <div style="margin:14px 0;"><button type="button" id="btnHyStepDone" class="hyBigBtn">できた</button></div>
+      <div class="hyWList" id="hyWList"></div>
+      <div style="margin-top:18px;"><button type="button" id="btnHyWatchEnd" class="linkLikeBtn">今日はここまで（見張りを止める）</button></div>
+    </div>
+    <div id="hyWDone" hidden>
+      <div class="hyWDoneBig">いってらっしゃい</div>
+      <div id="hyWDoneSub" style="margin:10px 0 24px;"></div>
+      <div><button type="button" id="btnHyToHome" class="hyBigBtn">朝の画面へ（散歩の記録）</button></div>
+      <div style="margin-top:14px;"><button type="button" id="btnHyWatchClose" class="linkLikeBtn">閉じる</button></div>
+    </div>
+  </div>
   <div id="screen-muscle" class="drawOverlay" hidden>
     <div class="drawTopBar">
       <div class="graphTitle" id="muscleTitle">筋肉</div>
@@ -2005,6 +2157,11 @@
   const meditationYearPath = (y) => 'meditation/' + y + '.json';
   const MEDITATION_LAST_SYNC_KEY = 'kotoba_meditationLastSyncAt';
   const MEDITATION_LAST_SYNC_ERROR_KEY = 'kotoba_meditationLastSyncError';
+  const hayaokiYearPath = (y) => 'hayaoki/' + y + '.json';   // v20.149 早起き
+  const HAYAOKI_LAST_SYNC_KEY = 'kotoba_hayaokiLastSyncAt';
+  const HAYAOKI_LAST_SYNC_ERROR_KEY = 'kotoba_hayaokiLastSyncError';
+  const HAYAOKI_SETTINGS_KEY = 'kotoba_hayaokiSettings';
+  const HAYAOKI_WATCH_KEY = 'kotoba_hayaokiWatch';   // 見張りの途中で閉じても、開き直すと続きから
   const MED_BELL_KEY = 'kotoba_medBell';          // which bell to ring: rin / chime / bonsho / none
   const MED_BELL_DEFAULT = 'rin';
   const MED_TIMER_KEY = 'kotoba_medTimer';        // a running timer survives a relaunch
@@ -2032,7 +2189,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.148';   // 設定 → 同期 の見出しの横に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.149';   // 設定 → 同期 の見出しの横に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   const CUT_MAX = {
     postAsk: 60,     // 投稿の説明：「説明を作る」の生成への指示。自分の言葉がこれを超えると要約を頼む（v20.36）
@@ -2415,6 +2572,9 @@
   for (const k of ['notesDirty', 'notesStamps', 'meditationDirty', 'meditationStamps']) { try { bootKV[k] = await kvGet(k); } catch (e) { bootKV[k] = null; } }
   bootKV.medDocs = {};
   try { (await kvGetAllPrefix('meditation:')).forEach((v, k) => { bootKV.medDocs[k.slice(11)] = v; }); } catch (e) {}
+  bootKV.hyDocs = {};   // v20.149
+  try { (await kvGetAllPrefix('hayaoki:')).forEach((v, k) => { bootKV.hyDocs[k.slice(8)] = v; }); } catch (e) {}
+  try { bootKV.hayaokiDirty = await kvGet('hayaokiDirty'); } catch (e) { bootKV.hayaokiDirty = null; }
 
   // --- 言葉の月ファイル (v7.4; v7.2 was per year) ---------------------------------
   // Legacy mode: notes are an array inside data.json. Monthly mode:
@@ -3437,7 +3597,7 @@
     try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
   }
   function combinedSyncErrorText() {
-    const msgs = [LAST_SYNC_ERROR_KEY, WALK_LAST_SYNC_ERROR_KEY, TRAINING_LAST_SYNC_ERROR_KEY, MEDITATION_LAST_SYNC_ERROR_KEY].map(getSyncError).filter(Boolean).map((e) => e.message);
+    const msgs = [LAST_SYNC_ERROR_KEY, WALK_LAST_SYNC_ERROR_KEY, TRAINING_LAST_SYNC_ERROR_KEY, MEDITATION_LAST_SYNC_ERROR_KEY, HAYAOKI_LAST_SYNC_ERROR_KEY].map(getSyncError).filter(Boolean).map((e) => e.message);
     return msgs.length ? msgs.join(' / ') : '同期エラー';
   }
 
@@ -3450,11 +3610,12 @@
   let walkSyncState = getGhToken() ? 'unsynced' : 'off';
   let trainingSyncState = getGhToken() ? 'unsynced' : 'off';
   let meditationSyncState = getGhToken() ? 'unsynced' : 'off';
+  let hayaokiSyncState = getGhToken() ? 'unsynced' : 'off';
 
   function combinedPendingCount() { return pendingChangeCount + (typeof walkPendingChangeCount === 'number' ? walkPendingChangeCount : 0); }
 
   function renderSyncBar() {
-    const states = [noteSyncState, walkSyncState, trainingSyncState, meditationSyncState];
+    const states = [noteSyncState, walkSyncState, trainingSyncState, meditationSyncState, hayaokiSyncState];
     let state;
     if (states.includes('syncing')) state = 'syncing';
     else if (states.includes('error')) state = 'error';
@@ -3470,7 +3631,8 @@
       const t2 = localStorage.getItem(WALK_LAST_SYNC_KEY);
       const t3 = localStorage.getItem(TRAINING_LAST_SYNC_KEY);
       const t4 = localStorage.getItem(MEDITATION_LAST_SYNC_KEY);
-      const latest = [t1, t2, t3, t4].filter(Boolean).sort().pop();
+      const t5 = localStorage.getItem(HAYAOKI_LAST_SYNC_KEY);
+      const latest = [t1, t2, t3, t4, t5].filter(Boolean).sort().pop();
       text = latest ? `同期済み ${formatDateTime(latest)}` : '同期済み';
     } else if (state === 'error') {
       text = combinedSyncErrorText() + (pending > 0 ? `（未反映 ${pending}件）` : '');
@@ -3494,6 +3656,7 @@
   function setWalkSyncStatus(state) { walkSyncState = state; renderSyncBar(); }
   function setTrainingSyncStatus(state) { trainingSyncState = state; renderSyncBar(); }
   function setMeditationSyncStatus(state) { meditationSyncState = state; renderSyncBar(); }
+  function setHayaokiSyncStatus(state) { hayaokiSyncState = state; renderSyncBar(); }
 
   let syncDebounceTimer = null;
   function scheduleSync() {
@@ -3856,7 +4019,7 @@
   }
 
   async function syncAllNow() {
-    await Promise.all([syncNow(), walkSyncNow(), trainingSyncNow(), meditationSyncNow()]);
+    await Promise.all([syncNow(), walkSyncNow(), trainingSyncNow(), meditationSyncNow(), hayaokiSyncNow()]);
   }
 
   // --- Walk derived values / canvas / share (ported verbatim from walk10000,
@@ -5988,7 +6151,7 @@
   function showScreen(name) {
     if (nav.screen !== name) { captureInputDraftNow(); countUse('s:' + name); }   // v20.93
     if (nav.screen === 'training' && name !== 'training') trFlush();
-    ['home', 'list', 'consult', 'detail', 'editor', 'settings', 'records', 'bulk', 'draftreview', 'training', 'meditation'].forEach((s) => {
+    ['home', 'list', 'consult', 'detail', 'editor', 'settings', 'records', 'bulk', 'draftreview', 'training', 'meditation', 'hayaoki'].forEach((s) => {
       document.getElementById('screen-' + s).hidden = s !== name;
     });
     nav.screen = name;
@@ -5998,7 +6161,7 @@
     // mechanism that already hid it before this nav became position:fixed.
     document.getElementById('globalBottomNav').hidden = false;
     document.querySelectorAll('#globalBottomNav .navBtn').forEach((b) => b.classList.remove('selected'));
-    const activeBtn = { home: 'navHome', list: 'navList', consult: 'navConsult', records: 'navRecords', settings: 'navSettings', training: 'navRecords', meditation: 'navRecords' }[name];
+    const activeBtn = { home: 'navHome', list: 'navList', consult: 'navConsult', records: 'navRecords', settings: 'navSettings', training: 'navRecords', meditation: 'navRecords', hayaoki: 'navRecords' }[name];
     if (activeBtn) document.getElementById(activeBtn).classList.add('selected');
     // a kept draft older than the jump window is put back the moment you open
     // that screen yourself (applyInputDraftFields only acts on a match)
@@ -6011,7 +6174,7 @@
   // 4時間以上あいていたら朝から始める——朝のステップが日課の入口なので、そこは潰さない
   const LAST_SCREEN_KEY = 'kotoba_lastScreen';
   const LAST_SCREEN_MAX_AGE_MS = 4 * 3600 * 1000;
-  const LAST_SCREEN_OK = new Set(['list', 'records', 'training', 'meditation', 'settings']);
+  const LAST_SCREEN_OK = new Set(['list', 'records', 'training', 'meditation', 'hayaoki', 'settings']);
   function rememberScreen() {
     try {
       if (!LAST_SCREEN_OK.has(nav.screen)) { localStorage.removeItem(LAST_SCREEN_KEY); return; }
@@ -6030,6 +6193,7 @@
       else if (v.screen === 'records') openRecords();
       else if (v.screen === 'training') openTraining();
       else if (v.screen === 'meditation') openMeditation();
+      else if (v.screen === 'hayaoki') openHayaoki();
       else if (v.screen === 'settings') openSettings();
       else { goHome(); return; }
     } catch (e) { recordFeatureError('画面の復元', e); goHome(); return; }
@@ -6050,6 +6214,7 @@
     if (isTypingInApp()) return;
     if (nav.screen === 'training') { renderTraining(); return; }
     if (nav.screen === 'meditation') { renderMeditation(); return; }
+    if (nav.screen === 'hayaoki') { renderHayaoki(); return; }
     if (nav.screen === 'home') renderHome();
     else if (nav.screen === 'list') renderList();
     else if (nav.screen === 'detail') renderDetail();
@@ -12233,7 +12398,7 @@
     document.getElementById('statMeditationMode').textContent = `年ファイル（${Object.keys(md.yearJson).length} 年分、${medData.sessions.length} 回、未同期 ${md.dirty.size}）`;
     const lastSync = localStorage.getItem(LAST_SYNC_KEY);
     const lastWalkSync = localStorage.getItem(WALK_LAST_SYNC_KEY);
-    const latestSync = [lastSync, lastWalkSync, localStorage.getItem(TRAINING_LAST_SYNC_KEY), localStorage.getItem(MEDITATION_LAST_SYNC_KEY)].filter(Boolean).sort().pop();
+    const latestSync = [lastSync, lastWalkSync, localStorage.getItem(TRAINING_LAST_SYNC_KEY), localStorage.getItem(MEDITATION_LAST_SYNC_KEY), localStorage.getItem(HAYAOKI_LAST_SYNC_KEY)].filter(Boolean).sort().pop();
     document.getElementById('statLastSync').textContent = latestSync ? formatDateTime(latestSync) : '-';
     document.getElementById('statRepoSize').textContent = repoSizeLine();   // v20.111
     { const r = dataSizeReport(); document.getElementById('statDataSize').textContent = r.line; document.getElementById('statDataSizeNote').textContent = r.note; }
@@ -12249,7 +12414,7 @@
     const errParts = [];
     if (noteErr) errParts.push(`${noteErr.message}（${formatDateTime(noteErr.at)}）`);
     if (walkErr) errParts.push(`${walkErr.message}（${formatDateTime(walkErr.at)}）`);
-    [TRAINING_LAST_SYNC_ERROR_KEY, MEDITATION_LAST_SYNC_ERROR_KEY].forEach((k) => { const e = getSyncError(k); if (e) errParts.push(`${e.message}（${formatDateTime(e.at)}）`); });
+    [TRAINING_LAST_SYNC_ERROR_KEY, MEDITATION_LAST_SYNC_ERROR_KEY, HAYAOKI_LAST_SYNC_ERROR_KEY].forEach((k) => { const e = getSyncError(k); if (e) errParts.push(`${e.message}（${formatDateTime(e.at)}）`); });
     document.getElementById('statLastSyncError').textContent = errParts.length ? errParts.join(' / ') : '-';
 
     document.getElementById('walkStartDateInput').value = walkData.startDate;
@@ -12475,6 +12640,7 @@
       setWalkSyncStatus('off');
       setTrainingSyncStatus('off');
       setMeditationSyncStatus('off');
+      setHayaokiSyncStatus('off');
       alert('保存しました');
     }
   });
@@ -13216,7 +13382,7 @@
   const INPUT_DRAFT_KEY = 'kotoba_inputDraft';
   const INPUT_DRAFT_MAX_AGE_MS = 48 * 3600 * 1000;
   const INPUT_DRAFT_NAV_MAX_AGE_MS = 30 * 60 * 1000;   // older than this: refill the fields when you go there, but never jump there on boot
-  const INPUT_DRAFT_SKIP_SCREENS = new Set(['settings']);
+  const INPUT_DRAFT_SKIP_SCREENS = new Set(['settings', 'hayaoki']);   // v20.149：早起きは「保存」で入る
   const INPUT_DRAFT_SKIP = new Set(['trDate', 'trWeight', 'listSearch', 'walkShareTextInput', 'medMemoInput', 'medAlarmCustom']); // own persistence / not worth restoring (medMemoInput autosaves itself)
   let inputDraftTimer = null, inputDraftRestoring = false;
   function readInputDraft() { try { const raw = localStorage.getItem(INPUT_DRAFT_KEY); const d = raw ? JSON.parse(raw) : null; return (d && d.fields && d.ctx) ? d : null; } catch (e) { return null; } }
@@ -13310,11 +13476,658 @@
   // settings: any 保存 press clears, then the still-unsaved fields are captured again
   document.getElementById('screen-settings').addEventListener('click', (e) => { if (e.target.closest('button')) { clearInputDraft(); setTimeout(captureInputDraftNow, 100); } });
 
+  // --- 早起き (v20.149) -----------------------------------------------------
+  // 1日1件。kotoba-data の hayaoki/YYYY.json（1年1ファイル。索引は持たず、今年・昨日の年・未送信の年だけ読む）。
+  // 決めたこと（QR・時刻・段）は今年のファイルに一緒に入れて、端末をまたいでそろえる（新しい方が勝つ）。
+  // 目覚ましは iPhone が鳴らす。アプリは「台所のQRを写すまで起きたことにしない」と「起きてからの見張り」を受け持つ。
+  const HY_DEFAULT_QR = 'kotoba-hayaoki';   // assets/hayaoki_qr.png の中身
+  const HY_DEFAULT_SETTINGS = {
+    qr: HY_DEFAULT_QR, start: '07:00', goal: '06:00', stepMin: 15, sleepH: 7, planFrom: null,
+    steps: ['カーテンを開けて光を浴びる', 'ケトルのスイッチを入れる', '水を1杯飲む', '着替える', 'コーヒーをタンブラーに入れて散歩に出る'],
+    night: ['タンブラーとコーヒーを台所に出しておく', '散歩の服を炬燵から離れた所に置く'],
+    updatedAt: '',
+  };
+  const HY_CHECK_MS = 3 * 60 * 1000;    // 見張り：3分ごとに「起きてる？」
+  const HY_GRACE_MS = 45 * 1000;        // 押さないまま45秒で大きな音
+  const HY_WATCH_MAX_MS = 60 * 60 * 1000;   // 1時間で見張りを打ち切る
+  const HY_LATE_MIN = 15;               // 目標から15分以内なら「目標どおり」
+  const JSQR_URL = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
+  const JSQR_SRI = 'sha384-b5Ya4Bq3qCyz39m2ISh+4DxjAIljdeFwK/BsXLuj9gugaNwAcj/ia15fxNZL9Nlx';
+  const hy = { dirty: new Set(), yearJson: {}, busy: false };
+  let hyDays = [];
+  let hySettings = hyNormSettings(null);
+  let hySyncTimer = null, hySyncInFlight = false, hySyncAgain = false;
+  let hySettingsShown = false;
+
+  function hyPad(n) { return String(n).padStart(2, '0'); }
+  function hyMin(hm) { const m = /^(\d{1,2}):(\d{2})/.exec(String(hm || '')); return m ? Number(m[1]) * 60 + Number(m[2]) : null; }
+  function hyHm(min) { const v = ((Math.round(min) % 1440) + 1440) % 1440; return hyPad(Math.floor(v / 60)) + ':' + hyPad(v % 60); }
+  function hyShort(hm) { return String(hm || '').replace(/^0(\d)/, '$1'); }   // 07:05 → 7:05
+  function hyAtHm(iso) { const m = /T(\d{2}:\d{2})/.exec(String(iso || '')); return m ? m[1] : null; }
+  function hyMonday(d) { return addDays(d, -((parseDateStr(d).getDay() + 6) % 7)); }
+  function hyDaysBetween(a, b) { return Math.round((parseDateStr(b) - parseDateStr(a)) / 86400000); }
+  function hyLines(list) { return (Array.isArray(list) ? list : []).map((s) => String(s || '').trim()).filter(Boolean).slice(0, 20); }
+  function hyNormSettings(raw) {
+    const d = HY_DEFAULT_SETTINGS, r = (raw && typeof raw === 'object') ? raw : {};
+    const hm = (v, def) => (hyMin(v) != null ? hyHm(hyMin(v)) : def);
+    const num = (v, def, lo, hi) => { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : def; };
+    const steps = hyLines(r.steps), night = Array.isArray(r.night) ? hyLines(r.night) : d.night.slice();
+    return {
+      qr: typeof r.qr === 'string' && r.qr ? r.qr : d.qr, start: hm(r.start, d.start), goal: hm(r.goal, d.goal),
+      stepMin: Math.round(num(r.stepMin, d.stepMin, 0, 60)), sleepH: num(r.sleepH, d.sleepH, 4, 10),
+      planFrom: /^\d{4}-\d{2}-\d{2}$/.test(r.planFrom || '') ? r.planFrom : null,
+      since: /^\d{4}-\d{2}-\d{2}$/.test(r.since || '') ? r.since : null,
+      steps: steps.length ? steps : d.steps.slice(), night, updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : '',
+    };
+  }
+  function hyNormDay(x) {
+    if (!x || typeof x !== 'object' || !/^\d{4}-\d{2}-\d{2}$/.test(x.date || '')) return null;
+    const iso = (v) => (typeof v === 'string' && /T\d{2}:\d{2}/.test(v) ? v : null);
+    const marks = (l) => (Array.isArray(l) ? l : []).filter((s) => s && s.label && iso(s.at)).map((s) => ({ label: String(s.label), at: s.at }));
+    const out = { date: x.date, target: hyMin(x.target) != null ? x.target : null, wakeAt: iso(x.wakeAt), qrless: !!x.qrless, outAt: iso(x.outAt), steps: marks(x.steps), watch: null, slip: null, prep: marks(x.prep), updatedAt: typeof x.updatedAt === 'string' ? x.updatedAt : '' };
+    if (x.watch && typeof x.watch === 'object') out.watch = { startAt: iso(x.watch.startAt), endAt: iso(x.watch.endAt), rang: Math.max(0, Math.round(Number(x.watch.rang) || 0)), awayMin: Math.max(0, Math.round(Number(x.watch.awayMin) || 0)), early: !!x.watch.early };
+    if (x.slip && typeof x.slip === 'object' && ['bed', 'kotatsu', 'forgot', 'off'].includes(x.slip.place)) out.slip = { place: x.slip.place, reason: typeof x.slip.reason === 'string' ? x.slip.reason : '', at: iso(x.slip.at) || '' };
+    return out;
+  }
+  function hyEmptyDoc(y) { return { version: 1, year: y, updatedAt: '', days: [], settings: null }; }
+  function hyNormDoc(raw, y) {
+    const out = hyEmptyDoc(y);
+    if (!raw || typeof raw !== 'object') return out;
+    out.updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : '';
+    out.days = (Array.isArray(raw.days) ? raw.days : []).map(hyNormDay).filter(Boolean);
+    if (raw.settings && typeof raw.settings === 'object') out.settings = hyNormSettings(raw.settings);
+    return out;
+  }
+  function hySortDays(l) { return l.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)); }
+  function hyThisYear() { return todayStr().slice(0, 4); }
+  function hyYearDoc(y) {
+    return { version: 1, year: y, updatedAt: nowIso(), days: hySortDays(hyDays.filter((d) => d.date.slice(0, 4) === y)), settings: (y === hyThisYear() && hySettings.updatedAt) ? hySettings : null };
+  }
+  function hyDocBody(doc) { return JSON.stringify({ days: doc.days, settings: doc.settings }); }
+  function hyMergeDays(a, b) {
+    const m = new Map();
+    a.concat(b).forEach((d) => { const c = m.get(d.date); if (!c || (d.updatedAt || '') > (c.updatedAt || '')) m.set(d.date, d); });
+    return hySortDays([...m.values()]);
+  }
+  function hyNewerSettings(a, b) { if (!a) return b || null; if (!b) return a; return (b.updatedAt || '') > (a.updatedAt || '') ? b : a; }
+  function hyPersist() {
+    const ys = new Set(hyDays.map((d) => d.date.slice(0, 4))); Object.keys(hy.yearJson).forEach((y) => ys.add(y));
+    if (hySettings.updatedAt) ys.add(hyThisYear());
+    let changed = false;
+    ys.forEach((y) => {
+      const doc = hyYearDoc(y), body = hyDocBody(doc);
+      if (hy.yearJson[y] === body) return;
+      hy.yearJson[y] = body;
+      kvSet('hayaoki:' + y, JSON.stringify(doc)).catch(() => { recordSyncError(HAYAOKI_LAST_SYNC_ERROR_KEY, '端末に保存できませんでした'); renderSyncBar(); });
+      hy.dirty.add(y); bumpSyncGen('hy:' + y); changed = true;
+    });
+    if (changed) kvSet('hayaokiDirty', JSON.stringify([...hy.dirty])).catch(() => {});
+    try { localStorage.setItem(HAYAOKI_SETTINGS_KEY, JSON.stringify(hySettings)); } catch (e) {}
+  }
+  function hySave() { hyPersist(); scheduleHayaokiSync(); }
+  function hayaokiBoot() {
+    try { JSON.parse(bootKV.hayaokiDirty || '[]').forEach((y) => hy.dirty.add(y)); } catch (e) {}
+    let days = [], settings = null;
+    try { const raw = localStorage.getItem(HAYAOKI_SETTINGS_KEY); if (raw) settings = hyNormSettings(JSON.parse(raw)); } catch (e) {}
+    Object.entries(bootKV.hyDocs || {}).forEach(([y, raw]) => {
+      try { const doc = hyNormDoc(JSON.parse(raw), y); days = days.concat(doc.days); settings = hyNewerSettings(settings, doc.settings); hy.yearJson[y] = hyDocBody(doc); } catch (e) {}
+    });
+    hyDays = hyMergeDays(days, []);
+    hySettings = settings || hyNormSettings(null);
+  }
+  async function syncHayaokiYear(token, y, attempt) {
+    const remote = await ghGetContents(GITHUB_REPO, hayaokiYearPath(y), token);
+    let r = hyEmptyDoc(y);
+    try { if (remote.text) r = hyNormDoc(JSON.parse(remote.text), y); } catch (e) {}
+    const gen0 = syncGenOf('hy:' + y);
+    const local = hyYearDoc(y);
+    hyDays = hySortDays(hyDays.filter((d) => d.date.slice(0, 4) !== y).concat(hyMergeDays(local.days, r.days)));
+    if (r.settings && (r.settings.updatedAt || '') > (hySettings.updatedAt || '')) { hySettings = r.settings; try { localStorage.setItem(HAYAOKI_SETTINGS_KEY, JSON.stringify(hySettings)); } catch (e) {} }
+    const merged = hyYearDoc(y);
+    if (!merged.settings && r.settings && y !== hyThisYear()) merged.settings = r.settings;   // 前の年の分はそのまま残す
+    hy.yearJson[y] = hyDocBody(merged);
+    await kvSet('hayaoki:' + y, JSON.stringify(merged)).catch(() => {});
+    const isEmpty = !merged.days.length && !merged.settings;
+    const changed = hyDocBody(r) !== hyDocBody(merged);
+    if ((!remote.text && !isEmpty) || (remote.text && changed)) {
+      try { await ghPutJson(hayaokiYearPath(y), merged, remote.sha, `hayaoki ${y}: ${merged.days.length} days`); }
+      catch (e) { if (e.status === 409 && !attempt) return syncHayaokiYear(token, y, 1); throw e; }
+    }
+    if (syncGenOf('hy:' + y) === gen0) hy.dirty.delete(y);
+    return changed;
+  }
+  function scheduleHayaokiSync() {
+    if (!getGhToken()) return;
+    if (hySyncTimer) clearTimeout(hySyncTimer);
+    setHayaokiSyncStatus('unsynced');
+    hySyncTimer = setTimeout(hayaokiSyncNow, 800);
+  }
+  async function hayaokiSyncNow() {
+    const token = getGhToken();
+    if (!token) { setHayaokiSyncStatus('off'); return; }
+    if (hySyncInFlight || hy.busy) { hySyncAgain = true; return; }
+    if (!navigator.onLine) { setHayaokiSyncStatus('offline'); return; }
+    hySyncInFlight = true; hy.busy = true; hySyncAgain = false;
+    setHayaokiSyncStatus('syncing');
+    try {
+      const years = new Set([...hy.dirty, hyThisYear(), addDays(todayStr(), -1).slice(0, 4)]);
+      let any = false;
+      for (const y of [...years].sort()) { if (await syncHayaokiYear(token, y)) any = true; }
+      kvSet('hayaokiDirty', JSON.stringify([...hy.dirty])).catch(() => {});
+      if (any) refreshCurrentScreen();
+      localStorage.setItem(HAYAOKI_LAST_SYNC_KEY, nowIso());
+      clearSyncError(HAYAOKI_LAST_SYNC_ERROR_KEY);
+      setHayaokiSyncStatus(hySyncAgain || hy.dirty.size ? 'unsynced' : 'synced');
+    } catch (e) {
+      recordSyncError(HAYAOKI_LAST_SYNC_ERROR_KEY, repoErrorMessage('早起きのデータ（kotoba-data/hayaoki/）', e));
+      setHayaokiSyncStatus('error');
+    } finally { hySyncInFlight = false; hy.busy = false; }
+    if (hySyncAgain) { hySyncAgain = false; scheduleHayaokiSync(); }
+  }
+
+  // 1日分
+  function hyDay(date) { return hyDays.find((d) => d.date === date) || null; }
+  function hyEnsureDay(date) {
+    let d = hyDay(date);
+    if (!d) { d = hyNormDay({ date }); hyDays.push(d); hySortDays(hyDays); }
+    return d;
+  }
+  function hyTouch(d) { d.updatedAt = nowIso(); hySave(); }
+  // 今週の目標：「今起きている時刻」から1週間ごとに stepMin 分ずつ早め、目標で止まる
+  function hyTargetFor(date) {
+    const s = hySettings, st = hyMin(s.start), g = hyMin(s.goal);
+    if (st == null || g == null) return s.goal;
+    if (st <= g || !s.stepMin) return hyHm(g);   // もう目標より早い／少しずつ早めない → 最初から目標
+    const weeks = s.planFrom ? Math.max(0, Math.floor(hyDaysBetween(s.planFrom, date) / 7)) : 0;
+    return hyHm(Math.max(g, st - s.stepMin * weeks));
+  }
+  function hyWeeksLeft(date) {
+    const s = hySettings, cur = hyMin(hyTargetFor(date)), g = hyMin(s.goal);
+    if (cur == null || g == null || cur <= g || !s.stepMin) return 0;
+    return Math.ceil((cur - g) / s.stepMin);
+  }
+  function hyTargetOf(d) { return d.target || hyTargetFor(d.date); }
+  function hyState(d) {   // ok：目標どおり ／ late：遅れたが起きた ／ slip：二度寝 ／ off：休み ／ forgot：起きていたが記録し忘れ ／ none
+    if (!d) return 'none';
+    if (d.wakeAt) { const w = hyMin(hyAtHm(d.wakeAt)), t = hyMin(hyTargetOf(d)); return (w != null && t != null && w <= t + HY_LATE_MIN) ? 'ok' : 'late'; }
+    if (d.slip) return d.slip.place === 'off' ? 'off' : d.slip.place === 'forgot' ? 'forgot' : 'slip';
+    return 'none';
+  }
+  const HY_PLACE = { bed: 'ベッドで寝た', kotatsu: '炬燵で寝た', forgot: '起きていた（記録し忘れ）', off: '休みの日' };
+  const HY_REASONS = ['寝るのが遅かった', '寒かった', '疲れていた', 'なんとなく', 'その他'];
+
+  // 音：確かめはチャイム（瞑想と同じ音）、押さないときは短い3連の電子音をくり返す
+  const hyChimeAudio = document.getElementById('hyChimeAudio');
+  const hyAlarmAudio = document.getElementById('hyAlarmAudio');
+  let hyAlarmUri = null;
+  function hySynthAlarm() {
+    const RATE = 22050, n = Math.floor(RATE * 1.3), out = new Float32Array(n);
+    [0, 0.2, 0.4].forEach((t0) => {
+      const s = Math.floor(t0 * RATE), len = Math.floor(0.13 * RATE);
+      for (let j = 0; j < len && s + j < n; j++) {
+        const env = Math.min(1, j / 80, (len - j) / 80), w = 2 * Math.PI * 1760 / RATE;
+        out[s + j] = (Math.sin(w * j) + Math.sin(3 * w * j) / 3 + Math.sin(5 * w * j) / 5) * 0.8 * env;
+      }
+    });
+    const buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+    const str = (o, t) => { for (let i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)); };
+    str(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); str(8, 'WAVE'); str(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, RATE, true); v.setUint32(28, RATE * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); str(36, 'data'); v.setUint32(40, n * 2, true);
+    for (let i = 0; i < n; i++) { const x = Math.max(-1, Math.min(1, out[i])); v.setInt16(44 + i * 2, x < 0 ? x * 32768 : x * 32767, true); }
+    const bytes = new Uint8Array(buf); let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return 'data:audio/wav;base64,' + btoa(bin);
+  }
+  function hyAudioPrepare() {   // 押した瞬間に呼ぶ：iOS はこのときに音を出せるようにしておかないと、あとで鳴らせない
+    try {
+      if (!hyAlarmUri) hyAlarmUri = hySynthAlarm();
+      const chime = medBellUri('chime');
+      if (chime && hyChimeAudio.getAttribute('src') !== chime) { hyChimeAudio.src = chime; hyChimeAudio.load(); }
+      if (hyAlarmAudio.getAttribute('src') !== hyAlarmUri) { hyAlarmAudio.src = hyAlarmUri; hyAlarmAudio.load(); }
+      [hyChimeAudio, hyAlarmAudio].forEach((a) => { const p = a.play(); if (p && p.then) p.then(() => { a.pause(); a.currentTime = 0; }).catch(() => {}); });
+    } catch (e) { recordFeatureError('早起きの音', e); }
+  }
+  function hyChime() { try { hyChimeAudio.currentTime = 0; const p = hyChimeAudio.play(); if (p && p.catch) p.catch(() => {}); } catch (e) {} if (navigator.vibrate) { try { navigator.vibrate([200]); } catch (e) {} } }
+  function hyAlarmOn() { try { hyAlarmAudio.loop = true; if (hyAlarmAudio.paused) { hyAlarmAudio.currentTime = 0; const p = hyAlarmAudio.play(); if (p && p.catch) p.catch(() => {}); } } catch (e) {} if (navigator.vibrate) { try { navigator.vibrate([500, 200, 500, 200, 500]); } catch (e) {} } }
+  function hyAlarmOff() { try { hyAlarmAudio.pause(); hyAlarmAudio.currentTime = 0; } catch (e) {} }
+
+  // QR を写す（jsQR は使うときだけ読み込む。3D の筋肉と同じく、電波が要る）
+  let hyJsQrPromise = null;
+  function hyLoadJsQr() {
+    if (window.jsQR) return Promise.resolve(window.jsQR);
+    if (hyJsQrPromise) return hyJsQrPromise;
+    hyJsQrPromise = new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = JSQR_URL; s.integrity = JSQR_SRI; s.crossOrigin = 'anonymous';
+      const to = setTimeout(() => rej(new Error('時間切れ')), 20000);
+      s.onload = () => { clearTimeout(to); if (window.jsQR) res(window.jsQR); else rej(new Error('部品が見つかりません')); };
+      s.onerror = () => { clearTimeout(to); rej(new Error('読み込めません')); };
+      document.head.appendChild(s);
+    }).catch((e) => { hyJsQrPromise = null; throw e; });
+    return hyJsQrPromise;
+  }
+  const hyScan = { mode: null, stream: null, timer: null, canvas: null, lastWrong: 0 };
+  function hyScanMsg(t) { document.getElementById('hyScanMsg').textContent = t; }
+  async function hyOpenScan(mode) {   // 'wake' | 'register'
+    hyAudioPrepare();
+    hyScan.mode = mode;
+    document.getElementById('hyScanTitle').textContent = mode === 'wake' ? '台所のQRを写す' : '台所に置くQRを写して決める';
+    document.getElementById('btnHyScanQrless').hidden = true;
+    document.getElementById('screen-hyScan').hidden = false;
+    hyScanMsg('カメラを用意しています…');
+    const fail = (t) => { hyScanMsg(t); if (mode === 'wake') document.getElementById('btnHyScanQrless').hidden = false; };
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { fail('この画面からはカメラを使えません。'); return; }
+    let stream;
+    try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false }); }
+    catch (e) { recordFeatureError('早起きのカメラ', e); fail('カメラを使えませんでした（' + ((e && e.name) || 'エラー') + '）。iPhone の設定でカメラを許可してください。'); return; }
+    if (hyScan.mode !== mode || document.getElementById('screen-hyScan').hidden) { stream.getTracks().forEach((t) => t.stop()); return; }
+    hyScan.stream = stream;
+    const video = document.getElementById('hyScanVideo');
+    video.srcObject = stream;
+    try { await video.play(); } catch (e) {}
+    let jsQR;
+    try { jsQR = await hyLoadJsQr(); }
+    catch (e) { recordFeatureError('QRの読み取りの部品', e); fail('QRを読む部品を読み込めませんでした（' + e.message + '）。電波の良い所でもう一度。'); return; }
+    if (!hyScan.stream) return;
+    hyScanMsg('QRを枠の中に写してください');
+    if (!hyScan.canvas) hyScan.canvas = document.createElement('canvas');
+    const cv = hyScan.canvas, ctx = cv.getContext('2d', { willReadFrequently: true });
+    const tick = () => {
+      if (!hyScan.stream) return;
+      const vw = video.videoWidth, vh = video.videoHeight;
+      if (vw && vh) {
+        const sc = Math.min(1, 640 / Math.max(vw, vh)); cv.width = Math.round(vw * sc); cv.height = Math.round(vh * sc);
+        ctx.drawImage(video, 0, 0, cv.width, cv.height);
+        let code = null;
+        try { code = jsQR(ctx.getImageData(0, 0, cv.width, cv.height).data, cv.width, cv.height, { inversionAttempts: 'dontInvert' }); } catch (e) {}
+        if (code && code.data) { if (hyScanFound(code.data)) return; }
+      }
+      hyScan.timer = setTimeout(tick, 200);
+    };
+    tick();
+  }
+  function hyCloseScan() {
+    if (hyScan.timer) { clearTimeout(hyScan.timer); hyScan.timer = null; }
+    if (hyScan.stream) { try { hyScan.stream.getTracks().forEach((t) => t.stop()); } catch (e) {} hyScan.stream = null; }
+    const video = document.getElementById('hyScanVideo'); try { video.srcObject = null; } catch (e) {}
+    document.getElementById('screen-hyScan').hidden = true;
+    hyScan.mode = null;
+  }
+  function hyScanFound(text) {   // true で読み取りを終える
+    if (hyScan.mode === 'register') {
+      hyCloseScan();
+      hySettings.qr = text; hySettings.updatedAt = nowIso(); hySave();
+      if (hySettingsShown) hyFillSettings();
+      hyNotice('台所のQRを決めました。');
+      return true;
+    }
+    if (text !== hySettings.qr) {
+      if (Date.now() - hyScan.lastWrong > 2500) { hyScan.lastWrong = Date.now(); hyScanMsg('決めてあるQRと違います（台所のQRを写してください）'); }
+      return false;
+    }
+    hyCloseScan();
+    hyRecordWake(false);
+    return true;
+  }
+  document.getElementById('btnHyScanCancel').addEventListener('click', hyCloseScan);
+  document.getElementById('btnHyScanQrless').addEventListener('click', () => { hyCloseScan(); hyRecordWake(true); });
+
+  function hyRecordWake(qrless) {
+    const today = todayStr(), d = hyEnsureDay(today);
+    if (!d.wakeAt) { d.wakeAt = medLocalIso(new Date()); d.qrless = !!qrless; }
+    d.target = d.target || hyTargetFor(today);
+    d.slip = null;
+    hyTouch(d);
+    hyStartWatch();
+  }
+
+  // 見張り：起きてから外に出るまで。画面を点けたまま、3分ごとに確かめる
+  let hyW = null, hyWTick = null, hyWakeLockObj = null;
+  function hyWSave() { try { if (hyW) localStorage.setItem(HAYAOKI_WATCH_KEY, JSON.stringify(hyW)); else localStorage.removeItem(HAYAOKI_WATCH_KEY); } catch (e) {} }
+  async function hyWakeLock() { try { if (navigator.wakeLock && !hyWakeLockObj) { hyWakeLockObj = await navigator.wakeLock.request('screen'); hyWakeLockObj.addEventListener('release', () => { hyWakeLockObj = null; }); } } catch (e) { hyWakeLockObj = null; } }
+  function hyWakeUnlock() { try { if (hyWakeLockObj) { hyWakeLockObj.release(); hyWakeLockObj = null; } } catch (e) {} }
+  function hyStartWatch() {
+    const d = hyEnsureDay(todayStr());
+    const done = new Set(d.steps.map((s) => s.label));
+    hyW = { date: d.date, startAt: Date.now(), lastAck: Date.now(), promptAt: null, rang: 0, awayMs: 0, hiddenAt: null, idx: hySettings.steps.findIndex((s) => !done.has(s)) };
+    if (hyW.idx < 0) hyW.idx = hySettings.steps.length;
+    d.watch = { startAt: medLocalIso(new Date()), endAt: null, rang: 0, awayMin: 0, early: false };
+    hyTouch(d);
+    hyWSave();
+    if (hyW.idx >= hySettings.steps.length) { d.outAt = d.outAt || medLocalIso(new Date()); hyEndWatch(false); return; }
+    hyShowWatch();
+  }
+  function hyShowWatch() {
+    document.getElementById('screen-hyWatch').hidden = false;
+    document.getElementById('hyWRun').hidden = false;
+    document.getElementById('hyWDone').hidden = true;
+    hyWakeLock();
+    if (hyWTick) clearInterval(hyWTick);
+    hyWTick = setInterval(hyWPaint, 1000);
+    hyWPaint();
+  }
+  function hyWAck() {
+    if (!hyW) return;
+    hyW.lastAck = Date.now(); hyW.promptAt = null;
+    hyAlarmOff();
+    document.getElementById('screen-hyWatch').classList.remove('alarm');
+    hyWSave(); hyWPaint();
+  }
+  function hyWPaint() {
+    if (!hyW) return;
+    const now = Date.now(), d = hyDay(hyW.date);
+    if (!d) { hyEndWatch(true); return; }
+    if (now - hyW.startAt > HY_WATCH_MAX_MS) { hyEndWatch(true); return; }
+    // 確かめ：前に押してから3分 → チャイム。そこから45秒押さない → 大きな音をくり返す
+    if (hyW.promptAt == null && now - hyW.lastAck >= HY_CHECK_MS) { hyW.promptAt = now; hyChime(); hyWSave(); }
+    const prompting = hyW.promptAt != null;
+    if (prompting && now - hyW.promptAt >= HY_GRACE_MS) {
+      if (!hyW.alarming) { hyW.alarming = true; hyW.rang++; hyWSave(); }
+      hyAlarmOn();
+      document.getElementById('screen-hyWatch').classList.add('alarm');
+    }
+    if (!prompting) hyW.alarming = false;
+    const t = new Date();
+    document.getElementById('hyWClock').textContent = hyPad(t.getHours()) + ':' + hyPad(t.getMinutes());
+    const wake = hyShort(hyAtHm(d.wakeAt)), next = Math.max(0, Math.ceil((hyW.lastAck + HY_CHECK_MS - now) / 1000));
+    document.getElementById('hyWSub').textContent = `起きた ${wake}　・　` + (prompting ? '確かめ中' : `次の確かめまで ${Math.floor(next / 60)}:${hyPad(next % 60)}`);
+    document.getElementById('btnHyAck').hidden = !prompting;
+    const steps = hySettings.steps, idx = Math.min(hyW.idx, steps.length);
+    document.getElementById('hyWStep').textContent = idx < steps.length ? steps[idx] : '';
+    document.getElementById('btnHyStepDone').hidden = idx >= steps.length;
+    document.getElementById('hyWStepK').textContent = idx < steps.length ? `次にやること（${idx + 1} / ${steps.length}）` : '';
+    const list = document.getElementById('hyWList'); list.innerHTML = '';
+    const doneMap = new Map(d.steps.map((s) => [s.label, s.at]));
+    steps.forEach((s, i) => {
+      const row = document.createElement('div');
+      const at = doneMap.get(s);
+      row.textContent = (at ? '✓ ' : i === idx ? '▶ ' : '・ ') + s + (at ? '　' + hyShort(hyAtHm(at)) : '');
+      if (at) row.className = 'hyDoneStep';
+      list.appendChild(row);
+    });
+  }
+  function hyStepDone() {
+    if (!hyW) return;
+    const d = hyDay(hyW.date), steps = hySettings.steps;
+    if (!d || hyW.idx >= steps.length) return;
+    const label = steps[hyW.idx];
+    if (!d.steps.some((s) => s.label === label)) d.steps.push({ label, at: medLocalIso(new Date()) });
+    hyW.idx++;
+    while (hyW.idx < steps.length && d.steps.some((s) => s.label === steps[hyW.idx])) hyW.idx++;
+    if (hyW.idx >= steps.length) { d.outAt = d.outAt || medLocalIso(new Date()); hyTouch(d); hyEndWatch(false); return; }
+    hyTouch(d);
+    hyWAck();
+  }
+  function hyEndWatch(early) {
+    if (hyWTick) { clearInterval(hyWTick); hyWTick = null; }
+    hyAlarmOff(); hyWakeUnlock();
+    const w = hyW; hyW = null; hyWSave();
+    document.getElementById('screen-hyWatch').classList.remove('alarm');
+    const d = w ? hyDay(w.date) : null;
+    if (d) {
+      d.watch = Object.assign({}, d.watch || {}, { endAt: medLocalIso(new Date()), rang: w.rang, awayMin: Math.round(w.awayMs / 60000), early: !!early });
+      hyTouch(d);
+    }
+    if (early) { document.getElementById('screen-hyWatch').hidden = true; if (nav.screen === 'hayaoki') renderHayaoki(); return; }
+    document.getElementById('screen-hyWatch').hidden = false;
+    document.getElementById('hyWRun').hidden = true;
+    document.getElementById('hyWDone').hidden = false;
+    const mins = d && d.wakeAt && d.outAt ? Math.max(0, Math.round((new Date(d.outAt) - new Date(d.wakeAt)) / 60000)) : null;
+    document.getElementById('hyWDoneSub').textContent = d ? `起きた ${hyShort(hyAtHm(d.wakeAt))} → 外へ ${hyShort(hyAtHm(d.outAt))}` + (mins != null ? `（${mins}分）` : '') : '';
+  }
+  function hyResumeWatch() {
+    let w = null; try { w = JSON.parse(localStorage.getItem(HAYAOKI_WATCH_KEY) || 'null'); } catch (e) {}
+    if (!w || !w.startAt) return false;
+    if (w.hiddenAt) { w.awayMs = (w.awayMs || 0) + Math.max(0, Date.now() - w.hiddenAt); w.hiddenAt = null; }
+    hyW = w;
+    if (Date.now() - w.startAt > HY_WATCH_MAX_MS || !hyDay(w.date)) { hyEndWatch(true); return false; }
+    hyWSave();
+    hyShowWatch();
+    return true;
+  }
+  document.getElementById('btnHyAck').addEventListener('click', hyWAck);
+  document.getElementById('btnHyStepDone').addEventListener('click', hyStepDone);
+  document.getElementById('btnHyWatchEnd').addEventListener('click', () => { if (confirm('見張りを止めますか？（今日の記録は残ります）')) hyEndWatch(true); });
+  document.getElementById('btnHyToHome').addEventListener('click', () => { document.getElementById('screen-hyWatch').hidden = true; goHome(); });
+  document.getElementById('btnHyWatchClose').addEventListener('click', () => { document.getElementById('screen-hyWatch').hidden = true; if (nav.screen !== 'hayaoki') openHayaoki(); else renderHayaoki(); });
+  document.addEventListener('visibilitychange', () => {
+    if (!hyW) return;
+    if (document.visibilityState === 'hidden') { hyW.hiddenAt = Date.now(); hyWSave(); }
+    else {
+      if (hyW.hiddenAt) { hyW.awayMs += Math.max(0, Date.now() - hyW.hiddenAt); hyW.hiddenAt = null; hyWSave(); }
+      hyWakeLock(); hyWPaint();
+    }
+  });
+
+  // 画面
+  function openHayaoki() {
+    hySettingsShown = false;
+    showScreen('hayaoki');
+    renderHayaoki();
+  }
+  function hyNotice(t) { const el = document.getElementById('hyNotice'); el.textContent = t || ''; el.hidden = !t; }
+  function hyDateLabel(date) { const d = parseDateStr(date); return (d.getMonth() + 1) + '/' + d.getDate() + '（' + '日月火水木金土'[d.getDay()] + '）'; }
+  function renderHayaoki() {
+    document.getElementById('hyMain').hidden = hySettingsShown;
+    document.getElementById('hySettingsView').hidden = !hySettingsShown;
+    document.getElementById('btnHySettings').textContent = hySettingsShown ? '戻る' : '決める';
+    if (hySettingsShown) return;
+    const today = todayStr(), d = hyDay(today), target = d && d.target ? d.target : hyTargetFor(today), st = hyState(d);
+    const now = new Date(), nowMin = now.getHours() * 60 + now.getMinutes();
+    // 真ん中
+    const woke = d && d.wakeAt;
+    document.getElementById('hyRingK').textContent = woke ? '今朝起きた' : '今日の目標';
+    document.getElementById('hyBig').textContent = hyShort(woke ? hyAtHm(d.wakeAt) : target);
+    let sub = '';
+    if (woke) sub = st === 'ok' ? `目標 ${hyShort(target)} ・ 目標どおり` : `目標 ${hyShort(target)} ・ ${hyMin(hyAtHm(d.wakeAt)) - hyMin(target)}分遅れ`;
+    else { const left = hyWeeksLeft(today); sub = left ? `${hyShort(hySettings.goal)} まで あと${left}週` : (hyMin(target) <= hyMin(hySettings.goal) ? '最後の目標' : ''); }
+    document.getElementById('hyRingSub').textContent = sub;
+    hyRenderRing(today);
+    // 起きる・見張り・今朝のまとめ
+    const watching = !!hyW;
+    document.getElementById('btnHyWake').hidden = !!woke || watching;
+    document.getElementById('btnHyResume').hidden = !watching;
+    const note = [];
+    if (!hySettings.updatedAt) note.push('はじめに右上の「決める」で、起きる時刻と朝の段を確かめてください。');
+    if (!woke && !watching) {
+      const wk = hyMonday(today);
+      if (hySettings.planFrom && wk > hySettings.planFrom && hyTargetFor(addDays(wk, -1)) !== target && today <= addDays(wk, 1)) note.push(`今週から目標が ${hyShort(target)} になりました。iPhone の目覚ましを ${hyShort(target)} に。`);
+      note.push('目覚ましを止めたら、布団から出て台所のQRを写す。それまでは起きたことになりません。');
+    }
+    document.getElementById('hyActNote').textContent = note.join('\n');
+    document.getElementById('hyActNote').style.whiteSpace = 'pre-wrap';
+    const sumEl = document.getElementById('hyTodaySummary');
+    sumEl.innerHTML = '';
+    if (woke) {
+      const add = (t, dim) => { const div = document.createElement('div'); if (dim) div.className = 'hyDim'; div.textContent = t; sumEl.appendChild(div); };
+      add(`起きた ${hyShort(hyAtHm(d.wakeAt))}` + (d.qrless ? '（QRなし）' : '') + (d.outAt ? `　→　外へ ${hyShort(hyAtHm(d.outAt))}（${Math.max(0, Math.round((new Date(d.outAt) - new Date(d.wakeAt)) / 60000))}分）` : ''));
+      d.steps.forEach((s) => add(`✓ ${s.label}　${hyShort(hyAtHm(s.at))}`, true));
+      if (d.watch && d.watch.endAt) {
+        const bits = [];
+        if (d.watch.rang) bits.push(`押さずに大きな音が鳴った ${d.watch.rang}回`);
+        if (d.watch.awayMin) bits.push(`画面を離れていた ${d.watch.awayMin}分`);
+        if (d.watch.early && !d.outAt) bits.push('外に出る前に見張りを止めた');
+        if (bits.length) add('見張り：' + bits.join('・'), true);
+      }
+    }
+    sumEl.hidden = !woke;
+    document.getElementById('btnHyUndoWake').hidden = !woke || watching;
+    // 二度寝した朝のふり返り（今朝は目標＋60分を過ぎたら。昨日の分も答えていなければ）
+    hyRenderAsk(today, nowMin);
+    // 今夜（18時〜翌3時）
+    const h = now.getHours(), night = h >= 18 || h < 3;
+    document.getElementById('hyNightField').hidden = !night || !hySettings.updatedAt;
+    if (night && hySettings.updatedAt) {
+      const prepDate = h >= 18 ? addDays(today, 1) : today;
+      const tTarget = hyTargetFor(prepDate), bed = hyHm(hyMin(tTarget) - Math.round(hySettings.sleepH * 60));
+      const bedEl = document.getElementById('hyNightBed'); bedEl.innerHTML = '';
+      const l1 = document.createElement('div'); l1.appendChild(document.createTextNode('明日 ')); const b1 = document.createElement('b'); b1.textContent = hyShort(tTarget); l1.appendChild(b1); l1.appendChild(document.createTextNode(' に起きるなら、布団に入るのは '));
+      const b2 = document.createElement('b'); b2.textContent = hyShort(bed); l1.appendChild(b2); l1.appendChild(document.createTextNode(' まで')); bedEl.appendChild(l1);
+      const l2 = document.createElement('div'); l2.className = 'fieldNote'; l2.style.margin = '2px 0 0'; l2.textContent = `iPhone の目覚ましが ${hyShort(tTarget)} になっているか確かめる`; bedEl.appendChild(l2);
+      const pl = document.getElementById('hyPrepList'); pl.innerHTML = '';
+      const pd = hyDay(prepDate), doneP = new Set(pd ? pd.prep.map((p) => p.label) : []);
+      hySettings.night.forEach((label) => {
+        const row = document.createElement('label'); row.className = 'hyCheck';
+        const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = doneP.has(label);
+        cb.addEventListener('change', () => {
+          const x = hyEnsureDay(prepDate);
+          x.prep = x.prep.filter((p) => p.label !== label);
+          if (cb.checked) x.prep.push({ label, at: medLocalIso(new Date()) });
+          hyTouch(x);
+        });
+        row.appendChild(cb); const sp = document.createElement('span'); sp.textContent = label; row.appendChild(sp);
+        pl.appendChild(row);
+      });
+      if (!hySettings.night.length) { const p = document.createElement('p'); p.className = 'fieldNote'; p.textContent = '準備は「決める」で足せます。'; pl.appendChild(p); }
+    }
+    // 直近30日
+    const from = addDays(today, -29), last = hyDays.filter((x) => x.date >= from && x.date <= today);
+    const okN = last.filter((x) => hyState(x) === 'ok').length, lateN = last.filter((x) => hyState(x) === 'late').length, outN = last.filter((x) => x.outAt).length;
+    document.getElementById('hyStatOk').textContent = okN + '日';
+    document.getElementById('hyStatOut').textContent = (lateN ? `遅れて起きた ${lateN}日・` : '') + `外に出た ${outN}日`;
+    const slips = last.filter((x) => x.slip && (x.slip.place === 'bed' || x.slip.place === 'kotatsu'));
+    document.getElementById('hyStatSlip').textContent = slips.length + '日';
+    document.getElementById('hyStatSlipWhere').textContent = `ベッド ${slips.filter((x) => x.slip.place === 'bed').length}・炬燵 ${slips.filter((x) => x.slip.place === 'kotatsu').length}`;
+    // 最近の朝（14日）
+    const rec = document.getElementById('hyRecent'); rec.innerHTML = '';
+    const rows = hyDays.filter((x) => x.date <= today && (x.wakeAt || x.slip)).slice(-14).reverse();
+    rows.forEach((x) => {
+      const s = hyState(x), row = document.createElement('div'); row.className = 'hyRecentRow';
+      const dd = document.createElement('span'); dd.className = 'hyD'; dd.textContent = hyDateLabel(x.date); row.appendChild(dd);
+      const mk = document.createElement('span'); mk.className = 'hyMark'; mk.textContent = { ok: '●', late: '◐', slip: '×', off: '－', forgot: '○' }[s] || ''; mk.style.color = s === 'ok' ? 'var(--accent)' : 'var(--text-dim)'; row.appendChild(mk);
+      const tx = document.createElement('span'); tx.className = 'hyTxt';
+      if (x.wakeAt) tx.textContent = `起きた ${hyShort(hyAtHm(x.wakeAt))}（目標 ${hyShort(hyTargetOf(x))}）` + (x.outAt ? ` → 外へ ${hyShort(hyAtHm(x.outAt))}` : '');
+      else tx.textContent = HY_PLACE[x.slip.place] + (x.slip.reason ? `・${x.slip.reason}` : '');
+      row.appendChild(tx);
+      rec.appendChild(row);
+    });
+    document.getElementById('hyRecentEmpty').hidden = rows.length > 0;
+  }
+  function hyRenderRing(today) {
+    const monday = hyMonday(today);
+    const svg = document.getElementById('hyRing'); svg.innerHTML = '';
+    const NS = 'http://www.w3.org/2000/svg', cx = 125, cy = 125, r = 112, gap = 6;
+    for (let i = 0; i < 7; i++) {
+      const a0 = (-90 + i * 360 / 7 + gap / 2) * Math.PI / 180, a1 = (-90 + (i + 1) * 360 / 7 - gap / 2) * Math.PI / 180;
+      const date = addDays(monday, i), s = hyState(hyDay(date)), future = date > today;
+      const arc = document.createElementNS(NS, 'path');
+      arc.setAttribute('d', 'M ' + (cx + r * Math.cos(a0)) + ' ' + (cy + r * Math.sin(a0)) + ' A ' + r + ' ' + r + ' 0 0 1 ' + (cx + r * Math.cos(a1)) + ' ' + (cy + r * Math.sin(a1)));
+      arc.setAttribute('fill', 'none'); arc.setAttribute('stroke-width', '9'); arc.setAttribute('stroke-linecap', 'round');
+      arc.setAttribute('stroke', s === 'ok' ? '#f3b58a' : s === 'late' ? 'rgba(243,181,138,0.42)' : future ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.16)');
+      if (s === 'ok') arc.style.filter = 'drop-shadow(0 0 6px rgba(243,181,138,0.7))';
+      svg.appendChild(arc);
+      const am = (a0 + a1) / 2, t = document.createElementNS(NS, 'text');
+      t.setAttribute('x', String(cx + (r - 20) * Math.cos(am))); t.setAttribute('y', String(cy + (r - 20) * Math.sin(am) + 4));
+      t.setAttribute('text-anchor', 'middle'); t.setAttribute('font-size', '11');
+      t.setAttribute('fill', date === today ? '#f6e7dd' : s === 'ok' ? '#f3b58a' : 'rgba(255,255,255,0.3)');
+      t.textContent = '月火水木金土日'[i];
+      svg.appendChild(t);
+    }
+  }
+  function hyRenderAsk(today, nowMin) {
+    const field = document.getElementById('hyAskField'), body = document.getElementById('hyAskBody');
+    body.innerHTML = '';
+    const asks = [];
+    const yest = addDays(today, -1), yd = hyDay(yest);
+    const planned = (date) => !!hySettings.since && hySettings.since <= date;   // 初めて決めた日より前は聞かない
+    if (planned(yest) && !(yd && (yd.wakeAt || yd.slip))) asks.push({ date: yest, label: '昨日の朝はどうでしたか？（記録がありません）' });
+    const td = hyDay(today), t = hyMin(td && td.target ? td.target : hyTargetFor(today));
+    if (planned(today) && !hyW && !(td && (td.wakeAt || td.slip)) && t != null && nowMin >= t + 60) asks.push({ date: today, label: '今朝はどうでしたか？' });
+    field.hidden = !asks.length;
+    asks.forEach((a) => {
+      const box = document.createElement('div'); box.style.marginBottom = '12px';
+      const lb = document.createElement('span'); lb.className = 'fieldLabel'; lb.textContent = a.label; box.appendChild(lb);
+      const row = document.createElement('div'); row.className = 'hyRow';
+      const reasonRow = document.createElement('div'); reasonRow.className = 'hyRow'; reasonRow.style.marginTop = '8px'; reasonRow.hidden = true;
+      let place = null;
+      const save = (reason) => { const x = hyEnsureDay(a.date); x.slip = { place, reason: reason || '', at: medLocalIso(new Date()) }; hyTouch(x); renderHayaoki(); };
+      Object.entries(HY_PLACE).forEach(([k, v]) => {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'tagFilterBtn'; b.textContent = v;
+        b.addEventListener('click', () => {
+          place = k;
+          if (k === 'forgot' || k === 'off') { save(''); return; }
+          row.querySelectorAll('button').forEach((y) => y.classList.toggle('selected', y === b));
+          reasonRow.hidden = false;
+        });
+        row.appendChild(b);
+      });
+      HY_REASONS.forEach((rs) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'tagFilterBtn'; b.textContent = rs; b.addEventListener('click', () => save(rs)); reasonRow.appendChild(b); });
+      box.appendChild(row); box.appendChild(reasonRow);
+      body.appendChild(box);
+    });
+  }
+  // 決める
+  function hyFillSettings() {
+    const s = hySettings;
+    document.getElementById('hyStart').value = s.start;
+    document.getElementById('hyGoal').value = s.goal;
+    document.getElementById('hyStepMin').value = String(s.stepMin);
+    document.getElementById('hySleepH').value = String(s.sleepH);
+    document.getElementById('hySteps').value = s.steps.join('\n');
+    document.getElementById('hyNight').value = s.night.join('\n');
+    document.getElementById('hyQrNote').textContent = s.qr === HY_DEFAULT_QR ? '今は：用意したQR（下の「印刷用のQRを開く」）' : '今は：自分で読み取って決めたQR';
+    document.getElementById('btnHyQrDefault').hidden = s.qr === HY_DEFAULT_QR;
+    hyPlanNote();
+  }
+  function hyPlanNote() {
+    const st = hyMin(document.getElementById('hyStart').value), g = hyMin(document.getElementById('hyGoal').value), step = Math.round(Number(document.getElementById('hyStepMin').value) || 0);
+    const el = document.getElementById('hyPlanNote');
+    if (st == null || g == null) { el.textContent = ''; return; }
+    if (st <= g || !step) { el.textContent = `毎朝 ${hyShort(hyHm(g))} を目標にします。`; return; }
+    const weeks = Math.ceil((st - g) / step);
+    el.textContent = `今週は ${hyShort(hyHm(st))}、来週から1週間ごとに${step}分ずつ早めて、${weeks}週後に ${hyShort(hyHm(g))}。`;
+  }
+  ['hyStart', 'hyGoal', 'hyStepMin'].forEach((id) => document.getElementById(id).addEventListener('input', hyPlanNote));
+  document.getElementById('btnHySettings').addEventListener('click', () => {
+    hySettingsShown = !hySettingsShown;
+    if (hySettingsShown) hyFillSettings();
+    renderHayaoki();
+    document.getElementById('shell').scrollTop = 0;
+  });
+  document.getElementById('btnHySettingsCancel').addEventListener('click', () => { hySettingsShown = false; renderHayaoki(); });
+  document.getElementById('btnHySettingsSave').addEventListener('click', () => {
+    const v = (id) => document.getElementById(id).value;
+    const start = hyMin(v('hyStart')) != null ? hyHm(hyMin(v('hyStart'))) : hySettings.start;
+    const goal = hyMin(v('hyGoal')) != null ? hyHm(hyMin(v('hyGoal'))) : hySettings.goal;
+    const stepMin = Math.min(60, Math.max(0, Math.round(Number(v('hyStepMin')) || 0)));
+    const steps = hyLines(v('hySteps').split('\n')), night = hyLines(v('hyNight').split('\n'));
+    if (!steps.length) { alert('起きてからの段を1つ以上書いてください。'); return; }
+    const today = todayStr();
+    // 時刻の計画を変えたら、今週から数え直す（今の目標が急に跳ばないように）
+    const planChanged = !hySettings.updatedAt || start !== hySettings.start || goal !== hySettings.goal || stepMin !== hySettings.stepMin;
+    hySettings = hyNormSettings(Object.assign({}, hySettings, { start, goal, stepMin, sleepH: Number(v('hySleepH')), steps, night, planFrom: planChanged ? hyMonday(today) : hySettings.planFrom, since: hySettings.since || today, updatedAt: nowIso() }));
+    hySave();
+    hySettingsShown = false;
+    renderHayaoki();
+    hyNotice('保存しました。' + (planChanged ? `今週の目標は ${hyShort(hyTargetFor(today))}。iPhone の目覚ましを合わせてください。` : ''));
+  });
+  document.getElementById('btnHyQrRegister').addEventListener('click', () => hyOpenScan('register'));
+  document.getElementById('btnHyQrDefault').addEventListener('click', () => { hySettings.qr = HY_DEFAULT_QR; hySettings.updatedAt = nowIso(); hySave(); hyFillSettings(); });
+  document.getElementById('btnHyWake').addEventListener('click', () => { hyNotice(''); hyOpenScan('wake'); });
+  document.getElementById('btnHyResume').addEventListener('click', () => { if (hyW) hyShowWatch(); });
+  document.getElementById('btnHyUndoWake').addEventListener('click', () => {
+    const d = hyDay(todayStr()); if (!d) return;
+    if (!confirm('今朝の「起きた」の記録を取り消しますか？')) return;
+    Object.assign(d, { wakeAt: null, qrless: false, outAt: null, steps: [], watch: null, target: null });
+    hyTouch(d); renderHayaoki();
+  });
+  document.getElementById('backFromHayaoki').addEventListener('click', () => { hySettingsShown = false; openRecords(); });
+  document.getElementById('btnOpenHayaoki').addEventListener('click', () => openHayaoki());
+  // 朝（4〜12時）にアプリを開いて、今朝の記録がまだなら、この画面から始める
+  function hyMorningOpen() {
+    if (!hySettings.updatedAt) return false;
+    const h = new Date().getHours(); if (h < 4 || h >= 12) return false;
+    const d = hyDay(todayStr()); if (d && (d.wakeAt || d.slip)) return false;
+    if (nav.screen === 'hayaoki') return false;
+    openHayaoki(); return true;
+  }
+
   // --- boot ---------------------------------------------------------------
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); } catch (e) {}   // v20.94
   notesBoot();
   journalBoot();
   meditationBoot();
+  hayaokiBoot();   // v20.149
   // v20.146：世界と撮るをなくした。端末に残っている分（IndexedDB の world・toru・dx と、鍵・下書きの控え）を一度だけ消す。
   // GitHub の world/・toru/ はアプリからは触らない（消すのは手で一度だけ）
   (async () => {
@@ -13336,6 +14149,12 @@
     }
   } catch (e) { recordFeatureError('送り直し（v20.90）', e); }
   restoreLastScreen();   // v20.11：控えが4時間以内なら、その画面から始める
+  // v20.149：見張りの途中なら続きから。朝（4〜12時）で今朝の記録がまだなら早起きの画面から。#hayaoki で開いても同じ
+  try {
+    const byHash = location.hash === '#hayaoki';
+    if (byHash) { try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {} }
+    if (!hyResumeWatch()) { if (byHash) openHayaoki(); else hyMorningOpen(); }
+  } catch (e) { recordFeatureError('早起きの画面', e); }
   restoreInputDraft();
   medResumeTimer();
   syncAllNow();
@@ -13345,7 +14164,7 @@
     document.fonts.ready.then(() => { if (nav.screen === 'home') renderHome(); });
   }
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') syncAllNow();
+    if (document.visibilityState === 'visible') { syncAllNow(); if (nav.screen === 'home' && !hyW) { try { hyMorningOpen(); } catch (e) {} } }
   });
   window.addEventListener('online', () => syncAllNow());
   window.addEventListener('offline', () => { setSyncStatus('offline'); setWalkSyncStatus('offline'); });
