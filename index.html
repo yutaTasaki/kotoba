@@ -8,14 +8,14 @@
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#121212">
+<meta name="theme-color" content="#000000">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
 <!-- v9.9: the training log image only. Everything else keeps DotGothic16. -->
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Barlow+Condensed:wght@500;600&family=Noto+Sans+JP:wght@400;500&display=swap" rel="stylesheet">
 <!-- v20.151: 今日の画面のタイル（太い数字と太い見出し）。読めないときは端末の文字で出る -->
-<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@700;800&family=M+PLUS+2:wght@500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@700;800&family=M+PLUS+2:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #121212;
@@ -627,8 +627,8 @@
   #screen-medTimer.flash { background: #2c4046; }
   #medTimerBig { font-family: Inter, system-ui, sans-serif; font-weight: 300; font-size: 72px; font-variant-numeric: tabular-nums; letter-spacing: 0.02em; color: #dfe9eb; }
   #medTimerSub { font-size: 14px; }
-  #btnMedTimerEnd { border: 1px solid rgba(156, 195, 200, 0.35); color: #cfe0e3; border-radius: 999px; padding: 12px 36px; font-size: 16px; }
-  #btnMedTimerEnd:active { background: rgba(156, 195, 200, 0.12); }
+  #btnMedTimerEnd { border: 1px solid rgba(143, 157, 255, 0.35); color: #cfe0e3; border-radius: 999px; padding: 12px 36px; font-size: 16px; }
+  #btnMedTimerEnd:active { background: rgba(143, 157, 255, 0.12); }
   /* v20.147 瞑想の画面：色は画面の中だけ差し替える（ほかの画面は今のまま） */
   /* v20.151：今日（最初の画面）。真っ黒の上に、大きさの違う角丸のタイル。見本3案（オーロラ・タイル・白と太い文字）から本人が選んだ */
   #shell:has(#screen-home:not([hidden])) { background: #000; }
@@ -707,7 +707,7 @@
     --bg-elevated: rgba(255, 255, 255, 0.05); --text-dim: #8fa6ad; --text-faint: #6b8086;
   }
   #screen-meditation .tagFilterBtn { border-color: rgba(255, 255, 255, 0.12); }
-  #screen-meditation .tagFilterBtn.selected { border-color: var(--accent); color: var(--accent); background: rgba(156, 195, 200, 0.12); }
+  #screen-meditation .tagFilterBtn.selected { border-color: var(--accent); color: var(--accent); background: rgba(143, 157, 255, 0.12); }
   #screen-meditation input[type="number"], #screen-meditation textarea { background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.1); }
   .medHero { display: flex; flex-direction: column; gap: 10px; }
   .medRingBox { position: relative; width: 250px; height: 250px; margin: 2px auto 0; }
@@ -724,11 +724,11 @@
   /* v20.149 早起き：色は画面の中だけ（夜明けの色） */
   #shell:has(#screen-hayaoki:not([hidden])) { background: radial-gradient(120% 520px at 50% 0%, #33242a 0%, #1b1619 55%, #121212 100%) no-repeat, #121212; }
   #screen-hayaoki {
-    --accent: #f3b58a; --accent-dim: #a87a5c; --border: rgba(255, 255, 255, 0.08);
+    --accent: #ff8a5c; --accent-dim: #a87a5c; --border: rgba(255, 255, 255, 0.08);
     --bg-elevated: rgba(255, 255, 255, 0.05); --text-dim: #b39d93; --text-faint: #7d6b64;
   }
   #screen-hayaoki .tagFilterBtn { border-color: rgba(255, 255, 255, 0.12); }
-  #screen-hayaoki .tagFilterBtn.selected { border-color: var(--accent); color: var(--accent); background: rgba(243, 181, 138, 0.12); }
+  #screen-hayaoki .tagFilterBtn.selected { border-color: var(--accent); color: var(--accent); background: rgba(255, 138, 92, 0.12); }
   #screen-hayaoki input, #screen-hayaoki textarea { background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.1); }
   #screen-hayaoki .medCards b { color: var(--text); }
   .hyBig { font-family: Inter, system-ui, sans-serif; font-weight: 300; font-size: 50px; letter-spacing: -0.01em; line-height: 1.1; color: var(--text); font-variant-numeric: tabular-nums; }
@@ -757,11 +757,11 @@
   #hyWSub { font-size: 14px; }
   #hyWStepK { font-size: 12px; letter-spacing: 0.15em; color: #a8908a; margin-top: 10px; }
   #hyWStep { font-size: 22px; line-height: 1.5; color: #f6e7dd; max-width: 22em; }
-  .hyBigBtn { border: 1px solid rgba(243, 181, 138, 0.5); color: #f6e7dd; background: rgba(243, 181, 138, 0.12); border-radius: 999px; padding: 16px 56px; font-size: 18px; font-family: inherit; }
-  .hyBigBtn:active { background: rgba(243, 181, 138, 0.25); }
-  #btnHyAck { background: #f3b58a; color: #2a1810; border: none; border-radius: 16px; padding: 20px 28px; font-size: 20px; font-family: inherit; width: 100%; max-width: 420px; }
+  .hyBigBtn { border: 1px solid rgba(255, 138, 92, 0.5); color: #f6e7dd; background: rgba(255, 138, 92, 0.12); border-radius: 999px; padding: 16px 56px; font-size: 18px; font-family: inherit; }
+  .hyBigBtn:active { background: rgba(255, 138, 92, 0.25); }
+  #btnHyAck { background: #ff8a5c; color: #2a1810; border: none; border-radius: 16px; padding: 20px 28px; font-size: 20px; font-family: inherit; width: 100%; max-width: 420px; }
   .hyWList { font-size: 13px; line-height: 1.9; color: #a8908a; text-align: left; }
-  .hyWList .hyDoneStep { color: #f3b58a; }
+  .hyWList .hyDoneStep { color: #ff8a5c; }
   .hyWDoneBig { font-size: 30px; color: #f6e7dd; margin-top: 40px; }
   #screen-hyWatch .linkLikeBtn { color: #a8908a; }
   /* --- v4.0: 筋トレ ------------------------------------------------- */
@@ -1072,6 +1072,91 @@
   .kjSub { font-size: 13px; }
   input[type="url"], input[type="email"], input:not([type]), select { font-size: 16px; }
   .trDropRow input[type=number], .trSetNoteRow input{ font-size: 16px; }
+  /* ===== v20.153：見た目を全体でそろえる =====
+     今日の画面（v20.151）のタイルの決まりを全画面へ：真っ黒の背景・角丸のタイル・太い見出しと数字・丸いボタン。
+     色は習慣ごと（早起き＝橙 #ff8a5c・瞑想＝青 #8f9dff・筋トレ＝琥珀 #f0b56f・散歩＝緑 #3fc79a）、ほかの画面は白と灰色。
+     輪（瞑想・早起き）と記録帳（筋トレの1セット1行）の形はそのまま。動きは変えていない。
+     ここより上の決まりを、この塊で上書きする（直すときはここを見る） */
+  :root {
+    --bg: #000; --bg-elevated: #1c1c1f; --bg-card: #151517;
+    --text: #f5f5f7; --text-dim: #98989f; --text-faint: #6e6e73;
+    --accent: #f5f5f7; --accent-dim: #3a3a40; --border: #2a2a2e;
+  }
+  body { font-family: "M PLUS 2", system-ui, -apple-system, "Hiragino Sans", "Yu Gothic", sans-serif; }
+  #shell:has(#screen-meditation:not([hidden])), #shell:has(#screen-hayaoki:not([hidden])), #shell:has(#screen-training:not([hidden])) { background: #000; }
+  #screen-meditation { --accent: #8f9dff; --accent-dim: #4352c4; --border: #2a2a2e; --bg-elevated: #1c1c1f; --text-dim: #98989f; --text-faint: #6e6e73; }
+  #screen-hayaoki { --accent: #ff8a5c; --accent-dim: #a8532f; --border: #2a2a2e; --bg-elevated: #1c1c1f; --text-dim: #98989f; --text-faint: #6e6e73; }
+  #screen-training { --accent: #f0b56f; --accent-dim: #9a7448; --border: #2a2a2e; --text: #f5f5f7; --text-dim: #98989f; --text-faint: #6e6e73; --bg-elevated: #1c1c1f; --bg-card: #151517; }
+
+  /* 上の見出し・下の並び */
+  .topbar { padding: 10px 0 6px; }
+  .topbar-title { font-size: 20px; font-weight: 800; letter-spacing: -0.01em; }
+  .backBtn, .iconBtn { font-weight: 600; }
+  .bottomNav { background: #000; gap: 6px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); }
+  .navBtn { border: none; border-radius: 18px; padding: 13px 0; font-size: 13px; font-weight: 700; color: #6e6e73; }
+  .navBtn.selected { background: #1c1c1f; color: #f5f5f7; border: none; }
+
+  /* ボタン */
+  .primaryBtn { border-radius: 27px; min-height: 54px; font-weight: 800; color: #0b0b0c; }
+  .secondaryBtn { border: none; background: #1c1c1f; color: #f5f5f7; border-radius: 24px; font-weight: 700; padding: 13px; }
+  .dangerBtn { border-radius: 24px; font-weight: 700; padding: 13px; }
+  .tagFilterBtn { border: none; background: #1c1c1f; color: #c9c9d1; padding: 8px 14px; font-size: 13px; font-weight: 600; }
+  .tagFilterBtn.selected,
+  #screen-meditation .tagFilterBtn.selected, #screen-hayaoki .tagFilterBtn.selected, #screen-training .tagFilterBtn.selected { background: var(--accent); color: #0b0b0c; border: none; }
+  #screen-meditation .tagFilterBtn, #screen-hayaoki .tagFilterBtn, #screen-training .tagFilterBtn { border: none; }
+  .linkLikeBtn { text-underline-offset: 4px; }
+
+  /* 入力欄 */
+  input[type="text"], input[type="search"], input[type="password"], input[type="date"], input[type="number"], input[type="time"], textarea, select,
+  #screen-meditation input[type="number"], #screen-meditation textarea, #screen-hayaoki input, #screen-hayaoki textarea,
+  #screen-training input[type="number"], #screen-training input[type="text"], #screen-training input[type="date"] {
+    background: #1c1c1f; border-color: transparent; border-radius: 14px; color: var(--text);
+  }
+  input:focus, textarea:focus, select:focus { border-color: #6e6e73; outline: none; }
+  #screen-hayaoki input[type="checkbox"] { background: none; border-radius: 0; }
+
+  /* カード＝タイル */
+  .listItem, .consultCard, .homeStepCollapsed, .setGroup, .dataNotice { border-radius: 22px; }
+  .homeStepCollapsed, .setGroup { border: none; background: #151517; }
+  .homeStepCollapsed { font-weight: 600; padding: 16px 18px; }
+  .setBody { border-top-color: #232326; }
+  .sgTitle { font-weight: 700; }
+  .consultCard, .listItem { padding: 18px; }
+  .fieldLabel { font-weight: 600; }
+  .statRow { border-color: #232326; }
+  .calCell { border-radius: 12px; border-color: #1c1c1f; }
+  .calCell.today { border-color: #6e6e73; }
+  .calCell.selected { background: #1c1c1f; border-color: #f5f5f7; }
+  .calCell.disabled { border-color: #151517; }
+  h3 { font-weight: 800; }
+
+  /* 瞑想・早起き：輪はそのまま、数字を太く、欄をタイルに */
+  .medBig, .hyBig { font-family: "Inter Tight", Inter, system-ui, sans-serif; font-weight: 800; letter-spacing: -0.04em; }
+  .medBig { font-size: 48px; }
+  .hyBig { font-size: 54px; }
+  .medBig small { font-family: "M PLUS 2", system-ui, sans-serif; font-weight: 700; font-size: 16px; letter-spacing: 0; color: #98989f; margin: 0 4px 0 2px; }
+  .medRingK { letter-spacing: 0; font-size: 13px; font-weight: 700; color: var(--accent); }
+  .medRingSub, .medLegend { font-weight: 500; }
+  .medCards > div { background: #151517; border: none; border-radius: 24px; padding: 16px 18px; font-size: 12.5px; font-weight: 600; }
+  .medCards b { font-family: "Inter Tight", Inter, system-ui, sans-serif; font-weight: 800; font-size: 26px; letter-spacing: -0.03em; margin-top: 4px; }
+  #medMain > .field, #medStatsView > .field, #hyMain > .field, #hySettingsView > .field { background: #151517; border-radius: 28px; padding: 18px; }
+  #medMain > .field .fieldLabel, #hyMain > .field .fieldLabel, #hySettingsView > .field .fieldLabel, #medStatsView > .field .fieldLabel { color: var(--accent); font-weight: 700; }
+  .medSession, .hyRecentRow { border-color: #232326; }
+  .hyFixBox { background: #1c1c1f; border: none; border-radius: 18px; padding: 14px; }
+  .hyWakeBtn { min-height: 58px; }
+  #screen-medTimer { background: radial-gradient(120% 70% at 50% 0%, #1a1f4d 0%, #0a0c1c 55%, #000 100%); color: #a9b1e8; }
+  #screen-medTimer.flash { background: #2b3170; }
+  #medTimerBig { font-family: "Inter Tight", Inter, system-ui, sans-serif; font-weight: 800; letter-spacing: -0.03em; color: #f5f5f7; }
+  #btnMedTimerEnd { color: #f5f5f7; }
+
+  /* 筋トレ：記録帳の並び（1セット1行・細い数字）はそのまま、枠と地の色だけ */
+  #screen-training .trBlock { border: none; border-radius: 24px; background: #151517; padding: 16px 16px; }
+  .trSum { background: #151517; border: none; border-radius: 28px; padding: 18px; }
+  .trBw { border: none; background: #1c1c1f; border-radius: 12px; }
+  .trBw.selected { background: var(--accent); color: #0b0b0c; }
+
+  /* 今日の画面の下（朝の言葉） */
+  #screen-home .morningInputRow textarea { border-radius: 20px; padding: 14px 16px; }
 </style>
 </head>
 <body>
@@ -2222,7 +2307,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.152';   // 設定 → 同期 の見出しの横に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.153';   // 設定 → 同期 の見出しの横に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   const CUT_MAX = {
     postAsk: 60,     // 投稿の説明：「説明を作る」の生成への指示。自分の言葉がこれを超えると要約を頼む（v20.36）
@@ -12948,14 +13033,14 @@
       const arc = document.createElementNS(NS, 'path');
       arc.setAttribute('d', 'M ' + (cx + r * Math.cos(a0)) + ' ' + (cy + r * Math.sin(a0)) + ' A ' + r + ' ' + r + ' 0 0 1 ' + (cx + r * Math.cos(a1)) + ' ' + (cy + r * Math.sin(a1)));
       arc.setAttribute('fill', 'none'); arc.setAttribute('stroke-width', '9'); arc.setAttribute('stroke-linecap', 'round');
-      arc.setAttribute('stroke', on ? '#9cc3c8' : future ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.16)');
-      if (on) arc.style.filter = 'drop-shadow(0 0 6px rgba(156,195,200,0.7))';
+      arc.setAttribute('stroke', on ? '#6d7dff' : future ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.16)');
+      if (on) arc.style.filter = 'drop-shadow(0 0 6px rgba(109,125,255,0.7))';
       svg.appendChild(arc);
       // 曜日の字：輪のすぐ内側に小さく
       const am = (a0 + a1) / 2, t = document.createElementNS(NS, 'text');
       t.setAttribute('x', String(cx + (r - 20) * Math.cos(am))); t.setAttribute('y', String(cy + (r - 20) * Math.sin(am) + 4));
       t.setAttribute('text-anchor', 'middle'); t.setAttribute('font-size', '11');
-      t.setAttribute('fill', d === today ? '#dfe9eb' : on ? '#9cc3c8' : 'rgba(255,255,255,0.3)');
+      t.setAttribute('fill', d === today ? '#f5f5f7' : on ? '#8f9dff' : 'rgba(255,255,255,0.3)');
       t.textContent = '月火水木金土日'[i];
       svg.appendChild(t);
     }
@@ -13674,13 +13759,13 @@
       const arc = document.createElementNS(NS, 'path');
       arc.setAttribute('d', 'M ' + (cx + r * Math.cos(a0)) + ' ' + (cy + r * Math.sin(a0)) + ' A ' + r + ' ' + r + ' 0 0 1 ' + (cx + r * Math.cos(a1)) + ' ' + (cy + r * Math.sin(a1)));
       arc.setAttribute('fill', 'none'); arc.setAttribute('stroke-width', '9'); arc.setAttribute('stroke-linecap', 'round');
-      arc.setAttribute('stroke', s === 'ok' ? '#f3b58a' : s === 'late' ? 'rgba(243,181,138,0.42)' : future ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.16)');
-      if (s === 'ok') arc.style.filter = 'drop-shadow(0 0 6px rgba(243,181,138,0.7))';
+      arc.setAttribute('stroke', s === 'ok' ? '#ff8a5c' : s === 'late' ? 'rgba(255,138,92,0.42)' : future ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.16)');
+      if (s === 'ok') arc.style.filter = 'drop-shadow(0 0 6px rgba(255,138,92,0.7))';
       svg.appendChild(arc);
       const am = (a0 + a1) / 2, t = document.createElementNS(NS, 'text');
       t.setAttribute('x', String(cx + (r - 20) * Math.cos(am))); t.setAttribute('y', String(cy + (r - 20) * Math.sin(am) + 4));
       t.setAttribute('text-anchor', 'middle'); t.setAttribute('font-size', '11');
-      t.setAttribute('fill', date === today ? '#f6e7dd' : s === 'ok' ? '#f3b58a' : 'rgba(255,255,255,0.3)');
+      t.setAttribute('fill', date === today ? '#f5f5f7' : s === 'ok' ? '#ff8a5c' : 'rgba(255,255,255,0.3)');
       t.textContent = '月火水木金土日'[i];
       svg.appendChild(t);
     }
