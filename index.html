@@ -14,6 +14,8 @@
 <link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
 <!-- v9.9: the training log image only. Everything else keeps DotGothic16. -->
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Barlow+Condensed:wght@500;600&family=Noto+Sans+JP:wght@400;500&display=swap" rel="stylesheet">
+<!-- v20.151: 今日の画面のタイル（太い数字と太い見出し）。読めないときは端末の文字で出る -->
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@700;800&family=M+PLUS+2:wght@500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #121212;
@@ -628,6 +630,65 @@
   #btnMedTimerEnd { border: 1px solid rgba(156, 195, 200, 0.35); color: #cfe0e3; border-radius: 999px; padding: 12px 36px; font-size: 16px; }
   #btnMedTimerEnd:active { background: rgba(156, 195, 200, 0.12); }
   /* v20.147 瞑想の画面：色は画面の中だけ差し替える（ほかの画面は今のまま） */
+  /* v20.151：今日（最初の画面）。真っ黒の上に、大きさの違う角丸のタイル。見本3案（オーロラ・タイル・白と太い文字）から本人が選んだ */
+  #shell:has(#screen-home:not([hidden])) { background: #000; }
+  body:has(#screen-home:not([hidden])) .bottomNav { background: #000; }
+  .td { font-family: "M PLUS 2", system-ui, -apple-system, "Hiragino Sans", "Yu Gothic", sans-serif; color: #f5f5f7; line-height: 1.5; margin: 6px -4px 0; }
+  .tdTop { padding: 0 8px; }
+  .tdDate { font-size: 13px; color: #8e8e93; font-weight: 500; }
+  .tdHello { font-size: 30px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.25; margin: 2px 0 0; }
+  .tdGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+  .tdT { border-radius: 28px; background: #151517; padding: 18px; text-align: left; display: block; min-width: 0; color: #f5f5f7; }
+  .tdWide { grid-column: 1 / -1; }
+  .tdHero { padding: 22px 20px 20px; position: relative; overflow: hidden; }
+  .tdHero.med { background: #4257f5; }
+  .tdHero.wake { background: #cf5029; }
+  .tdHero.med::after, .tdHero.wake::after { content: ""; position: absolute; width: 260px; height: 260px; border-radius: 50%; right: -90px; top: -110px; background: #6d7dff; }
+  .tdHero.wake::after { background: #e8744a; }
+  .tdHero > * { position: relative; z-index: 1; }
+  .tdK { font-size: 13px; font-weight: 700; }
+  .tdHero .tdK { font-weight: 600; color: rgba(255, 255, 255, 0.84); }
+  .tdHero.done .tdK { color: #98989f; }
+  .tdBig { display: flex; align-items: baseline; gap: 8px; margin-top: 28px; }
+  .tdBig b { font-family: "Inter Tight", Inter, system-ui, sans-serif; font-weight: 800; font-size: 92px; letter-spacing: -0.05em; line-height: 0.82; }
+  .tdBig.time b { font-size: 76px; letter-spacing: -0.04em; }
+  .tdBig span { font-size: 24px; font-weight: 800; }
+  .tdTitle { font-size: 26px; font-weight: 800; margin-top: 20px; line-height: 1.3; }
+  .tdP { font-size: 14px; color: rgba(255, 255, 255, 0.88); margin: 12px 0 0; line-height: 1.6; }
+  .tdHero.done .tdP { color: #98989f; }
+  .tdActs { display: flex; gap: 8px; margin-top: 16px; }
+  .tdGo { flex: 1; height: 54px; border-radius: 27px; background: #fff; color: #1b2aa8; font-weight: 800; font-size: 17px; }
+  .tdHero.wake .tdGo { color: #8f3112; }
+  .tdChip { width: 62px; height: 54px; border-radius: 27px; background: rgba(255, 255, 255, 0.2); color: #fff; font-weight: 700; font-size: 14px; }
+  .tdChecks { margin-top: 14px; display: grid; gap: 12px; }
+  .tdChecks label { display: flex; gap: 12px; align-items: center; font-size: 15px; font-weight: 600; line-height: 1.4; }
+  .tdChecks input { width: 24px; height: 24px; accent-color: #fff; flex: none; margin: 0; }
+  .tdLink { display: inline-block; font-size: 14px; text-decoration: underline; text-underline-offset: 4px; color: rgba(255, 255, 255, 0.88); margin-top: 12px; padding: 4px 0; }
+  .tdN { font-family: "Inter Tight", Inter, system-ui, sans-serif; font-weight: 800; font-size: 44px; letter-spacing: -0.04em; line-height: 1; margin-top: 14px; }
+  .tdN small { font-family: "M PLUS 2", system-ui, sans-serif; font-size: 15px; letter-spacing: 0; margin: 0 2px 0 3px; }
+  .tdN.word { font-family: inherit; font-size: 30px; letter-spacing: 0; line-height: 1.45; }
+  .tdS { font-size: 12.5px; color: #98989f; margin-top: 8px; line-height: 1.55; font-weight: 500; white-space: pre-line; }
+  .tdWakeT .tdK, .tdR0 { color: #ff8a5c; }
+  .tdMedT .tdK, .tdR1 { color: #8f9dff; }
+  .tdLiftT .tdK, .tdR2 { color: #f0b56f; }
+  .tdWk { display: grid; grid-template-columns: 58px repeat(7, 1fr); align-items: center; row-gap: 9px; font-size: 13px; font-weight: 600; }
+  .tdWk .h { font-size: 11px; color: #6e6e73; justify-self: center; font-weight: 500; }
+  .tdWk .h.now { color: #f5f5f7; font-weight: 700; }
+  .tdD { width: 26px; height: 26px; border-radius: 9px; background: #232326; justify-self: center; }
+  .tdD.later { background: none; box-shadow: inset 0 0 0 1.5px #232326; }
+  .tdD.today { background: none; box-shadow: inset 0 0 0 2px #f5f5f7; }
+  .tdD.on.r0 { background: #ff8a5c; }
+  .tdD.half.r0 { background: rgba(255, 138, 92, 0.42); }
+  .tdD.on.r1 { background: #6d7dff; }
+  .tdD.on.r2 { background: #f0b56f; }
+  .tdSmall { display: flex; align-items: center; justify-content: center; text-align: center; min-height: 64px; font-size: 14px; font-weight: 700; padding: 12px; line-height: 1.4; }
+  .tdSmall.on { box-shadow: inset 0 0 0 2px #f5f5f7; }
+  .tdFillBtns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .tdFillBtns button { border-radius: 20px; background: #2a2a2e; color: #f5f5f7; padding: 10px 14px; font-size: 14px; font-weight: 600; }
+  .tdFillBtns button.quiet { background: none; color: #98989f; }
+  .tdSec { font-size: 13px; color: #8e8e93; font-weight: 600; padding: 0 4px; margin-top: 10px; }
+  .td button:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+
   #shell:has(#screen-meditation:not([hidden])) { background: radial-gradient(120% 520px at 50% 0%, #1d2a31 0%, #131a1e 55%, #121212 100%) no-repeat, #121212; }
   #screen-meditation {
     --accent: #9cc3c8; --accent-dim: #5f8a90; --border: rgba(255, 255, 255, 0.08);
@@ -1007,11 +1068,11 @@
 <div id="app">
 
   <section id="screen-home" class="screen">
-    <header class="topbar">
-      <div class="topbar-title" style="text-align:left;">朝</div>
-    </header>
     <div id="dataNotice" class="dataNotice" hidden></div>
     <p class="fieldNote warn" id="usageThresholdBanner" hidden></p>
+    <!-- v20.151：今日。時刻と今日の記録から「今やること」を1つ。中身は renderToday が作る -->
+    <div id="tdPanel" class="td"></div>
+    <div class="tdSec">朝の記録</div>
     <div class="dayCount" id="dayCountLabel"></div>
     <div id="homeEmpty" class="emptyMsg" hidden>まだ言葉がありません。「言葉」画面の「＋」から最初の1枚を書いてみましょう。</div>
     <div id="walkUnavailableMsg" class="emptyMsg" hidden>散歩データを読み込めていません。設定 → 同期を確認してください。</div>
@@ -2016,7 +2077,7 @@
   </section>
 
   <nav class="bottomNav" id="globalBottomNav">
-    <button id="navHome" class="navBtn">朝</button>
+    <button id="navHome" class="navBtn">今日</button>
     <button id="navList" class="navBtn">言葉</button>
     <button id="navConsult" class="navBtn">相談</button>
     <button id="navRecords" class="navBtn">記録</button>
@@ -2191,7 +2252,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.150';   // 設定 → 同期 の見出しの横に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.151';   // 設定 → 同期 の見出しの横に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   const CUT_MAX = {
     postAsk: 60,     // 投稿の説明：「説明を作る」の生成への指示。自分の言葉がこれを超えると要約を頼む（v20.36）
@@ -6556,6 +6617,7 @@
 
   function renderHome() {
     document.getElementById('homeEmpty').hidden = data.notes.length > 0;
+    try { renderToday(); } catch (e) { recordFeatureError('今日の画面', e); }   // v20.151
 
     try { renderDataNotice(); } catch (e) { recordFeatureError('データの知らせ', e); }   // v20.111
     const usageBanner = document.getElementById('usageThresholdBanner');
@@ -13527,6 +13589,7 @@
     const iso = (v) => (typeof v === 'string' && /T\d{2}:\d{2}/.test(v) ? v : null);
     const marks = (l) => (Array.isArray(l) ? l : []).filter((s) => s && s.label && iso(s.at)).map((s) => ({ label: String(s.label), at: s.at }));
     const out = { date: x.date, target: hyMin(x.target) != null ? x.target : null, wakeAt: iso(x.wakeAt), qrless: !!x.qrless, fixed: !!x.fixed, outAt: iso(x.outAt), steps: marks(x.steps), watch: null, slip: null, prep: marks(x.prep), updatedAt: typeof x.updatedAt === 'string' ? x.updatedAt : '' };
+    if (iso(x.low)) out.low = x.low;   // v20.151：「今日はしんどい」を押した時刻（今日の画面）
     if (x.watch && typeof x.watch === 'object') out.watch = { startAt: iso(x.watch.startAt), endAt: iso(x.watch.endAt), rang: Math.max(0, Math.round(Number(x.watch.rang) || 0)), awayMin: Math.max(0, Math.round(Number(x.watch.awayMin) || 0)), early: !!x.watch.early };
     if (x.slip && typeof x.slip === 'object' && ['bed', 'kotatsu', 'forgot', 'off'].includes(x.slip.place)) out.slip = { place: x.slip.place, reason: typeof x.slip.reason === 'string' ? x.slip.reason : '', at: iso(x.slip.at) || '' };
     return out;
@@ -14166,6 +14229,207 @@
     if (nav.screen === 'hayaoki') return false;
     openHayaoki(); return true;
   }
+
+  // --- 今日 (v20.151) -------------------------------------------------------
+  // 最初の画面の上に出すタイル。時刻と今日の記録から「今やること」を1つだけ選ぶ。
+  // 何日かあいた後は「おかえり」と一番小さい形（瞑想2分）から。あいた朝は1回押してまとめて埋める。
+  // 「今日はしんどい」は早起きのその日の記録に low として残す（あとで週のふり返りに使う）。
+  // 輪と同じく、休んでも0に戻る数（連続日数）はここには出さない
+  const td = { fillOpen: false };
+  const TD_BACK_DAYS = 2;      // 何も記録の無い日がこれだけ続いたら「おかえり」
+  const TD_MIN_SMALL = 2;      // 一番小さい形の瞑想（分）
+  const TD_MIN_USUAL = 5;
+  function tdEl(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function tdBtn(id, cls, text, fn) { const b = tdEl('button', cls, text); b.type = 'button'; if (id) b.id = id; b.addEventListener('click', fn); return b; }
+  function tdWorked(d) { return !!d && Array.isArray(d.parts) && trDidWork(d); }
+  function tdMd(date) { const d = parseDateStr(date); return (d.getMonth() + 1) + '/' + d.getDate(); }
+  function tdLastActive(today) {   // 瞑想・筋トレ・起きた・散歩のどれかがある、いちばん新しい日
+    let last = '';
+    const see = (d) => { if (d && d <= today && d > last) last = d; };
+    medData.sessions.forEach((x) => see(x.date));
+    trainingData.days.forEach((d) => { if (tdWorked(d)) see(d.date); });
+    hyDays.forEach((d) => { if (d.wakeAt) see(d.date); });
+    try { (walkData.walkedDates || []).forEach(see); } catch (e) {}
+    return last || null;
+  }
+  function tdBlankMornings(today) {   // 早起きを決めた日より後で、「起きた」も理由も無い朝（今日は入れない。直近14日）
+    const out = [];
+    if (!hySettings.updatedAt || !hySettings.since) return out;
+    for (let i = 14; i >= 1; i--) { const date = addDays(today, -i); if (date < hySettings.since) continue; const d = hyDay(date); if (!(d && (d.wakeAt || d.slip))) out.push(date); }
+    return out;
+  }
+  function tdFill(place) {
+    const dates = tdBlankMornings(todayStr()); if (!dates.length) return;
+    const at = medLocalIso(new Date()), iso = nowIso();
+    dates.forEach((date) => { const x = hyEnsureDay(date); x.slip = { place, reason: '', at }; x.updatedAt = iso; });
+    td.fillOpen = false;
+    hySave(); renderToday();
+  }
+  function tdToggleLow() {
+    const x = hyEnsureDay(todayStr());
+    if (x.low) delete x.low; else x.low = medLocalIso(new Date());
+    hyTouch(x); renderToday();
+  }
+  function renderToday() {
+    const box = document.getElementById('tdPanel'); if (!box) return;
+    const today = todayStr(), now = new Date(), h = now.getHours();
+    const hd = hyDay(today), low = !!(hd && hd.low), planned = !!hySettings.updatedAt;
+    const medToday = medSessionsOn(today);
+    const last = tdLastActive(today), away = last ? hyDaysBetween(last, today) : 0, back = away >= TD_BACK_DAYS;
+    const night = h >= 18 || h < 3;
+    const trToday = trainingData.days.find((d) => d.date === today && tdWorked(d)) || null;
+    box.innerHTML = '';
+
+    // 見出し
+    const top = tdEl('div', 'tdTop');
+    top.appendChild(tdEl('div', 'tdDate', (now.getMonth() + 1) + '月' + now.getDate() + '日 ' + TD_DOW_JA[now.getDay()] + '曜'));
+    const hello = low ? '今日はしんどい日' : back ? 'おかえり。' + away + '日ぶりです' : (h >= 4 && h < 11) ? 'おはよう' : (h >= 11 && h < 18) ? 'こんにちは' : 'こんばんは';
+    top.appendChild(tdEl('h2', 'tdHello', hello));
+    box.appendChild(top);
+    const grid = tdEl('div', 'tdGrid'); box.appendChild(grid);
+
+    // 今やること（1つだけ）
+    const hero = tdEl('div', 'tdT tdWide tdHero');
+    const only = night ? '今夜はこれだけ' : '今日はこれだけ';
+    const prepDate = h >= 18 ? addDays(today, 1) : today;
+    const prepDay = hyDay(prepDate), prepDone = new Set(prepDay ? prepDay.prep.map((p) => p.label) : []);
+    const prepLeft = planned ? hySettings.night.filter((l) => !prepDone.has(l)).length : 0;
+    if (hyW) {
+      hero.classList.add('wake');
+      hero.appendChild(tdEl('div', 'tdK', '起きてからの見張りの途中'));
+      hero.appendChild(tdEl('div', 'tdTitle', '見張りに戻る'));
+      const acts = tdEl('div', 'tdActs'); acts.appendChild(tdBtn('btnTdWatch', 'tdGo', '戻る', () => hyShowWatch())); hero.appendChild(acts);
+    } else if (planned && !low && h >= 4 && h < 12 && !(hd && (hd.wakeAt || hd.slip))) {
+      hero.classList.add('wake');
+      hero.appendChild(tdEl('div', 'tdK', '今朝はこれだけ'));
+      const big = tdEl('div', 'tdBig time'); big.appendChild(tdEl('b', '', hyShort(hyTargetFor(today)))); big.appendChild(tdEl('span', '', 'に起きる')); hero.appendChild(big);
+      hero.appendChild(tdEl('p', 'tdP', '台所のQRを写すまでは、起きたことになりません。'));
+      const acts = tdEl('div', 'tdActs'); acts.appendChild(tdBtn('btnTdWake', 'tdGo', '早起きを開く', () => openHayaoki())); hero.appendChild(acts);
+    } else if (!medToday.length) {
+      const small = low || back, min = small ? TD_MIN_SMALL : TD_MIN_USUAL;
+      hero.classList.add('med');
+      hero.appendChild(tdEl('div', 'tdK', small ? only : '今やること'));
+      const big = tdEl('div', 'tdBig'); big.appendChild(tdEl('b', '', String(min))); big.appendChild(tdEl('span', '', '分の瞑想')); hero.appendChild(big);
+      hero.appendChild(tdEl('p', 'tdP', (night ? '布団に入る前に。' : '') + (small ? '短くても今週の1日に数えます。' : '今日はまだ座っていません。')));
+      const acts = tdEl('div', 'tdActs');
+      acts.appendChild(tdBtn('btnTdMedGo', 'tdGo', 'はじめる', () => medStartTimer(min)));
+      (small ? [5, 10] : [10, 15]).forEach((m) => acts.appendChild(tdBtn('btnTdMed' + m, 'tdChip', m + '分', () => medStartTimer(m))));
+      hero.appendChild(acts);
+    } else if (night && !low && prepLeft > 0) {
+      const t = hyTargetFor(prepDate), bed = hyHm(hyMin(t) - Math.round(hySettings.sleepH * 60));
+      hero.classList.add('wake');
+      hero.appendChild(tdEl('div', 'tdK', '寝る前にこれだけ'));
+      hero.appendChild(tdEl('div', 'tdTitle', '明日の朝の準備'));
+      const list = tdEl('div', 'tdChecks');
+      hySettings.night.forEach((label) => {
+        const row = tdEl('label'), cb = tdEl('input'); cb.type = 'checkbox'; cb.checked = prepDone.has(label);
+        cb.addEventListener('change', () => {
+          const x = hyEnsureDay(prepDate);
+          x.prep = x.prep.filter((p) => p.label !== label);
+          if (cb.checked) x.prep.push({ label, at: medLocalIso(new Date()) });
+          hyTouch(x); countUse('b:tdPrepCheck'); renderToday();
+        });
+        row.appendChild(cb); row.appendChild(tdEl('span', '', label)); list.appendChild(row);
+      });
+      hero.appendChild(list);
+      hero.appendChild(tdEl('p', 'tdP', `${hyShort(t)} に起きるなら、布団に入るのは ${hyShort(bed)} まで。`));
+    } else {
+      hero.classList.add('done');
+      hero.appendChild(tdEl('div', 'tdK', '今日はここまで'));
+      hero.appendChild(tdEl('div', 'tdTitle', low ? 'これで十分です' : 'おつかれさま'));
+      const bits = [];
+      if (hd && hd.wakeAt) bits.push('起きた ' + hyShort(hyAtHm(hd.wakeAt)));
+      if (medToday.length) bits.push('瞑想 ' + medToday.length + '回 ' + medSum(medToday) + '分');
+      if (trToday) bits.push('筋トレ ' + trToday.parts.filter((p) => p.exercises.length).map((p) => p.part).join('・'));
+      hero.appendChild(tdEl('p', 'tdP', bits.join('　')));
+    }
+    if (low) hero.appendChild(tdBtn('btnTdConsult', 'tdLink', '今の気持ちを相談に書く', () => openConsult(true)));
+    grid.appendChild(hero);
+
+    // 早起き
+    const wk = tdEl('button', 'tdT tdWakeT'); wk.type = 'button'; wk.id = 'btnTdOpenHayaoki'; wk.addEventListener('click', () => openHayaoki());
+    if (!planned) {
+      wk.appendChild(tdEl('div', 'tdK', '早起き')); wk.appendChild(tdEl('div', 'tdN word', 'まだ')); wk.appendChild(tdEl('div', 'tdS', '開いて「決める」から'));
+    } else if (h >= 12) {
+      const t = hyTargetFor(addDays(today, 1)), bed = hyHm(hyMin(t) - Math.round(hySettings.sleepH * 60));
+      wk.appendChild(tdEl('div', 'tdK', '明日の朝')); wk.appendChild(tdEl('div', 'tdN', hyShort(t)));
+      wk.appendChild(tdEl('div', 'tdS', `${hyShort(bed)} までに布団へ` + (h >= 18 && hySettings.night.length ? (prepLeft ? `\n準備 あと${prepLeft}つ` : '\n準備できた') : '')));
+    } else {
+      const t = hd && hd.target ? hd.target : hyTargetFor(today), st = hyState(hd);
+      wk.appendChild(tdEl('div', 'tdK', '今朝'));
+      if (hd && hd.wakeAt) { wk.appendChild(tdEl('div', 'tdN', hyShort(hyAtHm(hd.wakeAt)))); wk.appendChild(tdEl('div', 'tdS', `目標 ${hyShort(t)}\n` + (st === 'ok' ? '目標どおり' : '遅れたが起きた'))); }
+      else { wk.appendChild(tdEl('div', 'tdN', hyShort(t))); wk.appendChild(tdEl('div', 'tdS', hd && hd.slip ? HY_PLACE[hd.slip.place] : '今週の目標\nまだ記録なし')); }
+    }
+    grid.appendChild(wk);
+
+    // 筋トレ
+    const monday = hyMonday(today);
+    const worked = trainingData.days.filter((d) => tdWorked(d) && d.date <= today).sort((a, b) => (a.date < b.date ? -1 : 1));
+    const lastTr = worked.length ? worked[worked.length - 1] : null;
+    const lift = tdEl('button', 'tdT tdLiftT'); lift.type = 'button'; lift.id = 'btnTdOpenTraining'; lift.addEventListener('click', () => openTraining());
+    lift.appendChild(tdEl('div', 'tdK', '筋トレ'));
+    const partsOf = (d) => d.parts.filter((p) => p.exercises.length).map((p) => p.part).join('・');
+    const weekTr = worked.filter((d) => d.date >= monday).length;
+    if (!lastTr) { lift.appendChild(tdEl('div', 'tdN word', 'まだ')); lift.appendChild(tdEl('div', 'tdS', '開いて記録する')); }
+    else if (lastTr.date === today) { lift.appendChild(tdEl('div', 'tdN word', '今日')); lift.appendChild(tdEl('div', 'tdS', partsOf(lastTr) + `\n今週 ${weekTr}日`)); }
+    else {
+      const n = tdEl('div', 'tdN', String(hyDaysBetween(lastTr.date, today))); n.appendChild(tdEl('small', '', '日前')); lift.appendChild(n);
+      lift.appendChild(tdEl('div', 'tdS', `${tdMd(lastTr.date)} ${partsOf(lastTr)}\n今週 ${weekTr}日`));
+    }
+    grid.appendChild(lift);
+
+    // 今週（月〜日）
+    const medDates = new Set(medData.sessions.map((x) => x.date)), trDates = new Set(worked.map((d) => d.date));
+    const rows = [
+      ['早起き', (date) => { const s = hyState(hyDay(date)); return s === 'ok' ? 'on' : s === 'late' ? 'half' : ''; }],
+      ['瞑想', (date) => (medDates.has(date) ? 'on' : '')],
+      ['筋トレ', (date) => (trDates.has(date) ? 'on' : '')],
+    ];
+    const week = tdEl('div', 'tdT tdWide'), wg = tdEl('div', 'tdWk');
+    wg.appendChild(tdEl('span'));
+    for (let i = 0; i < 7; i++) wg.appendChild(tdEl('span', 'h' + (addDays(monday, i) === today ? ' now' : ''), '月火水木金土日'[i]));
+    let anyHalf = false;
+    rows.forEach((r, ri) => {
+      wg.appendChild(tdEl('span', 'tdR' + ri, r[0]));
+      for (let i = 0; i < 7; i++) {
+        const date = addDays(monday, i), s = date > today ? '' : r[1](date);
+        if (s === 'half') anyHalf = true;
+        wg.appendChild(tdEl('span', 'tdD r' + ri + ' ' + (s || (date > today ? 'later' : date === today ? 'today' : ''))));
+      }
+    });
+    week.appendChild(wg);
+    if (anyHalf) week.appendChild(tdEl('div', 'tdS', 'うすい色＝遅れたが起きた日'));
+    grid.appendChild(week);
+
+    // あいた朝を埋める ／ 今日はしんどい
+    const blank = tdBlankMornings(today);
+    if (blank.length && td.fillOpen) {
+      const f = tdEl('div', 'tdT tdWide');
+      f.appendChild(tdEl('div', 'tdK', `あいた朝 ${blank.length}日（${blank.length > 1 ? tdMd(blank[0]) + '〜' + tdMd(blank[blank.length - 1]) : tdMd(blank[0])}）をまとめて`));
+      const bs = tdEl('div', 'tdFillBtns');
+      [['bed', 'ベッドで寝ていた'], ['kotatsu', '炬燵で寝ていた'], ['forgot', '起きていた（記録し忘れ）'], ['off', '休みの日']].forEach(([k, v]) => bs.appendChild(tdBtn('btnTdFill_' + k, '', v, () => tdFill(k))));
+      bs.appendChild(tdBtn('btnTdFillCancel', 'quiet', 'やめる', () => { td.fillOpen = false; renderToday(); }));
+      f.appendChild(bs);
+      f.appendChild(tdEl('div', 'tdS', '責めるための記録ではありません。あとで1日ずつ直せます（早起き → 最近の朝 → 直す）。'));
+      grid.appendChild(f);
+    } else if (blank.length) {
+      grid.appendChild(tdBtn('btnTdFillOpen', 'tdT tdSmall', `あいた朝 ${blank.length}日を埋める`, () => { td.fillOpen = true; renderToday(); }));
+    }
+    const lowBtn = tdBtn('btnTdLow', 'tdT tdSmall' + (low ? ' on' : '') + (blank.length && !td.fillOpen ? '' : ' tdWide'), low ? 'しんどいを取り消す' : '今日はしんどい', tdToggleLow);
+    grid.appendChild(lowBtn);
+
+    // 瞑想のこれまで
+    const all = medData.sessions, p = medHmParts(medSum(all));
+    const mt = tdEl('button', 'tdT tdWide tdMedT'); mt.type = 'button'; mt.id = 'btnTdOpenMeditation'; mt.addEventListener('click', () => openMeditation());
+    mt.appendChild(tdEl('div', 'tdK', '瞑想のこれまで'));
+    const n = tdEl('div', 'tdN');
+    if (p.h) { n.appendChild(document.createTextNode(String(p.h))); n.appendChild(tdEl('small', '', '時間')); }
+    n.appendChild(document.createTextNode(String(p.m))); n.appendChild(tdEl('small', '', '分'));
+    mt.appendChild(n);
+    mt.appendChild(tdEl('div', 'tdS', all.length + '回、' + new Set(all.map((x) => x.date)).size + '日' + (medToday.length ? `　今日 ${medToday.length}回 ${medSum(medToday)}分` : '')));
+    grid.appendChild(mt);
+  }
+  const TD_DOW_JA = '日月火水木金土';
 
   // --- boot ---------------------------------------------------------------
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); } catch (e) {}   // v20.94
