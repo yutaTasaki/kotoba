@@ -11,8 +11,7 @@
 <meta name="theme-color" content="#000000">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
-<!-- v9.9: the training log image only. Everything else keeps DotGothic16. -->
+<!-- v9.9: the training log image only. -->
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Barlow+Condensed:wght@500;600&family=Noto+Sans+JP:wght@400;500&display=swap" rel="stylesheet">
 <!-- v20.151: 今日の画面のタイル（太い数字と太い見出し）。読めないときは端末の文字で出る -->
 <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@700;800&family=M+PLUS+2:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -1515,12 +1514,6 @@
         <summary><span class="sgTitle">言葉</span><span class="sgSub" id="setSubWords"></span></summary>
         <div class="setBody">
           <div class="field">
-            <span class="fieldLabel">朝の投稿文の見出し</span>
-            <p class="fieldNote">X で投稿するときの、今朝の言葉の前に付く見出し。</p>
-            <input id="morningQuoteHeadingInput" type="text" placeholder="今日の言葉" autocomplete="off">
-            <button id="btnSaveMorningQuoteHeading" class="secondaryBtn">保存</button>
-          </div>
-          <div class="field">
             <span class="fieldLabel">消した言葉（<span id="trashCount"></span>件）</span>
             <p class="fieldNote">本文ごと残ります。復元すると一覧に戻り、残っている言葉とのつながりも結び直します。</p>
             <div id="trashList" class="detailLinksList"></div>
@@ -1573,16 +1566,8 @@
       <details class="setGroup" data-group="walk">
         <summary><span class="sgTitle">散歩</span><span class="sgSub" id="setSubWalk"></span></summary>
         <div class="setBody">
-          <div class="field">
-            <span class="fieldLabel">歩数・距離の記録（日付指定）</span>
-            <p class="fieldNote">日付を選ぶと、その日の記録が出ます。空欄で保存するとその項目は未記録になります。</p>
-            <input type="date" id="walkStatsDateInput">
-            <input type="number" id="walkStatsStepsInput" min="0" placeholder="歩数（歩）">
-            <input type="number" id="walkStatsDistanceInput" min="0" placeholder="距離（m）">
-            <button id="btnSaveWalkStats2" class="secondaryBtn">保存</button>
-          </div>
           <details class="setMore">
-            <summary>くわしく：開始日・初期セットアップ・最長連続・投稿画像・削除</summary>
+            <summary>くわしく：開始日・初期セットアップ・最長連続・削除</summary>
             <div class="setBody">
               <div class="field">
                 <span class="fieldLabel">開始日の変更</span>
@@ -1600,10 +1585,6 @@
                 <p class="fieldNote">実データの最長連続より大きいときだけ有効（記録が追いつくと自動で上書き）。</p>
                 <input type="number" id="walkBestStreakInput" min="0" placeholder="最長連続（日）">
                 <button id="btnSaveWalkBestStreak" class="secondaryBtn">保存</button>
-              </div>
-              <div class="field">
-                <span class="fieldLabel">投稿画像のプレビュー</span>
-                <canvas id="walkSettingsPreviewCanvas" width="1080" height="1080" style="width:100%;border-radius:14px;"></canvas>
               </div>
               <div class="field setDanger">
                 <button id="btnWalkDeleteAll" class="dangerBtn">散歩データを全て削除</button>
@@ -1760,7 +1741,7 @@
       <div class="reviewSection" id="monthSummarySection">
         <h3>この月のまとめ</h3>
         <div class="statRow"><span>散歩日数</span><span id="summaryWalkDays"></span></div>
-        <div class="statRow"><span>散歩で体調が上がった日</span><span id="summaryMoodUp"></span></div>
+        <div class="statRow" id="summaryMoodUpRow"><span>散歩で体調が上がった日</span><span id="summaryMoodUp"></span></div>
         <div class="statRow"><span>朝の言葉を受け取った日数</span><span id="summaryMorningDays"></span></div>
         <div class="statRow"><span>相談した回数</span><span id="summaryConsultCount"></span></div>
         <div class="statRow"><span>生成した問い</span><span id="summaryQuestionCount"></span></div>
@@ -1779,16 +1760,6 @@
       </div>
     </div>
 
-    <div id="dayEditorView" class="editorBody" hidden>
-      <h3 id="dayEditorTitle"></h3>
-      <div class="field"><span class="fieldLabel">今朝の体調</span><div class="moodRow" id="editWakeMoodRow"></div></div>
-      <div class="field"><span class="fieldLabel">散歩後の体調</span><div class="moodRow" id="editAfterMoodRow"></div></div>
-      <input type="number" id="editStepsInput" min="0" placeholder="歩数（歩）">
-      <input type="number" id="editDistanceInput" min="0" placeholder="距離（m）">
-      <button id="btnSaveDayEdit" class="secondaryBtn">保存</button>
-      <button id="btnDeleteDayRecord" class="dangerBtn">この日の記録を取り消す</button>
-      <button id="btnCloseDayEdit" class="secondaryBtn">戻る</button>
-    </div>
   </section>
 
   <section id="screen-meditation" class="screen" hidden>
@@ -2307,7 +2278,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.153';   // 設定 → 同期 の見出しの横に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.154';   // 設定 → 同期 の見出しの横に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   const CUT_MAX = {
     postAsk: 60,     // 投稿の説明：「説明を作る」の生成への指示。自分の言葉がこれを超えると要約を頼む（v20.36）
@@ -4183,254 +4154,6 @@
     ctx.closePath();
   }
 
-  function drawLargeGrid(ctx, x, y, filled, cell, gap, fillColor, unfilledColor) {
-    for (let i = 0; i < 100; i++) {
-      const row = Math.floor(i / 10), col = i % 10;
-      const cx = x + col * (cell + gap);
-      const cy = y + row * (cell + gap);
-      if (i < filled) {
-        ctx.fillStyle = fillColor;
-        ctx.fillRect(cx, cy, cell, cell);
-      } else {
-        ctx.strokeStyle = unfilledColor;
-        ctx.lineWidth = 3;
-        ctx.strokeRect(cx + 1.5, cy + 1.5, cell - 3, cell - 3);
-      }
-    }
-    return { width: cell * 10 + gap * 9, height: cell * 10 + gap * 9 };
-  }
-
-  function drawSmallGrid(ctx, x, y, currentIndex0, cell, gap, fillColor, futureColor) {
-    let currentCellRect = null;
-    for (let i = 0; i < 100; i++) {
-      const row = Math.floor(i / 10), col = i % 10;
-      const cx = x + col * (cell + gap);
-      const cy = y + row * (cell + gap);
-      if (i < currentIndex0) {
-        ctx.fillStyle = fillColor;
-        ctx.fillRect(cx, cy, cell, cell);
-      } else if (i === currentIndex0) {
-        ctx.fillStyle = fillColor;
-        ctx.fillRect(cx, cy, cell, cell);
-        ctx.strokeStyle = fillColor;
-        ctx.lineWidth = 2;
-        ctx.strokeRect(cx - 2, cy - 2, cell + 4, cell + 4);
-        currentCellRect = { x: cx, y: cy, w: cell, h: cell };
-      } else {
-        ctx.fillStyle = futureColor;
-        ctx.fillRect(cx, cy, cell, cell);
-      }
-    }
-    return { width: cell * 10 + gap * 9, height: cell * 10 + gap * 9, currentCellRect, cellSize: cell };
-  }
-
-  function getWalkMilestone(n, cardNumber) {
-    if (n <= 0) return null;
-    if (n === 1 || n === 10000 || n % 1000 === 0) return { type: 'special' };
-    if (n % 100 === 0) return { type: 'normal', cardNumber };
-    return null;
-  }
-
-  function drawWalkImage(canvas) {
-    const WALK_BRIGHT = '#39FF14', WALK_DARK = '#1E7A0F', WALK_UNFILLED_BORDER = '#145A0A', WALK_FUTURE = '#0B2A05';
-    const ctx = canvas.getContext('2d');
-    const W = 1080, H = 1080, MARGIN = 60;
-    const derived = computeWalkDerived();
-    const milestone = getWalkMilestone(derived.n, derived.cardNumber);
-    const isNormalMilestone = milestone && milestone.type === 'normal';
-    const isSpecial = milestone && milestone.type === 'special';
-    const GOLD = '#FFD700';
-
-    const digitColor = (isNormalMilestone || isSpecial) ? GOLD : WALK_BRIGHT;
-    const largeFillColor = (isNormalMilestone || isSpecial) ? GOLD : WALK_BRIGHT;
-    const smallFillColor = isSpecial ? GOLD : WALK_BRIGHT;
-    const borderColor = isSpecial ? GOLD : WALK_BRIGHT;
-
-    ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = '#000';
-    roundRectPath(ctx, 0, 0, W, H, 20);
-    ctx.fill();
-    ctx.lineWidth = 6;
-    ctx.strokeStyle = borderColor;
-    roundRectPath(ctx, 3, 3, W - 6, H - 6, 17);
-    ctx.stroke();
-
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-
-    const headerFontSize = 26;
-    ctx.font = `${headerFontSize}px 'DotGothic16'`;
-    ctx.fillStyle = WALK_BRIGHT;
-    ctx.textAlign = 'right';
-    ctx.fillText(`${dotDate(walkData.startDate)} → ${dotDate(derived.today)}`, W - MARGIN, MARGIN);
-    ctx.textAlign = 'left';
-    if (isNormalMilestone) ctx.fillText(`CARD ${milestone.cardNumber} COMPLETE`, MARGIN, MARGIN);
-
-    const gridY = MARGIN + 30 + 20;
-    const largeGridLeft = W - MARGIN - 588;
-    const large = drawLargeGrid(ctx, largeGridLeft, gridY, derived.filledInCard, 48, 12, largeFillColor, WALK_UNFILLED_BORDER);
-
-    const smallGridX = MARGIN;
-    const smallGridY = gridY + Math.round(large.height * 0.25);
-    const small = drawSmallGrid(ctx, smallGridX, smallGridY, derived.cardNumber - 1, 28, 8, smallFillColor, WALK_FUTURE);
-
-    if (small.currentCellRect) {
-      ctx.strokeStyle = WALK_DARK;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(small.currentCellRect.x + small.currentCellRect.w, small.currentCellRect.y);
-      ctx.lineTo(largeGridLeft, gridY);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(small.currentCellRect.x + small.currentCellRect.w, small.currentCellRect.y + small.currentCellRect.h);
-      ctx.lineTo(largeGridLeft, gridY + large.height);
-      ctx.stroke();
-    }
-
-    const calloutLineLen = 24;
-    const calloutGap = 10;
-    ctx.font = "40px 'DotGothic16'";
-    ctx.textBaseline = 'top';
-    ctx.textAlign = 'left';
-    ctx.fillStyle = WALK_BRIGHT;
-
-    const smallLineX = smallGridX + small.cellSize / 2;
-    const smallLineTop = smallGridY + small.height;
-    ctx.strokeStyle = WALK_BRIGHT;
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(smallLineX, smallLineTop);
-    ctx.lineTo(smallLineX, smallLineTop + calloutLineLen);
-    ctx.stroke();
-    const smallLabelTop = smallLineTop + calloutLineLen + calloutGap;
-    ctx.fillText('100 DAYS', MARGIN, smallLabelTop);
-
-    const largeLineX = largeGridLeft + 48 / 2;
-    const largeLineTop = gridY + large.height;
-    ctx.strokeStyle = WALK_BRIGHT;
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(largeLineX, largeLineTop);
-    ctx.lineTo(largeLineX, largeLineTop + calloutLineLen);
-    ctx.stroke();
-    const largeLabelTop = largeLineTop + calloutLineLen + calloutGap;
-    ctx.fillText('1 DAY', largeGridLeft, largeLabelTop);
-
-    const countdownTop = smallLabelTop + 46 + 30;
-    const countdownDigitSize = 200;
-    const countdownWordSize = 60;
-    const countdownBaseline = countdownTop + 195;
-    ctx.textBaseline = 'alphabetic';
-    ctx.textAlign = 'left';
-    ctx.font = `${countdownDigitSize}px 'DotGothic16'`;
-    ctx.fillStyle = digitColor;
-    ctx.fillText(String(derived.n), MARGIN, countdownBaseline);
-
-    ctx.textBaseline = 'top';
-    ctx.font = `${countdownWordSize}px 'DotGothic16'`;
-    ctx.fillStyle = WALK_BRIGHT;
-    ctx.fillText('DAYS / 10000', MARGIN, countdownTop + 212 + 12);
-
-    const todayStats = walkData.dailyStats[derived.today] || {};
-    const todaySteps = todayStats.steps != null ? todayStats.steps : 0;
-    const todayDistanceM = todayStats.distanceM != null ? todayStats.distanceM : 0;
-    const todayFontSize = 60;
-    const todayGap = 10;
-    const todayBlockTop = largeLabelTop + 46 - 5;
-    ctx.textBaseline = 'top';
-    ctx.textAlign = 'right';
-    ctx.font = `${todayFontSize}px 'DotGothic16'`;
-    ctx.fillStyle = WALK_BRIGHT;
-    ctx.fillText(`${todaySteps} steps`, W - MARGIN, todayBlockTop);
-    ctx.fillText(`${todayDistanceM} m`, W - MARGIN, todayBlockTop + todayFontSize + todayGap);
-    ctx.textAlign = 'left';
-
-    if (todayStats.wakeMood != null && todayStats.afterMood != null) {
-      const emojiSize = 96, labelSize = 30, arrowSize = 52, colGap = 18, labelGap = 8;
-      const emoji1 = MOOD_EMOJI[todayStats.wakeMood];
-      const emoji2 = MOOD_EMOJI[todayStats.afterMood];
-
-      ctx.font = `${emojiSize}px 'Apple Color Emoji'`;
-      const emojiW1 = ctx.measureText(emoji1).width;
-      const emojiW2 = ctx.measureText(emoji2).width;
-      ctx.font = `${labelSize}px 'DotGothic16'`;
-      const labelW1 = ctx.measureText('BEFORE').width;
-      const labelW2 = ctx.measureText('AFTER').width;
-      ctx.font = `${arrowSize}px 'DotGothic16'`;
-      const arrowW = ctx.measureText('→').width;
-
-      const col1W = Math.max(emojiW1, labelW1);
-      const col2W = Math.max(emojiW2, labelW2);
-      const blockWidth = col1W + colGap + arrowW + colGap + col2W;
-      const col1Left = W - MARGIN - blockWidth;
-      const col2Left = col1Left + col1W + colGap + arrowW + colGap;
-
-      const labelTop = todayBlockTop + (todayFontSize + todayGap) * 2 + 14;
-      const emojiMidY = labelTop + labelSize + labelGap + emojiSize / 2;
-
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      ctx.font = `${labelSize}px 'DotGothic16'`;
-      ctx.fillStyle = WALK_BRIGHT;
-      ctx.fillText('BEFORE', col1Left + col1W / 2, labelTop);
-      ctx.fillText('AFTER', col2Left + col2W / 2, labelTop);
-
-      ctx.textBaseline = 'middle';
-      ctx.font = `${emojiSize}px 'Apple Color Emoji'`;
-      ctx.fillText(emoji1, col1Left + col1W / 2, emojiMidY);
-      ctx.fillText(emoji2, col2Left + col2W / 2, emojiMidY);
-
-      ctx.font = `${arrowSize}px 'DotGothic16'`;
-      ctx.fillStyle = WALK_BRIGHT;
-      ctx.fillText('→', col1Left + col1W + colGap + arrowW / 2, emojiMidY);
-
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'top';
-    }
-
-    return derived;
-  }
-
-  function buildMoodRow(rowEl, onSelect) {
-    const buttons = [];
-    for (let m = 1; m <= 5; m++) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'moodBtn';
-      btn.textContent = MOOD_EMOJI[m];
-      btn.addEventListener('click', () => onSelect(m));
-      rowEl.appendChild(btn);
-      buttons.push(btn);
-    }
-    return buttons;
-  }
-
-  function paintMoodRow(buttons, selected) {
-    buttons.forEach((btn, i) => { btn.classList.toggle('selected', i + 1 === selected); });
-  }
-
-  function setWalkMood(dateStr, field, level) {
-    const entry = Object.assign({}, walkData.dailyStats[dateStr]);
-    entry[field] = level;
-    walkData.dailyStats[dateStr] = entry;
-    walkStamp(walkData, dateStr, walkGroupOf(field));   // v20.42
-    saveWalkData(walkData);
-  }
-
-  // v3.5: stamps statsSavedAt so the home tab's step flow can tell "steps/
-  // distance were explicitly confirmed (even left blank)" apart from "not
-  // reached yet" - both leave steps/distanceM absent, so presence of those
-  // keys alone can't distinguish the two states.
-  function setWalkDailyStats(dateStr, steps, distanceM) {
-    const entry = Object.assign({}, walkData.dailyStats[dateStr]);
-    if (steps !== '' && steps != null && !Number.isNaN(steps)) entry.steps = steps; else delete entry.steps;
-    if (distanceM !== '' && distanceM != null && !Number.isNaN(distanceM)) entry.distanceM = distanceM; else delete entry.distanceM;
-    entry.statsSavedAt = new Date().toISOString();
-    walkData.dailyStats[dateStr] = entry;
-    walkStamp(walkData, dateStr, 'stats');   // v20.42
-    saveWalkData(walkData);
-  }
-
   function recordWalkDate(dateStr) {
     if (!walkData.walkedDates.includes(dateStr)) {
       walkData.walkedDates.push(dateStr);
@@ -5218,10 +4941,8 @@
   const AUTO_LINK_ENABLED_KEY = 'kotoba_autoLinkEnabled';
   const MORNING_ENABLED_KEY = 'kotoba_morningEnabled';
   const COMPRESS_THRESHOLD_KEY = 'kotoba_compressThreshold';
-  const MORNING_QUOTE_HEADING_KEY = 'kotoba_morningQuoteHeading';
   const LAST_API_CALL_KEY = 'kotoba_lastApiCall';   // v20.15：診断用の控え（この端末だけ。同期しない）
   const USAGE_DAY_KEY     = 'kotoba_usageDays';     // v20.15：日ごとの概算額（同上）
-  const DEFAULT_MORNING_QUOTE_HEADING = '今日の言葉';
   const POST_EXPLAIN_MAX = CUT_MAX.postAsk;   // v20.11：投稿に載せる説明の字数。名言は原文のまま、縮めるのは説明だけ
   const LAST_AUTO_LINK_ERROR_KEY = 'kotoba_lastAutoLinkError';
   const USAGE_BUDGET_KEY = 'kotoba_usageBudgetUsd';
@@ -5265,10 +4986,6 @@
   function getCompressThreshold() {
     const v = parseInt(localStorage.getItem(COMPRESS_THRESHOLD_KEY), 10);
     return Number.isFinite(v) && v > 0 ? v : DEFAULT_COMPRESS_THRESHOLD;
-  }
-  function getMorningQuoteHeading() {
-    const v = localStorage.getItem(MORNING_QUOTE_HEADING_KEY);
-    return v && v.trim() ? v : DEFAULT_MORNING_QUOTE_HEADING;
   }
 
   // --- Usage tracking (v3.2, moved into data.json + per-device/per-month in
@@ -10150,7 +9867,6 @@
   const expandedConsultRecords = new Set(); // session-only "続きを見る" state
   const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
   let calYear, calMonth; // calMonth is 0-indexed
-  let editingDate = null;
   let recordsSelectedDate = null;
   const CAL_PARTS_KEY = 'kotoba_calShowParts';
   let calShowParts = false;
@@ -10173,7 +9889,6 @@
 
   function renderRecords() {
     document.getElementById('recordsCalendarView').hidden = false;
-    document.getElementById('dayEditorView').hidden = true;
     renderLookbackRow();
     renderRecordsCalendar();
     renderDayDetail();
@@ -10618,11 +10333,7 @@
     return wrapper;
   }
 
-  // Read-only summary of that day's walk10000 record; "編集" reuses the
-  // existing steps/distance/mood editor rather than duplicating its fields
-  // here. Regenerating the actual posted poster image isn't attempted - it's
-  // drawn cumulatively as of "today" (computeWalkDerived/drawWalkImage have
-  // no notion of a past day's grid state), so a small badge stands in for it.
+  // その日の散歩の記録（読むだけ）。v20.154：体調・歩数の直しはなくした。前に入れた体調・歩数はここに出る
   function renderDayWalkCard(dateStr) {
     const stats = walkData.dailyStats[dateStr] || {};
     const item = document.createElement('div');
@@ -10652,13 +10363,6 @@
     const info = document.createElement('div');
     info.textContent = lines.length ? lines.join(' ・ ') : '（詳細の記録なし）';
     item.appendChild(info);
-
-    const editBtn = document.createElement('button');
-    editBtn.type = 'button';
-    editBtn.className = 'linkLikeBtn';
-    editBtn.textContent = '編集';
-    editBtn.addEventListener('click', () => openDayEditor(dateStr));
-    item.appendChild(editBtn);
 
     return item;
   }
@@ -10792,6 +10496,7 @@
       const both = Object.entries(walkData.dailyStats).filter(([d, st]) => inMonth(d) && st && st.wakeMood != null && st.afterMood != null);
       const up = both.filter(([, st]) => st.afterMood > st.wakeMood).length, down = both.filter(([, st]) => st.afterMood < st.wakeMood).length;
       document.getElementById('summaryMoodUp').textContent = both.length ? up + '日 ／ ' + both.length + '日' + (down ? '（下がった日 ' + down + '）' : '') : '—';
+      document.getElementById('summaryMoodUpRow').hidden = !both.length;   // v20.154：体調はもう記録しないので、前の記録がある月だけ出す
     }
 
     const morningDates = new Set(data.journal.filter((j) => j.kind === 'morning' && inMonth(j.date)).map((j) => j.date));
@@ -10871,54 +10576,6 @@
     await walkSyncNow();
   }
 
-  const editWakeMoodButtons = buildMoodRow(document.getElementById('editWakeMoodRow'), (m) => {
-    if (!editingDate) return;
-    setWalkMood(editingDate, 'wakeMood', m);
-    paintMoodRow(editWakeMoodButtons, m);
-  });
-  const editAfterMoodButtons = buildMoodRow(document.getElementById('editAfterMoodRow'), (m) => {
-    if (!editingDate) return;
-    setWalkMood(editingDate, 'afterMood', m);
-    paintMoodRow(editAfterMoodButtons, m);
-  });
-
-  function openDayEditor(dateStr) {
-    editingDate = dateStr;
-    const stats = walkData.dailyStats[dateStr] || {};
-    document.getElementById('dayEditorTitle').textContent = dotDate(dateStr);
-    document.getElementById('editStepsInput').value = stats.steps != null ? stats.steps : '';
-    document.getElementById('editDistanceInput').value = stats.distanceM != null ? stats.distanceM : '';
-    paintMoodRow(editWakeMoodButtons, stats.wakeMood != null ? stats.wakeMood : null);
-    paintMoodRow(editAfterMoodButtons, stats.afterMood != null ? stats.afterMood : null);
-    document.getElementById('recordsCalendarView').hidden = true;
-    document.getElementById('dayEditorView').hidden = false;
-    applyInputDraftFields(['editStepsInput', 'editDistanceInput']);
-  }
-
-  function closeDayEditor() {
-    clearInputDraft();
-    document.getElementById('editStepsInput').value = ''; document.getElementById('editDistanceInput').value = '';
-    editingDate = null;
-    document.getElementById('dayEditorView').hidden = true;
-    document.getElementById('recordsCalendarView').hidden = false;
-    refreshAfterDayRecordChange();
-  }
-
-  document.getElementById('btnSaveDayEdit').addEventListener('click', () => {
-    if (!editingDate) return;
-    clearInputDraft();
-    const steps = document.getElementById('editStepsInput').value === '' ? null : parseInt(document.getElementById('editStepsInput').value, 10);
-    const distanceM = document.getElementById('editDistanceInput').value === '' ? null : parseFloat(document.getElementById('editDistanceInput').value);
-    setWalkDailyStats(editingDate, steps, distanceM);
-    alert('保存しました');
-  });
-  document.getElementById('btnDeleteDayRecord').addEventListener('click', async () => {
-    if (!editingDate) return;
-    if (!confirm(`${dotDate(editingDate)}の散歩の記録を消しますか？（その日の今朝の体調・散歩後の体調・歩数も消えます）`)) return;
-    await deleteWalkDayRecord(editingDate);
-    closeDayEditor();
-  });
-  document.getElementById('btnCloseDayEdit').addEventListener('click', closeDayEditor);
   document.getElementById('calPrev').addEventListener('click', () => {
     calMonth--; if (calMonth < 0) { calMonth = 11; calYear--; }
     recordsSelectedDate = null;
@@ -11952,12 +11609,6 @@
     return `${stat.calls}回・入力${formatTokenCount(totalInput)}/出力${formatTokenCount(stat.output)}${search}・約$${cost.toFixed(3)}`;
   }
 
-  function loadWalkStatsFormFor(dateStr) {
-    const stats = walkData.dailyStats[dateStr] || {};
-    document.getElementById('walkStatsStepsInput').value = stats.steps != null ? stats.steps : '';
-    document.getElementById('walkStatsDistanceInput').value = stats.distanceM != null ? stats.distanceM : '';
-  }
-
   // v6.0: how much data there is and how much of the device's store it uses
   function fmtBytes(n) { return n < 1048576 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (n / 1048576).toFixed(2) + ' MB'; }
   function dataSizeReport() {
@@ -12068,7 +11719,6 @@
     document.getElementById('batchPendingCount').textContent = '（いま未処理 ' + data.notes.filter((n) => !n.autoLinkedAt).length + ' 件）';   // v20.92
     document.getElementById('compressThresholdInput').value = getCompressThreshold();
     renderSourceKindList();
-    document.getElementById('morningQuoteHeadingInput').value = getMorningQuoteHeading();
     document.getElementById('statNoteCount').textContent = data.notes.length;
     document.getElementById('statTagCount').textContent = allTags().length;
     document.getElementById('statAutoLinkCount').textContent = countLinksByKind('auto');
@@ -12159,9 +11809,6 @@
 
     document.getElementById('walkStartDateInput').value = walkData.startDate;
     document.getElementById('walkBestStreakInput').value = walkDerived.longest;
-    document.getElementById('walkStatsDateInput').value = todayStr();
-    loadWalkStatsFormFor(todayStr());
-    drawWalkImage(document.getElementById('walkSettingsPreviewCanvas'));
 
     // Self-heal: drop ids for notes that no longer exist (deleted since the
     // error was recorded) before counting/displaying them.
@@ -12291,21 +11938,6 @@
     alert('保存しました');
   });
 
-  document.getElementById('walkStatsDateInput').addEventListener('change', () => {
-    const v = document.getElementById('walkStatsDateInput').value;
-    if (v) loadWalkStatsFormFor(v);
-  });
-
-  document.getElementById('btnSaveWalkStats2').addEventListener('click', () => {
-    const dateStr = document.getElementById('walkStatsDateInput').value;
-    if (!dateStr) { alert('日付を選んでください'); return; }
-    const steps = document.getElementById('walkStatsStepsInput').value === '' ? null : parseInt(document.getElementById('walkStatsStepsInput').value, 10);
-    const distanceM = document.getElementById('walkStatsDistanceInput').value === '' ? null : parseFloat(document.getElementById('walkStatsDistanceInput').value);
-    setWalkDailyStats(dateStr, steps, distanceM);
-    if (dateStr === todayStr() && nav.screen === 'home') renderHome();
-    alert('保存しました');
-  });
-
   document.getElementById('btnWalkDeleteAll').addEventListener('click', async () => {
     if (!confirm('散歩データを全て削除します。よろしいですか？')) return;
     if (!confirm('本当に削除しますか？この操作は取り消せません（GitHub同期がオンの場合、バックアップ側も空になります）。')) return;
@@ -12355,13 +11987,6 @@
     const v = parseInt(document.getElementById('compressThresholdInput').value, 10);
     if (!Number.isFinite(v) || v <= 0) { alert('正しい件数を入力してください'); return; }
     localStorage.setItem(COMPRESS_THRESHOLD_KEY, String(v));
-    alert('保存しました');
-  });
-
-  document.getElementById('btnSaveMorningQuoteHeading').addEventListener('click', () => {
-    const v = document.getElementById('morningQuoteHeadingInput').value.trim();
-    localStorage.setItem(MORNING_QUOTE_HEADING_KEY, v || DEFAULT_MORNING_QUOTE_HEADING);
-    document.getElementById('morningQuoteHeadingInput').value = getMorningQuoteHeading();
     alert('保存しました');
   });
 
@@ -13132,7 +12757,6 @@
     if (nav.screen === 'bulk') ctx.bulk = { kind: bulkState.kind, noteKind: bulkState.noteKind, questionId: bulkState.questionId };
     if (nav.screen === 'draftreview') ctx.draftId = draftQueue[draftQueueIndex] || null;
     if (nav.screen === 'detail') ctx.detailId = nav.detailId;
-    if (nav.screen === 'records') ctx.editingDate = editingDate;
     if (nav.screen === 'meditation') ctx.medEditId = medForm.editId || null;
     return ctx;
   }
@@ -13142,7 +12766,6 @@
     if (c.screen === 'editor') return !!c.editor && c.editor.mode === nav.editorMode && (c.editor.editId || null) === (nav.editorEditId || null);
     if (c.screen === 'draftreview') return (c.draftId || null) === (draftQueue[draftQueueIndex] || null);
     if (c.screen === 'detail') return c.detailId === nav.detailId;
-    if (c.screen === 'records') return (c.editingDate || null) === (editingDate || null);
     if (c.screen === 'meditation') return (c.medEditId || null) === (medForm.editId || null);
     return true;
   }
@@ -13200,7 +12823,7 @@
       } else if (c.screen === 'consult') openConsult(true);
       else if (c.screen === 'detail') { if (!findNote(c.detailId)) { clearInputDraft(); return; } openDetail(c.detailId, 'list'); }
       else if (c.screen === 'draftreview') { openDraftReview(); const i = draftQueue.indexOf(c.draftId); if (i >= 0) { draftQueueIndex = i; renderDraftCard(); } }
-      else if (c.screen === 'records') { openRecords(); if (c.editingDate) openDayEditor(c.editingDate); }
+      else if (c.screen === 'records') openRecords();
       else if (c.screen === 'meditation') { openMeditation(); if (c.medEditId && medFind(c.medEditId)) medBeginEdit(c.medEditId); }
       else if (c.screen === 'settings') openSettings();
       else if (c.screen === 'list') openList();
@@ -14237,11 +13860,6 @@
   restoreInputDraft();
   medResumeTimer();
   syncAllNow();
-  if (document.fonts && document.fonts.ready) {
-    // walk canvas uses DotGothic16; re-render once it's actually loaded so
-    // the very first paint isn't done in a fallback font.
-    document.fonts.ready.then(() => { if (nav.screen === 'home') renderHome(); });
-  }
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') { syncAllNow(); if (nav.screen === 'home' && !hyW) { try { hyMorningOpen(); } catch (e) {} } }
   });
