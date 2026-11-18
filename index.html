@@ -671,6 +671,17 @@
   .tdWakeT .tdK, .tdR0 { color: #ff8a5c; }
   .tdMedT .tdK, .tdR1 { color: #8f9dff; }
   .tdLiftT .tdK, .tdR2 { color: #f0b56f; }
+  .tdWalkT .tdK, .tdR3 { color: #3fc79a; }
+  .tdHero.walk { background: #17805f; }
+  .tdHero.walk::after { content: ""; position: absolute; width: 260px; height: 260px; border-radius: 50%; right: -90px; top: -110px; background: #27a57d; }
+  .tdHero.walk .tdGo { color: #0d5a42; }
+  .tdPill { display: block; width: 100%; height: 44px; border-radius: 22px; background: #3fc79a; color: #06231a; font-weight: 800; font-size: 15px; margin-top: 12px; }
+  .tdUndo { font-size: 12.5px; color: #98989f; text-decoration: underline; text-underline-offset: 3px; margin-top: 6px; padding: 4px 0; }
+  .tdN.mid { font-size: 34px; }
+  .tdStack svg { display: block; width: 100%; height: auto; margin-top: 12px; }
+  .tdStack svg text { font-family: "M PLUS 2", system-ui, sans-serif; font-size: 11px; fill: #98989f; font-weight: 500; }
+  .tdLg { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-size: 12.5px; color: #c9c9d1; font-weight: 600; }
+  .tdLg i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; }
   .tdWk { display: grid; grid-template-columns: 58px repeat(7, 1fr); align-items: center; row-gap: 9px; font-size: 13px; font-weight: 600; }
   .tdWk .h { font-size: 11px; color: #6e6e73; justify-self: center; font-weight: 500; }
   .tdWk .h.now { color: #f5f5f7; font-weight: 700; }
@@ -681,6 +692,7 @@
   .tdD.half.r0 { background: rgba(255, 138, 92, 0.42); }
   .tdD.on.r1 { background: #6d7dff; }
   .tdD.on.r2 { background: #f0b56f; }
+  .tdD.on.r3 { background: #3fc79a; }
   .tdSmall { display: flex; align-items: center; justify-content: center; text-align: center; min-height: 64px; font-size: 14px; font-weight: 700; padding: 12px; line-height: 1.4; }
   .tdSmall.on { box-shadow: inset 0 0 0 2px #f5f5f7; }
   .tdFillBtns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
@@ -1072,20 +1084,11 @@
     <p class="fieldNote warn" id="usageThresholdBanner" hidden></p>
     <!-- v20.151：今日。時刻と今日の記録から「今やること」を1つ。中身は renderToday が作る -->
     <div id="tdPanel" class="td"></div>
-    <div class="tdSec">朝の記録</div>
-    <div class="dayCount" id="dayCountLabel"></div>
+    <div class="tdSec">朝の言葉</div>
     <div id="homeEmpty" class="emptyMsg" hidden>まだ言葉がありません。「言葉」画面の「＋」から最初の1枚を書いてみましょう。</div>
     <div id="walkUnavailableMsg" class="emptyMsg" hidden>散歩データを読み込めていません。設定 → 同期を確認してください。</div>
 
-    <canvas id="walkPreviewCanvas" width="1080" height="1080" hidden></canvas>
-
     <div id="homeStepsContainer" class="homeStepsContainer">
-      <button type="button" id="wakeMoodCollapsedRow" class="homeStepCollapsed" hidden></button>
-      <div class="field" id="wakeMoodField" hidden>
-        <span class="fieldLabel">今朝の体調</span>
-        <div class="moodRow" id="wakeMoodRow"></div>
-      </div>
-
       <button type="button" id="morningWordsCollapsedRow" class="homeStepCollapsed" hidden></button>
       <div id="morningWordsStage" class="morningStage" hidden>
         <div class="morningInputRow">
@@ -1096,39 +1099,6 @@
       </div>
       <div id="morningCardsStage" class="morningStage" hidden>
         <div id="morningCards" class="consultTurns"></div>
-      </div>
-
-      <button type="button" id="walkCollapsedRow" class="homeStepCollapsed" hidden></button>
-      <div id="walkStage" class="morningStage" hidden>
-        <button id="btnWalkToday" class="linkLikeBtn">体調は付けずに、歩いた印だけ付ける</button>
-      </div>
-      <div id="walkStatsStage" class="morningStage" hidden>
-        <div class="field">
-          <span class="fieldLabel">歩数・距離（任意）</span>
-          <input type="number" id="walkStepsInput" min="0" placeholder="歩数（歩）">
-          <input type="number" id="walkDistanceInput" min="0" placeholder="距離（m）">
-          <button id="btnSaveWalkStats" class="secondaryBtn">保存</button>
-        </div>
-      </div>
-
-      <button type="button" id="afterMoodCollapsedRow" class="homeStepCollapsed" hidden></button>
-      <div class="field" id="afterMoodStage" hidden>
-        <span class="fieldLabel">散歩後の体調</span>
-        <p class="fieldNote" id="afterMoodWalkNote" hidden>歩いてきたら押す。押すと、今日歩いた日にもなります。</p>
-        <div class="moodRow" id="afterMoodRow"></div>
-      </div>
-
-      <div id="walkShareStage" class="morningStage" hidden>
-        <div class="field">
-          <span class="fieldLabel">投稿文</span>
-          <textarea id="walkShareTextInput" rows="4" autocomplete="off"></textarea>
-        </div>
-        <div class="medRow">
-          <button type="button" id="btnPostExplain" class="tagFilterBtn">説明を作る</button>
-        </div>
-        <p class="fieldNote" id="postExplainStatus"></p>
-        <button id="btnWalkShare" class="primaryBtn">共有</button>
-        <div id="walkShareStatus"></div>
       </div>
 
     </div>
@@ -2175,7 +2145,7 @@
     <div id="hyWDone" hidden>
       <div class="hyWDoneBig">いってらっしゃい</div>
       <div id="hyWDoneSub" style="margin:10px 0 24px;"></div>
-      <div><button type="button" id="btnHyToHome" class="hyBigBtn">朝の画面へ（散歩の記録）</button></div>
+      <div><button type="button" id="btnHyToHome" class="hyBigBtn">今日の画面へ</button></div>
       <div style="margin-top:14px;"><button type="button" id="btnHyWatchClose" class="linkLikeBtn">閉じる</button></div>
     </div>
   </div>
@@ -2252,7 +2222,7 @@
   const PAGE_STAMP_KEY = 'kotoba_pageStamp';
   const GITHUB_OWNER = 'yutaTasaki';
   const GITHUB_REPO = 'kotoba-data';
-  const APP_BUILD = 'v20.151';   // 設定 → 同期 の見出しの横に出す。両端末が新しい版になったかを見るため
+  const APP_BUILD = 'v20.152';   // 設定 → 同期 の見出しの横に出す。両端末が新しい版になったかを見るため
   // v20.33：切る字数の表。**文が途中で切れていた欄だけ**をここに置く。
   const CUT_MAX = {
     postAsk: 60,     // 投稿の説明：「説明を作る」の生成への指示。自分の言葉がこれを超えると要約を頼む（v20.36）
@@ -6291,137 +6261,6 @@
   // fallback word. Not persisted - it describes one attempt, not the day.
   let morningLastError = '';
   let morningRandomNoteId = null, morningRandomNoteDate = null;
-  let walkSharePngBlob = null;
-
-  function regenerateWalkShareBlob(canvas, btn) {
-    walkSharePngBlob = null;
-    if (btn) btn.disabled = true;
-    canvas.toBlob((blob) => { walkSharePngBlob = blob; if (btn) btn.disabled = false; }, 'image/png');
-  }
-
-  // v20.11 投稿の説明。名言は説明が無いと何を言っているのか伝わらないので、投稿文に1〜2文を添える。
-  // 言葉そのものは縮めない（一字変えると別の言葉になる）。
-  // v20.36：字数で切って「…」を付ける処理（shortenAtPause）はなくした。長い自分の言葉は要約させる
-  // 載せる説明。作ってあればそれ、無ければ自分の言葉（なければ朝の「なぜ今日これか」）。
-  // v20.36：長いときは切って「…」を付けるのをやめ、要約させる。要約がまだ無いときは空を返し、
-  // needSummary で「頼む文」を知らせる（投稿文は説明なしで先に組み立て、要約が来たら入れる）
-  function notePostBase(note, pick) {
-    return String(note.myWords || (pick && pick.why ? pick.why : '')).replace(/\s+/g, ' ').trim();
-  }
-  function notePostExplainInfo(note, pick) {
-    if (!note) return { text: '' };
-    if (note.postLine) return { text: note.postLine };
-    const base = notePostBase(note, pick);
-    if (!base) return { text: '' };
-    if (base.length <= POST_EXPLAIN_MAX) return { text: base };
-    if (note.postSummary && note.postSummaryOf === base) return { text: note.postSummary };
-    return { text: '', needSummary: base };
-  }
-  function notePostExplain(note, pick) { return notePostExplainInfo(note, pick).text; }
-  // 要約できなかったときに入れるもの：最後の句点までの文（字数では切らない）。句点が無ければ入れない
-  function postUntilLastPeriod(base) {
-    const i = String(base || '').lastIndexOf('。');
-    return i >= 0 ? base.slice(0, i + 1) : '';
-  }
-  // 失敗の理由を1つの言い方にそろえる（要約・説明を作る の両方で使う）
-  function postFailReason(e) {
-    if (e && e.overBudget) {
-      const cost = totalCostForKindStats(sumUsageAcrossDevices(currentMonthKey()));
-      return '今月の API 使用額（$' + cost.toFixed(2) + '）が上限（$' + getUsageBudget().toFixed(2) + '）を越えています';
-    }
-    if (e && e.noKey) return 'Claude API キーがありません';
-    if (e && (e.offline || e.network)) return '通信がありません';
-    if (e && e.empty) return '返事が空でした';
-    return aiReasonText(e).replace(/。$/, '');
-  }
-  function postOverBudgetError() { const e = new Error('over-budget'); e.overBudget = true; return e; }
-  // v20.36：自分の言葉を投稿文用に要約する。言葉1枚につき、自分の言葉が変わらない限り一度だけ
-  async function makeNotePostSummary(note, base) {
-    if (note.postSummary && note.postSummaryOf === base) return note.postSummary;
-    if (isUsageOverBudget()) throw postOverBudgetError();
-    const model = getClaudeAutoLinkModel();
-    const system = [{ type: 'text', text:
-      'あなたは、毎朝1つの言葉を投稿する人の「自分の言葉」（その言葉について本人が書いたメモ）を、投稿文に載せられる長さに縮める係です。\n' +
-      '- 意味を変えない。本人が書いていないことを足さない。\n' +
-      '- ' + POST_EXPLAIN_MAX + '字以内。1〜2文。\n' +
-      '- 文の途中で止めず、必ず句点（。）で終える。「…」を付けない。\n' +
-      '- 本人の言い方・一人称はそのまま使ってよい。\n' +
-      '- 縮めた文だけを返す。かぎ括弧・見出し・箇条書きを付けない。' }];
-    const user = JSON.stringify({ 言葉: note.text, 自分の言葉: base });
-    const json = await aiFetch({ model, max_tokens: 2048, system, messages: [{ role: 'user', content: user }] });
-    recordApiUsage('postline', json.usage);   // 使用量は「投稿の説明」と同じ行に数える
-    if (isTruncated(json)) throw truncatedResponseError();
-    const out = (json.content || []).map((b) => b.text || '').join('').trim().replace(/^[「『]/, '').replace(/[」』]$/, '');
-    if (!out) { const e = new Error('empty'); e.empty = true; throw e; }
-    const live = findNote(note.id) || note;   // v20.92：待っている間に入れ替わっていたら今の方へ
-    live.postSummary = out.slice(0, CUT_MAX.postSave);
-    if (out.length > CUT_MAX.postSave) recordTruncation('自分の言葉の要約', out.length, CUT_MAX.postSave);
-    live.postSummaryOf = base;
-    live.updatedAt = nowIso();
-    saveData(data);
-    return live.postSummary;
-  }
-  // 言葉1枚につき一度だけ作り、言葉に保存する（次に同じ言葉を載せるときは呼ばない）
-  async function callPostLineApi(note) {
-    const model = getClaudeAutoLinkModel();
-    const system = [{ type: 'text', text:
-      'あなたは、毎朝1つの言葉を投稿する人に、その言葉へ添える短い説明を書く係です。\n' +
-      '読むのは、その言葉を初めて見る人です。\n' +
-      '- ' + POST_EXPLAIN_MAX + '字以内。1〜2文。\n' +
-      '- その言葉が何を言っているのかを、平たい言葉で書く。\n' +
-      '- 言い換えただけで終わらせない。なぜそれが効くのかを一言入れる。\n' +
-      '- 「この言葉は」「筆者は」などの前置きを書かない。\n' +
-      '- 投稿する人自身の話（今日の体調・出来事）は書かない。\n' +
-      '- 説明の文だけを返す。かぎ括弧・見出し・箇条書きを付けない。' }];
-    const user = JSON.stringify({ 言葉: note.text, 出典: note.source, 自分の言葉: note.myWords });
-    const json = await aiFetch({ model, max_tokens: 2048, system, messages: [{ role: 'user', content: user }] });
-    recordApiUsage('postline', json.usage);
-    if (isTruncated(json)) throw truncatedResponseError();
-    const out = (json.content || []).map((b) => b.text || '').join('').trim().replace(/^[「『]/, '').replace(/[」』]$/, '');
-    return out;   // v20.36：短くしない（保存の上限200字だけ）
-  }
-  async function makeNotePostLine(note, opts) {
-    opts = opts || {};
-    if (!note) return '';
-    if (!opts.redo && note.postLine) return note.postLine;
-    const line = await callPostLineApi(note);
-    if (!line) return '';
-    if (line.length > CUT_MAX.postSave) recordTruncation('投稿の説明', line.length, CUT_MAX.postSave);
-    const live = findNote(note.id) || note;   // v20.92
-    live.postLine = line.slice(0, CUT_MAX.postSave);
-    live.updatedAt = nowIso();
-    saveData(data);   // 月ファイル方式でも persistLocal が月を書いて同期に乗せる
-    return line;
-  }
-
-  // v3.1: the morning share text, editable for the day it applies to.
-  const WALK_SHARE_TEXT_EDIT_KEY = 'kotoba_walkShareTextEdit';
-  // v3.3: leaves an empty paragraph between the day-count line and the quote
-  // block so the cursor has an obvious place to land for the user's own
-  // writing (spec: "空行にして、カーソルが置きやすいようにする") - no
-  // placeholder text is inserted, just the blank lines. When no morning word
-  // was received, only the day-count line and a trailing blank line are kept.
-  function computeDefaultShareText(derived, morningEntry) {
-    const dayLine = `【${derived.n}日目 / 10000】`;
-    const pick = morningPostPick(morningEntry);   // v20.87
-    const note = pick ? findNote(pick.id) : null;
-    if (!note) return `${dayLine}\n\n`;
-    const sourceDisplay = (note.source || '').startsWith('自分') ? '自分の言葉' : (note.source || '');
-    const explain = notePostExplain(note, pick);   // v20.11
-    return `${dayLine}\n\n\n\n${getMorningQuoteHeading()}\n「${note.text}」\n— ${sourceDisplay}` + (explain ? '\n\n' + explain : '');
-  }
-  function getShareTextEdit(today) {
-    try {
-      const raw = localStorage.getItem(WALK_SHARE_TEXT_EDIT_KEY);
-      if (!raw) return null;
-      const obj = JSON.parse(raw);
-      return obj.date === today ? obj.text : null;
-    } catch (e) { return null; }
-  }
-  function saveShareTextEdit(today, text) {
-    localStorage.setItem(WALK_SHARE_TEXT_EDIT_KEY, JSON.stringify({ date: today, text }));
-  }
-
   function pickRandomNoteId(excludeId) {
     const pool = data.notes.filter((n) => n.id !== excludeId);
     const source = pool.length ? pool : data.notes;
@@ -6503,11 +6342,6 @@
     container.appendChild(card);
   }
 
-  // v20.87：★で投稿に載せる言葉が変わる。投稿文を手で直していなければ、次に描くときに作り直す（直した文は触らない）
-  function onMorningHitChange() {
-    const box = document.getElementById('walkShareTextInput');
-    if (getShareTextEdit(todayStr()) == null) { delete box.dataset.loadedDate; renderHome(); }
-  }
   function renderMorningCards(morningEntry) {
     const container = document.getElementById('morningCards');
     container.innerHTML = '';
@@ -6540,7 +6374,7 @@
     }
     picks.forEach((pick) => {
       const note = findNote(pick.id);
-      if (note) renderPickCard(container, note, pick.why, morningEntry ? morningEntry.id : null, morningEntry ? onMorningHitChange : null);
+      if (note) renderPickCard(container, note, pick.why, morningEntry ? morningEntry.id : null, null);
     });
     if (closing) {
       const c = document.createElement('div');
@@ -6570,10 +6404,7 @@
     if (homeExpandOverrides.has(key)) homeExpandOverrides.delete(key); else homeExpandOverrides.add(key);
     renderHome();
   }
-  document.getElementById('wakeMoodCollapsedRow').addEventListener('click', () => toggleHomeExpand('wake'));
   document.getElementById('morningWordsCollapsedRow').addEventListener('click', () => toggleHomeExpand('words'));
-  document.getElementById('walkCollapsedRow').addEventListener('click', () => toggleHomeExpand('walk'));
-  document.getElementById('afterMoodCollapsedRow').addEventListener('click', () => toggleHomeExpand('aftermood'));
 
   // Returns the DOM ids to show/append for a "done" step: its collapsed
   // summary row always, plus its full open content too when the user has
@@ -6600,20 +6431,7 @@
     return `今朝の言葉 ${snippet}${note.text.length > 20 ? '…' : ''}`;
   }
 
-  function walkCollapsedLabel(stats) {
-    const parts = [];
-    if (stats.steps != null) parts.push(`${stats.steps}歩`);
-    if (stats.distanceM != null) parts.push(`${Math.round(stats.distanceM)}m`);
-    return parts.length ? `歩いた ${parts.join(' / ')}` : '歩いた';
-  }
-
-  const HOME_STEP_IDS = [
-    'wakeMoodCollapsedRow', 'wakeMoodField',
-    'morningWordsCollapsedRow', 'morningWordsStage', 'morningCardsStage',
-    'walkCollapsedRow', 'walkStage', 'walkStatsStage',
-    'afterMoodCollapsedRow', 'afterMoodStage',
-    'walkShareStage',
-  ];
+  const HOME_STEP_IDS = ['morningWordsCollapsedRow', 'morningWordsStage', 'morningCardsStage'];
 
   function renderHome() {
     document.getElementById('homeEmpty').hidden = data.notes.length > 0;
@@ -6625,94 +6443,27 @@
     usageBanner.hidden = !usageMsg;
     if (usageMsg) usageBanner.textContent = usageMsg;
 
+    // v20.152：朝の記録は「言葉」だけ。今朝の体調・歩数と距離・散歩後の体調・共有はなくした（散歩は上のタイルで「散歩した」を押すだけ）
     const unavailable = isWalkDataUnavailable();
     document.getElementById('walkUnavailableMsg').hidden = !unavailable;
-    const canvas = document.getElementById('walkPreviewCanvas');
     HOME_STEP_IDS.forEach((id) => { document.getElementById(id).hidden = true; });
-
-    if (unavailable) {
-      document.getElementById('dayCountLabel').textContent = '';
-      canvas.hidden = true;
-      document.getElementById('btnWalkYesterday').hidden = true;
-      return;
-    }
-
-    const derived = computeWalkDerived();
-    document.getElementById('dayCountLabel').textContent = `${derived.n}日目 / 10000`;
-    const today = derived.today;
-
-    // homeExpandOverrides is UI-only convenience for "redo an earlier step
-    // today" - stale entries from a previous day are meaningless once the
-    // date has moved on, and keeping them would defeat the "new day starts
-    // fresh at stage 1" behavior.
+    const today = todayStr();
     if (homeExpandOverridesDate !== today) { homeExpandOverrides.clear(); homeExpandOverridesDate = today; }
-
-    const todayStats = walkData.dailyStats[today] || {};
-    const hasWakeMood = todayStats.wakeMood != null;
-    paintMoodRow(wakeMoodButtons, hasWakeMood ? todayStats.wakeMood : null);
+    const walkedSet = new Set(walkData.walkedDates);
+    document.getElementById('btnWalkYesterday').hidden = unavailable || walkedSet.has(addDays(today, -1));
 
     const morningEntry = todaysMorningJournalEntry();
     const skippedToday = morningSkippedDate === today;
     const wordsResolved = !!morningEntry || skippedToday || !getClaudeApiKey() || !getMorningEnabled() || isUsageOverBudget();
-
-    const todayWalked = derived.todayWalked;
-    document.getElementById('afterMoodWalkNote').hidden = todayWalked;   // v20.98
-    const hasAfterMood = todayStats.afterMood != null;
-    paintMoodRow(afterMoodButtons, hasAfterMood ? todayStats.afterMood : null);
-    const statsSaved = todayStats.statsSavedAt != null;
-
-    canvas.hidden = !todayWalked;
-    if (todayWalked) { drawWalkImage(canvas); regenerateWalkShareBlob(canvas, document.getElementById('btnWalkShare')); }
-    document.getElementById('btnWalkYesterday').hidden = new Set(walkData.walkedDates).has(derived.yesterday);
-
     const order = [];
-    if (!hasWakeMood) {
-      order.push('wakeMoodField');
+    if (!wordsResolved) {
+      order.push('morningWordsStage');
     } else {
-      order.push(...homeStepRowIds('wake', `今朝の体調 ${MOOD_EMOJI[todayStats.wakeMood]}`, 'wakeMoodField', 'wakeMoodCollapsedRow'));
-
-      if (!wordsResolved) {
-        order.push('morningWordsStage');
-      } else {
-        renderMorningCards(morningEntry);
-
-        if (!todayWalked) {
-          // "散歩前は言葉を眺めて歩き出す場面" - stays expanded, not collapsible yet
-          // v20.98：言葉の後はすぐ「散歩後の体調」。押すと歩いた日にもなる（前は「今日歩いた」を押して1〜8秒後に体調を押していた）
-          order.push('morningCardsStage', 'afterMoodStage', 'walkStage');
-        } else {
-          order.push(...homeStepRowIds('words', morningWordsCollapsedLabel(morningEntry), 'morningCardsStage', 'morningWordsCollapsedRow'));
-
-          if (!hasAfterMood) {
-            order.push('afterMoodStage');
-          } else if (!statsSaved) {
-            document.getElementById('walkStepsInput').value = todayStats.steps != null ? todayStats.steps : '';
-            document.getElementById('walkDistanceInput').value = todayStats.distanceM != null ? todayStats.distanceM : '';
-            applyInputDraftFields(['walkStepsInput', 'walkDistanceInput']);
-            order.push(...homeStepRowIds('aftermood', `散歩後 ${MOOD_EMOJI[todayStats.afterMood]}`, 'afterMoodStage', 'afterMoodCollapsedRow'));
-            order.push('walkStatsStage');
-          } else {
-            order.push(...homeStepRowIds('walk', walkCollapsedLabel(todayStats), 'walkStatsStage', 'walkCollapsedRow'));
-            order.push(...homeStepRowIds('aftermood', `散歩後 ${MOOD_EMOJI[todayStats.afterMood]}`, 'afterMoodStage', 'afterMoodCollapsedRow'));
-            order.push('walkShareStage');
-
-            // Only ever set .value once per date - saveShareTextEdit() below
-            // keeps localStorage in sync as the user types, but re-running
-            // renderHome() (which happens often: mood taps, saves, focus/
-            // visibility syncs) must never stomp on text they're editing.
-            const shareTextInput = document.getElementById('walkShareTextInput');
-            if (shareTextInput.dataset.loadedDate !== today) {
-              const edit = getShareTextEdit(today);
-              shareTextInput.value = edit != null ? edit : computeDefaultShareText(derived, morningEntry);
-              shareTextInput.dataset.loadedDate = today;
-              if (edit == null) startPostSummary(derived, morningEntry, shareTextInput.value);   // v20.36
-            }
-          }
-        }
-      }
+      renderMorningCards(morningEntry);
+      // 歩く前は言葉を開いたまま。歩いた後は1行に畳む（押すと開く）
+      if (!walkedSet.has(today)) order.push('morningCardsStage');
+      else order.push(...homeStepRowIds('words', morningWordsCollapsedLabel(morningEntry), 'morningCardsStage', 'morningWordsCollapsedRow'));
     }
-
-
     const stepsContainer = document.getElementById('homeStepsContainer');
     order.forEach((id) => {
       const el = document.getElementById(id);
@@ -6754,26 +6505,12 @@
   document.getElementById('navList').addEventListener('click', () => openList());
   document.getElementById('navSettings').addEventListener('click', () => openSettings());
 
-  const wakeMoodButtons = buildMoodRow(document.getElementById('wakeMoodRow'), (m) => {
-    const today = todayStr();
-    setWalkMood(today, 'wakeMood', m);
-    const entry = todaysMorningJournalEntry();
-    if (entry) { entry.mood = m; saveJournalEntry(entry); }
-    renderHome();
-  });
-  const afterMoodButtons = buildMoodRow(document.getElementById('afterMoodRow'), (m) => {
-    if (!new Set(walkData.walkedDates).has(todayStr())) recordWalkDate(todayStr());   // v20.98：体調を押したら歩いた日にも
-    setWalkMood(todayStr(), 'afterMood', m);
-    renderHome();
-  });
-
   document.getElementById('btnMorningAsk').addEventListener('click', async () => {
     const btn = document.getElementById('btnMorningAsk');
     const skipBtn = document.getElementById('btnMorningSkip');
     const inputEl = document.getElementById('morningInput');
     const input = inputEl.value.trim();
     const today = todayStr();
-    const moodLevel = (walkData.dailyStats[today] || {}).wakeMood;
     btn.disabled = true;
     skipBtn.disabled = true;
     document.getElementById('morningWordsStage').hidden = true;
@@ -6785,10 +6522,10 @@
     loading.textContent = '言葉を探しています…';
     container.appendChild(loading);
     try {
-      const effectiveInput = input ? input : `今朝の体調は5段階でレベル${moodLevel}。それに合う言葉を選ぶ。`;
+      const effectiveInput = input ? input : '今朝に合う言葉を選ぶ。';
       const result = await callChatApi(effectiveInput, [], 2, 'morning');
       const iso = nowIso();
-      const entry = { id: generateJournalId(), date: today, kind: 'morning', mood: moodLevel, text: input, picks: result.picks, closing: result.closing, createdAt: iso, updatedAt: iso };
+      const entry = { id: generateJournalId(), date: today, kind: 'morning', mood: null, text: input, picks: result.picks, closing: result.closing, createdAt: iso, updatedAt: iso };
       saveJournalEntry(entry);
       clearInputDraft();   // v20.91：受け取れてから消す
       inputEl.value = '';
@@ -6813,156 +6550,10 @@
     renderHome();
   });
 
-  document.getElementById('btnWalkToday').addEventListener('click', () => {
-    recordWalkDate(todayStr());
-    renderHome();
-  });
   document.getElementById('btnWalkYesterday').addEventListener('click', () => {
     recordWalkDate(addDays(todayStr(), -1));
     renderHome();
   });
-
-  document.getElementById('btnSaveWalkStats').addEventListener('click', () => {
-    clearInputDraft();
-    const stepsRaw = document.getElementById('walkStepsInput').value;
-    const distRaw = document.getElementById('walkDistanceInput').value;
-    const steps = stepsRaw === '' ? null : parseInt(stepsRaw, 10);
-    const distanceM = distRaw === '' ? null : parseFloat(distRaw);
-    setWalkDailyStats(todayStr(), steps, distanceM);
-    renderHome();   // v20.98：「保存しました」のダイアログはやめた（畳んだ行「歩いた ○歩」で分かる）
-  });
-
-  // Three-tier fallback: full files+text share -> files-only share with the
-  // text copied to the clipboard first (for environments whose Web Share
-  // implementation can't take an image and text together) -> download the
-  // image and copy the text, for environments with no file-share at all.
-  document.getElementById('btnWalkShare').addEventListener('click', async () => {
-    const canvas = document.getElementById('walkPreviewCanvas');
-    const derived = computeWalkDerived();
-    const filename = `walk10000_day${derived.n}.png`;
-    const shareText = document.getElementById('walkShareTextInput').value;
-    const file = walkSharePngBlob
-      ? new File([walkSharePngBlob], filename, { type: 'image/png' })
-      : dataUrlToFile(canvas.toDataURL('image/png'), filename);
-    const statusEl = document.getElementById('walkShareStatus');
-    const setStatus = (msg, isError) => { statusEl.textContent = msg || ''; statusEl.classList.toggle('error', !!isError); };
-    const canShareWithText = !!(navigator.canShare && navigator.canShare({ files: [file], text: shareText }));
-    if (canShareWithText) {
-      try {
-        await navigator.share({ files: [file], text: shareText });
-        setStatus('');
-      } catch (e) {
-        if (e && e.name === 'AbortError') { setStatus(''); return; }
-        setStatus(`共有できませんでした。画像をダウンロードします。`, true);
-        downloadFile(file);
-      }
-      return;
-    }
-
-    const canShareFilesOnly = !!(navigator.canShare && navigator.canShare({ files: [file] }));
-    if (canShareFilesOnly) {
-      const copied = await copyToClipboard(shareText);
-      try {
-        await navigator.share({ files: [file] });
-        setStatus(copied ? 'テキストをコピーしました。共有画面に貼り付けてください。' : '');
-      } catch (e) {
-        if (e && e.name === 'AbortError') { setStatus(''); return; }
-        setStatus(`共有できませんでした。画像をダウンロードします。`, true);
-        downloadFile(file);
-      }
-      return;
-    }
-
-    const copied = await copyToClipboard(shareText);
-    setStatus(copied ? 'この端末は画像の共有に対応していないため、ダウンロードし、テキストをコピーしました。' : 'この端末は画像の共有に対応していないため、ダウンロードしました。');
-    downloadFile(file);
-  });
-
-  // v20.36：投稿文は説明なしで先に出し、自分の言葉の要約が来たら入れる。
-  // その間に投稿文を直していたら、上書きせずに後ろに足す。できなかったら理由を1行出し、句点までの文を入れる
-  let postSummaryBusy = '';
-  function insertPostExplain(box, before, text, derived, morningEntry) {
-    if (!text) return;
-    if (box.value === before) {
-      box.value = before.replace(/\s+$/, '') + '\n\n' + text;   // 何も直していない：説明の所（最後）に入れる
-    } else {
-      const cur = box.value.replace(/\s+$/, '');
-      if (cur.includes(text)) return;
-      box.value = cur + '\n\n' + text;
-      saveShareTextEdit(todayStr(), box.value);   // 直した文は控えてあるので、足した後も控える
-    }
-    box.dataset.autoExplain = text;
-  }
-  function startPostSummary(derived, morningEntry, before) {
-    const pick = morningPostPick(morningEntry);   // v20.87
-    const note = pick ? findNote(pick.id) : null;
-    const info = notePostExplainInfo(note, pick);
-    if (!info.needSummary) return;
-    const key = note.id + '|' + info.needSummary;
-    if (postSummaryBusy === key) return;
-    postSummaryBusy = key;
-    const st = document.getElementById('postExplainStatus');
-    const box = document.getElementById('walkShareTextInput');
-    st.textContent = '自分の言葉を要約しています…';
-    makeNotePostSummary(note, info.needSummary).then((sum) => {
-      insertPostExplain(box, before, sum, derived, morningEntry);
-      st.textContent = '自分の言葉を要約して入れました（' + sum.length + '字）。文はそのまま直せます。';
-    }).catch((e) => {
-      const part = postUntilLastPeriod(info.needSummary);
-      insertPostExplain(box, before, part, derived, morningEntry);
-      st.textContent = '要約できませんでした。理由：' + postFailReason(e) + '。'
-        + (part ? '自分の言葉を最後の句点まで（' + part.length + '字）入れました。' : '句点が無いので、説明は入れていません。');
-    }).finally(() => { postSummaryBusy = ''; });
-  }
-  document.getElementById('walkShareTextInput').addEventListener('input', (e) => {
-    saveShareTextEdit(todayStr(), e.target.value);
-  });
-
-  // v20.11：投稿の説明を作る（読む人向けに1〜2文）。作った説明は言葉に残るので、次からは呼ばない
-  document.getElementById('btnPostExplain').addEventListener('click', async () => {
-    const btn = document.getElementById('btnPostExplain');
-    const st = document.getElementById('postExplainStatus');
-    const box = document.getElementById('walkShareTextInput');
-    const morningEntry = todaysMorningJournalEntry();
-    const pick = morningPostPick(morningEntry);   // v20.87
-    const note = pick ? findNote(pick.id) : null;
-    if (!note) { st.textContent = '今日の言葉がまだありません。'; return; }
-    if (isUsageOverBudget()) { st.textContent = '説明を作れませんでした。理由：' + postFailReason(postOverBudgetError()) + '。'; return; }
-    btn.disabled = true;
-    st.textContent = '説明を作っています…';
-    try {
-      const line = await makeNotePostLine(note, { redo: true });
-      if (!line) { const e0 = new Error('empty'); e0.empty = true; throw e0; }
-      const cur = box.value.replace(/\s+$/, '');
-      // v20.36：同じ説明がすでに入っているときは、そう出す（前は「入れました」と出て何も変わらなかった）
-      if (cur.includes(line)) { st.textContent = '同じ説明がすでに入っています。'; scrollShareBoxTo(box, cur.indexOf(line)); return; }
-      // 自動で入れた要約（句点までの文）がそのまま残っていれば、作った説明に置き換える（説明が2つ並ばないように）
-      const auto = box.dataset.autoExplain || '';
-      if (auto && cur.endsWith(auto)) box.value = cur.slice(0, cur.length - auto.length).replace(/\s+$/, '') + '\n\n' + line;
-      else box.value = cur + '\n\n' + line;
-      box.dataset.autoExplain = '';
-      saveShareTextEdit(todayStr(), box.value);
-      scrollShareBoxTo(box, box.value.lastIndexOf(line));   // 足した所まで欄を動かす（4行の欄の外に入ると見えない）
-      st.textContent = '説明を入れました（' + line.length + '字）。文はそのまま直せます。';
-    } catch (e) {
-      st.textContent = '説明を作れませんでした。理由：' + postFailReason(e) + '。';
-    } finally { btn.disabled = false; }
-  });
-
-  // v20.36：投稿文の欄を、指定した文字の位置が見える所まで動かす（フォーカスは移さない：iPhone でキーボードが出ないように）
-  function scrollShareBoxTo(box, index) {
-    if (index < 0) return;
-    const lh = parseFloat(getComputedStyle(box).lineHeight) || 20;
-    const probe = document.createElement('div');
-    const cs = getComputedStyle(box);
-    probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;box-sizing:border-box;';
-    probe.style.width = box.clientWidth + 'px'; probe.style.font = cs.font; probe.style.padding = cs.padding; probe.style.letterSpacing = cs.letterSpacing;
-    probe.textContent = box.value.slice(0, index) + '.';
-    document.body.appendChild(probe);
-    const top = probe.scrollHeight - lh;
-    probe.remove();
-    box.scrollTop = Math.max(0, top - lh);
-  }
 
   // --- List ---------------------------------------------------------------
   // search/tags/view/sort/no-links-only all live here so they survive
@@ -14265,6 +13856,77 @@
     td.fillOpen = false;
     hySave(); renderToday();
   }
+  function tdWalkOk() { try { return !isWalkDataUnavailable(); } catch (e) { return false; } }
+  function tdWalked(date) { try { return walkData.walkedDates.includes(date); } catch (e) { return false; } }
+  function tdWalkDone() { if (!tdWalkOk()) return; recordWalkDate(todayStr()); renderHome(); }
+  async function tdWalkUndo() {
+    if (!confirm('今日の「散歩した」を取り消しますか？')) return;
+    try { await deleteWalkDayRecord(todayStr()); } catch (e) { recordFeatureError('散歩の取り消し', e); }
+    renderHome();
+  }
+  // 積み上げ：最初の記録の日から今日まで、やった日を1つずつ積む（散歩・瞑想・筋トレ・早起き）。休んだ日は横ばいで、下がらない
+  const TD_STACK = [['散歩', '#3fc79a'], ['瞑想', '#6d7dff'], ['筋トレ', '#f0b56f'], ['早起き', '#ff8a5c']];
+  function tdStackData(today) {
+    const sets = [new Set(), new Set(), new Set(), new Set()];
+    try { (walkData.walkedDates || []).forEach((d) => sets[0].add(d)); } catch (e) {}
+    medData.sessions.forEach((x) => sets[1].add(x.date));
+    trainingData.days.forEach((d) => { if (tdWorked(d)) sets[2].add(d.date); });
+    hyDays.forEach((d) => { if (d.wakeAt) sets[3].add(d.date); });
+    let first = today;
+    sets.forEach((s) => s.forEach((d) => { if (/^\d{4}-\d{2}-\d{2}$/.test(d) && d < first) first = d; }));
+    const n = hyDaysBetween(first, today) + 1, cum = [0, 0, 0, 0], rows = [];
+    for (let i = 0; i < n; i++) {
+      const date = addDays(first, i);
+      sets.forEach((s, k) => { if (s.has(date)) cum[k]++; });
+      rows.push(cum.slice());
+    }
+    const total = cum.reduce((a, b) => a + b, 0);
+    const from28 = addDays(today, -27);
+    let recent = 0; sets.forEach((s) => s.forEach((d) => { if (d >= from28 && d <= today) recent++; }));
+    let todayN = 0; sets.forEach((s) => { if (s.has(today)) todayN++; });
+    return { first, n, rows, cum, total, recent, todayN };
+  }
+  function tdStackTile(today) {
+    const sd = tdStackData(today);
+    const t = tdEl('div', 'tdT tdWide tdStack');
+    t.appendChild(tdEl('div', 'tdK', 'これまでの積み上げ'));
+    const big = tdEl('div', 'tdN', String(sd.total)); big.appendChild(tdEl('small', '', '日分')); t.appendChild(big);
+    if (sd.n >= 2 && sd.total > 0) {
+      const NS = 'http://www.w3.org/2000/svg', W = 326, H = 170, L = 4, R = 30, T = 8, B = 20;
+      const step = sd.total <= 60 ? 20 : sd.total <= 250 ? 50 : sd.total <= 600 ? 100 : sd.total <= 2500 ? 500 : 1000, maxY = Math.max(step, Math.ceil(sd.total / step) * step);
+      const stride = Math.max(1, Math.ceil(sd.n / 180)), idx = [];
+      for (let i = 0; i < sd.n; i += stride) idx.push(i);
+      if (idx[idx.length - 1] !== sd.n - 1) idx.push(sd.n - 1);
+      const X = (i) => L + i * (W - L - R) / (sd.n - 1), Y = (v) => H - B - v * (H - T - B) / maxY;
+      const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H); svg.setAttribute('role', 'img');
+      svg.setAttribute('aria-label', 'やった日の積み上げ。' + TD_STACK.map((s, k) => s[0] + ' ' + sd.cum[k] + '日').join('、'));
+      const mk = (tag, attrs, text) => { const e = document.createElementNS(NS, tag); Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, String(v))); if (text != null) e.textContent = text; svg.appendChild(e); return e; };
+      for (let v = step; v <= maxY; v += step) { mk('line', { x1: L, x2: W - R, y1: Y(v), y2: Y(v), stroke: '#26262b' }); mk('text', { x: W - R + 5, y: Y(v) + 4 }, String(v)); }
+      const upTo = (i, k) => { let s = 0; for (let j = 0; j <= k; j++) s += sd.rows[i][j]; return s; };
+      for (let k = 3; k >= 0; k--) {
+        const up = idx.map((i) => X(i).toFixed(1) + ',' + Y(upTo(i, k)).toFixed(1)).join(' ');
+        const dn = idx.slice().reverse().map((i) => X(i).toFixed(1) + ',' + Y(k ? upTo(i, k - 1) : 0).toFixed(1)).join(' ');
+        mk('polygon', { points: up + ' ' + dn, fill: TD_STACK[k][1], stroke: '#151517', 'stroke-width': 1.5, 'stroke-linejoin': 'round' });
+      }
+      mk('circle', { cx: X(sd.n - 1), cy: Y(sd.total), r: 5, fill: '#fff', stroke: '#151517', 'stroke-width': 2 });
+      // 月の始まり（多いときは間引く）
+      const marks = [];
+      for (let i = 0; i < sd.n; i++) { const date = addDays(sd.first, i); if (i === 0 || date.slice(8) === '01') marks.push([i, Number(date.slice(5, 7)) + '月']); }
+      const every = Math.max(1, Math.ceil(marks.length / 5));
+      let lastX = -99;
+      marks.forEach((m, j) => { const x = X(m[0]); if (j % every === 0 && x - lastX > 34 && x < W - R - 18) { mk('text', { x, y: H - 4 }, m[1]); lastX = x; } });
+      t.appendChild(svg);
+    }
+    const lg = tdEl('div', 'tdLg');
+    TD_STACK.forEach((s, k) => { const sp = tdEl('span'), i = tdEl('i'); i.style.background = s[1]; sp.appendChild(i); sp.appendChild(document.createTextNode(s[0] + ' ' + sd.cum[k] + '日')); lg.appendChild(sp); });
+    t.appendChild(lg);
+    const perWeek = sd.recent / 4, year = Math.round((sd.total + sd.recent / 28 * 365) / 10) * 10;
+    const lines = [];
+    lines.push(sd.todayN ? '今日は ' + sd.todayN + ' 積みました。' : '今日1つやれば ' + (sd.total + 1) + ' になります。');
+    if (sd.n >= 28 && sd.recent > 0) lines.push('直近4週のペース（1週に ' + (Math.round(perWeek * 10) / 10) + '日分）が続くと、1年後には 約' + year + '日分。');
+    t.appendChild(tdEl('div', 'tdS', lines.join('\n')));
+    return t;
+  }
   function tdToggleLow() {
     const x = hyEnsureDay(todayStr());
     if (x.low) delete x.low; else x.low = medLocalIso(new Date());
@@ -14305,6 +13967,12 @@
       const big = tdEl('div', 'tdBig time'); big.appendChild(tdEl('b', '', hyShort(hyTargetFor(today)))); big.appendChild(tdEl('span', '', 'に起きる')); hero.appendChild(big);
       hero.appendChild(tdEl('p', 'tdP', '台所のQRを写すまでは、起きたことになりません。'));
       const acts = tdEl('div', 'tdActs'); acts.appendChild(tdBtn('btnTdWake', 'tdGo', '早起きを開く', () => openHayaoki())); hero.appendChild(acts);
+    } else if (!low && tdWalkOk() && h >= 4 && h < 12 && !tdWalked(today) && (!planned || (hd && hd.wakeAt))) {
+      hero.classList.add('walk');
+      hero.appendChild(tdEl('div', 'tdK', '今朝はこれだけ'));
+      hero.appendChild(tdEl('div', 'tdTitle', '朝の散歩'));
+      hero.appendChild(tdEl('p', 'tdP', '歩いてきたら押すだけ。時間や歩数は書きません。'));
+      const acts = tdEl('div', 'tdActs'); acts.appendChild(tdBtn('btnTdWalkGo', 'tdGo', '散歩した', tdWalkDone)); hero.appendChild(acts);
     } else if (!medToday.length) {
       const small = low || back, min = small ? TD_MIN_SMALL : TD_MIN_USUAL;
       hero.classList.add('med');
@@ -14339,6 +14007,7 @@
       hero.appendChild(tdEl('div', 'tdTitle', low ? 'これで十分です' : 'おつかれさま'));
       const bits = [];
       if (hd && hd.wakeAt) bits.push('起きた ' + hyShort(hyAtHm(hd.wakeAt)));
+      if (tdWalked(today)) bits.push('散歩');
       if (medToday.length) bits.push('瞑想 ' + medToday.length + '回 ' + medSum(medToday) + '分');
       if (trToday) bits.push('筋トレ ' + trToday.parts.filter((p) => p.exercises.length).map((p) => p.part).join('・'));
       hero.appendChild(tdEl('p', 'tdP', bits.join('　')));
@@ -14362,6 +14031,18 @@
     }
     grid.appendChild(wk);
 
+    // 散歩（押すだけ）
+    const wt = tdEl('div', 'tdT tdWalkT');
+    wt.appendChild(tdEl('div', 'tdK', '散歩'));
+    if (!tdWalkOk()) { wt.appendChild(tdEl('div', 'tdN word', '—')); wt.appendChild(tdEl('div', 'tdS', '散歩のデータを読み込めていません')); }
+    else {
+      const wn = walkData.walkedDates.length;
+      const n = tdEl('div', 'tdN', String(wn)); n.appendChild(tdEl('small', '', '日')); wt.appendChild(n);
+      if (tdWalked(today)) { wt.appendChild(tdEl('div', 'tdS', '今日は歩いた')); wt.appendChild(tdBtn('btnTdWalkUndo', 'tdUndo', '取り消す', tdWalkUndo)); }
+      else wt.appendChild(tdBtn('btnTdWalk', 'tdPill', '散歩した', tdWalkDone));
+    }
+    grid.appendChild(wt);
+
     // 筋トレ
     const monday = hyMonday(today);
     const worked = trainingData.days.filter((d) => tdWorked(d) && d.date <= today).sort((a, b) => (a.date < b.date ? -1 : 1));
@@ -14378,21 +14059,34 @@
     }
     grid.appendChild(lift);
 
+    // 瞑想（これまでの合計）
+    const all = medData.sessions, mp = medHmParts(medSum(all));
+    const mt = tdEl('button', 'tdT tdMedT'); mt.type = 'button'; mt.id = 'btnTdOpenMeditation'; mt.addEventListener('click', () => openMeditation());
+    mt.appendChild(tdEl('div', 'tdK', '瞑想'));
+    const mn = tdEl('div', 'tdN mid');
+    if (mp.h) { mn.appendChild(document.createTextNode(String(mp.h))); mn.appendChild(tdEl('small', '', '時間')); }
+    mn.appendChild(document.createTextNode(String(mp.m))); mn.appendChild(tdEl('small', '', '分'));
+    mt.appendChild(mn);
+    mt.appendChild(tdEl('div', 'tdS', all.length + '回、' + new Set(all.map((x) => x.date)).size + '日' + (medToday.length ? `\n今日 ${medToday.length}回 ${medSum(medToday)}分` : '\n今日はまだ')));
+    grid.appendChild(mt);
+
     // 今週（月〜日）
     const medDates = new Set(medData.sessions.map((x) => x.date)), trDates = new Set(worked.map((d) => d.date));
     const rows = [
-      ['早起き', (date) => { const s = hyState(hyDay(date)); return s === 'ok' ? 'on' : s === 'late' ? 'half' : ''; }],
-      ['瞑想', (date) => (medDates.has(date) ? 'on' : '')],
-      ['筋トレ', (date) => (trDates.has(date) ? 'on' : '')],
+      ['早起き', 0, (date) => { const s = hyState(hyDay(date)); return s === 'ok' ? 'on' : s === 'late' ? 'half' : ''; }],
+      ['散歩', 3, (date) => (tdWalked(date) ? 'on' : '')],
+      ['瞑想', 1, (date) => (medDates.has(date) ? 'on' : '')],
+      ['筋トレ', 2, (date) => (trDates.has(date) ? 'on' : '')],
     ];
     const week = tdEl('div', 'tdT tdWide'), wg = tdEl('div', 'tdWk');
     wg.appendChild(tdEl('span'));
     for (let i = 0; i < 7; i++) wg.appendChild(tdEl('span', 'h' + (addDays(monday, i) === today ? ' now' : ''), '月火水木金土日'[i]));
     let anyHalf = false;
-    rows.forEach((r, ri) => {
+    rows.forEach((r) => {
+      const ri = r[1];
       wg.appendChild(tdEl('span', 'tdR' + ri, r[0]));
       for (let i = 0; i < 7; i++) {
-        const date = addDays(monday, i), s = date > today ? '' : r[1](date);
+        const date = addDays(monday, i), s = date > today ? '' : r[2](date);
         if (s === 'half') anyHalf = true;
         wg.appendChild(tdEl('span', 'tdD r' + ri + ' ' + (s || (date > today ? 'later' : date === today ? 'today' : ''))));
       }
@@ -14418,16 +14112,7 @@
     const lowBtn = tdBtn('btnTdLow', 'tdT tdSmall' + (low ? ' on' : '') + (blank.length && !td.fillOpen ? '' : ' tdWide'), low ? 'しんどいを取り消す' : '今日はしんどい', tdToggleLow);
     grid.appendChild(lowBtn);
 
-    // 瞑想のこれまで
-    const all = medData.sessions, p = medHmParts(medSum(all));
-    const mt = tdEl('button', 'tdT tdWide tdMedT'); mt.type = 'button'; mt.id = 'btnTdOpenMeditation'; mt.addEventListener('click', () => openMeditation());
-    mt.appendChild(tdEl('div', 'tdK', '瞑想のこれまで'));
-    const n = tdEl('div', 'tdN');
-    if (p.h) { n.appendChild(document.createTextNode(String(p.h))); n.appendChild(tdEl('small', '', '時間')); }
-    n.appendChild(document.createTextNode(String(p.m))); n.appendChild(tdEl('small', '', '分'));
-    mt.appendChild(n);
-    mt.appendChild(tdEl('div', 'tdS', all.length + '回、' + new Set(all.map((x) => x.date)).size + '日' + (medToday.length ? `　今日 ${medToday.length}回 ${medSum(medToday)}分` : '')));
-    grid.appendChild(mt);
+    grid.appendChild(tdStackTile(today));
   }
   const TD_DOW_JA = '日月火水木金土';
 
